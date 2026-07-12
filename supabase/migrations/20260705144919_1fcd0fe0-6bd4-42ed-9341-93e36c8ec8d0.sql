@@ -1,0 +1,1 @@
+ALTER TABLE public.ocorrencias_colaborador ADD COLUMN substituto_id uuid NULL REFERENCES public.colaboradores(id) ON DELETE SET NULL;

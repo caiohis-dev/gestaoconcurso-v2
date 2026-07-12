@@ -1,0 +1,1 @@
+ALTER TABLE public.ocorrencias_colaborador ALTER COLUMN data_ocorrencia TYPE date USING data_ocorrencia::date;

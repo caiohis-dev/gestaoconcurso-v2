@@ -1,0 +1,21 @@
+-- Seed de desenvolvimento local. Executado automaticamente por `supabase db reset`
+-- (ver [db.seed] em supabase/config.toml), depois de todas as migrations.
+--
+-- Este arquivo é para **dados de exemplo de dev local**, e só isso.
+--
+-- Dado de referência (do qual o código depende) NÃO vai aqui — vai em migration, porque
+-- seed não roda em `supabase db push`, e portanto nunca chega na produção. Ver
+-- my_rules/banco-producao.md.
+--
+-- Os 7 cargos "básicos do sistema" (Coordenador Geral, Auxiliar de Coordenação etc.)
+-- moraram aqui até 2026-07-12, quando viraram a migration
+-- 20260712134220_seed_funcoes_basicas_sistema.sql — justamente para que existam também
+-- em produção. A tabela `bancos` já era populada pela migration 20260702132555_*.sql.
+--
+-- Hoje, portanto, não há nada a semear: `colaboradores`, `provas`, `unidades_prova` etc.
+-- começam vazias em dev local por design. Se quiser dados de exemplo para testar fluxos
+-- de ponta a ponta, adicione INSERTs abaixo desta linha — mantendo campos sensíveis
+-- (colab_codigo_acesso/hash) com valores obviamente de teste, nunca dados reais.
+--
+-- Para desenvolver contra os dados reais de produção, use supabase/seed.local.sql
+-- (não versionado, contém PII — ver my_rules/estrutura/desenvolvimento-local.md).

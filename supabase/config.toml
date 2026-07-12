@@ -1,0 +1,117 @@
+# Configuração do stack local do Supabase (via `supabase start`, Docker).
+# Referência completa: https://supabase.com/docs/guides/local-development/cli/config
+#
+# ⚠️ ESTE ARQUIVO É EXCLUSIVAMENTE DE DESENVOLVIMENTO LOCAL.
+#
+# Os valores aqui são escolhidos para dev (site_url em 127.0.0.1:8080, confirmação de
+# e-mail desligada, signup aberto). Em produção, vários deles seriam uma regressão de
+# segurança. **Nunca rode `supabase config push`** — ele aplicaria esta configuração no
+# projeto remoto. A configuração de produção (auth, redirects, SMTP) é gerida no dashboard
+# do Supabase, deliberadamente. Ver my_rules/banco-producao.md.
+#
+# project_id namespaceia os containers Docker deste projeto no host local — não é o que
+# define o projeto remoto (isso é o `supabase link`). O valor abaixo é herança do projeto
+# Lovable (v1) e é mantido só para não renomear os containers locais em uso.
+project_id = "dqslqfzqukcahogkieet"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+health_timeout = "2m"
+# Deve bater com a versão do Postgres do projeto remoto (Settings > Database no dashboard
+# Supabase, ou `SHOW server_version;`). Ajuste se divergir de 17.
+major_version = 17
+
+[db.migrations]
+enabled = true
+schema_paths = []
+
+[db.seed]
+# Executado após as migrations em `supabase db reset` — e só aí: seed NÃO roda em
+# `supabase db push`, então nada que produção precise pode viver aqui (ver
+# my_rules/banco-producao.md).
+#
+# - seed.sql: dados de exemplo de dev. Hoje está vazio de dados por design.
+# - seed.local.sql: dump com os dados reais de produção. Não versionado, contém PII —
+#   trate o banco local com o mesmo cuidado que produção.
+#
+# Os 7 registros "básicos do sistema" de funcoes_colaboradores moraram no seed até
+# 2026-07-12, quando viraram a migration 20260712134220_*.sql — justamente para que
+# existam também em produção, onde seed não chega.
+#
+# seed.local.sql é opcional e NÃO versionado (ver .gitignore): é o dump de produção
+# gerado em 2026-07-12 pela Edge Function export-seed (removida do projeto; código em
+# my_rules/historico/export-seed/), para desenvolver contra dados reais. Contém
+# PII (CPF, PIS, conta bancária, chave PIX) e hashes de senha — nunca commite. Se o
+# arquivo não existir, `supabase db reset` falha; nesse caso remova-o de sql_paths
+# ou gere um novo dump. A ordem importa: seed.sql primeiro, senão os cargos básicos
+# não existem quando o dump referencia funcoes_colaboradores.
+enabled = true
+sql_paths = ["./seed.sql", "./seed.local.sql"]
+
+[realtime]
+enabled = true
+
+[studio]
+enabled = true
+port = 54323
+api_url = "http://127.0.0.1"
+
+# Servidor de e-mail de teste (Inbucket/Mailpit) — e-mails enviados localmente (ex.: pela
+# Edge Function send-email ou pelo fluxo de auth) não saem de verdade, ficam visíveis aqui.
+[local_smtp]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+# Porta do dev server do Vite (vite.config.ts) — não o padrão 3000 do template do CLI.
+site_url = "http://127.0.0.1:8080"
+additional_redirect_urls = ["http://127.0.0.1:8080"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+enable_signup = true
+enable_anonymous_sign_ins = false
+minimum_password_length = 6
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+# Confirmação de e-mail fica desligada por padrão no template do CLI — mantém sign-up ágil
+# em dev local. O fluxo de admin (useAuth/create-admin) não depende de confirmação de e-mail.
+enable_confirmations = false
+secure_password_change = false
+max_frequency = "1s"
+otp_length = 6
+otp_expiry = 3600
+
+[auth.sms]
+enable_signup = false
+
+[edge_runtime]
+enabled = true
+policy = "per_worker"
+inspector_port = 8083
+deno_version = 2
+
+# Secrets locais para as Edge Functions (ex.: SMTP da função send-email) vêm de
+# supabase/functions/.env (não versionado — copie de .env.example), carregado
+# automaticamente por `supabase functions serve`. Não são declarados aqui.
+
+[analytics]
+enabled = false
+
+[functions.create-coordenador]
+verify_jwt = false

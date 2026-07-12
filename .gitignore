@@ -1,0 +1,52 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Variáveis de ambiente: carregam as chaves do Supabase. Nunca versionar.
+# Cobre também .env.production / .env.development / .env.staging, que o Vite
+# reconhece por convenção. A única exceção são os templates .env.example
+# (hoje: supabase/functions/.env.example), que não têm segredos.
+.env
+.env.*
+!.env.example
+
+# Supabase CLI local state (created by `supabase start`/`link`)
+supabase/.branches
+supabase/.temp
+
+# Dumps de produção (export-seed): carregam CPF, PIS, conta bancária, chave PIX
+# de colaboradores reais e hashes de senha. Nunca versionar.
+seed_*.sql
+supabase/seed.local.sql
+*.dump
+*.sql.gz
+
+# Configuração local do Claude Code (allowlist de permissões desta máquina).
+# .claude/settings.json, se existir, é compartilhável e deve ser versionado.
+.claude/settings.local.json
+.claude/settings.local.json.tmp.*
+
+# Deploy (relevante quando a hospedagem sair do Lovable — ver my_rules/backlog.md)
+.vercel
+.netlify
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

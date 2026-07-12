@@ -1,0 +1,93 @@
+# Arquitetura Geral — Gestão de Concursos (FEVRE)
+
+> Ver [`00-indice.md`](./00-indice.md) para a lista completa de documentos. Auth é tratada em detalhe em [`auth-e-permissoes.md`](./auth-e-permissoes.md); integrações externas em [`integracoes-externas.md`](./integracoes-externas.md).
+
+## 1. Visão geral
+
+Sistema web para gerenciar a **logística operacional de provas de concursos públicos**: cadastro de colaboradores (fiscais, coordenadores, apoio), organização de provas/editais, alocação de unidades e salas de aplicação, distribuição de colaboradores por função, registro de ocorrências durante a prova, e geração de documentos (listas de presença, recibos) em PDF.
+
+O nome/marca exibida na UI é **FEVRE** (`src/components/Layout.tsx`), embora o diretório do projeto e os metadados internos usem "gestaoconcurso".
+
+O projeto foi originalmente gerado pelo **Lovable** (plataforma low-code), mas em 2026-07-11 passou a ser mantido diretamente por nós: o `lovable-tagger` foi removido do `vite.config.ts`/`package.json`, o `.lovable/` e o README boilerplate saíram. Resquícios de scaffold ainda podem aparecer (nomes genéricos, comentários de "arquivo gerado") — trate como cruft, não como convenção a preservar. **Pendência:** a hospedagem/deploy ainda passa pelo Lovable (`Share → Publish`); migrar isso é um trabalho separado, ainda não feito.
+
+## 2. Stack tecnológico
+
+| Camada | Tecnologia |
+|---|---|
+| Build/dev server | Vite 5 (`@vitejs/plugin-react-swc`), alias `@/` → `./src/` |
+| UI | React 18 (function components + hooks) |
+| Roteamento | React Router DOM 6 (rotas declaradas em `src/App.tsx`) |
+| Estilo | Tailwind CSS + `tailwindcss-animate`, tokens HSL em `src/index.css` |
+| Componentes | shadcn/ui (`src/components/ui/*`, configurado via `components.json`) |
+| Estado servidor | TanStack React Query 5 — usado de forma consistente na maioria dos hooks de entidade (`useQuery`/`useMutation` + `invalidateQueries`); alguns hooks mais antigos/específicos de página (ex.: `PainelDadosColaboradores.tsx`, `useColaboradorAuth.tsx`) fazem fetch manual com `useState`/`useEffect` em vez de React Query — não assuma cache automático sem checar o hook específico |
+| Formulários | React Hook Form + Zod |
+| PDF | jsPDF + jspdf-autotable (geração 100% client-side, ver [`documentos-e-relatorios.md`](./documentos-e-relatorios.md)) |
+| Planilhas | xlsx (SheetJS) — usado em `CadastroLote.tsx` para importação em massa |
+| Gráficos | Recharts (Dashboard) |
+| Backend/dados | Supabase (Postgres + Auth + Edge Functions), projeto `dqslqfzqukcahogkieet` |
+
+TypeScript está configurado com tipagem **frouxa** (`tsconfig.app.json`): `strict: false`, `noImplicitAny: false`, `noUnusedLocals/Parameters: false`. ESLint também desliga `@typescript-eslint/no-unused-vars`. Não trate ausência de tipos estritos como bug a corrigir por conta própria — é uma escolha deliberada do projeto (velocidade > rigor).
+
+## 3. Arquitetura macro
+
+**SPA client-side puro consumindo o Supabase SDK diretamente — não há servidor de aplicação intermediário.** O frontend React fala diretamente com o Postgres via API REST/RPC do Supabase (`@supabase/supabase-js`), respeitando Row Level Security (RLS).
+
+Toda lógica de negócio sensível ou que exige elevação de privilégio vive em dois lugares fora do frontend:
+
+1. **Funções de banco (`SECURITY DEFINER`)** em `supabase/migrations/*.sql` — 31 das ~67 migrations definem funções com `SECURITY DEFINER`, chamadas do frontend via `supabase.rpc(...)`. Fazem validação de permissão manualmente dentro do PL/pgSQL (ex.: `has_role`, `is_coordenador_prova`) antes de agir, já que RLS sozinho não cobriria os casos (ex.: autenticação de colaborador não usa Supabase Auth — ver [`auth-e-permissoes.md`](./auth-e-permissoes.md)).
+2. **Edge Functions (Deno)** em `supabase/functions/*` — usadas para operações administrativas que exigem a service role key. Detalhadas em [`integracoes-externas.md`](./integracoes-externas.md).
+
+18 das 67 migrations habilitam RLS explicitamente em tabelas (`ENABLE ROW LEVEL SECURITY`). Não existe servidor Node/Express próprio — o "backend" é inteiramente Supabase (BaaS) + Edge Functions.
+
+**Padrão a seguir ao adicionar features novas:** prefira RPC `SECURITY DEFINER` com checagem manual de permissão em vez de abrir uma tabela via policy permissiva — é o padrão dominante no schema atual.
+
+## 4. Estrutura de pastas
+
+```
+.
+├── src/
+│   ├── App.tsx                 # Providers globais + declaração de todas as rotas
+│   ├── main.tsx                # Entry point
+│   ├── components/              # Componentes de domínio (dialogs, cards, listas)
+│   │   └── ui/                  # shadcn/ui (geradas, evitar edição manual extensa)
+│   ├── hooks/                   # Um hook por entidade/feature: fetch + mutations + regra de negócio
+│   ├── integrations/supabase/   # client.ts (cliente configurado) + types.ts (gerado, NÃO editar)
+│   ├── lib/                     # utils.ts (helpers genéricos) e constants.ts (enums de domínio)
+│   └── pages/                    # Um componente por rota (ver tabela de rotas abaixo)
+├── supabase/
+│   ├── config.toml               # project_id + config de verify_jwt por function
+│   ├── functions/                 # Edge Functions (Deno), uma pasta por função + _shared/ (templates de e-mail)
+│   └── migrations/                # ~67 migrations SQL — fonte da verdade do schema
+├── public/                        # Estáticos (logo, favicon); ver nota sobre auth_users_export.csv abaixo
+├── my_rules/estrutura/            # Esta documentação
+└── docs/                          # Documentação pontual de features específicas
+```
+
+## 5. Mapa de rotas (`src/App.tsx`)
+
+| Rota | Página | Domínio (ver documento) |
+|---|---|---|
+| `/` | `Index` | [`colaboradores.md`](./colaboradores.md) — listagem |
+| `/dashboard` | `Dashboard` | [`documentos-e-relatorios.md`](./documentos-e-relatorios.md) |
+| `/auth`, `/auth-admin` | Login admin (sem recuperação de senha própria — removida em 2026-07-11, ver [`integracoes-externas.md`](./integracoes-externas.md)) | [`auth-e-permissoes.md`](./auth-e-permissoes.md) |
+| `/cadastro`, `/cadastro-publico`, `/cadastro-lote` | Cadastro de colaborador | [`colaboradores.md`](./colaboradores.md) |
+| `/perfil`, `/perfil-colaborador` | Perfil admin vs. colaborador | [`colaboradores.md`](./colaboradores.md), [`auth-e-permissoes.md`](./auth-e-permissoes.md) |
+| `/unidades-prova`, `/salas-prova/:unidadeId` | Cadastro de unidades e salas (template) | [`provas-e-unidades.md`](./provas-e-unidades.md) |
+| `/provas`, `/gerenciar-prova/:provaId` | CRUD de provas | [`provas-e-unidades.md`](./provas-e-unidades.md) |
+| `/gerenciar-salas-distribuidas/:provaId/:unidadeId` | Distribuição de salas por prova/unidade | [`provas-e-unidades.md`](./provas-e-unidades.md) |
+| `/gerenciar-colaboradores-prova/:provaUnidadeId` | Alocação de colaboradores por função | [`alocacao-e-funcoes.md`](./alocacao-e-funcoes.md) |
+| `/ocorrencias-prova/:provaId` | Registro de ocorrências | [`ocorrencias.md`](./ocorrencias.md) |
+| `/funcoes-colaboradores` | Cadastro de funções e valores | [`alocacao-e-funcoes.md`](./alocacao-e-funcoes.md) |
+| `/documentos-impressao/:provaId` | Geração de PDFs | [`documentos-e-relatorios.md`](./documentos-e-relatorios.md) |
+| `/painel-dados-colaboradores/:provaId` | Painel consolidado | [`documentos-e-relatorios.md`](./documentos-e-relatorios.md) |
+| `/gerenciar-usuarios` | Gestão de usuários/roles (superadmin) | [`auth-e-permissoes.md`](./auth-e-permissoes.md) |
+| `/treinamento` | Página de treinamento/onboarding | — |
+
+Navegação visível no header (`Layout.tsx`) é filtrada por role, mas isso é só ocultação de UI — **não substitui checagem de permissão no backend** (feita via RLS/RPC).
+
+## 6. Pontos de atenção / higiene do repositório
+
+- **`docs/cadastro-lote-sanitizacao.md`** é documentação específica e detalhada do fluxo de importação em lote — parece atualizada, referenciada em [`colaboradores.md`](./colaboradores.md).
+- **`public/auth_users_export.csv`** existe no repo mas contém só o cabeçalho (sem linhas de dados) — não é vazamento de dados reais no momento, mas vale perguntar por que um artefato de export está versionado em `public/` (fica publicamente acessível se servido como estático).
+- **`src/integrations/supabase/types.ts`** é gerado automaticamente pelo Supabase CLI — não editar à mão. Já **`client.ts`**, apesar de um dia ter carregado o mesmo aviso, **é mantido à mão** (tem um wrapper de `fetch` que corrige o `expires_at` das respostas de auth); o comentário enganoso foi corrigido em 2026-07-11.
+- **Deploy ainda no Lovable** — a limpeza de 2026-07-11 removeu o Lovable do *código*, mas o site continua sendo publicado pela plataforma. Migrar hospedagem é trabalho pendente e separado.

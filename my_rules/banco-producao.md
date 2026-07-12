@@ -1,0 +1,69 @@
+# Banco de Produção — Regras de Transição e Operação
+
+Regras para o banco de **produção da v2**: um projeto novo no supabase.com, criado em 2026-07-12, que substitui o projeto da era Lovable (`dqslqfzqukcahogkieet`).
+
+Leia junto com [`versionamento.md`](./versionamento.md) (a regra de nunca editar migration aplicada vale aqui em dobro) e [`estrutura/desenvolvimento-local.md`](./estrutura/desenvolvimento-local.md).
+
+---
+
+## O contexto que define tudo
+
+Três fatos, e cada regra abaixo decorre deles:
+
+1. **O banco antigo está congelado.** O site do Lovable não existe mais e o projeto está temporariamente fora do ar. Ninguém escreve no banco antigo — logo, o dump que temos **não envelhece**, e não há corrida contra dados novos.
+2. **O banco novo é continuidade do antigo**, não um recomeço. Mesmo schema, mesmos dados, mesmos usuários (inclusive os hashes de senha — os logins de produção continuam valendo).
+3. **A fonte da verdade é o banco local.** Não o banco antigo, não o dashboard. O banco local é reproduzível: `supabase db reset` aplica as 69 migrations + os seeds e chega exatamente no estado que queremos em produção. É essa reprodutibilidade que torna o `db push` seguro.
+
+## A regra fundamental
+
+> **Só migration chega em produção.**
+
+`supabase db push` aplica **apenas** `supabase/migrations/`. Ele **não** roda `seed.sql` — seed só existe no `db reset` local.
+
+Consequência prática, e este projeto já quase pagou por ela: **dado de referência do qual o código depende vai em migration, nunca em seed.** Os 7 cargos "básicos do sistema" viveram só no seed até 2026-07-12; um banco de produção novo nasceria sem eles, e a lista de elegíveis a coordenador (`FUNCOES_COORDENACAO` em `src/hooks/useCoordenadoresProva.tsx`, que hardcoda dois desses UUIDs) ficaria permanentemente vazia — sem erro visível em lugar nenhum. Viraram a migration `20260712134220_seed_funcoes_basicas_sistema.sql`.
+
+Pergunta a fazer sempre que for inserir uma linha: *se este registro não existir, o código quebra?* Se sim, é migration.
+
+## Os três comandos perigosos
+
+| Comando | O que faz | Regra |
+|---|---|---|
+| `supabase db reset --linked` | **APAGA o banco remoto** e reaplica tudo do zero | **Nunca.** Só existe uma flag de distância do reset local. Perda total de dados de produção. |
+| `supabase config push` | Sobrescreve a config de auth do projeto remoto com o `config.toml` | **Nunca.** O `config.toml` é de dev: signup aberto, confirmação de e-mail desligada, `site_url` em `127.0.0.1`. Em prod isso é regressão de segurança. |
+| `supabase db push` | Aplica as migrations pendentes no remoto | Sempre precedido de `npm run prod:push:dry`. |
+
+Por isso os scripts do `package.json` são explícitos: tudo que toca o remoto tem o prefixo **`prod:`** (`prod:diff`, `prod:push:dry`, `prod:push`, `prod:unlink`). Um comando `supabase` solto na linha de comando é o caminho do acidente; use os scripts.
+
+## Bootstrap do banco novo (uma vez só)
+
+Ordem importa. Não pule o passo 2.
+
+1. **Linkar** o repo ao projeto novo: `npx supabase link --project-ref <REF_DO_PROJETO_NOVO>`.
+
+   ⚠️ Não se assuste com o `project_id = "dqslqfzqukcahogkieet"` no `config.toml`: ele é herança do projeto Lovable e serve **só** para nomear os containers Docker locais (`supabase_db_dqslqfzqukcahogkieet`) — não é ele que define o projeto remoto. Quem faz isso é o `link`, que grava a ref em `supabase/.temp/`. Mudar o `project_id` renomearia os containers e recriaria o banco local à toa; deixe como está.
+2. **Conferir antes de escrever:** `npm run prod:push:dry`. O banco novo está vazio, então o dry-run deve listar as **69 migrations**. Se listar menos, pare — significa que o banco não é o que pensamos.
+3. **Aplicar o schema:** `npm run prod:push`. Isso cria tudo, inclusive os GRANTs da `20260712010000_grant_api_roles_table_privileges.sql` (sem eles o login autentica mas a UI nunca avança) e os 7 cargos básicos.
+4. **Carregar os dados** de produção, uma vez, a partir do dump: `supabase/seed.local.sql` (gitignored). Ele traz `public.*` mais `auth.users` e `auth.identities` — é o que faz os logins antigos continuarem funcionando. Todos os INSERTs têm `ON CONFLICT`, então recarregar não quebra. Carregue com `psql` na connection string do projeto novo, **não** via `db push`.
+5. **Configurar o auth no dashboard** — isto **não** vem do `config.toml` e é fácil esquecer: confirmação de e-mail **ligada**, `site_url` e redirect URLs do domínio real, e signup fechado se o cadastro for só por convite.
+6. **Publicar as edge functions:** `npx supabase functions deploy` (as 6 de `supabase/functions/`) e cadastrar os secrets `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`. `db push` não publica function nenhuma.
+7. **Apontar o frontend:** `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` do build de produção passam a ser os do projeto novo.
+
+Não há buckets de storage hoje — nenhuma migration cria bucket e o app não usa. Se isso mudar, storage vira um passo a mais aqui, porque também não viaja no `db push`.
+
+## O fluxo do dia a dia
+
+Sempre na mesma direção — **local primeiro, produção depois**:
+
+1. Mudança de schema → **arquivo novo** em `supabase/migrations/` (`npx supabase migration new <slug>`).
+2. Validar local: `npm run supabase:reset` (aplica tudo do zero — é o teste de que a migration reproduz o estado esperado, e não só de que roda).
+3. Commitar a migration (tipo `db:`, ver [`versionamento.md`](./versionamento.md)).
+4. `npm run prod:push:dry` → ler a lista.
+5. `npm run prod:push` — **intencionalmente**, sabendo o que vai subir.
+
+O que **nunca** se faz: alterar schema pelo dashboard do supabase.com. Foi exatamente isso que a era Lovable fez, e é a origem de todo o drift documentado (GRANTs ausentes, os 7 cargos fantasma). Mudança feita no dashboard não existe em migration nenhuma, e o próximo banco nasce sem ela.
+
+## Dados: o banco local merece o mesmo cuidado que produção
+
+O `seed.local.sql` e o banco local carregam **dados reais**: CPF, PIS, conta bancária, chave PIX e hashes de senha de pessoas de verdade. Isso não é dado de teste. Nada disso é versionado ([`.gitignore`](../.gitignore)), e um vazamento é incidente de dados pessoais.
+
+Fluxo de dados aceito: **produção → local** (dump, para desenvolver contra o real). O caminho inverso, **local → produção**, é aceito uma única vez: o bootstrap do passo 4 acima. Depois disso, produção passa a ser a dona dos dados, e local nunca mais escreve nela.
