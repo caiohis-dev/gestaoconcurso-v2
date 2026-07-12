@@ -23,6 +23,8 @@ Versionamento semântico, com prefixo `v`:
 
 Crie a tag no commit que efetivamente entrega a versão, com mensagem: `git tag -a v2.1.0 -m "..."`.
 
+**A tag é o gatilho do banco de produção.** Combinado em 2026-07-12: o banco de produção só é atualizado em **versões estáveis** — nunca a cada migration ou a cada merge em `main`. Entre releases, as migrations se acumulam em `main` e o schema de produção fica deliberadamente atrás do local. Por isso **código e migration da mesma versão sobem juntos**: nunca publique o frontend de uma versão cujo schema ainda não subiu. O roteiro está em [`banco-producao.md`](./banco-producao.md).
+
 ## Mensagens de commit
 
 **Conventional Commits, com a descrição em português.**

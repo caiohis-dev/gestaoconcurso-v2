@@ -17,12 +17,14 @@ Junto com a refatoração, **corrigir a funcionalidade de "Faltou"**: quando uma
 
 ## Bootstrap do banco de produção da v2
 
-**Status:** pendente — pronto para executar
+**Status:** pendente — **deliberadamente adiado até a primeira subida da v2 a produção**
 **Área:** Infraestrutura / Banco (ver [`banco-producao.md`](./banco-producao.md))
 
-O projeto novo no supabase.com já foi criado; o repo **ainda não está linkado** a ele. O procedimento completo (link → `prod:push:dry` → `prod:push` → carga do `seed.local.sql` → config de auth no dashboard → deploy das edge functions + secrets SMTP → `.env` do frontend) está em [`banco-producao.md`](./banco-producao.md).
+O projeto novo no supabase.com já foi criado, mas o repo **não é linkado a ele** — e não deve ser, até o dia de colocar a v2 no ar (regra combinada em 2026-07-12: o repo fica deslinkado por padrão, e produção só é atualizada em versões estáveis).
 
-O schema já está pronto para subir: as 69 migrations reproduzem o banco local do zero, validado por `db reset` em 2026-07-12.
+O schema já está pronto para subir quando for a hora: as 69 migrations reproduzem o banco local do zero, validado por `db reset` em 2026-07-12. O roteiro completo dos 8 passos (link → `prod:push:dry` → `prod:push` → carga do `seed.local.sql` → auth no dashboard → edge functions + secrets SMTP → `.env` do frontend → **unlink**) está em [`banco-producao.md`](./banco-producao.md).
+
+Falta apenas, no dia: a **ref do projeto novo** no Supabase.
 
 ---
 

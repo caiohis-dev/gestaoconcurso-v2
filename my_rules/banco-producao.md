@@ -14,6 +14,28 @@ Três fatos, e cada regra abaixo decorre deles:
 2. **O banco novo é continuidade do antigo**, não um recomeço. Mesmo schema, mesmos dados, mesmos usuários (inclusive os hashes de senha — os logins de produção continuam valendo).
 3. **A fonte da verdade é o banco local.** Não o banco antigo, não o dashboard. O banco local é reproduzível: `supabase db reset` aplica as 69 migrations + os seeds e chega exatamente no estado que queremos em produção. É essa reprodutibilidade que torna o `db push` seguro.
 
+## As duas regras combinadas (2026-07-12)
+
+Estas duas vêm antes de qualquer procedimento deste arquivo. Elas existem para que **nada chegue em produção por acidente ou por inércia** — o banco de produção não acompanha o desenvolvimento, ele recebe entregas.
+
+### 1. O repositório fica DESLINKADO por padrão
+
+**Só se linka no momento de colocar em produção.** Fora desse momento, `supabase link` não é rodado — e depois do push, `npm run prod:unlink` devolve o repo ao estado desligado.
+
+Por quê: enquanto não há link, **os comandos destrutivos não têm alvo**. `supabase db reset --linked` e `supabase db push` simplesmente não sabem em qual banco escrever, e falham em vez de estragar. O link é o que arma a arma; ele fica desarmado o tempo todo, menos nos minutos em que a gente conscientemente vai subir algo.
+
+Consequência prática: o dia a dia (migration nova, `db reset`, dev local) **nunca precisa de link**. Se você se pegou linkando para fazer algo rotineiro, pare — provavelmente é o comando errado.
+
+### 2. Produção só é atualizada em versões estáveis
+
+**`prod:push` acontece em versões consideradas estáveis, nunca a cada migration ou a cada merge em `main`.** A unidade de entrega ao banco é a **release tagueada** (`v2.x.y`, ver [`versionamento.md`](./versionamento.md)), não o commit.
+
+Migrations, portanto, **se acumulam em `main`** entre uma release e outra — isso é esperado, não é dívida. Quando a versão é declarada estável, elas sobem **em lote**, de uma vez. É por isso que o `prod:push:dry` do passo de release pode listar várias migrations: leia a lista inteira, ela é a mudança de schema da versão.
+
+Corolário incômodo, mas que é o preço da regra: entre releases, **o schema de produção fica atrás do local**. O código em produção precisa continuar compatível com o schema de produção — o que significa que **código novo e migration nova sobem juntos, na mesma release**. Nunca faça deploy do frontend de uma versão cujo schema ainda não subiu.
+
+---
+
 ## A regra fundamental
 
 > **Só migration chega em produção.**
@@ -30,11 +52,15 @@ Pergunta a fazer sempre que for inserir uma linha: *se este registro não existi
 |---|---|---|
 | `supabase db reset --linked` | **APAGA o banco remoto** e reaplica tudo do zero | **Nunca.** Só existe uma flag de distância do reset local. Perda total de dados de produção. |
 | `supabase config push` | Sobrescreve a config de auth do projeto remoto com o `config.toml` | **Nunca.** O `config.toml` é de dev: signup aberto, confirmação de e-mail desligada, `site_url` em `127.0.0.1`. Em prod isso é regressão de segurança. |
-| `supabase db push` | Aplica as migrations pendentes no remoto | Sempre precedido de `npm run prod:push:dry`. |
+| `supabase db push` | Aplica as migrations pendentes no remoto | Só em release estável, precedido de `npm run prod:push:dry`. |
 
 Por isso os scripts do `package.json` são explícitos: tudo que toca o remoto tem o prefixo **`prod:`** (`prod:diff`, `prod:push:dry`, `prod:push`, `prod:unlink`). Um comando `supabase` solto na linha de comando é o caminho do acidente; use os scripts.
 
-## Bootstrap do banco novo (uma vez só)
+Note que os dois primeiros só funcionam **se houver link** — e é justamente por isso que o padrão é ficar deslinkado.
+
+## Bootstrap do banco novo (na primeira subida a produção)
+
+Este é o roteiro da **primeira vez** que a v2 for ao ar. Ele não é para agora: enquanto a v2 estiver em desenvolvimento, o banco de produção fica intocado e o repo, deslinkado.
 
 Ordem importa. Não pule o passo 2.
 
@@ -47,18 +73,33 @@ Ordem importa. Não pule o passo 2.
 5. **Configurar o auth no dashboard** — isto **não** vem do `config.toml` e é fácil esquecer: confirmação de e-mail **ligada**, `site_url` e redirect URLs do domínio real, e signup fechado se o cadastro for só por convite.
 6. **Publicar as edge functions:** `npx supabase functions deploy` (as 6 de `supabase/functions/`) e cadastrar os secrets `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`. `db push` não publica function nenhuma.
 7. **Apontar o frontend:** `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` do build de produção passam a ser os do projeto novo.
+8. **Deslinkar:** `npm run prod:unlink`. Terminou a subida, o repo volta ao estado desarmado.
 
 Não há buckets de storage hoje — nenhuma migration cria bucket e o app não usa. Se isso mudar, storage vira um passo a mais aqui, porque também não viaja no `db push`.
 
-## O fluxo do dia a dia
+## O fluxo do dia a dia (repo deslinkado, produção intocada)
 
-Sempre na mesma direção — **local primeiro, produção depois**:
+Este é o fluxo de **99% dos dias**. Nenhum passo aqui toca produção, e nenhum precisa de link:
 
 1. Mudança de schema → **arquivo novo** em `supabase/migrations/` (`npx supabase migration new <slug>`).
 2. Validar local: `npm run supabase:reset` (aplica tudo do zero — é o teste de que a migration reproduz o estado esperado, e não só de que roda).
-3. Commitar a migration (tipo `db:`, ver [`versionamento.md`](./versionamento.md)).
-4. `npm run prod:push:dry` → ler a lista.
-5. `npm run prod:push` — **intencionalmente**, sabendo o que vai subir.
+3. Commitar a migration (tipo `db:`, ver [`versionamento.md`](./versionamento.md)) na branch de trabalho, e mesclar em `main`.
+
+E acabou. A migration fica **acumulada em `main`**, esperando a próxima release. Não se faz push para produção aqui.
+
+## O fluxo da release (a única vez que produção é tocada)
+
+Quando uma versão é declarada **estável** e vai ao ar:
+
+1. `main` está consistente, buildando, com todas as migrations da versão já validadas por um `supabase db reset` do zero.
+2. Taguear a versão: `git tag -a v2.x.y -m "..."` (ver [`versionamento.md`](./versionamento.md)).
+3. **Linkar:** `npx supabase link --project-ref <REF>`.
+4. `npm run prod:push:dry` → **ler a lista inteira.** Ela contém todas as migrations acumuladas desde a última release. Se aparecer alguma que você não reconhece, pare.
+5. `npm run prod:push` — intencionalmente, sabendo o que vai subir.
+6. Publicar o frontend da mesma versão, e as edge functions se mudaram (`npx supabase functions deploy`).
+7. **`npm run prod:unlink`** — desarma o repo de novo.
+
+O passo 7 não é opcional nem cerimônia: é ele que garante que, no dia seguinte, um `db reset` distraído não tenha como alcançar a produção.
 
 O que **nunca** se faz: alterar schema pelo dashboard do supabase.com. Foi exatamente isso que a era Lovable fez, e é a origem de todo o drift documentado (GRANTs ausentes, os 7 cargos fantasma). Mudança feita no dashboard não existe em migration nenhuma, e o próximo banco nasce sem ela.
 
