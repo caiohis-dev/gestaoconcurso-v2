@@ -15,6 +15,19 @@ Junto com a refatoração, **corrigir a funcionalidade de "Faltou"**: quando uma
 
 ---
 
+## Refatorar a segurança do acesso do colaborador (`/auth`)
+
+**Status:** pendente — em debate de desenho (decisão de fundo ainda não tomada)
+**Área:** Auth e Permissões (ver [`estrutura/auth-e-permissoes.md`](./estrutura/auth-e-permissoes.md))
+
+O portal do colaborador (rota `/auth`, login por CPF + código de 4 dígitos, sem Supabase Auth) tem fragilidades sérias. O laudo completo, com os 8 pontos levantados por leitura de código e banco em 2026-07-13, está em [`analises/fragilidades-auth-colaborador.md`](./analises/fragilidades-auth-colaborador.md).
+
+O nó central: as RPCs `SECURITY DEFINER` recebem o `p_colaborador_id` do cliente e confiam nele, sem prova de identidade — então qualquer um com a anon key (pública) lê/edita/reseta a senha de qualquer colaborador sabendo só o UUID. O código de acesso ainda é texto puro, sem rate limit, e o fluxo de "esqueci meu código" devolve a credencial na resposta HTTP.
+
+A decisão de desenho que precede a implementação: **(A)** migrar o portal para Supabase Auth de verdade (`auth.uid()` ancora RLS/RPCs), ou **(B)** manter o modelo sem-JWT com um token de sessão assinado que as RPCs passem a exigir. Só depois de decidir isso é que hash do código, rate limit e correção do reset entram em ordem.
+
+---
+
 ## Bootstrap do banco de produção da v2
 
 **Status:** pendente — **deliberadamente adiado até a primeira subida da v2 a produção**
