@@ -28,9 +28,9 @@ Consequência prática: o dia a dia (migration nova, `db reset`, dev local) **nu
 
 ### 2. Produção só é atualizada em versões estáveis
 
-**`prod:push` acontece em versões consideradas estáveis, nunca a cada migration ou a cada merge em `main`.** A unidade de entrega ao banco é a **release tagueada** (`v2.x.y`, ver [`versionamento.md`](./versionamento.md)), não o commit.
+**`prod:push` acontece em versões consideradas estáveis, nunca a cada migration ou a cada merge em `dev`.** A unidade de entrega ao banco é a **release tagueada** (`v2.x.y`, ver [`versionamento.md`](./versionamento.md)), não o commit.
 
-Migrations, portanto, **se acumulam em `main`** entre uma release e outra — isso é esperado, não é dívida. Quando a versão é declarada estável, elas sobem **em lote**, de uma vez. É por isso que o `prod:push:dry` do passo de release pode listar várias migrations: leia a lista inteira, ela é a mudança de schema da versão.
+Migrations, portanto, **se acumulam em `dev`** entre uma release e outra — isso é esperado, não é dívida. Quando a versão é declarada estável, elas sobem **em lote**, de uma vez, no mesmo evento em que `dev` é mesclada em `main`. É por isso que o `prod:push:dry` do passo de release pode listar várias migrations: leia a lista inteira, ela é a mudança de schema da versão.
 
 Corolário incômodo, mas que é o preço da regra: entre releases, **o schema de produção fica atrás do local**. O código em produção precisa continuar compatível com o schema de produção — o que significa que **código novo e migration nova sobem juntos, na mesma release**. Nunca faça deploy do frontend de uma versão cujo schema ainda não subiu.
 
@@ -83,16 +83,16 @@ Este é o fluxo de **99% dos dias**. Nenhum passo aqui toca produção, e nenhum
 
 1. Mudança de schema → **arquivo novo** em `supabase/migrations/` (`npx supabase migration new <slug>`).
 2. Validar local: `npm run supabase:reset` (aplica tudo do zero — é o teste de que a migration reproduz o estado esperado, e não só de que roda).
-3. Commitar a migration (tipo `db:`, ver [`versionamento.md`](./versionamento.md)) na branch de trabalho, e mesclar em `main`.
+3. Commitar a migration (tipo `db:`, ver [`versionamento.md`](./versionamento.md)) na branch de trabalho, e mesclar em **`dev`** — nunca em `main`, que fica congelada até a subida da v2.
 
-E acabou. A migration fica **acumulada em `main`**, esperando a próxima release. Não se faz push para produção aqui.
+E acabou. A migration fica **acumulada em `dev`**, esperando a próxima release. Não se faz push para produção aqui.
 
 ## O fluxo da release (a única vez que produção é tocada)
 
 Quando uma versão é declarada **estável** e vai ao ar:
 
-1. `main` está consistente, buildando, com todas as migrations da versão já validadas por um `supabase db reset` do zero.
-2. Taguear a versão: `git tag -a v2.x.y -m "..."` (ver [`versionamento.md`](./versionamento.md)).
+1. `dev` está consistente, buildando, com todas as migrations da versão já validadas por um `supabase db reset` do zero.
+2. **Mesclar `dev` em `main`** e taguear a versão nesse commit: `git tag -a v2.x.y -m "..."` (ver [`versionamento.md`](./versionamento.md)). Merge, push do banco e tag são o **mesmo evento** — é o único dia em que `main` se move.
 3. **Linkar:** `npx supabase link --project-ref <REF>`.
 4. `npm run prod:push:dry` → **ler a lista inteira.** Ela contém todas as migrations acumuladas desde a última release. Se aparecer alguma que você não reconhece, pare.
 5. `npm run prod:push` — intencionalmente, sabendo o que vai subir.

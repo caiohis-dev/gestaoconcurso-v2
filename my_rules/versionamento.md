@@ -6,11 +6,25 @@ Contexto importante: o código da v1 rodou em produção por meses **sem nenhum 
 
 ---
 
-## Branch base
+## Branches base — `main` e `dev`
 
-A branch base é **`main`**. Ela deve estar sempre em estado consistente (buildando, sem migration pela metade).
+Duas branches de vida longa, com papéis diferentes. Combinado em 2026-07-13.
 
-⚠️ **`main` não é a fonte do que está no ar.** Hoje o deploy ainda sai da plataforma Lovable (`Share → Publish`), não do git — ver o item de migração de hospedagem no [`backlog.md`](./backlog.md). Enquanto isso não mudar, um commit em `main` **não** significa que a mudança está em produção, e o que está em produção pode divergir do que está aqui.
+**`main` é o estado publicado.** Ela fica **congelada em `v1.0.0`** e só volta a se mover **no dia da subida da v2** — quando `dev` é mesclada nela de uma vez, o banco de produção recebe as migrations e a tag `v2.0.0` nasce nesse commit. Nenhuma branch de tema é mesclada em `main` no meio do caminho.
+
+**`dev` é a branch de integração** e a base do dia a dia. É de `dev` que saem as branches de tema e é para `dev` que elas voltam. Ela deve estar sempre em estado consistente (buildando, sem migration pela metade) — é ela que faz o papel que `main` normalmente faria.
+
+```
+main   ──●(v1.0.0)────────────────────────●(v2.0.0)  ← só no dia da subida
+           \                              /
+dev         ●──●──●──●──●──●──●──●──●──●──●
+             \    /       \  /       \  /
+feat/*        ●──●         ●●          ●●
+```
+
+**Por que congelar a `main`:** a v2 sobe como um bloco — banco novo, frontend novo, hospedagem nova (ver [`banco-producao.md`](./banco-producao.md) e o [`backlog.md`](./backlog.md)). Não existe subida incremental para produção enquanto essa fundação não estiver no ar, então `main` avançar a cada merge não significaria nada, e ainda apagaria a única coisa que ela hoje significa: o retrato do que rodou (a v1). Enquanto a v2 não sobe, `main` responde "o que está publicado?" e `dev` responde "onde o trabalho está?".
+
+⚠️ **Hoje nenhuma das duas é a fonte do que está no ar** — o site da v1 saiu do ar em 2026-07-12 e não há deploy ativo em lugar nenhum. `main` é o *último estado publicado*, não um estado *atualmente* publicado.
 
 ## Tags e versões
 
@@ -20,6 +34,8 @@ Versionamento semântico, com prefixo `v`:
 
   ⚠️ **`v1.0.0` não é um retrato fiel da produção da v1**, e nenhum commit pode ser. O git só foi adotado depois de duas limpezas irreversíveis já terem acontecido no disco: a remoção do Lovable (11/07) e a remoção do n8n (11/07, que levou junto o fluxo de recuperação de senha do admin). Esses arquivos não existem mais e não são recuperáveis. Além disso, o commit inicial já carrega a **fundação da v2** (as regras em `my_rules/`, os guardrails `prod:*`, as migrations de GRANT e dos cargos básicos, o `config.toml` de local). Ou seja: `v1.0.0` é *"a v1 já limpa, com a v2 engatilhada"* — não o binário que rodou em produção.
 - **`v2.x.y`** — a v2 em diante. `MAJOR` para quebra de compatibilidade (schema/contrato), `MINOR` para funcionalidade nova, `PATCH` para correção.
+
+  **`v2.0.0` nasce no merge de `dev` em `main`**, no dia da subida — é o mesmo evento: o merge, o push do banco e a tag. Não existe tag em `dev`.
 
 Crie a tag no commit que efetivamente entrega a versão, com mensagem: `git tag -a v2.1.0 -m "..."`.
 
@@ -59,9 +75,11 @@ chore: migra hospedagem do Lovable para build estático
 
 ## Branches de trabalho
 
-Branches **curtas**, criadas a partir de `main` e mescladas de volta assim que a mudança estiver pronta e verificada. Nomeie com o mesmo tipo do commit: `feat/wizard-ocorrencias`, `fix/falta-colaborador`, `db/reconciliacao-prod`.
+Branches **curtas**, criadas a partir de **`dev`** e mescladas de volta **em `dev`** assim que a mudança estiver pronta e verificada — nunca em `main`. Nomeie com o mesmo tipo do commit: `feat/wizard-ocorrencias`, `fix/falta-colaborador`, `db/reconciliacao-prod`.
 
-Trabalho de uma sessão que já nasce pronto pode ir direto em `main` — o objetivo da branch é isolar mudança que fica dias em aberto ou que pode não dar certo, não criar cerimônia.
+Trabalho de uma sessão que já nasce pronto pode ir direto em `dev` — o objetivo da branch é isolar mudança que fica dias em aberto ou que pode não dar certo, não criar cerimônia.
+
+A regra prática, se houver dúvida: **`git checkout main` só acontece no dia da subida.** Em qualquer outro dia, sair de uma branch de tema significa voltar para `dev`.
 
 ## Migrations — a regra inegociável
 
