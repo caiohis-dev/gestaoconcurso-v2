@@ -15,6 +15,13 @@
 - Logout força `window.location.href = '/auth'` (reload completo, para não deixar estado React fantasma) e limpa as chaves `sb-*`/`supabase` do `localStorage`. **Cuidado herdado:** esse reload duro destrói qualquer `navigate(..., { state })` chamado logo depois de `signOut()` — foi o bug que sumiu com a mensagem de sucesso ao salvar o perfil, na 2A.
 - Roteamento pós-login (em `Auth.tsx`): admin → `/dashboard`, coordenador → `/`, só-colaborador → `/perfil-colaborador`. Os 12 gestor+colaborador caem na gestão e chegam ao cadastro pelo item de menu "Meu Cadastro".
 
+### Como uma conta de colaborador nasce e se vincula (subetapa 2B)
+
+- **Reivindicação (os 759 que já eram cadastrados, sem conta):** em `/auth`, "Primeiro acesso" abre o `ReivindicarAcessoCard` → CPF → a Edge Function **`reivindicar-acesso`** localiza o cadastro e devolve **`{existe, ja_vinculado, email_mascarado}`** (o e-mail inteiro nunca sai do servidor), disparando um `generateLink('invite')` enviado com HTML da FEVRE via `send-email`. A pessoa clica, cai em `/redefinir-senha`, define a senha, entra. Rate limit de 5/15 min por IP (tabela `reivindicacao_rate_limit`, migration `20260714201650`).
+- **O vínculo é automático, no trigger.** `handle_new_user` (o mesmo `on_auth_user_created` que cria `profiles` + papel `user`) passou a: se o e-mail da conta nova casa com um colaborador de **`user_id IS NULL`**, preencher `user_id` e conceder **`colaborador`**. Isso vale para *qualquer* conta nova — reivindicação, cadastro público (2C) ou uma conta criada por admin. Nada vem do cliente; o casamento é por `auth.users.email` (único) contra o índice único de `colab_email`. É o backfill dos 12 virado mecanismo contínuo.
+- **`check-cpf-colaborador`** ainda existe, mas **endurecida**: devolve só `{exists}` (o `CadastroPublico` usa isso). Antes devolvia o e-mail inteiro — um oráculo. A fusão dela com `reivindicar-acesso` é trabalho da 2C.
+- **Dívida contida:** reivindicar um CPF alheio dispara um invite ao e-mail da vítima e marca o registro como vinculado — mas à conta do próprio dono daquele e-mail (recuperável por "esqueci senha"); o rate limit limita o abuso.
+
 ### O acesso do colaborador aos próprios dados
 
 - A página é `/perfil-colaborador`. O "usuário logado" é **`auth.uid()`** — não há mais objeto de sessão em `localStorage`.
