@@ -29,6 +29,7 @@ Levantados no banco local em 2026-07-13 (que é a fonte de verdade — ver [`../
 | ...sem e-mail | 248 |
 | Usuários no `auth.users` | 15 |
 | Colaboradores que **já são** usuários (casando por e-mail) | 11 |
+| ...casando também por **nome** (o número real — ver a seção da etapa 1) | **12** |
 
 Três leituras importam:
 
@@ -86,32 +87,41 @@ A ordem abaixo inverte a proposta inicial (que começava pelo frontend): **a fun
 
 > ### 📍 Onde paramos (2026-07-14)
 >
-> **Branch `feat/auth-colaborador`**, saída de `dev`. Três commits, todos de banco — **nada do fluxo de acesso mudou ainda**: o `/auth` segue com CPF + código de 4 dígitos, e nenhum código lê a coluna ou o papel novos.
+> **A etapa 1 está COMPLETA.** Branch `feat/auth-colaborador`, saída de `dev`. Tudo é banco — **nada do fluxo de acesso mudou ainda**: o `/auth` segue com CPF + código de 4 dígitos, e nenhum código lê a coluna ou o papel novos. **A etapa 2 é a próxima.**
 >
 > | | |
 > | --- | --- |
 > | `4bf50b8` | limpeza dos 3 e-mails duplicados (no `seed.local.sql`) |
 > | `d934ed0` | `'colaborador'` no enum `app_role` + coluna `colaboradores.user_id` |
 > | `03842c7` | unicidade de `colab_email` e `colab_chave_pix` + coluna `tipo_chave_pix` |
+> | — | **backfill dos 12**, no `seed.pos.sql` (novo, versionado) |
 >
-> O último não estava no roadmap: é um pedido à parte, feito enquanto a tabela estava aberta (ver [`../estrutura/colaboradores.md`](../estrutura/colaboradores.md)). Ele ajuda a refatoração de raspão — o índice único do e-mail impede que o mesmo endereço volte a se repetir e reabra o problema que a limpeza fechou.
->
-> **A etapa 1 está a um item de terminar: o backfill dos 11.** Ele está parado numa decisão, não numa dificuldade — *onde* ele vive, dada a restrição do seed descrita no quadro abaixo. **É por aí que se retoma.**
+> O terceiro não estava no roadmap: é um pedido à parte, feito enquanto a tabela estava aberta (ver [`../estrutura/colaboradores.md`](../estrutura/colaboradores.md)). Ele ajuda a refatoração de raspão — o índice único do e-mail impede que o mesmo endereço volte a se repetir e reabra o problema que a limpeza fechou.
 
 ### Etapa 1 — Fundação no banco (sem efeito visível)
 
 - **[✅ feito em 2026-07-14]** Limpeza: `colab_email = NULL` nas 6 linhas dos 3 e-mails duplicados — **no `seed.local.sql`**, pelo motivo explicado na decisão 4 acima.
 - **[✅ feito em 2026-07-14]** `'colaborador'` no enum `app_role` — migration `20260714162027_add_colaborador_ao_enum_app_role.sql`. Sozinho num arquivo de propósito: no Postgres, um valor novo de enum não pode ser *usado* na mesma transação em que é criado, então o backfill precisa vir depois.
 - **[✅ feito em 2026-07-14]** Coluna `colaboradores.user_id`, `UNIQUE`, FK para `auth.users(id)` **`ON DELETE SET NULL`** — migration `20260714162029_add_user_id_em_colaboradores.sql`. O `SET NULL` é deliberado: apagar a conta não pode apagar a pessoa (`CASCADE` destruiria folha de pagamento); o cadastro só volta a ficar não-vinculado.
-- **[pendente]** **Backfill dos 11** que já são usuários: casa `colaboradores.colab_email` com `auth.users.email`, preenche `user_id` e concede o papel `colaborador` em `user_roles`. É o "script" da conversa original — 11 linhas, não 771. **Esbarra na restrição do quadro abaixo — onde ele vive ainda não foi decidido.**
+- **[✅ feito em 2026-07-14]** **Backfill dos 12** que já são usuários: preenche `colaboradores.user_id` e concede o papel `colaborador` em `user_roles`. É o "script" da conversa original — 12 linhas, não 771. Mora no **`supabase/seed.pos.sql`** (novo), pelo motivo do quadro abaixo.
 
-**Schema em migrations novas** (ver [`../estrutura/desenvolvimento-local.md`](../estrutura/desenvolvimento-local.md) — migrations aplicadas nunca são editadas). **Mas dado não.** É a lição da limpeza acima, e ela **ainda não foi aplicada ao backfill**:
+**Schema em migrations novas** (ver [`../estrutura/desenvolvimento-local.md`](../estrutura/desenvolvimento-local.md) — migrations aplicadas nunca são editadas). **Mas dado não:**
 
-> ⚠️ **O backfill dos 11 é uma operação de dados e tem exatamente o mesmo problema.** Como migration, ele rodaria no bootstrap de produção **antes** da carga do `seed.local.sql` — ou seja, contra `colaboradores` e `auth.users` vazios, casando zero linhas — e nunca mais rodaria (migration roda uma vez). Em produção, os 11 nasceriam **sem `user_id` e sem o papel `colaborador`**, e a cúpula (2 admins + 9 coordenadores) ficaria sem acesso de colaborador, silenciosamente.
+> ⚠️ **O backfill é operação de dados e tem o mesmo problema da limpeza acima.** Como migration, ele rodaria no bootstrap de produção **antes** da carga do `seed.local.sql` — contra `colaboradores` e `auth.users` vazios, casando zero linhas — e nunca mais rodaria (migration roda uma vez). Os 12 nasceriam em produção **sem `user_id` e sem o papel `colaborador`**, e a cúpula ficaria sem acesso de colaborador, silenciosamente.
 >
-> As saídas possíveis, ainda **não decididas**: (a) o backfill também vive no dump; (b) vira um `seed.pos.sql` versionado, acrescentado a `sql_paths` **depois** do `seed.local.sql`, e replicado como passo manual no bootstrap de produção; ou (c) vira migration, mas o [`../banco-producao.md`](../banco-producao.md) passa a mandar carregar o seed **no meio** do `db push` (schema → carga → migrations de dados). A (b) é a única que fica **versionada e roda sozinha no `db reset`**.
+> **Decidido em 2026-07-14: um `seed.pos.sql` versionado**, acrescentado a `sql_paths` **depois** do `seed.local.sql`. Foi a única das três saídas que fica **versionada e roda sozinha no `db reset`** (as outras eram: viver dentro do dump, que se perde num dump novo; ou virar migration com o seed carregado no meio do `db push`). Em produção, onde seed não roda, ele é o **passo 5 do bootstrap** — ver [`../banco-producao.md`](../banco-producao.md).
 >
 > As duas primeiras linhas da etapa (o enum e a coluna `user_id`) são schema puro e **não** têm esse problema: seguem como migrations normais.
+
+#### Eram 12, não 11 — e o 12º é um coordenador (descoberto em 2026-07-14)
+
+O número **11** vinha de casar `colab_email` com `auth.users.email`. Casando também por **nome**, aparece um 12º: **JOAO PAULO**, coordenador, que é colaborador mas se cadastrou no Auth com um e-mail **diferente** do que consta no cadastro dele. O casamento por e-mail o perdia — exatamente o modo de falha silencioso que o backfill existe para evitar. **A cúpula é 2 admins + 10 coordenadores.**
+
+Por isso o backfill casa por **e-mail OU por nome**, com uma trava: só vincula quando o casamento é **inequívoco nos dois sentidos** (um colaborador para um usuário). Homônimo, e-mail repetido ou nome que case com duas contas **não vinculam nada** — a linha fica NULL e a pessoa entra pelo fluxo normal de reivindicação, que é o comportamento seguro. Vincular a pessoa errada é o pior erro possível nesta tabela, que tem conta bancária.
+
+Verificado antes de escrever a regra: **não há homônimos reais** entre os 771 (o único nome repetido é "TESTE AUTOMATIZADO", linha de teste). Depois do `db reset`: 12 vinculados, 12 com o papel, zero vínculos cruzados, e o nome do cadastro batendo com o da conta nas 12 linhas.
+
+Três contas do Auth **não** são colaboradores e ficaram de fora, corretamente: uma pessoa que não existe na `colaboradores`, uma "Nathalia" que não dá para desambiguar entre duas colaboradoras homônimas (papel `user`, não é cúpula), e a **segunda conta do próprio Caio** — ver as dívidas no [`../backlog.md`](../backlog.md).
 
 ### Etapa 2 — Porta única e reivindicação
 
@@ -163,4 +173,8 @@ O que **não** foi adiado, e é o que mantém a dívida contida: com `user_id UN
 
 ## Ponto em aberto
 
-**Um, novo, aberto pela implementação (2026-07-14):** *onde vive o backfill dos 11* — descrito no quadro da etapa 1. Não é uma dúvida de desenho da refatoração (o desenho segue fechado), e sim uma restrição de mecânica do Supabase que só apareceu quando a primeira operação de dados foi executada: **migration não alcança dado que entra pelo dump.**
+**Nenhum.** O desenho está fechado e a etapa 1 está completa.
+
+O único ponto que esteve em aberto — *onde vive o backfill* — foi **resolvido em 2026-07-14** com o `seed.pos.sql` (quadro da etapa 1). Ele nunca foi dúvida de desenho, e sim uma restrição de mecânica do Supabase que só apareceu quando a primeira operação de dados foi executada: **migration não alcança dado que entra pelo dump.**
+
+A investigação do backfill levantou **três dívidas novas**, todas registradas no [`../backlog.md`](../backlog.md) e nenhuma delas bloqueando a etapa 2: o login `ab@ab.com` de um coordenador, a conta duplicada do Caio, e as contas do Auth que não casam com colaborador nenhum.

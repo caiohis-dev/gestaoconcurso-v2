@@ -56,7 +56,7 @@ A `export-seed` **não existe mais** no projeto: era um canal de exfiltração d
 Consequências práticas:
 
 - **O arquivo não vem do repositório.** Num clone novo, `supabase db reset` **falha** enquanto `seed.local.sql` não existir. Ou remova o caminho de `sql_paths` no `config.toml` para rodar só com o `seed.sql` versionado, ou gere um dump novo redeployando a `export-seed` a partir de [`../historico/`](../historico/) (e removendo-a de novo em seguida).
-- **A ordem em `sql_paths` importa**: `seed.sql` antes de `seed.local.sql`.
+- **A ordem em `sql_paths` importa**: `seed.sql` antes de `seed.local.sql`, e `seed.pos.sql` **depois** dos dois (ver seção própria abaixo).
 - O dump preserva os **UUIDs e os hashes de senha de produção**, então os logins reais funcionam em dev local. Isso é útil e perigoso na mesma medida — trate o banco local como se fosse produção.
 - Todo `INSERT` do dump tem `ON CONFLICT DO NOTHING`, e o arquivo é envelopado em `SET session_replication_role = replica` para desligar triggers durante a carga (senão `on_auth_user_created` duplicaria `profiles`/`user_roles`).
 - ⚠️ **O dump carrega uma correção manual, aplicada em 2026-07-14** (ver abaixo). **Um dump novo, gerado pela `export-seed`, nasce sem ela** — e precisa recebê-la de novo, senão a refatoração do acesso do colaborador quebra.
@@ -70,6 +70,26 @@ Nas **6 linhas** de `colaboradores` que compartilhavam **3 e-mails duplicados** 
 **O que exatamente foi alterado:** só a coluna `colab_email` das 6 linhas. A `colab_chave_pix` foi **preservada** — a SOLANGE BERTOLDO RAIMUNDO usa o mesmo e-mail como chave PIX, e isso é dado bancário dela, não credencial de acesso. As 3 linhas de `email_atualizacao_log` que citam esses e-mails também ficaram intactas: são registro histórico do que foi enviado.
 
 Efeito nos números: `colaboradores` segue com 771 linhas; **com e-mail cai de 523 para 517**, e **sem e-mail sobe de 248 para 254**. Os 6 passam a depender do coordenador para receber um e-mail válido quando quiserem acesso ao portal.
+
+## `seed.pos.sql` — operações de dados versionadas (2026-07-14)
+
+O terceiro e último arquivo de `sql_paths`. Ele existe porque a correção acima expôs um buraco: **dado que entra pelo dump só pode ser corrigido depois da carga do dump** — e o único lugar que roda depois é o seed. Mas o dump **não é versionado**, então tudo que mora lá dentro se perde quando um dump novo é gerado.
+
+O `seed.pos.sql` é a metade dessa correção que **sobrevive**: ele roda depois do `seed.local.sql`, é **versionado**, e por isso **não pode conter PII** — nenhum CPF, nome ou e-mail aparece nele. Ele carrega **regras**, não pessoas.
+
+A divisão que ficou combinada:
+
+| onde | o que vai | versionado? |
+| --- | --- | --- |
+| `supabase/migrations/` | **schema** — coluna, índice, enum, constraint, RLS, função | sim |
+| `supabase/seed.pos.sql` | **dado, quando exprimível como regra genérica** | sim |
+| `supabase/seed.local.sql` (o dump) | **dado, quando é cirurgia em linhas específicas** (carrega PII) | **não** |
+
+Tudo no `seed.pos.sql` precisa ser **idempotente** (roda a cada `db reset`, e roda de novo se alguém o executar à mão) e **seguro contra base vazia** (num clone sem o dump, ele casa zero linhas e não quebra).
+
+**Em produção ele não roda sozinho:** `db push` não executa seed nenhum. Lá ele é um **passo manual do bootstrap**, logo depois da carga do dump — ver [`../banco-producao.md`](../banco-producao.md).
+
+Hoje ele contém uma coisa só: o **backfill dos 12 colaboradores que já eram usuários** do Auth (2 admins + 10 coordenadores), que preenche `colaboradores.user_id` e concede o papel `colaborador`. O porquê está em [`../analises/roadmap-auth-colaborador.md`](../analises/roadmap-auth-colaborador.md).
 
 ## Gotcha importante: GRANTs não vinham das migrations (corrigido em 2026-07-12)
 

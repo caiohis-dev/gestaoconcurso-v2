@@ -53,8 +53,13 @@ schema_paths = []
 # arquivo não existir, `supabase db reset` falha; nesse caso remova-o de sql_paths
 # ou gere um novo dump. A ordem importa: seed.sql primeiro, senão os cargos básicos
 # não existem quando o dump referencia funcoes_colaboradores.
+#
+# - seed.pos.sql: operações de dados que precisam rodar DEPOIS da carga do dump —
+#   versionado, sem PII. Vem por último de propósito: é ele que corrige/completa o
+#   que o dump traz. Migration não serve para isso (rodaria antes, contra tabela
+#   vazia). Em produção, onde seed não roda, é um passo manual do bootstrap.
 enabled = true
-sql_paths = ["./seed.sql", "./seed.local.sql"]
+sql_paths = ["./seed.sql", "./seed.local.sql", "./seed.pos.sql"]
 
 [realtime]
 enabled = true

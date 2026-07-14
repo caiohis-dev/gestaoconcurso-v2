@@ -28,11 +28,13 @@ Também da migration `20260714163506_*`: `text`, anulável, com `CHECK` restrito
 
 Por isso também **não há `CHECK` amarrando "se tem chave, tem tipo"**: isso invalidaria de imediato as 565 linhas que já têm chave e não têm tipo. Essa amarração só pode existir depois que a base estiver preenchida.
 
-### `user_id` — o elo com `auth.users` (novo em 2026-07-14, ainda sem uso)
+### `user_id` — o elo com `auth.users` (novo em 2026-07-14)
 
 Criada pela migration `20260714162029_*`: `user_id uuid`, **`UNIQUE`**, FK para `auth.users(id)` com **`ON DELETE SET NULL`**. Antes dela não havia elo nenhum entre `colaboradores` e `auth.users` — o único vínculo era a coincidência de texto do e-mail.
 
-**Hoje ela é NULL nas 771 linhas** e nenhum código a lê ou escreve: é a fundação da refatoração do acesso do colaborador ([`../analises/roadmap-auth-colaborador.md`](../analises/roadmap-auth-colaborador.md)), e passa a ser preenchida quando o colaborador reivindicar o próprio cadastro (etapa 2).
+**Hoje ela está preenchida em 12 das 771 linhas** — a cúpula (2 admins + 10 coordenadores), que já tinha conta no Auth antes da refatoração e foi vinculada pelo **backfill** do `supabase/seed.pos.sql` (que também lhes concedeu o papel `colaborador`). As outras 759 são NULL e passam a ser preenchidas quando cada colaborador reivindicar o próprio cadastro (etapa 2 da refatoração — ver [`../analises/roadmap-auth-colaborador.md`](../analises/roadmap-auth-colaborador.md)).
+
+**Nenhum código ainda lê ou escreve essa coluna.** Ela é a fundação: é ela que vai permitir que RLS e RPCs resolvam o colaborador por `auth.uid()`, em vez de confiar no `p_colaborador_id` que hoje vem do cliente.
 
 Três decisões embutidas no schema, que valem entender antes de mexer:
 
