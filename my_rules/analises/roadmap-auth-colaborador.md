@@ -125,10 +125,25 @@ Três contas do Auth **não** são colaboradores e ficaram de fora, corretamente
 
 ### Etapa 2 — Porta única e reivindicação
 
-- **`/auth` vira login + cadastro do Supabase Auth**, unificando com `/auth-admin` (que já usa Auth de verdade). Uma porta só para todo mundo.
-- **Fluxo de reivindicação:** CPF → tela mostra o e-mail do cadastro **mascarado** → link de confirmação → colaborador define a própria senha → `user_id` é gravado e o papel `colaborador` concedido.
-- **`/cadastro-publico`** (auto-cadastro de quem ainda não existe na base) passa a criar o usuário do Auth junto com a linha de colaborador, já vinculados — e deixa de pedir um código de 4 dígitos. Se o CPF já existir, a pessoa é encaminhada para o fluxo de reivindicação: as duas portas convergem.
-- Morre a "sessão" `{id, nome, cpf}` do `localStorage` (fragilidade 6).
+> **Dividida em subetapas (2026-07-14).** A etapa 2 é grande demais para um passo só; foi quebrada em quatro. A **2A já está feita**. A ordem importa: as portas velhas só fecham (subetapa D, que é a etapa 3) depois que a reivindicação (B) estiver de pé.
+>
+> - **✅ 2A — A porta e a identidade** (commit `99fb867`). `/auth` virou login e-mail/senha do Supabase Auth com "esqueci minha senha" nativo; nova rota `/redefinir-senha`. A identidade do colaborador passou a vir de `auth.uid() → colaboradores.user_id`, via as RPCs novas `get_meu_colaborador` / `update_meu_colaborador` / `update_meus_dados_bancarios` (migration `20260714193057`, `GRANT` só a `authenticated`). `useColaboradorAuth`, `ForgotCodeCard` e `AuthAdmin` foram **deletados**; `/auth-admin` redireciona para `/auth`. Quem entra: os **12** vinculados no backfill. **Nada mais mudou no banco das portas velhas** — as RPCs antigas seguem vivas até a subetapa D.
+> - **B — A reivindicação** (o grosso do que está descrito abaixo): CPF → e-mail mascarado → link do Auth → senha → grava `user_id` e o papel. Nasce o `ReivindicarAcessoCard`, e `check-cpf-colaborador` vira a RPC nova. Quem entra: os 759 restantes.
+> - **C — O cadastro público**: `/cadastro-publico` cria usuário do Auth + linha de colaborador já vinculados, e converge com B quando o CPF já existe.
+> - **D — Fechar as portas velhas** = a **etapa 3** abaixo (REVOKE, aposentar RPCs, tirar a trava da policy).
+>
+> **Decisões tomadas na 2A que não estavam previstas:**
+> - **O papel `colaborador` vive fora da hierarquia de gestão** no `useAuth` (`isColaborador`, à parte de `role`). Um campo único rebaixaria os 10 coordenadores que também são colaboradores.
+> - **Salvar o perfil deixou de deslogar.** Era herança do modelo de sessão efêmera (CPF+código); com a sessão real do Auth, expulsava os 12 gestor+colaborador da sessão de gestão só por editarem o próprio cadastro. Agora confirma com toast e mantém a sessão.
+> - **O indicador de "colaborador online" foi removido** (badge, coluna e o trava-edição por presença na `ColaboradoresList`). Ele lia `colaborador_sessions`, que ninguém mais alimenta desde que as chamadas de sessão saíram — mostrar "todos offline" é pior que não mostrar. É a face de UI da mesma dívida da trava de edição concorrente (ver "dívida assumida"). A tabela em si morre na etapa 3.
+> - **Roteamento pós-login:** admin → `/dashboard`, coordenador → `/`, só-colaborador → `/perfil-colaborador`. Os 12 gestor+colaborador caem na gestão e alcançam o cadastro por um item de menu "Meu Cadastro".
+
+**O desenho original da porta e da reivindicação (subetapas 2A + B):**
+
+- **`/auth` vira login + cadastro do Supabase Auth**, unificando com `/auth-admin` (que já usa Auth de verdade). Uma porta só para todo mundo. *(feito na 2A)*
+- **Fluxo de reivindicação:** CPF → tela mostra o e-mail do cadastro **mascarado** → link de confirmação → colaborador define a própria senha → `user_id` é gravado e o papel `colaborador` concedido. *(subetapa B)*
+- **`/cadastro-publico`** (auto-cadastro de quem ainda não existe na base) passa a criar o usuário do Auth junto com a linha de colaborador, já vinculados — e deixa de pedir um código de 4 dígitos. Se o CPF já existir, a pessoa é encaminhada para o fluxo de reivindicação: as duas portas convergem. *(subetapa C)*
+- Morre a "sessão" `{id, nome, cpf}` do `localStorage` (fragilidade 6). *(feito na 2A)*
 
 #### O destino do link "Estou sem meu código" (decidido em 2026-07-14)
 

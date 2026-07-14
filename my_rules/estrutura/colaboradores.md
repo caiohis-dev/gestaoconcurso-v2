@@ -56,13 +56,13 @@ Existia também `colaboradores_backup_20260701` (snapshot manual pontual, criado
 ## `useColaboradores.tsx` — regras de negócio no CRUD
 
 - Listagem é sensível a role: `admin`/`fetchAll=true` vê todos; `coordenador` vê só os colaboradores retornados pela RPC `get_coordenador_colaboradores` (escopados às suas provas); demais usuários autenticados veem todos em modo leitura.
-- **Update é bloqueado se o colaborador estiver logado no portal no momento** — checagem via RPC `is_colaborador_logged_in` antes do update, lançando erro `COLABORADOR_LOGGED_IN` tratado com mensagem amigável. Isso é uma trava deliberada (provavelmente para evitar sobrescrever dados que o colaborador está editando/usando em paralelo), não um bug de concorrência a "consertar".
+- **Update é bloqueado se o colaborador estiver logado no portal no momento** — checagem via RPC `is_colaborador_logged_in` antes do update, lançando erro `COLABORADOR_LOGGED_IN`. **Em vias de deixar de funcionar (desde a subetapa 2A, 2026-07-14):** ninguém mais escreve em `colaborador_sessions` (as chamadas de sessão saíram do front), então a função envelhece para sempre e devolve `false` — a trava, na prática, já não bloqueia. A cláusula `AND NOT is_colaborador_logged_in(id)` sai da policy de UPDATE na etapa 3; a proteção contra edição concorrente vira dívida assumida (ver [`../analises/roadmap-auth-colaborador.md`](../analises/roadmap-auth-colaborador.md)). A face de UI dela — a coluna "online" e o trava-seleção na `ColaboradoresList` — **já foi removida na 2A**.
 - **Delete é bloqueado se o colaborador estiver vinculado a alguma prova** (`colaboradores_prova`) — erro `COLABORADOR_VINCULADO_PROVA`. Para excluir, é preciso primeiro desalocar de todas as provas.
 
 ## Perfis — dois componentes diferentes, não intercambiáveis
 
 - **`Perfil.tsx`** — perfil do usuário admin (dados de `profiles`, autenticado via `useAuth`).
-- **`PerfilColaborador.tsx`** — perfil do colaborador (dados de `colaboradores`, autenticado via `useColaboradorAuth`). Tem timer de inatividade de 5 minutos (`INACTIVITY_TIMEOUT = 5 * 60 * 1000`) que força logout e navega para `/auth` — ver observação de divergência com "15 min" em [`auth-e-permissoes.md`](./auth-e-permissoes.md).
+- **`PerfilColaborador.tsx`** — perfil do colaborador (dados de `colaboradores`). Desde a subetapa 2A é autenticado via **`useAuth`** (sessão do Supabase Auth): resolve-se por `isColaborador` + `auth.uid()`, e lê/grava pelas RPCs `get_meu_colaborador` / `update_meu_colaborador` / `update_meus_dados_bancarios`. Tem timer de inatividade de 5 minutos (`INACTIVITY_TIMEOUT`) que força logout. Salvar **não desloga mais** (confirma com toast e mantém a sessão).
 
 ## `GerenciarUsuarios` ≠ gestão de colaboradores
 
