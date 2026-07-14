@@ -84,6 +84,20 @@ Com o e-mail como única prova, o código perde a razão de existir — e sua re
 
 A ordem abaixo inverte a proposta inicial (que começava pelo frontend): **a fundação no banco precede a porta nova**, senão o fluxo de reivindicação não tem onde gravar o vínculo.
 
+> ### 📍 Onde paramos (2026-07-14)
+>
+> **Branch `feat/auth-colaborador`**, saída de `dev`. Três commits, todos de banco — **nada do fluxo de acesso mudou ainda**: o `/auth` segue com CPF + código de 4 dígitos, e nenhum código lê a coluna ou o papel novos.
+>
+> | | |
+> | --- | --- |
+> | `4bf50b8` | limpeza dos 3 e-mails duplicados (no `seed.local.sql`) |
+> | `d934ed0` | `'colaborador'` no enum `app_role` + coluna `colaboradores.user_id` |
+> | `03842c7` | unicidade de `colab_email` e `colab_chave_pix` + coluna `tipo_chave_pix` |
+>
+> O último não estava no roadmap: é um pedido à parte, feito enquanto a tabela estava aberta (ver [`../estrutura/colaboradores.md`](../estrutura/colaboradores.md)). Ele ajuda a refatoração de raspão — o índice único do e-mail impede que o mesmo endereço volte a se repetir e reabra o problema que a limpeza fechou.
+>
+> **A etapa 1 está a um item de terminar: o backfill dos 11.** Ele está parado numa decisão, não numa dificuldade — *onde* ele vive, dada a restrição do seed descrita no quadro abaixo. **É por aí que se retoma.**
+
 ### Etapa 1 — Fundação no banco (sem efeito visível)
 
 - **[✅ feito em 2026-07-14]** Limpeza: `colab_email = NULL` nas 6 linhas dos 3 e-mails duplicados — **no `seed.local.sql`**, pelo motivo explicado na decisão 4 acima.
