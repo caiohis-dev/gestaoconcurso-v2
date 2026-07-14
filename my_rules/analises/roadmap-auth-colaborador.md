@@ -102,6 +102,7 @@ Tudo em migrations novas (ver [`../estrutura/desenvolvimento-local.md`](../estru
 - **RLS de verdade em `colaboradores`**, ancorada em `user_id = auth.uid()` para o próprio colaborador, mantendo o acesso de admin/coordenador via `has_role()`.
 - **`REVOKE`** dos `GRANT EXECUTE ... TO PUBLIC` (fragilidade 1 — o coração do laudo).
 - Aposentar `verify_colaborador_codigo_acesso`, `reset-codigo-acesso`, `check-cpf-colaborador` e `register_colaborador_session`.
+- **Tirar o `AND NOT is_colaborador_logged_in(id)`** da policy de UPDATE de `colaboradores` (ver a dívida abaixo). A tabela `colaborador_sessions` e as duas funções **ficam** por ora — mesmo tratamento dado ao `colab_codigo_acesso`: somem do fluxo, o `DROP` é limpeza posterior.
 - Corrigir o doc [`../estrutura/auth-e-permissoes.md`](../estrutura/auth-e-permissoes.md), que hoje afirma que o código é comparado contra hash — o banco desmente (é texto puro). O débito estava adiado justamente para ser pago aqui.
 
 ## Fora de escopo — dívida assumida conscientemente
@@ -110,8 +111,12 @@ Tudo em migrations novas (ver [`../estrutura/desenvolvimento-local.md`](../estru
 
 O que **não** foi adiado, e é o que mantém a dívida contida: com `user_id UNIQUE` e a reivindicação permitida só quando `user_id IS NULL`, o risco fica confinado à janela *antes* do primeiro vínculo. Depois de vinculada, a conta não é reivindicável de novo.
 
-**A trava de edição concorrente.** A policy de UPDATE de `colaboradores` tem `AND NOT is_colaborador_logged_in(id)`, que impede admin/coordenador de editar enquanto o colaborador está "logado". Esse mecanismo se apoia no `register_colaborador_session`, que morre na etapa 3 (qualquer um o dispara com qualquer `id` — fragilidade 8). Precisa de novo fundamento — ancorado numa sessão real — ou de ser removido. **Decisão pendente.**
+**A trava de edição concorrente.** A policy de UPDATE de `colaboradores` tem `AND NOT is_colaborador_logged_in(id)`, que impede admin/coordenador de editar enquanto o colaborador está "logado". Esse mecanismo se apoia no `register_colaborador_session`, que morre na etapa 3 (qualquer um o dispara com qualquer `id` — fragilidade 8). Decidido em 2026-07-14: **a trava também vira dívida.** Não será refundada agora sobre a sessão real do Auth; a cláusula sai da policy na etapa 3 e a proteção contra edição concorrente **deixa de existir** até uma refatoração futura decidir se ela deve voltar, e sobre que fundamento.
+
+*Por que adiar é seguro:* a trava **se auto-expira**. `is_colaborador_logged_in` não lê um flag persistente — ela pergunta se há linha em `colaborador_sessions` com `last_activity` nos últimos 15 minutos. Sem ninguém escrevendo naquela tabela (o `register_colaborador_session` morre), toda linha envelhece e a função passa a devolver `false` para sempre. Não existe, portanto, o cenário temido de um colaborador ficar "logado" eternamente e travar a edição do coordenador. A cláusula morreria de causas naturais mesmo que ficasse — **tiramos da policy para não deixar no banco um texto que parece proteger e não protege.**
+
+*O que se perde:* dois gestores (ou um gestor e o próprio colaborador) podem salvar o mesmo cadastro ao mesmo tempo, e o último escreve por cima. É um risco de *last-write-wins*, não de segurança — e o mecanismo atual já não protegia de verdade, já que qualquer um disparava o `register_colaborador_session` com qualquer `id` (fragilidade 8).
 
 ## Ponto em aberto
 
-Resta uma única decisão pendente, descrita acima: **o destino da trava `is_colaborador_logged_in`** na policy de UPDATE de `colaboradores` — refundá-la sobre a sessão real do Auth, ou removê-la. Fora isso, o desenho está fechado e a implementação pode começar pela etapa 1.
+**Nenhum.** O desenho está fechado e a implementação pode começar pela etapa 1.
