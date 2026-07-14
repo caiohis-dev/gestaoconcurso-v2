@@ -96,6 +96,26 @@ Tudo em migrations novas (ver [`../estrutura/desenvolvimento-local.md`](../estru
 - **`/cadastro-publico`** (auto-cadastro de quem ainda não existe na base) passa a criar o usuário do Auth junto com a linha de colaborador, já vinculados — e deixa de pedir um código de 4 dígitos. Se o CPF já existir, a pessoa é encaminhada para o fluxo de reivindicação: as duas portas convergem.
 - Morre a "sessão" `{id, nome, cpf}` do `localStorage` (fragilidade 6).
 
+#### O destino do link "Estou sem meu código" (decidido em 2026-07-14)
+
+O link de `/auth` que hoje abre o `ForgotCodeCard` **não é corrigido — é aposentado.** Ele é o carregador literal das fragilidades 4 e 5: mostra o e-mail cadastrado **por extenso**, recebe o código de volta do `reset-codigo-acesso` e o envia pelo próprio cliente, e — no ramo `needsEmail` — **aceita um e-mail digitado na hora e o grava naquele CPF**. Além disso, o objeto que ele entrega (o código de 4 dígitos) deixa de existir. `ForgotCodeCard.tsx` é **deletado**.
+
+Mas a *forma* dele é reaproveitada: CPF → localizar o cadastro → mandar e-mail é exatamente o desenho da reivindicação. Nasce um **`ReivindicarAcessoCard.tsx`** com o mesmo esqueleto (formulário de CPF, estados de busy/erro, o modal de sucesso com o aviso de caixa de spam) e as tripas trocadas:
+
+- o e-mail aparece **mascarado**, nunca por extenso;
+- quem envia o link é o **Supabase Auth** — a credencial nunca transita de volta pelo cliente;
+- o ramo `needsEmail` **morre**: no lugar, a orientação de procurar o coordenador (é o caminho já decidido para os 248 sem e-mail).
+
+Onde hoje há **um** link ambíguo, passam a existir **dois** caminhos, que a refatoração finalmente separa:
+
+1. **"Primeiro acesso / ainda não tenho conta"** → o fluxo de reivindicação acima.
+2. **"Esqueci minha senha"** → o reset de senha nativo do Supabase Auth (não escrevemos fluxo nenhum), disponível só para quem já tem conta.
+
+Consequências para o resto da pilha:
+
+- **`check-cpf-colaborador` é substituído** por uma RPC nova que devolve `{existe, email_mascarado, ja_vinculado}` — e **nunca** o e-mail inteiro. Ela precisa **normalizar o CPF** (fragilidade 7: o front faz `padStart(11)`, a RPC atual compara como veio) e precisa de **rate limit**, senão trocamos um oráculo de enumeração por outro.
+- **`reset-codigo-acesso` e o `buildEmailHtml`** somem. O e-mail com a identidade visual da FEVRE (logo, cores) vira um **template do Supabase Auth**, configurado no dashboard — é trabalho novo, e cai junto no passo "auth no dashboard" do bootstrap de produção (ver [`../banco-producao.md`](../banco-producao.md)).
+
 ### Etapa 3 — Fechar as portas velhas
 
 - As RPCs (`get_colaborador_full_data`, `update_colaborador_data_full`, `set_colaborador_password`, `get_colaborador_by_id`) param de receber `p_colaborador_id` e passam a resolver o colaborador por **`auth.uid()`**.
