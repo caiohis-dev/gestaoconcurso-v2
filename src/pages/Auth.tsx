@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import fevreLogo from "@/assets/fevre-logo.png";
 import { CheckCircle2, X, ArrowLeft, Mail } from "lucide-react";
+import ReivindicarAcessoCard from "@/components/ReivindicarAcessoCard";
 import { z } from "zod";
 
 const loginSchema = z.object({
@@ -30,6 +31,7 @@ export default function Auth() {
   const [loginData, setLoginData] = useState({ email: "", password: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showEsqueciSenha, setShowEsqueciSenha] = useState(false);
+  const [showReivindicar, setShowReivindicar] = useState(false);
   const [emailReset, setEmailReset] = useState("");
   const [resetEnviado, setResetEnviado] = useState(false);
 
@@ -169,7 +171,7 @@ export default function Auth() {
           </p>
         </div>
 
-        {!showEsqueciSenha && (
+        {!showEsqueciSenha && !showReivindicar && (
           <Card className="border-none shadow-lg">
             <CardHeader className="space-y-1 pb-4">
               <CardTitle className="text-xl text-center">Entrar</CardTitle>
@@ -219,8 +221,17 @@ export default function Auth() {
 
                 <button
                   type="button"
-                  onClick={() => setShowEsqueciSenha(true)}
+                  onClick={() => setShowReivindicar(true)}
                   className="w-full text-sm text-primary hover:underline"
+                  disabled={isSubmitting}
+                >
+                  Primeiro acesso (já sou cadastrado)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowEsqueciSenha(true)}
+                  className="w-full text-sm text-muted-foreground hover:underline"
                   disabled={isSubmitting}
                 >
                   Esqueci minha senha
@@ -228,6 +239,20 @@ export default function Auth() {
               </form>
             </CardContent>
           </Card>
+        )}
+
+        {showReivindicar && (
+          <>
+            <button
+              type="button"
+              onClick={() => setShowReivindicar(false)}
+              className="mb-4 flex items-center gap-2 text-sm text-primary hover:underline"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Voltar
+            </button>
+            <ReivindicarAcessoCard onClose={() => setShowReivindicar(false)} />
+          </>
         )}
 
         {showEsqueciSenha && (

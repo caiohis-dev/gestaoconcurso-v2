@@ -57,7 +57,7 @@ export default function CadastroPublico() {
       }
 
       if (result?.exists) {
-        setError('Este CPF já está cadastrado no sistema. Caso queira receber seu código de acesso no email, volte na tela principal e clique em "Estou sem meu código".');
+        setError('Este CPF já está cadastrado. Para acessar, volte à tela de login e use "Primeiro acesso (já sou cadastrado)".');
         return;
       }
 

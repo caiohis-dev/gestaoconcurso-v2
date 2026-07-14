@@ -83,7 +83,12 @@ file_size_limit = "50MiB"
 enabled = true
 # Porta do dev server do Vite (vite.config.ts) — não o padrão 3000 do template do CLI.
 site_url = "http://127.0.0.1:8080"
-additional_redirect_urls = ["http://127.0.0.1:8080"]
+# O `/**` permite que os links do Auth (recuperação de senha, e o invite da
+# reivindicação — subetapa 2B) redirecionem para rotas internas como
+# /redefinir-senha. Sem o caminho na allowlist, o Auth ignora o redirect_to e cai
+# no site_url (a raiz). Em produção, o passo "auth no dashboard" do bootstrap
+# precisa liar as mesmas rotas do domínio real (ver banco-producao.md).
+additional_redirect_urls = ["http://127.0.0.1:8080", "http://127.0.0.1:8080/**"]
 jwt_expiry = 3600
 enable_refresh_token_rotation = true
 refresh_token_reuse_interval = 10
