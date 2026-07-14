@@ -7,10 +7,30 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.1"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -95,6 +115,7 @@ export type Database = {
           id: string
           tipo_conta: string | null
           updated_at: string | null
+          user_id: string | null
         }
         Insert: {
           agencia?: string | null
@@ -129,6 +150,7 @@ export type Database = {
           id?: string
           tipo_conta?: string | null
           updated_at?: string | null
+          user_id?: string | null
         }
         Update: {
           agencia?: string | null
@@ -163,6 +185,7 @@ export type Database = {
           id?: string
           tipo_conta?: string | null
           updated_at?: string | null
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -173,93 +196,6 @@ export type Database = {
             referencedColumns: ["codigo_compe"]
           },
         ]
-      }
-      colaboradores_backup_20260701: {
-        Row: {
-          colab_bairro: string | null
-          colab_cep: number | null
-          colab_chave_pix: string | null
-          colab_cidade: string | null
-          colab_codigo_acesso: string | null
-          colab_complemento_endereco: string | null
-          colab_cpf: string
-          colab_data_nascimento: string
-          colab_deficiente: boolean
-          colab_email: string | null
-          colab_estado_civil: number | null
-          colab_grau_instrucao: number | null
-          colab_matricula: string | null
-          colab_nacionalidade: string | null
-          colab_nome_completo: string
-          colab_numero_casa: number | null
-          colab_pis: string | null
-          colab_raca: number | null
-          colab_rua: string | null
-          colab_senha: string | null
-          colab_telefone: number | null
-          colab_ultimo_acesso: string | null
-          created_at: string | null
-          created_by: string | null
-          id: string
-          updated_at: string | null
-        }
-        Insert: {
-          colab_bairro?: string | null
-          colab_cep?: number | null
-          colab_chave_pix?: string | null
-          colab_cidade?: string | null
-          colab_codigo_acesso?: string | null
-          colab_complemento_endereco?: string | null
-          colab_cpf: string
-          colab_data_nascimento: string
-          colab_deficiente?: boolean
-          colab_email?: string | null
-          colab_estado_civil?: number | null
-          colab_grau_instrucao?: number | null
-          colab_matricula?: string | null
-          colab_nacionalidade?: string | null
-          colab_nome_completo: string
-          colab_numero_casa?: number | null
-          colab_pis?: string | null
-          colab_raca?: number | null
-          colab_rua?: string | null
-          colab_senha?: string | null
-          colab_telefone?: number | null
-          colab_ultimo_acesso?: string | null
-          created_at?: string | null
-          created_by?: string | null
-          id?: string
-          updated_at?: string | null
-        }
-        Update: {
-          colab_bairro?: string | null
-          colab_cep?: number | null
-          colab_chave_pix?: string | null
-          colab_cidade?: string | null
-          colab_codigo_acesso?: string | null
-          colab_complemento_endereco?: string | null
-          colab_cpf?: string
-          colab_data_nascimento?: string
-          colab_deficiente?: boolean
-          colab_email?: string | null
-          colab_estado_civil?: number | null
-          colab_grau_instrucao?: number | null
-          colab_matricula?: string | null
-          colab_nacionalidade?: string | null
-          colab_nome_completo?: string
-          colab_numero_casa?: number | null
-          colab_pis?: string | null
-          colab_raca?: number | null
-          colab_rua?: string | null
-          colab_senha?: string | null
-          colab_telefone?: number | null
-          colab_ultimo_acesso?: string | null
-          created_at?: string | null
-          created_by?: string | null
-          id?: string
-          updated_at?: string | null
-        }
-        Relationships: []
       }
       colaboradores_prova: {
         Row: {
@@ -1206,7 +1142,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "user" | "coordenador" | "superadmin"
+      app_role: "admin" | "user" | "coordenador" | "superadmin" | "colaborador"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1332,9 +1268,13 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
-      app_role: ["admin", "user", "coordenador", "superadmin"],
+      app_role: ["admin", "user", "coordenador", "superadmin", "colaborador"],
     },
   },
 } as const
+

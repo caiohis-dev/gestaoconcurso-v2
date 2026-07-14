@@ -87,9 +87,9 @@ A ordem abaixo inverte a proposta inicial (que começava pelo frontend): **a fun
 ### Etapa 1 — Fundação no banco (sem efeito visível)
 
 - **[✅ feito em 2026-07-14]** Limpeza: `colab_email = NULL` nas 6 linhas dos 3 e-mails duplicados — **no `seed.local.sql`**, pelo motivo explicado na decisão 4 acima.
-- `'colaborador'` no enum `app_role`.
-- Coluna `colaboradores.user_id`, `UNIQUE`, FK para `auth.users(id)`.
-- **Backfill dos 11** que já são usuários: casa `colaboradores.colab_email` com `auth.users.email`, preenche `user_id` e concede o papel `colaborador` em `user_roles`. É o "script" da conversa original — 11 linhas, não 771.
+- **[✅ feito em 2026-07-14]** `'colaborador'` no enum `app_role` — migration `20260714162027_add_colaborador_ao_enum_app_role.sql`. Sozinho num arquivo de propósito: no Postgres, um valor novo de enum não pode ser *usado* na mesma transação em que é criado, então o backfill precisa vir depois.
+- **[✅ feito em 2026-07-14]** Coluna `colaboradores.user_id`, `UNIQUE`, FK para `auth.users(id)` **`ON DELETE SET NULL`** — migration `20260714162029_add_user_id_em_colaboradores.sql`. O `SET NULL` é deliberado: apagar a conta não pode apagar a pessoa (`CASCADE` destruiria folha de pagamento); o cadastro só volta a ficar não-vinculado.
+- **[pendente]** **Backfill dos 11** que já são usuários: casa `colaboradores.colab_email` com `auth.users.email`, preenche `user_id` e concede o papel `colaborador` em `user_roles`. É o "script" da conversa original — 11 linhas, não 771. **Esbarra na restrição do quadro abaixo — onde ele vive ainda não foi decidido.**
 
 **Schema em migrations novas** (ver [`../estrutura/desenvolvimento-local.md`](../estrutura/desenvolvimento-local.md) — migrations aplicadas nunca são editadas). **Mas dado não.** É a lição da limpeza acima, e ela **ainda não foi aplicada ao backfill**:
 

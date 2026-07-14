@@ -6,6 +6,18 @@
 
 Ver interface `Colaborador` em `src/hooks/useColaboradores.tsx`. Campos principais: `colab_matricula`, `colab_nome_completo`, `colab_cpf` (chave natural, único), `colab_data_nascimento`, `colab_pis`, endereço (`colab_rua`/`numero_casa`/`bairro`/`cidade`/`cep`/`complemento_endereco`), `colab_estado_civil`/`colab_raca`/`colab_grau_instrucao` (códigos numéricos mapeados em `src/lib/constants.ts`), dados bancários (`codigo_banco`, `agencia`, `agencia_dv`, `conta`, `conta_dv`, `tipo_conta`, `colab_chave_pix`), e credenciais do portal (`colab_codigo_acesso`, `colab_ultimo_acesso`).
 
+### `user_id` — o elo com `auth.users` (novo em 2026-07-14, ainda sem uso)
+
+Criada pela migration `20260714162029_*`: `user_id uuid`, **`UNIQUE`**, FK para `auth.users(id)` com **`ON DELETE SET NULL`**. Antes dela não havia elo nenhum entre `colaboradores` e `auth.users` — o único vínculo era a coincidência de texto do e-mail.
+
+**Hoje ela é NULL nas 771 linhas** e nenhum código a lê ou escreve: é a fundação da refatoração do acesso do colaborador ([`../analises/roadmap-auth-colaborador.md`](../analises/roadmap-auth-colaborador.md)), e passa a ser preenchida quando o colaborador reivindicar o próprio cadastro (etapa 2).
+
+Três decisões embutidas no schema, que valem entender antes de mexer:
+
+- **Nula por padrão, e assim fica.** A premissa não é "todo colaborador vira usuário", e sim "todo colaborador *pode* virar usuário". Quem nunca se cadastrar continua existindo normalmente como linha de dados.
+- **`UNIQUE`** impede que uma mesma pessoa acabe dona de dois registros de colaborador (risco real: a base tinha e-mails repetidos entre pares). Como o Postgres admite múltiplos NULLs num `UNIQUE`, isso convive com as 771 linhas não-vinculadas.
+- **`ON DELETE SET NULL`**: apagar a conta de acesso **não** apaga a pessoa. A linha de `colaboradores` é o cadastro funcional (dados bancários, alocações, histórico) e sobrevive ao fim do usuário — apenas volta a ficar não-vinculada, e portanto reivindicável de novo. `CASCADE` aqui destruiria folha de pagamento.
+
 Existia também `colaboradores_backup_20260701` (snapshot manual pontual, criado em `20260701211430_adcc92ea-*.sql`) — removida via `DROP TABLE` em `20260711230647_drop_colaboradores_backup_20260701.sql` por não ter mais uso. A migration original que a criava foi mantida (não reescrevemos histórico de migration); a remoção é uma migration nova, então só faz efeito depois que o banco (local ou remoto) rodar essa migration.
 
 ## Três fluxos de cadastro

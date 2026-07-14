@@ -27,7 +27,7 @@ Ao tocar em qualquer fluxo de colaborador, o "usuário logado" nunca é `auth.ui
 
 ## Modelo de roles (equipe admin)
 
-- Enum `app_role`: `superadmin`, `admin`, `coordenador`, `user`.
+- Enum `app_role`: `superadmin`, `admin`, `coordenador`, `user` — e, desde 2026-07-14, **`colaborador`** (migration `20260714162027_*`). Atenção: **`colaborador` ainda não é concedido a ninguém** e não é lido por nenhum código; é a fundação da refatoração do acesso do colaborador (ver [`../analises/roadmap-auth-colaborador.md`](../analises/roadmap-auth-colaborador.md)). Ele **não** entra na hierarquia acima: não é um degrau abaixo de `user`, e sim uma dimensão paralela — dos 15 usuários atuais, 11 são colaboradores, e são justamente os 2 admins e os 9 coordenadores.
 - Tabela `user_roles` (`user_id`, `role`) — um usuário pode ter mais de uma role.
 - `coordenador` é a role mais restrita das "de equipe": um coordenador só enxerga as provas/unidades a que foi explicitamente vinculado via `coordenadores_prova` (ver `useCoordenadorUnidades.tsx`, que resolve os `prova_unidade_id`s permitidos via RPC `get_coordenador_prova_unidade_ids`). Páginas de gestão (`GerenciarProva`, `OcorrenciasProva`) filtram listas no client usando esse resultado — a filtragem client-side é só UX; a proteção real está nas policies/RPCs que também checam `is_coordenador_prova`.
 - Gestão de usuários/roles é feita em `/gerenciar-usuarios` (`useUsers.tsx`), restrita a `superadmin` na navegação.
