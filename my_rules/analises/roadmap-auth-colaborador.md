@@ -70,6 +70,10 @@ Os 3 e-mails que aparecem em 2 colaboradores cada (`suelenbertoldo9@gmail.com`, 
 
 *Por quê apagar dos dois lados:* um e-mail corresponde a exatamente um usuário no Supabase Auth. Manter o e-mail em um dos pares seria escolher arbitrariamente quem tem direito à caixa, e deixaria a outra pessoa travada sem explicação. Zerando ambos, os 6 caem no caminho do coordenador, que é quem sabe de quem é o quê. **A resolução é humana e posterior** — não bloqueia a refatoração.
 
+> **✅ Feito em 2026-07-14 — e não como migration.** A limpeza foi aplicada **dentro do `supabase/seed.local.sql`**, não em `supabase/migrations/`. O motivo está na regra do `[db.seed]`: o seed roda **depois** das migrations no `db reset` e **não roda em `db push`**. Uma migration de limpeza rodaria contra a tabela vazia (no-op) e o dump, logo depois, reintroduziria os 6 duplicados. **Dado que entra pelo dump só pode ser corrigido no dump.** Detalhes da edição (só `colab_email`; `colab_chave_pix` e `email_atualizacao_log` preservados) em [`../estrutura/desenvolvimento-local.md`](../estrutura/desenvolvimento-local.md). Números depois da limpeza: 771 colaboradores, **517 com e-mail, 254 sem**.
+>
+> **Cuidado herdado:** o `seed.local.sql` **não é versionado** (PII). A correção vive só no arquivo local e no dump que subirá para a produção da v2 — **um dump novo gerado pela `export-seed` nasce sem ela.**
+
 ### 5. O código de acesso morre no fluxo, mas a coluna fica
 
 O código de 4 dígitos deixa de ser usado para qualquer coisa: some do frontend, e as funções que o manipulam são aposentadas. **A coluna `colab_codigo_acesso` permanece na tabela por ora** — o `DROP` fica para uma limpeza posterior, quando a refatoração estiver assentada.
@@ -82,12 +86,18 @@ A ordem abaixo inverte a proposta inicial (que começava pelo frontend): **a fun
 
 ### Etapa 1 — Fundação no banco (sem efeito visível)
 
+- **[✅ feito em 2026-07-14]** Limpeza: `colab_email = NULL` nas 6 linhas dos 3 e-mails duplicados — **no `seed.local.sql`**, pelo motivo explicado na decisão 4 acima.
 - `'colaborador'` no enum `app_role`.
 - Coluna `colaboradores.user_id`, `UNIQUE`, FK para `auth.users(id)`.
-- Limpeza: `colab_email = NULL` nas 6 linhas dos 3 e-mails duplicados.
 - **Backfill dos 11** que já são usuários: casa `colaboradores.colab_email` com `auth.users.email`, preenche `user_id` e concede o papel `colaborador` em `user_roles`. É o "script" da conversa original — 11 linhas, não 771.
 
-Tudo em migrations novas (ver [`../estrutura/desenvolvimento-local.md`](../estrutura/desenvolvimento-local.md) — migrations aplicadas nunca são editadas).
+**Schema em migrations novas** (ver [`../estrutura/desenvolvimento-local.md`](../estrutura/desenvolvimento-local.md) — migrations aplicadas nunca são editadas). **Mas dado não.** É a lição da limpeza acima, e ela **ainda não foi aplicada ao backfill**:
+
+> ⚠️ **O backfill dos 11 é uma operação de dados e tem exatamente o mesmo problema.** Como migration, ele rodaria no bootstrap de produção **antes** da carga do `seed.local.sql` — ou seja, contra `colaboradores` e `auth.users` vazios, casando zero linhas — e nunca mais rodaria (migration roda uma vez). Em produção, os 11 nasceriam **sem `user_id` e sem o papel `colaborador`**, e a cúpula (2 admins + 9 coordenadores) ficaria sem acesso de colaborador, silenciosamente.
+>
+> As saídas possíveis, ainda **não decididas**: (a) o backfill também vive no dump; (b) vira um `seed.pos.sql` versionado, acrescentado a `sql_paths` **depois** do `seed.local.sql`, e replicado como passo manual no bootstrap de produção; ou (c) vira migration, mas o [`../banco-producao.md`](../banco-producao.md) passa a mandar carregar o seed **no meio** do `db push` (schema → carga → migrations de dados). A (b) é a única que fica **versionada e roda sozinha no `db reset`**.
+>
+> As duas primeiras linhas da etapa (o enum e a coluna `user_id`) são schema puro e **não** têm esse problema: seguem como migrations normais.
 
 ### Etapa 2 — Porta única e reivindicação
 
@@ -139,4 +149,4 @@ O que **não** foi adiado, e é o que mantém a dívida contida: com `user_id UN
 
 ## Ponto em aberto
 
-**Nenhum.** O desenho está fechado e a implementação pode começar pela etapa 1.
+**Um, novo, aberto pela implementação (2026-07-14):** *onde vive o backfill dos 11* — descrito no quadro da etapa 1. Não é uma dúvida de desenho da refatoração (o desenho segue fechado), e sim uma restrição de mecânica do Supabase que só apareceu quando a primeira operação de dados foi executada: **migration não alcança dado que entra pelo dump.**

@@ -59,6 +59,17 @@ Consequências práticas:
 - **A ordem em `sql_paths` importa**: `seed.sql` antes de `seed.local.sql`.
 - O dump preserva os **UUIDs e os hashes de senha de produção**, então os logins reais funcionam em dev local. Isso é útil e perigoso na mesma medida — trate o banco local como se fosse produção.
 - Todo `INSERT` do dump tem `ON CONFLICT DO NOTHING`, e o arquivo é envelopado em `SET session_replication_role = replica` para desligar triggers durante a carga (senão `on_auth_user_created` duplicaria `profiles`/`user_roles`).
+- ⚠️ **O dump carrega uma correção manual, aplicada em 2026-07-14** (ver abaixo). **Um dump novo, gerado pela `export-seed`, nasce sem ela** — e precisa recebê-la de novo, senão a refatoração do acesso do colaborador quebra.
+
+### A correção manual que vive dentro do dump (2026-07-14)
+
+Nas **6 linhas** de `colaboradores` que compartilhavam **3 e-mails duplicados** (`suelenbertoldo9@gmail.com`, `yann_vr9@hotmail.com`, `teste@example.com` — dois colaboradores cada), o `colab_email` foi **zerado nos dois lados de cada par**, direto no `seed.local.sql`. O motivo da decisão (um e-mail = um usuário no Supabase Auth; escolher um dos pares seria arbitrário) está em [`../analises/roadmap-auth-colaborador.md`](../analises/roadmap-auth-colaborador.md).
+
+**Por que no dump e não numa migration:** `[db.seed]` roda **depois** das migrations no `db reset`, e **não roda em `db push`**. Uma migration de limpeza de dados rodaria contra a tabela ainda vazia (no-op) e o seed, logo em seguida, reintroduziria os duplicados. Para dados que *entram pelo dump*, a correção precisa morar *no dump* — que é o que alimenta tanto o dev local quanto a carga inicial do banco de produção da v2 (ver [`../banco-producao.md`](../banco-producao.md)).
+
+**O que exatamente foi alterado:** só a coluna `colab_email` das 6 linhas. A `colab_chave_pix` foi **preservada** — a SOLANGE BERTOLDO RAIMUNDO usa o mesmo e-mail como chave PIX, e isso é dado bancário dela, não credencial de acesso. As 3 linhas de `email_atualizacao_log` que citam esses e-mails também ficaram intactas: são registro histórico do que foi enviado.
+
+Efeito nos números: `colaboradores` segue com 771 linhas; **com e-mail cai de 523 para 517**, e **sem e-mail sobe de 248 para 254**. Os 6 passam a depender do coordenador para receber um e-mail válido quando quiserem acesso ao portal.
 
 ## Gotcha importante: GRANTs não vinham das migrations (corrigido em 2026-07-12)
 
