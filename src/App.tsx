@@ -2,12 +2,11 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
-import { ColaboradorAuthProvider } from "@/hooks/useColaboradorAuth";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
-import AuthAdmin from "./pages/AuthAdmin";
+import RedefinirSenha from "./pages/RedefinirSenha";
 import Cadastro from "./pages/Cadastro";
 import CadastroPublico from "./pages/CadastroPublico";
 import CadastroLote from "./pages/CadastroLote";
@@ -34,7 +33,6 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
-      <ColaboradorAuthProvider>
         <TooltipProvider>
           <Toaster />
           <Sonner />
@@ -42,8 +40,11 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/dashboard" element={<Dashboard />} />
+              {/* Porta única desde a etapa 2A: colaborador e gestor entram pelo mesmo
+                  lugar. /auth-admin sobrevive só como atalho para links antigos. */}
               <Route path="/auth" element={<Auth />} />
-              <Route path="/auth-admin" element={<AuthAdmin />} />
+              <Route path="/auth-admin" element={<Navigate to="/auth" replace />} />
+              <Route path="/redefinir-senha" element={<RedefinirSenha />} />
               <Route path="/cadastro" element={<Cadastro />} />
               <Route path="/cadastro-publico" element={<CadastroPublico />} />
               <Route path="/cadastro-lote" element={<CadastroLote />} />
@@ -66,7 +67,6 @@ const App = () => (
             </Routes>
           </BrowserRouter>
         </TooltipProvider>
-      </ColaboradorAuthProvider>
     </AuthProvider>
   </QueryClientProvider>
 );

@@ -46,7 +46,7 @@ export default function FuncoesColaboradores() {
 
   useEffect(() => {
     if (!authLoading && !user) {
-      navigate("/auth-admin");
+      navigate("/auth");
     }
   }, [user, authLoading, navigate]);
 

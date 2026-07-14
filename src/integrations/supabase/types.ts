@@ -980,6 +980,37 @@ export type Database = {
         Args: { p_user_id: string }
         Returns: string[]
       }
+      get_meu_colaborador: {
+        Args: never
+        Returns: {
+          agencia: string
+          agencia_dv: string
+          codigo_banco: string
+          colab_bairro: string
+          colab_cep: number
+          colab_chave_pix: string
+          colab_cidade: string
+          colab_complemento_endereco: string
+          colab_cpf: string
+          colab_data_nascimento: string
+          colab_deficiente: boolean
+          colab_email: string
+          colab_estado_civil: number
+          colab_grau_instrucao: number
+          colab_matricula: string
+          colab_nacionalidade: string
+          colab_nome_completo: string
+          colab_numero_casa: number
+          colab_pis: string
+          colab_raca: number
+          colab_rua: string
+          colab_telefone: number
+          conta: string
+          conta_dv: string
+          id: string
+          tipo_conta: string
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -996,6 +1027,7 @@ export type Database = {
         Args: { p_prova_id: string; p_user_id: string }
         Returns: boolean
       }
+      meu_colaborador_id: { Args: never; Returns: string }
       reabrir_prova: {
         Args: { p_prova_id: string; p_user_id: string }
         Returns: boolean
@@ -1118,6 +1150,41 @@ export type Database = {
       update_colaborador_session_activity: {
         Args: { p_colaborador_id: string }
         Returns: undefined
+      }
+      update_meu_colaborador: {
+        Args: {
+          p_bairro: string
+          p_cep: number
+          p_chave_pix: string
+          p_cidade: string
+          p_complemento: string
+          p_cpf: string
+          p_data_nascimento: string
+          p_deficiente: boolean
+          p_email: string
+          p_estado_civil: number
+          p_grau_instrucao: number
+          p_matricula: string
+          p_nacionalidade: string
+          p_nome_completo: string
+          p_numero_casa: number
+          p_pis: string
+          p_raca: number
+          p_rua: string
+          p_telefone: number
+        }
+        Returns: boolean
+      }
+      update_meus_dados_bancarios: {
+        Args: {
+          p_agencia: string
+          p_agencia_dv: string
+          p_codigo_banco: string
+          p_conta: string
+          p_conta_dv: string
+          p_tipo_conta: string
+        }
+        Returns: boolean
       }
       update_prova_lock_activity: {
         Args: { p_prova_id: string; p_user_id: string }

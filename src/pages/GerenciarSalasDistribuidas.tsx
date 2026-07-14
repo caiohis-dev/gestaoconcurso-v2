@@ -77,7 +77,7 @@ export default function GerenciarSalasDistribuidas() {
   }
 
   if (!user) {
-    return <Navigate to="/auth-admin" replace />;
+    return <Navigate to="/auth" replace />;
   }
 
   if (!isAdmin) {

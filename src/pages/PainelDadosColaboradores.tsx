@@ -415,7 +415,7 @@ export default function PainelDadosColaboradores() {
     );
   }
 
-  if (!user) return <Navigate to="/auth-admin" replace />;
+  if (!user) return <Navigate to="/auth" replace />;
   if (!isAdmin) return <Navigate to="/" replace />;
 
   return (

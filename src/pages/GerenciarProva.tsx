@@ -94,7 +94,7 @@ export default function GerenciarProva() {
   }
 
   if (!user) {
-    return <Navigate to="/auth-admin" replace />;
+    return <Navigate to="/auth" replace />;
   }
 
   if (!isAdmin && !isCoordenador) {

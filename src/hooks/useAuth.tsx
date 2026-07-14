@@ -2,16 +2,19 @@ import { useState, useEffect, createContext, useContext, ReactNode, useCallback,
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
-type AppRole = 'admin' | 'user' | 'coordenador' | 'superadmin';
+type AppRole = 'admin' | 'user' | 'coordenador' | 'superadmin' | 'colaborador';
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
   role: AppRole | null;
+  roles: AppRole[];
+  rolesLoaded: boolean;
   isAdmin: boolean;
   isSuperAdmin: boolean;
   isCoordenador: boolean;
+  isColaborador: boolean;
   isLoggingOut: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>;
@@ -25,34 +28,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<AppRole | null>(null);
+  const [roles, setRoles] = useState<AppRole[]>([]);
+  const [rolesLoaded, setRolesLoaded] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  
+
   // Use ref to track logout state without causing re-renders
   const isLoggingOutRef = useRef(false);
 
-  const fetchUserRole = async (userId: string): Promise<AppRole | null> => {
+  // `role` é a escada de gestão: superadmin > admin > coordenador > user.
+  // 'colaborador' NÃO entra nela — é uma dimensão paralela. Dos 12 colaboradores que
+  // têm conta, 10 são coordenadores e 2 são admins: espremê-los num papel único
+  // rebaixaria a gestão deles. Quem precisa saber "é colaborador?" usa isColaborador.
+  const resolveRoleGestao = (all: AppRole[]): AppRole | null => {
+    if (all.includes('superadmin')) return 'superadmin';
+    if (all.includes('admin')) return 'admin';
+    if (all.includes('coordenador')) return 'coordenador';
+    if (all.includes('user')) return 'user';
+    return null;
+  };
+
+  const fetchUserRoles = async (userId: string): Promise<AppRole[]> => {
     try {
       const { data, error } = await supabase
         .from('user_roles')
         .select('role')
         .eq('user_id', userId);
 
-      if (!error && data && data.length > 0) {
-        const roles = data.map(r => r.role as AppRole);
-        let resolved: AppRole;
-        if (roles.includes('superadmin')) resolved = 'superadmin';
-        else if (roles.includes('admin')) resolved = 'admin';
-        else if (roles.includes('coordenador')) resolved = 'coordenador';
-        else resolved = 'user';
-        setRole(resolved);
-        return resolved;
+      if (!error && data) {
+        const all = data.map(r => r.role as AppRole);
+        setRoles(all);
+        setRole(resolveRoleGestao(all));
+        return all;
       }
+      setRoles([]);
       setRole(null);
-      return null;
+      return [];
     } catch (err) {
-      console.error('Error fetching user role:', err);
+      console.error('Error fetching user roles:', err);
+      setRoles([]);
       setRole(null);
-      return null;
+      return [];
     }
   };
 
@@ -67,13 +82,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null);
 
       if (session?.user) {
+        // Entre `setUser` e o fim do fetch existe uma janela em que o usuário já
+        // está setado e os papéis ainda não. Quem decide para onde navegar precisa
+        // esperar `rolesLoaded`, senão decide sobre um conjunto vazio.
+        setRolesLoaded(false);
         try {
-          await fetchUserRole(session.user.id);
+          await fetchUserRoles(session.user.id);
         } catch (err) {
-          console.error('Error resolving role:', err);
+          console.error('Error resolving roles:', err);
         }
+        if (!cancelled) setRolesLoaded(true);
       } else {
         setRole(null);
+        setRoles([]);
+        setRolesLoaded(true);
       }
 
       if (!cancelled) setLoading(false);
@@ -134,9 +156,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Set logging out flag to prevent race conditions
     isLoggingOutRef.current = true;
     setIsLoggingOut(true);
-    
+
     // Clear local state immediately
     setRole(null);
+    setRoles([]);
     setUser(null);
     setSession(null);
 
@@ -153,14 +176,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('Error signing out:', error);
     }
     
-    // Force full page reload to admin login - this ensures all React state is cleared
-    window.location.href = '/auth-admin';
+    // Force full page reload to the login page - this ensures all React state is cleared.
+    // `/auth` é a porta única desde a etapa 2A: colaborador e gestor saem no mesmo lugar.
+    window.location.href = '/auth';
   }, []);
 
   // superadmin has all admin permissions
   const isSuperAdmin = role === 'superadmin';
   const isAdmin = role === 'admin' || role === 'superadmin';
   const isCoordenador = role === 'coordenador';
+  const isColaborador = roles.includes('colaborador');
 
   return (
     <AuthContext.Provider
@@ -169,9 +194,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         session,
         loading,
         role,
+        roles,
+        rolesLoaded,
         isAdmin,
         isSuperAdmin,
         isCoordenador,
+        isColaborador,
         isLoggingOut,
         signIn,
         signUp,

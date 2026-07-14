@@ -93,7 +93,7 @@ export default function GerenciarUsuarios() {
 
   useEffect(() => {
     if (!loading && !user) {
-      navigate("/auth-admin");
+      navigate("/auth");
     } else if (!loading && user && !isSuperAdmin) {
       navigate("/");
     }

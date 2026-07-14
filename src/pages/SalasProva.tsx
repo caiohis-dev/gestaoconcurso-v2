@@ -52,7 +52,7 @@ export default function SalasProva() {
 
   useEffect(() => {
     if (!authLoading && !user) {
-      navigate("/auth-admin");
+      navigate("/auth");
     }
   }, [user, authLoading, navigate]);
 
