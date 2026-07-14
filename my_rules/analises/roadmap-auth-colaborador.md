@@ -54,7 +54,9 @@ O `UNIQUE` não é decorativo: sem ele, os e-mails repetidos permitiriam que uma
 
 ### 3. A prova de identidade é o e-mail que já está no cadastro
 
-Para reivindicar um registro existente, o colaborador informa o **CPF**; o sistema mostra o **e-mail que consta no cadastro dele** e envia para lá o link de confirmação. Quem controla aquela caixa define a senha e passa a ser o dono da conta.
+Para reivindicar um registro existente, o colaborador informa o **CPF**; o sistema mostra o **e-mail que consta no cadastro dele — mascarado** (`j2***@hotmail.com`) — e envia para lá o link de confirmação. Quem controla aquela caixa define a senha e passa a ser o dono da conta.
+
+*Por que mascarado:* é igualmente usável ("é este mesmo?", e quem é dono da caixa reconhece), e não entrega uma lista de e-mails a quem varra CPFs. Confirmar que o CPF existe já é uma concessão aceita — a base tem dados bancários, e quem os persegue já conhece o CPF do alvo; entregar de brinde o e-mail seria dar um alvo novo de graça.
 
 *Por quê só o e-mail:* é a única prova forte que já existe. Rejeitamos deliberadamente uma cascata de provas alternativas (código de acesso, aprovação manual) — uma regra só, simples de construir e de explicar.
 
@@ -90,7 +92,7 @@ Tudo em migrations novas (ver [`../estrutura/desenvolvimento-local.md`](../estru
 ### Etapa 2 — Porta única e reivindicação
 
 - **`/auth` vira login + cadastro do Supabase Auth**, unificando com `/auth-admin` (que já usa Auth de verdade). Uma porta só para todo mundo.
-- **Fluxo de reivindicação:** CPF → tela mostra o e-mail do cadastro → link de confirmação → colaborador define a própria senha → `user_id` é gravado e o papel `colaborador` concedido.
+- **Fluxo de reivindicação:** CPF → tela mostra o e-mail do cadastro **mascarado** → link de confirmação → colaborador define a própria senha → `user_id` é gravado e o papel `colaborador` concedido.
 - **`/cadastro-publico`** (auto-cadastro de quem ainda não existe na base) passa a criar o usuário do Auth junto com a linha de colaborador, já vinculados — e deixa de pedir um código de 4 dígitos. Se o CPF já existir, a pessoa é encaminhada para o fluxo de reivindicação: as duas portas convergem.
 - Morre a "sessão" `{id, nome, cpf}` do `localStorage` (fragilidade 6).
 
@@ -112,4 +114,4 @@ O que **não** foi adiado, e é o que mantém a dívida contida: com `user_id UN
 
 ## Ponto em aberto
 
-Quando a tela de reivindicação exibe o e-mail do cadastro, ela mostra o endereço **inteiro** ou **mascarado** (`j2***@hotmail.com`)? Mascarado é igualmente usável ("é este mesmo?") e não entrega uma lista de e-mails a quem varra CPFs. **Recomendação: mascarado.** Não decidido.
+Resta uma única decisão pendente, descrita acima: **o destino da trava `is_colaborador_logged_in`** na policy de UPDATE de `colaboradores` — refundá-la sobre a sessão real do Auth, ou removê-la. Fora isso, o desenho está fechado e a implementação pode começar pela etapa 1.
