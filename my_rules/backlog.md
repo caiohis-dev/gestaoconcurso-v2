@@ -17,14 +17,16 @@ Junto com a refatoração, **corrigir a funcionalidade de "Faltou"**: quando uma
 
 ## Refatorar a segurança do acesso do colaborador (`/auth`)
 
-**Status:** pendente — em debate de desenho (decisão de fundo ainda não tomada)
+**Status:** pendente — **desenho fechado, pronto para implementar**
 **Área:** Auth e Permissões (ver [`estrutura/auth-e-permissoes.md`](./estrutura/auth-e-permissoes.md))
 
-O portal do colaborador (rota `/auth`, login por CPF + código de 4 dígitos, sem Supabase Auth) tem fragilidades sérias. O laudo completo, com os 8 pontos levantados por leitura de código e banco em 2026-07-13, está em [`analises/fragilidades-auth-colaborador.md`](./analises/fragilidades-auth-colaborador.md).
+O portal do colaborador (rota `/auth`, login por CPF + código de 4 dígitos, sem Supabase Auth) tem fragilidades sérias. O laudo dos 8 pontos, levantado em 2026-07-13, está em [`analises/fragilidades-auth-colaborador.md`](./analises/fragilidades-auth-colaborador.md).
 
-O nó central: as RPCs `SECURITY DEFINER` recebem o `p_colaborador_id` do cliente e confiam nele, sem prova de identidade — então qualquer um com a anon key (pública) lê/edita/reseta a senha de qualquer colaborador sabendo só o UUID. O código de acesso ainda é texto puro, sem rate limit, e o fluxo de "esqueci meu código" devolve a credencial na resposta HTTP.
+O nó central: as RPCs `SECURITY DEFINER` recebem o `p_colaborador_id` do cliente e confiam nele, sem prova de identidade — então qualquer um com a anon key (pública) lê/edita/reseta a senha de qualquer colaborador sabendo só o UUID.
 
-A decisão de desenho que precede a implementação: **(A)** migrar o portal para Supabase Auth de verdade (`auth.uid()` ancora RLS/RPCs), ou **(B)** manter o modelo sem-JWT com um token de sessão assinado que as RPCs passem a exigir. Só depois de decidir isso é que hash do código, rate limit e correção do reset entram em ordem.
+**Decidido em 2026-07-13 (opção A):** migrar para Supabase Auth, com o colaborador **criando a própria conta** (auto-cadastro), tendo como prova de identidade o **e-mail que já consta no cadastro** — e o coordenador corrigindo o e-mail quando estiver errado ou ausente. O papel `colaborador` entra no enum `app_role`, e nasce o elo `colaboradores.user_id`. O código de acesso de 4 dígitos morre.
+
+O roteiro completo, com as 3 etapas, os fatos do banco que fundamentam o desenho e a dívida assumida, está em [`analises/roadmap-auth-colaborador.md`](./analises/roadmap-auth-colaborador.md).
 
 ---
 
