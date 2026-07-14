@@ -310,8 +310,12 @@ export default function PerfilColaborador() {
       if (error.code === '23505') {
         if (error.message?.includes('colab_matricula') || error.details?.includes('colab_matricula')) {
           errorMessage = 'Esta matrícula já está cadastrada para outro colaborador. Verifique o número e tente novamente.';
+        } else if (error.message?.includes('colab_chave_pix') || error.details?.includes('colab_chave_pix')) {
+          errorMessage = 'Esta chave PIX já está cadastrada para outro colaborador. Cada chave pertence a uma única pessoa — verifique e tente novamente.';
         } else if (error.message?.includes('colab_pis') || error.details?.includes('colab_pis')) {
           errorMessage = 'Este PIS já está cadastrado para outro colaborador. Verifique o número e tente novamente.';
+        } else if (error.message?.includes('colab_email') || error.details?.includes('colab_email')) {
+          errorMessage = 'Este e-mail já está cadastrado para outro colaborador. Verifique o endereço e tente novamente.';
         } else {
           errorMessage = 'Um dos dados informados já está cadastrado para outro colaborador.';
         }

@@ -30,6 +30,23 @@ O roteiro completo, com as 3 etapas, os fatos do banco que fundamentam o desenho
 
 ---
 
+## Sanear as chaves PIX e preencher `tipo_chave_pix`
+
+**Status:** pendente — aberto em 2026-07-14, quando as colunas ganharam unicidade
+**Área:** Colaboradores (ver [`estrutura/colaboradores.md`](./estrutura/colaboradores.md))
+
+Duas pontas soltas deixadas de propósito pela migration `20260714163506_*`:
+
+1. **Os formatos da chave PIX estão misturados.** Das 565 chaves preenchidas, 94 estão em formatos mistos (`127.139.687-47` ao lado de `12713968747`, `(24)998491988`, chaves com espaço no meio) e **uma tem 21 dígitos** — não é chave válida de tipo nenhum. O índice único atual normaliza caixa e espaço nas pontas, mas **não** pontuação: a mesma chave escrita de dois jeitos ainda entra duas vezes. Sanear isso é reescrever dado bancário de 565 pessoas e pede conferência humana.
+
+2. **`tipo_chave_pix` está `NULL` nas 771 linhas.** O tipo **não é inferível** do valor: 397 chaves têm 11 dígitos, e 11 dígitos é tanto CPF quanto celular com DDD (193 batem com o CPF da própria pessoa, 188 com o telefone dela, e o resto com nenhum dos dois). Adivinhar errado é errar o destino de um pagamento. Preencher exige ou confirmação humana, ou uma regra de negócio que ainda não existe.
+
+Enquanto (2) não estiver resolvido, não é possível criar o `CHECK` que amarra "tem chave ⇒ tem tipo".
+
+**Atenção:** qualquer correção em massa aqui é **operação de dados** e esbarra na regra do seed — migration não alcança dado que entra pelo dump (ver [`estrutura/desenvolvimento-local.md`](./estrutura/desenvolvimento-local.md)).
+
+---
+
 ## Bootstrap do banco de produção da v2
 
 **Status:** pendente — **deliberadamente adiado até a primeira subida da v2 a produção**

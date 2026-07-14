@@ -4,7 +4,29 @@
 
 ## Entidade `colaboradores`
 
-Ver interface `Colaborador` em `src/hooks/useColaboradores.tsx`. Campos principais: `colab_matricula`, `colab_nome_completo`, `colab_cpf` (chave natural, único), `colab_data_nascimento`, `colab_pis`, endereço (`colab_rua`/`numero_casa`/`bairro`/`cidade`/`cep`/`complemento_endereco`), `colab_estado_civil`/`colab_raca`/`colab_grau_instrucao` (códigos numéricos mapeados em `src/lib/constants.ts`), dados bancários (`codigo_banco`, `agencia`, `agencia_dv`, `conta`, `conta_dv`, `tipo_conta`, `colab_chave_pix`), e credenciais do portal (`colab_codigo_acesso`, `colab_ultimo_acesso`).
+Ver interface `Colaborador` em `src/hooks/useColaboradores.tsx`. Campos principais: `colab_matricula`, `colab_nome_completo`, `colab_cpf` (chave natural, único), `colab_data_nascimento`, `colab_pis`, endereço (`colab_rua`/`numero_casa`/`bairro`/`cidade`/`cep`/`complemento_endereco`), `colab_estado_civil`/`colab_raca`/`colab_grau_instrucao` (códigos numéricos mapeados em `src/lib/constants.ts`), dados bancários (`codigo_banco`, `agencia`, `agencia_dv`, `conta`, `conta_dv`, `tipo_conta`, `colab_chave_pix`, `tipo_chave_pix`), e credenciais do portal (`colab_codigo_acesso`, `colab_ultimo_acesso`).
+
+### Unicidade: CPF, PIS, e — desde 2026-07-14 — e-mail e chave PIX
+
+Além de `colab_cpf` e `colab_pis` (que já eram `UNIQUE` de origem), `colab_email` e `colab_chave_pix` passaram a ser únicos na migration `20260714163506_*`. **Mas não como `UNIQUE (coluna)`:** são **índices funcionais sobre `lower(trim(...))`**.
+
+*Por quê:* um `UNIQUE` comum é sensível a caixa e a espaço, e deixaria conviver `Joao@x.com` com `joao@x.com` — que o Supabase Auth trata como **o mesmo usuário**. Isso reabriria o problema que a limpeza dos e-mails duplicados fechou, já que a reivindicação de cadastro usa o e-mail como prova de identidade. Indexando a forma normalizada, a comparação acontece na hora, e os **12 e-mails gravados com maiúscula e os 22 com espaço em volta continuam gravados como estão** — nenhum dado foi reescrito.
+
+**Múltiplos NULLs seguem permitidos** (`lower(trim(NULL))` é `NULL`, e o Postgres não considera NULLs iguais entre si): os 254 sem e-mail e os 206 sem chave PIX convivem sem conflito.
+
+⚠️ **Não pode existir string vazia nessas colunas.** Duas linhas com `''` colidiriam no índice. Hoje todos os caminhos de escrita convertem `''` em `NULL` — `ColaboradorDialog` e `public-create-colaborador` no código, e a RPC `update_colaborador_data_full` via `NULLIF`. Um caminho novo que grave `''` quebra o salvamento do **segundo** cadastro vazio: converta na origem, não afrouxe o índice.
+
+**O que o índice do PIX não resolve (dívida consciente):** a mesma chave escrita em formatos diferentes ainda passa — `127.139.687-47` e `12713968747` são a mesma chave no arranjo do BACEN e valores distintos aqui. Das 565 chaves preenchidas, **94 estão em formatos mistos** (CPF pontuado, telefone com parênteses, espaços internos) e **uma tem 21 dígitos** — não é chave válida de tipo nenhum. Normalizar isso é mexer em dado bancário de 565 pessoas e ficou fora de escopo.
+
+Consequência no app: salvar cadastro agora pode falhar com `23505`. `PerfilColaborador` traduz o erro (mensagem específica para e-mail e para chave PIX) e o `CadastroLote` classifica as linhas recusadas como "E-mail duplicado" / "Chave PIX duplicada".
+
+### `tipo_chave_pix` — nasce vazia, e não por descuido
+
+Também da migration `20260714163506_*`: `text`, anulável, com `CHECK` restrito aos 5 tipos do arranjo PIX — `cpf`, `cnpj`, `email`, `telefone`, `aleatoria`. Texto minúsculo validado por `CHECK`, no mesmo formato que `tipo_conta` (`'corrente'`/`'poupanca'`) já usa nesta tabela, em vez de código numérico com mapa no frontend (o padrão de `colab_estado_civil`/`colab_raca`/`colab_grau_instrucao`).
+
+**Está `NULL` nas 771 linhas, e o preenchimento não deve ser adivinhado.** O tipo **não é inferível** do valor gravado: 397 chaves têm 11 dígitos, e 11 dígitos é ao mesmo tempo o formato de CPF e o de celular com DDD. Cruzando com os dados da própria pessoa, 193 batem com o CPF dela e 188 com o telefone dela — e o restante não bate com nenhum dos dois. **Adivinhar o tipo errado de uma chave PIX é errar o destino de um pagamento**, então a coluna só se preenche quando alguém confirmar o tipo.
+
+Por isso também **não há `CHECK` amarrando "se tem chave, tem tipo"**: isso invalidaria de imediato as 565 linhas que já têm chave e não têm tipo. Essa amarração só pode existir depois que a base estiver preenchida.
 
 ### `user_id` — o elo com `auth.users` (novo em 2026-07-14, ainda sem uso)
 
