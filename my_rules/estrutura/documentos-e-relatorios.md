@@ -11,11 +11,9 @@
 
 ## `/painel-dados-colaboradores/:provaId` (`PainelDadosColaboradores.tsx`)
 
-Painel consolidado dos colaboradores alocados numa prova, com busca, ordenação (nome / último acesso) e **checagem de campos obrigatórios pendentes** (`CAMPOS_OBRIGATORIOS`: CPF, data de nascimento, nome, nacionalidade, PIS, telefone, chave PIX, endereço completo, estado civil, raça, grau de instrução) via `getCamposFaltantes`.
+Painel read-only dos colaboradores alocados numa prova (nome, e-mail, unidade, último acesso), com busca e ordenação por nome / último acesso. Restrito a `isAdmin`. Faz fetch manual (`useState`/`useEffect`), não React Query.
 
-Tem uma função de **envio de e-mail em massa** aos colaboradores alocados (`buildEmailHtml` monta o HTML inline, enviado via `send-email`) — o texto muda conforme haja campos pendentes ("atualize seus dados" vs. "acesse o sistema").
-
-> ⚠️ **Ponta solta da refatoração do acesso (a resolver na 2D).** Esse e-mail ainda embute `colab_codigo_acesso` (morto — colaboradores novos têm NULL) e aponta para `fevre.online/auth` no modelo antigo de login por código. Precisa ser repensado: ou remover o código do corpo e apontar para "primeiro acesso"/reivindicação, ou aposentar o botão. Ver [`../analises/roadmap-auth-colaborador.md`](../analises/roadmap-auth-colaborador.md).
+> **Envio de e-mail em massa aposentado na 2D (2026-07-15).** A página tinha um botão "Solicitar Atualização de Dados" que mandava e-mail em lote (`buildEmailHtml` + `send-email`) aos colaboradores com campos pendentes ou sem primeiro acesso. Esse e-mail embutia `colab_codigo_acesso` (morto) e apontava para o login antigo `fevre.online/auth`; na 2D optou-se por **remover a feature inteira** (botão, `buildEmailHtml`, `getCamposFaltantes`, o dialog e a leitura de `email_atualizacao_log`), não reescrevê-la. A tabela `email_atualizacao_log` **fica** (histórico de 232 envios), apenas deixou de ser alimentada. Ver [`../analises/roadmap-auth-colaborador.md`](../analises/roadmap-auth-colaborador.md).
 
 ## `/dashboard` (`Dashboard.tsx`)
 

@@ -15,19 +15,6 @@ Junto com a refatoração, **corrigir a funcionalidade de "Faltou"**: quando uma
 
 ---
 
-## Refatorar a segurança do acesso do colaborador (`/auth`)
-
-**Status:** em andamento — **etapa 1 + 2A/2B/2C concluídas em 2026-07-14; 2D quase toda feita em 2026-07-15 (REVOKE, RLS, DROP das RPCs, remoção da trava de edição). Falta só: e-mail em massa (item 6) + drop da coluna `colab_codigo_acesso`.**
-**Área:** Auth e Permissões (ver [`estrutura/auth-e-permissoes.md`](./estrutura/auth-e-permissoes.md))
-
-O portal do colaborador migrou para o Supabase Auth. Já feito: fundação no banco + backfill dos 12 (etapa 1); porta única `/auth` e identidade por `auth.uid()` (2A); reivindicação dos 759 (2B); cadastro público sem código, com link por e-mail (2C). **Da 2D já caíram:** o `REVOKE` do `EXECUTE` público (fragilidade 1 — fechada); a **RLS de verdade em `colaboradores`** por `user_id = auth.uid()`; o **`DROP` das RPCs antigas** + Edge Function `reset-codigo-acesso` (fragilidade 8 fechada); e a **remoção da trava de edição concorrente** (policy de UPDATE sem `is_colaborador_logged_in`, função e tabela `colaborador_sessions` dropadas, template órfão removido).
-
-**Falta na 2D (= etapa 3):** **repensar o e-mail em massa do `PainelDadosColaboradores.tsx`** — ainda embute `colab_codigo_acesso` (morto) e aponta para `fevre.online/auth` no modelo antigo: remover o código do corpo e apontar para primeiro-acesso/reivindicação, **ou** aposentar o botão (ver [`estrutura/documentos-e-relatorios.md`](./estrutura/documentos-e-relatorios.md)). Decidido isso, tirar `colab_codigo_acesso` das duas planilhas de export (`GerenciarProva`, `GerenciarColaboradoresProva`) e do `useColaboradores`, e **dropar a coluna** (+ CHECK). A Edge Function `check-cpf-colaborador` **fica**.
-
-O laudo original dos 8 pontos está em [`analises/fragilidades-auth-colaborador.md`](./analises/fragilidades-auth-colaborador.md); o roteiro completo e o estado de cada subetapa, em [`analises/roadmap-auth-colaborador.md`](./analises/roadmap-auth-colaborador.md).
-
----
-
 ## Sanear as contas do Auth (3 dívidas abertas pelo backfill)
 
 **Status:** pendente — aberto em 2026-07-14, ao vincular os colaboradores que já eram usuários

@@ -10,8 +10,8 @@ Havia um client HTTP genérico (`src/services/n8nService.ts`) para webhooks n8n,
 
 ## E-mail transacional
 
-- Edge Function **`send-email`** (`supabase/functions/send-email/index.ts`) — SMTP via `denomailer`, recebe `{ to, subject, html }` e envia. Não gera o HTML, apenas despacha — quem monta o corpo é o caller (ex.: `buildEmailHtml` em `PainelDadosColaboradores.tsx`, ver [`documentos-e-relatorios.md`](./documentos-e-relatorios.md)).
-- Templates React/TSX em `supabase/functions/_shared/transactional-email-templates/`: `codigo-acesso.tsx` e `atualizacao-dados.tsx`. **`codigo-acesso.tsx` está morto** — o código de acesso foi aposentado (2A–2C); o e-mail de acesso agora é o HTML da FEVRE em `_shared/enviar-link-acesso.ts`. Limpeza desses templates órfãos é 2D. O `atualizacao-dados.tsx` (aviso de atualização cadastral) ainda faz sentido.
+- Edge Function **`send-email`** (`supabase/functions/send-email/index.ts`) — SMTP via `denomailer`, recebe `{ to, subject, html }` e envia. Não gera o HTML, apenas despacha — quem monta o corpo é o caller. Hoje o caller principal é o helper `_shared/enviar-link-acesso.ts` (link de acesso da reivindicação/cadastro público). O antigo caller `buildEmailHtml` do `PainelDadosColaboradores.tsx` foi removido na 2D (e-mail em massa aposentado).
+- Templates React/TSX em `supabase/functions/_shared/transactional-email-templates/`: sobrou `atualizacao-dados.tsx` (aviso de atualização cadastral). O `codigo-acesso.tsx` era órfão (código de acesso aposentado em 2A–2C) e **foi removido na 2D**; o e-mail de acesso agora é o HTML da FEVRE em `_shared/enviar-link-acesso.ts`.
 
 ## Edge Functions administrativas
 

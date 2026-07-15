@@ -4,7 +4,7 @@
 
 ## Entidade `colaboradores`
 
-Ver interface `Colaborador` em `src/hooks/useColaboradores.tsx`. Campos principais: `colab_matricula`, `colab_nome_completo`, `colab_cpf` (chave natural, único), `colab_data_nascimento`, `colab_pis`, endereço (`colab_rua`/`numero_casa`/`bairro`/`cidade`/`cep`/`complemento_endereco`), `colab_estado_civil`/`colab_raca`/`colab_grau_instrucao` (códigos numéricos mapeados em `src/lib/constants.ts`), dados bancários (`codigo_banco`, `agencia`, `agencia_dv`, `conta`, `conta_dv`, `tipo_conta`, `colab_chave_pix`, `tipo_chave_pix`), e `colab_ultimo_acesso`. **`colab_codigo_acesso` está morto** desde a refatoração do acesso (2A–2C): nada o lê nem o escreve, colaboradores novos nascem com ele NULL (o trigger gerador saiu na migration `20260714205901`), e a coluna só continua existindo até o DROP da etapa 3/2D.
+Ver interface `Colaborador` em `src/hooks/useColaboradores.tsx`. Campos principais: `colab_matricula`, `colab_nome_completo`, `colab_cpf` (chave natural, único), `colab_data_nascimento`, `colab_pis`, endereço (`colab_rua`/`numero_casa`/`bairro`/`cidade`/`cep`/`complemento_endereco`), `colab_estado_civil`/`colab_raca`/`colab_grau_instrucao` (códigos numéricos mapeados em `src/lib/constants.ts`), dados bancários (`codigo_banco`, `agencia`, `agencia_dv`, `conta`, `conta_dv`, `tipo_conta`, `colab_chave_pix`, `tipo_chave_pix`), e `colab_ultimo_acesso`. **A coluna `colab_codigo_acesso` foi removida na 2D** (migration `20260715131321_*`, junto com o CHECK `colab_codigo_acesso_format`): era a credencial do login por código de 4 dígitos, aposentado em 2A–2C. Não existe mais.
 
 ### Unicidade: CPF, PIS, e — desde 2026-07-14 — e-mail e chave PIX
 
