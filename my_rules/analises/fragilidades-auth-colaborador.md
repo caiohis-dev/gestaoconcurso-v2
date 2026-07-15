@@ -2,7 +2,7 @@
 
 > **Data:** 2026-07-13. **Natureza:** laudo de segurança, feito por leitura de código e banco (nada foi alterado). É um retrato do estado **antes** da refatoração — não são vulnerabilidades abertas hoje.
 >
-> **Status (2026-07-14):** a maior parte já foi resolvida pelas subetapas 2A/2B/2C — o login por CPF+código morreu, e as fragilidades 2, 3, 4, 5 e 6 caíram por remoção. **Falta a 2D (= etapa 3):** o `REVOKE` dos `GRANT ... TO PUBLIC` (fragilidade 1, o nó central) e a RLS ainda estão pendentes, e a fragilidade 8 (`register_colaborador_session`) só fecha quando as sobras forem dropadas. Estado por subetapa em [`roadmap-auth-colaborador.md`](./roadmap-auth-colaborador.md).
+> **Status (2026-07-15):** o login por CPF+código morreu (2A/2B/2C) e as fragilidades 2, 3, 4, 5 e 6 caíram por remoção. **A fragilidade 1 (o nó central) está fechada** desde 2026-07-15: a subetapa 2D item 1 revogou o `EXECUTE` de `PUBLIC` nas RPCs mortas do portal velho (migration `20260715072758_*`) — `anon`/`authenticated` já recebem `permission denied`. **Falta na 2D:** a **RLS de verdade** em `colaboradores` ancorada em `auth.uid()`, o `DROP` das sobras (aí a fragilidade 8, `register_colaborador_session`, some de vez) e a retirada da trava `is_colaborador_logged_in` da policy de UPDATE. Estado por subetapa em [`roadmap-auth-colaborador.md`](./roadmap-auth-colaborador.md).
 
 ## Escopo lido
 
@@ -24,6 +24,8 @@ O ponto crítico é que **essas RPCs recebem o `p_colaborador_id` do cliente e c
 ## Fragilidades graves
 
 ### 1. Qualquer um edita/lê os dados de qualquer colaborador sabendo só o UUID
+
+> **✅ Fechada em 2026-07-15** (subetapa 2D, item 1). O `EXECUTE` foi revogado de `PUBLIC` nessas RPCs (migration `20260715072758_*`); a anon key não as alcança mais. O `DROP` delas ainda vem (item 3), mas a porta já está trancada.
 
 As RPCs `update_colaborador_data_full`, `get_colaborador_full_data` e `set_colaborador_password` têm `GRANT EXECUTE` para `PUBLIC` e **não checam nada** — nenhuma senha, nenhum código, nenhuma sessão. Executam direto o `UPDATE ... WHERE id = p_colaborador_id`. Como a `anon key` é pública (está no bundle do front), qualquer pessoa com a URL do Supabase pode:
 
