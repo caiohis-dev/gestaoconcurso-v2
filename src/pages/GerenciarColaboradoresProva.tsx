@@ -322,7 +322,7 @@ export default function GerenciarColaboradoresProva() {
       const ids = colaboradoresProva.map((cp) => cp.colaborador_id);
       const { data, error } = await supabase
         .from("colaboradores")
-        .select("id, colab_nome_completo, colab_codigo_acesso")
+        .select("id, colab_nome_completo")
         .in("id", ids);
       if (error) throw error;
 
@@ -332,13 +332,12 @@ export default function GerenciarColaboradoresProva() {
           const c = map.get(cp.colaborador_id);
           return {
             "Nome completo": c?.colab_nome_completo ?? cp.colaboradores?.colab_nome_completo ?? "",
-            "Código de acesso": c?.colab_codigo_acesso ?? "",
           };
         })
         .sort((a, b) => a["Nome completo"].localeCompare(b["Nome completo"], "pt-BR"));
 
       const ws = XLSX.utils.json_to_sheet(rows);
-      ws["!cols"] = [{ wch: 50 }, { wch: 20 }];
+      ws["!cols"] = [{ wch: 50 }];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Colaboradores");
 

@@ -24,7 +24,6 @@ export interface Colaborador {
   colab_deficiente: boolean;
   colab_email: string | null;
   colab_chave_pix: string | null;
-  colab_codigo_acesso: string | null;
   colab_ultimo_acesso: string | null;
   codigo_banco: string | null;
   agencia: string | null;
@@ -36,7 +35,7 @@ export interface Colaborador {
   updated_at: string;
 }
 
-export type ColaboradorInsert = Omit<Colaborador, 'id' | 'created_at' | 'updated_at' | 'colab_codigo_acesso' | 'colab_ultimo_acesso'> & { colab_codigo_acesso?: string };
+export type ColaboradorInsert = Omit<Colaborador, 'id' | 'created_at' | 'updated_at' | 'colab_ultimo_acesso'>;
 
 export interface UseColaboradoresOptions {
   /** When true, fetches all collaborators regardless of role (for adding to exams) */
@@ -126,11 +125,7 @@ export function useColaboradores(options: UseColaboradoresOptions = {}) {
           message = 'Matrícula já cadastrada';
         } else if (error.message.includes('colab_pis')) {
           message = 'PIS já cadastrado';
-        } else if (error.message.includes('colab_codigo_acesso')) {
-          message = 'Este código de acesso já está em uso. Escolha outro.';
         }
-      } else if (error.message.includes('colab_codigo_acesso_format')) {
-        message = 'Código de acesso deve ter exatamente 4 dígitos numéricos.';
       }
       toast({
         title: 'Erro ao cadastrar',

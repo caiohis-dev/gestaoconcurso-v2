@@ -61,7 +61,6 @@ export type Database = {
           colab_cep: number | null
           colab_chave_pix: string | null
           colab_cidade: string | null
-          colab_codigo_acesso: string | null
           colab_complemento_endereco: string | null
           colab_cpf: string
           colab_data_nascimento: string
@@ -97,7 +96,6 @@ export type Database = {
           colab_cep?: number | null
           colab_chave_pix?: string | null
           colab_cidade?: string | null
-          colab_codigo_acesso?: string | null
           colab_complemento_endereco?: string | null
           colab_cpf: string
           colab_data_nascimento: string
@@ -133,7 +131,6 @@ export type Database = {
           colab_cep?: number | null
           colab_chave_pix?: string | null
           colab_cidade?: string | null
-          colab_codigo_acesso?: string | null
           colab_complemento_endereco?: string | null
           colab_cpf?: string
           colab_data_nascimento?: string
