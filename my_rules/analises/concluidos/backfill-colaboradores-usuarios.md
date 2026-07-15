@@ -39,7 +39,7 @@ Nenhuma das três é bloqueio: elas podem se cadastrar pelo fluxo normal de reiv
 
 ## Dívidas abertas por este backfill
 
-Detalhadas em [`../backlog.md`](../backlog.md):
+Detalhadas em [`../backlog.md`](../../backlog.md):
 
 1. **`ab@ab.com` como login de coordenador** (`#3`) — ele não consegue recuperar a própria senha, e o domínio pode ser adquirido por terceiros: é um vetor de tomada de conta. Consertar = trocar o e-mail da conta no Auth para o do cadastro (muda o login dele; precisa ser avisado).
 2. **Conta duplicada do Caio** — excluir uma das duas **não é trivial**: 8 FKs `created_by` são `NO ACTION`, então o `DELETE` falha enquanto houver linhas; seria preciso reapontar a autoria antes, reescrevendo o histórico. Tentado e abandonado em 2026-07-14.

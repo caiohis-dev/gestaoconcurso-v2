@@ -4,7 +4,7 @@
 
 ## Um só sistema de login (desde a subetapa 2A, 2026-07-14)
 
-**Antes havia dois modelos de login separados; a refatoração do acesso do colaborador unificou tudo no Supabase Auth.** Hoje existe **um** provider (`useAuth`), montado em `App.tsx`, e uma porta única (`/auth`). Se você está lendo código ou migrations antigas que falam de "código de acesso", "sessão do colaborador no localStorage" ou `useColaboradorAuth`, isso é o mundo anterior — ver o histórico da mudança em [`../analises/roadmap-auth-colaborador.md`](../analises/roadmap-auth-colaborador.md).
+**Antes havia dois modelos de login separados; a refatoração do acesso do colaborador unificou tudo no Supabase Auth.** Hoje existe **um** provider (`useAuth`), montado em `App.tsx`, e uma porta única (`/auth`). Se você está lendo código ou migrations antigas que falam de "código de acesso", "sessão do colaborador no localStorage" ou `useColaboradorAuth`, isso é o mundo anterior — ver o histórico da mudança em [`../analises/roadmap-auth-colaborador.md`](../analises/concluidos/roadmap-auth-colaborador.md).
 
 ### `useAuth` (`src/hooks/useAuth.tsx`) — para todo mundo
 
