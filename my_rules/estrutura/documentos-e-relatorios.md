@@ -13,7 +13,9 @@
 
 Painel consolidado dos colaboradores alocados numa prova, com busca, ordenação (nome / último acesso) e **checagem de campos obrigatórios pendentes** (`CAMPOS_OBRIGATORIOS`: CPF, data de nascimento, nome, nacionalidade, PIS, telefone, chave PIX, endereço completo, estado civil, raça, grau de instrução) via `getCamposFaltantes`.
 
-Tem uma função de **reenvio de e-mail com código de acesso** (`buildEmailHtml` monta o HTML inline do e-mail, referenciando `fevre.online` como domínio) — o texto do e-mail muda dependendo de haver ou não campos pendentes ("atualize seus dados" vs. "acesse o sistema"). Esse e-mail é presumivelmente enviado via a Edge Function `send-email` (ver [`integracoes-externas.md`](./integracoes-externas.md)), já que não há SMTP client no frontend.
+Tem uma função de **envio de e-mail em massa** aos colaboradores alocados (`buildEmailHtml` monta o HTML inline, enviado via `send-email`) — o texto muda conforme haja campos pendentes ("atualize seus dados" vs. "acesse o sistema").
+
+> ⚠️ **Ponta solta da refatoração do acesso (a resolver na 2D).** Esse e-mail ainda embute `colab_codigo_acesso` (morto — colaboradores novos têm NULL) e aponta para `fevre.online/auth` no modelo antigo de login por código. Precisa ser repensado: ou remover o código do corpo e apontar para "primeiro acesso"/reivindicação, ou aposentar o botão. Ver [`../analises/roadmap-auth-colaborador.md`](../analises/roadmap-auth-colaborador.md).
 
 ## `/dashboard` (`Dashboard.tsx`)
 

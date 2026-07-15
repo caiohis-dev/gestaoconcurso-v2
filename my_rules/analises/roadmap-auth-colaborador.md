@@ -165,14 +165,17 @@ Consequências para o resto da pilha:
 - **`check-cpf-colaborador` é substituído** por uma RPC nova que devolve `{existe, email_mascarado, ja_vinculado}` — e **nunca** o e-mail inteiro. Ela precisa **normalizar o CPF** (fragilidade 7: o front faz `padStart(11)`, a RPC atual compara como veio) e precisa de **rate limit**, senão trocamos um oráculo de enumeração por outro.
 - **`reset-codigo-acesso` e o `buildEmailHtml`** somem. O e-mail com a identidade visual da FEVRE (logo, cores) vira um **template do Supabase Auth**, configurado no dashboard — é trabalho novo, e cai junto no passo "auth no dashboard" do bootstrap de produção (ver [`../banco-producao.md`](../banco-producao.md)).
 
-### Etapa 3 — Fechar as portas velhas
+### Etapa 3 (= subetapa 2D) — Fechar as portas velhas
 
-- As RPCs (`get_colaborador_full_data`, `update_colaborador_data_full`, `set_colaborador_password`, `get_colaborador_by_id`) param de receber `p_colaborador_id` e passam a resolver o colaborador por **`auth.uid()`**.
-- **RLS de verdade em `colaboradores`**, ancorada em `user_id = auth.uid()` para o próprio colaborador, mantendo o acesso de admin/coordenador via `has_role()`.
+> As novas RPCs por `auth.uid()` já existem (2A: `get_meu_colaborador` etc.), e o fluxo inteiro já não usa mais as antigas. A 2D é sobre **trancar e limpar** o que ficou de pé, não sobre reescrever caminhos.
+
 - **`REVOKE`** dos `GRANT EXECUTE ... TO PUBLIC` (fragilidade 1 — o coração do laudo).
-- Aposentar `verify_colaborador_codigo_acesso`, `reset-codigo-acesso`, `check-cpf-colaborador` e `register_colaborador_session`.
-- **Tirar o `AND NOT is_colaborador_logged_in(id)`** da policy de UPDATE de `colaboradores` (ver a dívida abaixo). A tabela `colaborador_sessions` e as duas funções **ficam** por ora — mesmo tratamento dado ao `colab_codigo_acesso`: somem do fluxo, o `DROP` é limpeza posterior.
-- Corrigir o doc [`../estrutura/auth-e-permissoes.md`](../estrutura/auth-e-permissoes.md), que hoje afirma que o código é comparado contra hash — o banco desmente (é texto puro). O débito estava adiado justamente para ser pago aqui.
+- **RLS de verdade em `colaboradores`**, ancorada em `user_id = auth.uid()` para o próprio colaborador, mantendo o acesso de admin/coordenador via `has_role()`.
+- Aposentar as RPCs/functions mortas: `get_colaborador_full_data`, `update_colaborador_data_full`, `update_colaborador_bank_data`, `set_colaborador_password`, `verify_colaborador_codigo_acesso`, `get_colaborador_by_id`, `register/unregister_colaborador_session`, `update_colaborador_session_activity`, e a Edge Function `reset-codigo-acesso`. **`check-cpf-colaborador` FICA** — na 2C decidiu-se mantê-la (é a checagem de existência sem efeito colateral que o pré-cadastro usa; já endurecida para só `{exists}`).
+- **Tirar o `AND NOT is_colaborador_logged_in(id)`** da policy de UPDATE de `colaboradores` (ver a dívida abaixo).
+- **`DROP` das sobras:** coluna `colab_codigo_acesso` (+ o CHECK de formato), tabela `colaborador_sessions` e `is_colaborador_logged_in`, e o template órfão `_shared/transactional-email-templates/codigo-acesso.tsx`.
+- **Repensar o e-mail em massa do `PainelDadosColaboradores.tsx`**: ainda embute `colab_codigo_acesso` (morto) e aponta para `fevre.online/auth` no modelo antigo — remover o código do corpo e apontar para primeiro-acesso/reivindicação, ou aposentar o botão.
+- Corrigir o doc [`../estrutura/auth-e-permissoes.md`](../estrutura/auth-e-permissoes.md) se ainda restar a afirmação de que o código é comparado contra hash — o banco desmente (é texto puro).
 
 ## Fora de escopo — dívida assumida conscientemente
 

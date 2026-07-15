@@ -1,6 +1,8 @@
 # Análise — Fragilidades do fluxo de acesso do colaborador (`/auth`)
 
-> **Data:** 2026-07-13. **Natureza:** laudo de segurança, feito por leitura de código e banco (nada foi alterado). É um retrato do estado **antes** da refatoração — quando a refatoração for feita, o item correspondente sai do [`backlog.md`](../backlog.md) e o que mudou é descrito em [`estrutura/auth-e-permissoes.md`](../estrutura/auth-e-permissoes.md); este arquivo fica como registro histórico do ponto de partida.
+> **Data:** 2026-07-13. **Natureza:** laudo de segurança, feito por leitura de código e banco (nada foi alterado). É um retrato do estado **antes** da refatoração — não são vulnerabilidades abertas hoje.
+>
+> **Status (2026-07-14):** a maior parte já foi resolvida pelas subetapas 2A/2B/2C — o login por CPF+código morreu, e as fragilidades 2, 3, 4, 5 e 6 caíram por remoção. **Falta a 2D (= etapa 3):** o `REVOKE` dos `GRANT ... TO PUBLIC` (fragilidade 1, o nó central) e a RLS ainda estão pendentes, e a fragilidade 8 (`register_colaborador_session`) só fecha quando as sobras forem dropadas. Estado por subetapa em [`roadmap-auth-colaborador.md`](./roadmap-auth-colaborador.md).
 
 ## Escopo lido
 

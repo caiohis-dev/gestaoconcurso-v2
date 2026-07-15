@@ -17,16 +17,14 @@ Junto com a refatoração, **corrigir a funcionalidade de "Faltou"**: quando uma
 
 ## Refatorar a segurança do acesso do colaborador (`/auth`)
 
-**Status:** em andamento — **etapa 1 (fundação no banco) concluída em 2026-07-14; a etapa 2 é a próxima**
+**Status:** em andamento — **etapa 1 + subetapas 2A/2B/2C concluídas em 2026-07-14; falta a 2D (= etapa 3, fechar as portas velhas)**
 **Área:** Auth e Permissões (ver [`estrutura/auth-e-permissoes.md`](./estrutura/auth-e-permissoes.md))
 
-O portal do colaborador (rota `/auth`, login por CPF + código de 4 dígitos, sem Supabase Auth) tem fragilidades sérias. O laudo dos 8 pontos, levantado em 2026-07-13, está em [`analises/fragilidades-auth-colaborador.md`](./analises/fragilidades-auth-colaborador.md).
+O portal do colaborador migrou para o Supabase Auth. Já feito: fundação no banco + backfill dos 12 (etapa 1); porta única `/auth` e identidade por `auth.uid()` (2A); reivindicação dos 759 (2B); cadastro público sem código, com link por e-mail (2C).
 
-O nó central: as RPCs `SECURITY DEFINER` recebem o `p_colaborador_id` do cliente e confiam nele, sem prova de identidade — então qualquer um com a anon key (pública) lê/edita/reseta a senha de qualquer colaborador sabendo só o UUID.
+**Falta a 2D (= etapa 3): fechar as portas velhas.** `REVOKE` dos `GRANT EXECUTE ... TO PUBLIC` (fragilidade 1, o nó central: qualquer um com a anon key lê/edita colaborador pelo UUID); RLS de verdade em `colaboradores` por `user_id = auth.uid()`; aposentar as RPCs antigas e as Edge Functions mortas (`verify_colaborador_codigo_acesso`, `get_colaborador_by_id`, `reset-codigo-acesso`, `register/unregister_colaborador_session`, etc.); tirar `AND NOT is_colaborador_logged_in(id)` da policy de UPDATE; `DROP` das sobras (`colab_codigo_acesso`, `colaborador_sessions`, template `codigo-acesso.tsx`); e **repensar o e-mail em massa do `PainelDadosColaboradores.tsx`**, que ainda embute o código morto e aponta para o login antigo (ver [`estrutura/documentos-e-relatorios.md`](./estrutura/documentos-e-relatorios.md)).
 
-**Decidido em 2026-07-13 (opção A):** migrar para Supabase Auth, com o colaborador **criando a própria conta** (auto-cadastro), tendo como prova de identidade o **e-mail que já consta no cadastro** — e o coordenador corrigindo o e-mail quando estiver errado ou ausente. O papel `colaborador` entra no enum `app_role`, e nasce o elo `colaboradores.user_id`. O código de acesso de 4 dígitos morre.
-
-O roteiro completo, com as 3 etapas, os fatos do banco que fundamentam o desenho e a dívida assumida, está em [`analises/roadmap-auth-colaborador.md`](./analises/roadmap-auth-colaborador.md).
+O laudo original dos 8 pontos está em [`analises/fragilidades-auth-colaborador.md`](./analises/fragilidades-auth-colaborador.md); o roteiro completo e o estado de cada subetapa, em [`analises/roadmap-auth-colaborador.md`](./analises/roadmap-auth-colaborador.md).
 
 ---
 

@@ -6,12 +6,12 @@
 
 Havia um client HTTP genérico (`src/services/n8nService.ts`) para webhooks n8n, configurado via `VITE_N8N_BASE_URL`. Foi removido por decisão explícita do usuário, junto com seu único caso de uso real: o fluxo de "Esqueci minha senha" do admin (`RecuperarSenhaAdmin.tsx`, rota `/recuperar-senha-admin`, linkada em `AuthAdmin.tsx`), que chamava `/auth/reset-init` e `/auth/reset-confirm` via n8n.
 
-**Consequência:** o login administrativo (`/auth-admin`) não tem mais nenhum fluxo de recuperação de senha próprio — só resta o login direto. Se for reintroduzir recuperação de senha para admins, o caminho natural é `supabase.auth.resetPasswordForEmail` (nativo do Supabase Auth, já usado como base de `useAuth.tsx`), não recriar a dependência de n8n.
+**Consequência (atualizada na subetapa 2A):** o fluxo n8n morreu, mas a recuperação de senha **voltou** — agora nativa. A porta única `/auth` tem "esqueci minha senha" via `supabase.auth.resetPasswordForEmail`, com destino em `/redefinir-senha` (`/auth-admin` redireciona para `/auth`). Vale para admin e colaborador, sem nenhuma dependência de n8n. Ver [`auth-e-permissoes.md`](./auth-e-permissoes.md).
 
 ## E-mail transacional
 
 - Edge Function **`send-email`** (`supabase/functions/send-email/index.ts`) — SMTP via `denomailer`, recebe `{ to, subject, html }` e envia. Não gera o HTML, apenas despacha — quem monta o corpo é o caller (ex.: `buildEmailHtml` em `PainelDadosColaboradores.tsx`, ver [`documentos-e-relatorios.md`](./documentos-e-relatorios.md)).
-- Templates React/TSX prontos em `supabase/functions/_shared/transactional-email-templates/`: `codigo-acesso.tsx` (envio do código de acesso no cadastro) e `atualizacao-dados.tsx` (aviso de atualização cadastral). Note que esses são templates *server-side* (rodam em Deno), separados do HTML montado inline no frontend em `PainelDadosColaboradores.tsx` — ao mudar o visual de um e-mail, confira se a mudança precisa ser replicada nos dois lugares (o template compartilhado da Edge Function vs. o HTML construído ad-hoc no painel).
+- Templates React/TSX em `supabase/functions/_shared/transactional-email-templates/`: `codigo-acesso.tsx` e `atualizacao-dados.tsx`. **`codigo-acesso.tsx` está morto** — o código de acesso foi aposentado (2A–2C); o e-mail de acesso agora é o HTML da FEVRE em `_shared/enviar-link-acesso.ts`. Limpeza desses templates órfãos é 2D. O `atualizacao-dados.tsx` (aviso de atualização cadastral) ainda faz sentido.
 
 ## Edge Functions administrativas
 
