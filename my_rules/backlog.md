@@ -17,12 +17,12 @@ Junto com a refatoração, **corrigir a funcionalidade de "Faltou"**: quando uma
 
 ## Refatorar a segurança do acesso do colaborador (`/auth`)
 
-**Status:** em andamento — **etapa 1 + subetapas 2A/2B/2C concluídas em 2026-07-14; falta a 2D (= etapa 3, fechar as portas velhas)**
+**Status:** em andamento — **etapa 1 + subetapas 2A/2B/2C concluídas em 2026-07-14; 2D em curso: `REVOKE` (fragilidade 1) e RLS de verdade feitos em 2026-07-15**
 **Área:** Auth e Permissões (ver [`estrutura/auth-e-permissoes.md`](./estrutura/auth-e-permissoes.md))
 
-O portal do colaborador migrou para o Supabase Auth. Já feito: fundação no banco + backfill dos 12 (etapa 1); porta única `/auth` e identidade por `auth.uid()` (2A); reivindicação dos 759 (2B); cadastro público sem código, com link por e-mail (2C).
+O portal do colaborador migrou para o Supabase Auth. Já feito: fundação no banco + backfill dos 12 (etapa 1); porta única `/auth` e identidade por `auth.uid()` (2A); reivindicação dos 759 (2B); cadastro público sem código, com link por e-mail (2C). **Da 2D já caíram:** o `REVOKE` do `EXECUTE` público das RPCs mortas (fragilidade 1, o nó central — fechada) e a **RLS de verdade em `colaboradores`** por `user_id = auth.uid()` (o SELECT deixou de ser `USING (true)`).
 
-**Falta a 2D (= etapa 3): fechar as portas velhas.** `REVOKE` dos `GRANT EXECUTE ... TO PUBLIC` (fragilidade 1, o nó central: qualquer um com a anon key lê/edita colaborador pelo UUID); RLS de verdade em `colaboradores` por `user_id = auth.uid()`; aposentar as RPCs antigas e as Edge Functions mortas (`verify_colaborador_codigo_acesso`, `get_colaborador_by_id`, `reset-codigo-acesso`, `register/unregister_colaborador_session`, etc.); tirar `AND NOT is_colaborador_logged_in(id)` da policy de UPDATE; `DROP` das sobras (`colab_codigo_acesso`, `colaborador_sessions`, template `codigo-acesso.tsx`); e **repensar o e-mail em massa do `PainelDadosColaboradores.tsx`**, que ainda embute o código morto e aponta para o login antigo (ver [`estrutura/documentos-e-relatorios.md`](./estrutura/documentos-e-relatorios.md)).
+**Falta na 2D (= etapa 3):** aposentar as RPCs antigas e as Edge Functions mortas (`verify_colaborador_codigo_acesso`, `get_colaborador_by_id`, `reset-codigo-acesso`, `register/unregister_colaborador_session`, etc. — a `check-cpf-colaborador` **fica**); tirar `AND NOT is_colaborador_logged_in(id)` da policy de UPDATE; `DROP` das sobras (`colab_codigo_acesso`, `colaborador_sessions`, `is_colaborador_logged_in`, template `codigo-acesso.tsx`); e **repensar o e-mail em massa do `PainelDadosColaboradores.tsx`**, que ainda embute o código morto e aponta para o login antigo (ver [`estrutura/documentos-e-relatorios.md`](./estrutura/documentos-e-relatorios.md)).
 
 O laudo original dos 8 pontos está em [`analises/fragilidades-auth-colaborador.md`](./analises/fragilidades-auth-colaborador.md); o roteiro completo e o estado de cada subetapa, em [`analises/roadmap-auth-colaborador.md`](./analises/roadmap-auth-colaborador.md).
 
@@ -40,6 +40,17 @@ Ao escrever o backfill do `seed.pos.sql`, a varredura das 15 contas do `auth.use
 **2. O Caio tem duas contas admin+superadmin:** `caiohis@gmail.com` (a que o backfill vinculou ao cadastro de colaborador dele) e `caio.teixeira@smevr.com.br`. A segunda é a **operacional de verdade** — assinou 406 linhas (232 e-mails do log, 87 metas, 32 salas, 31 alocações, 10 alocações de coordenador, 6 unidades, 3+5 finalizações); a primeira assinou 26. Excluir uma delas **não é trivial**: 8 FKs `created_by` são `NO ACTION`, então o `DELETE` **falha** enquanto as linhas existirem — seria preciso primeiro reapontar a autoria para a conta sobrevivente, o que **reescreve o histórico**. Tentado e abandonado em 2026-07-14 por ser complexo demais para o ganho. Enquanto as duas viverem, decidir qual é a canônica.
 
 **3. Duas contas do Auth não casam com colaborador nenhum:** uma pessoa que não existe na tabela `colaboradores`, e uma "Nathalia" cujo `full_name` (só o primeiro nome) é ambíguo entre duas colaboradoras homônimas. Ambas têm só o papel `user` e ficaram **sem vínculo**, corretamente — o backfill se recusa a adivinhar. Elas podem se reivindicar pelo fluxo normal da etapa 2; o item aqui é só **conferir com um humano** quem são.
+
+---
+
+## Enxugar os grants de tabela de `anon`/`authenticated` (drift do dashboard Lovable)
+
+**Status:** pendente — aberto em 2026-07-15, ao endurecer a RLS de `colaboradores`
+**Área:** Auth e Permissões (ver [`estrutura/auth-e-permissoes.md`](./estrutura/auth-e-permissoes.md))
+
+Ao fazer a RLS de verdade em `colaboradores` apareceu que **`anon` tem `GRANT SELECT/INSERT/UPDATE/DELETE/TRUNCATE`** na tabela (e `authenticated` idem) — o padrão "tudo para todo mundo" que o dashboard do Lovable aplicou, provavelmente **em todas as tabelas de `public`**. Hoje só a **RLS** impede o estrago: `anon` não tem policy, então SELECT/INSERT/UPDATE/DELETE caem em *default deny*. **Mas `TRUNCATE` não passa por RLS** — um `GRANT TRUNCATE ... TO anon` é, no papel, poder de esvaziar a tabela. O que salva na prática é o PostgREST **não expor** TRUNCATE pela API; ainda assim é privilégio a mais, contra o princípio do menor privilégio.
+
+O trabalho: varrer `information_schema.role_table_grants` por `grantee IN ('anon','authenticated')` e **revogar o que não se justifica** — no mínimo `TRUNCATE`, `REFERENCES`, `TRIGGER` de `anon` em toda tabela; possivelmente reduzir `anon` a só o que os fluxos públicos realmente usam (que hoje passam por Edge Functions com `service_role`, não pela anon key direta). É sistêmico (não só `colaboradores`), então merece um passo próprio e um `db reset` de validação. **Atenção:** casa com a migration `20260712010000_grant_api_roles_table_privileges.sql`, que registrou os grants que faltavam em migration e ajustou `ALTER DEFAULT PRIVILEGES` — o enxugamento tem que conversar com ela, não brigar.
 
 ---
 
