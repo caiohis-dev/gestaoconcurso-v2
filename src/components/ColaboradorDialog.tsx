@@ -96,7 +96,7 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
   const [formData, setFormData] = useState(initialFormData);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isPublicSubmitting, setIsPublicSubmitting] = useState(false);
-  const [submitStatus, setSubmitStatus] = useState<{ type: 'success' | 'error'; message: string; codigo?: string } | null>(null);
+  const [submitStatus, setSubmitStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const isEditing = !!colaborador;
   const isSubmitting = isCreating || isUpdating || isPublicSubmitting;
 
@@ -702,11 +702,6 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
             <p className="text-lg text-foreground font-medium">
               {submitStatus.message}
             </p>
-            {submitStatus.type === 'success' && (
-              <p className="text-sm text-red-600 font-semibold">
-                Guarde seu Código de Acesso. Confira também sua caixa de Spam.
-              </p>
-            )}
             <Button
               type="button"
               onClick={() => {

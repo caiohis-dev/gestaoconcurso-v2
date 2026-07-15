@@ -138,7 +138,7 @@ Campos obrigatórios faltando (nome_completo, cpf ou data_nascimento)
 
 A importação em lote **preserva** os seguintes comportamentos:
 
-- **Não gera código de acesso automático pelo frontend:** o banco continua gerando o `colab_codigo_acesso` via trigger (`generate_codigo_acesso()`), como nos outros fluxos.
+- **Não gera nenhum código de acesso:** o código de 4 dígitos foi aposentado na refatoração do acesso do colaborador — o trigger `generate_codigo_acesso()` foi removido (subetapa 2C) e a coluna `colab_codigo_acesso` foi dropada (subetapa 2D). A importação em lote não escreve nada disso; o acesso ao portal se dá por e-mail/senha do Supabase Auth (ver [`../my_rules/estrutura/auth-e-permissoes.md`](../my_rules/estrutura/auth-e-permissoes.md)).
 - **Não valida formato de e-mail:** apenas converte para string. A validação é responsabilidade do banco ou de fluxos manuais.
 - **Não valida se o CPF é matematicamente válido:** apenas garante que tenha 11 dígitos numéricos.
 - **Não converte nomes para maiúsculas/minúsculas:** mantém o texto como veio na planilha.
