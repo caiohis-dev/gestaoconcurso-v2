@@ -87,7 +87,7 @@ Navegação visível no header (`Layout.tsx`) é filtrada por role, mas isso é 
 
 ## 6. Pontos de atenção / higiene do repositório
 
-- **`docs/cadastro-lote-sanitizacao.md`** é documentação específica e detalhada do fluxo de importação em lote — parece atualizada, referenciada em [`colaboradores.md`](./colaboradores.md).
+- **`docs/features/cadastro-lote-sanitizacao.md`** é documentação específica e detalhada do fluxo de importação em lote — parece atualizada, referenciada em [`colaboradores.md`](./colaboradores.md).
 - **`public/auth_users_export.csv`** existe no repo mas contém só o cabeçalho (sem linhas de dados) — não é vazamento de dados reais no momento, mas vale perguntar por que um artefato de export está versionado em `public/` (fica publicamente acessível se servido como estático).
 - **`src/integrations/supabase/types.ts`** é gerado automaticamente pelo Supabase CLI — não editar à mão. Já **`client.ts`**, apesar de um dia ter carregado o mesmo aviso, **é mantido à mão** (tem um wrapper de `fetch` que corrige o `expires_at` das respostas de auth); o comentário enganoso foi corrigido em 2026-07-11.
 - **Deploy ainda no Lovable** — a limpeza de 2026-07-11 removeu o Lovable do *código*, mas o site continua sendo publicado pela plataforma. Migrar hospedagem é trabalho pendente e separado.
