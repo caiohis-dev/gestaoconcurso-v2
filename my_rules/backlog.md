@@ -41,6 +41,15 @@ O trabalho: varrer `information_schema.role_table_grants` por `grantee IN ('anon
 
 ---
 
+## Edição de `colab_email` sensível à identidade (bloquear + reconciliar)
+
+**Status:** pendente — desenho fechado em 2026-07-15, **implementação não iniciada**
+**Área:** Auth e Permissões (ver [`estrutura/auth-e-permissoes.md`](./estrutura/auth-e-permissoes.md))
+
+Depois da refatoração do acesso do colaborador, `colab_email` virou a âncora de identidade do login — mas o dialog "Editar colaborador" ainda o edita como campo comum, o que dessincroniza cadastro e conta do Auth. Isso gera dois sintomas do mesmo defeito: o **caso travado** (e-mail digitado errado → conta pendente órfã no endereço velho, sem conserto pela UI) e a **dívida de sequestro** (trocar o e-mail de um login ativo = tomar a conta de alguém).
+
+O desenho completo — os três estados de uma linha (não-vinculada → livre; vinculada-pendente → lógica de reconciliação; vinculada-confirmada → bloquear) e as três etapas propostas — está em [`analises/roadmap-edicao-email-colaborador.md`](./analises/roadmap-edicao-email-colaborador.md). A saída administrativa para conta confirmada fica de fora de propósito, anotada como dívida em [`analises/dividas-auth-colaborador.md`](./analises/dividas-auth-colaborador.md) (§1-bis).
+
 ## Sanear as chaves PIX e preencher `tipo_chave_pix`
 
 **Status:** pendente — aberto em 2026-07-14, quando as colunas ganharam unicidade
