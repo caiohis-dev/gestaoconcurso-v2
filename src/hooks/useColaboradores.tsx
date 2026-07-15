@@ -142,15 +142,6 @@ export function useColaboradores(options: UseColaboradoresOptions = {}) {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, ...colaborador }: Partial<Colaborador> & { id: string }) => {
-      // First check if the collaborator is currently logged in
-      const { data: isLoggedIn } = await supabase.rpc('is_colaborador_logged_in', {
-        p_colaborador_id: id
-      });
-
-      if (isLoggedIn) {
-        throw new Error('COLABORADOR_LOGGED_IN');
-      }
-
       const { data, error } = await supabase
         .from('colaboradores')
         .update(colaborador)
@@ -170,13 +161,11 @@ export function useColaboradores(options: UseColaboradoresOptions = {}) {
     },
     onError: (error: Error) => {
       let message = error.message;
-      
-      if (error.message === 'COLABORADOR_LOGGED_IN') {
-        message = 'Não é possível editar este colaborador pois ele está logado no sistema. Aguarde o colaborador sair ou a sessão expirar.';
-      } else if (error.message.includes('new row violates row-level security policy')) {
-        message = 'Não é possível editar este colaborador pois ele está logado no sistema.';
+
+      if (error.message.includes('row-level security policy')) {
+        message = 'Você não tem permissão para editar este colaborador.';
       }
-      
+
       toast({
         title: 'Erro ao atualizar',
         description: message,

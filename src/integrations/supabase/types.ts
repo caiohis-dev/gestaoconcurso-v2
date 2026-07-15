@@ -52,35 +52,6 @@ export type Database = {
         }
         Relationships: []
       }
-      colaborador_sessions: {
-        Row: {
-          colaborador_id: string
-          created_at: string | null
-          id: string
-          last_activity: string | null
-        }
-        Insert: {
-          colaborador_id: string
-          created_at?: string | null
-          id?: string
-          last_activity?: string | null
-        }
-        Update: {
-          colaborador_id?: string
-          created_at?: string | null
-          id?: string
-          last_activity?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "colaborador_sessions_colaborador_id_fkey"
-            columns: ["colaborador_id"]
-            isOneToOne: true
-            referencedRelation: "colaboradores"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       colaboradores: {
         Row: {
           agencia: string | null
@@ -994,10 +965,6 @@ export type Database = {
         Returns: boolean
       }
       hash_password: { Args: { password: string }; Returns: string }
-      is_colaborador_logged_in: {
-        Args: { p_colaborador_id: string }
-        Returns: boolean
-      }
       is_coordenador_prova: {
         Args: { p_prova_id: string; p_user_id: string }
         Returns: boolean
