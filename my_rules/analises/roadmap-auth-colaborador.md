@@ -75,9 +75,11 @@ Os 3 e-mails que aparecem em 2 colaboradores cada (`suelenbertoldo9@gmail.com`, 
 >
 > **Cuidado herdado:** o `seed.local.sql` **não é versionado** (PII). A correção vive só no arquivo local e no dump que subirá para a produção da v2 — **um dump novo gerado pela `export-seed` nasce sem ela.**
 
-### 5. O código de acesso morre no fluxo, mas a coluna fica
+### 5. O código de acesso morre no fluxo, e a coluna também
 
-O código de 4 dígitos deixa de ser usado para qualquer coisa: some do frontend, e as funções que o manipulam são aposentadas. **A coluna `colab_codigo_acesso` permanece na tabela por ora** — o `DROP` fica para uma limpeza posterior, quando a refatoração estiver assentada.
+> **✅ Atualização (2026-07-15):** a coluna `colab_codigo_acesso` foi **dropada** na 2D (migration `20260715131321_*`, junto com o CHECK). O texto abaixo era o desenho original ("a coluna fica por ora"); a limpeza posterior aconteceu.
+
+O código de 4 dígitos deixa de ser usado para qualquer coisa: some do frontend, e as funções que o manipulam são aposentadas. ~~A coluna `colab_codigo_acesso` permanece na tabela por ora~~ — o `DROP` foi feito na 2D.
 
 Com o e-mail como única prova, o código perde a razão de existir — e sua remoção **elimina de uma vez as fragilidades 2, 3, 4 e 5 do laudo** (texto puro, 4 dígitos sem rate limit, o reset que devolve a credencial na resposta HTTP, o e-mail arbitrário gravado sem verificação). São resolvidas por remoção, não por correção.
 
@@ -85,9 +87,9 @@ Com o e-mail como única prova, o código perde a razão de existir — e sua re
 
 A ordem abaixo inverte a proposta inicial (que começava pelo frontend): **a fundação no banco precede a porta nova**, senão o fluxo de reivindicação não tem onde gravar o vínculo.
 
-> ### 📍 Onde paramos (2026-07-14)
+> ### 📍 Onde paramos — ✅ REFATORAÇÃO COMPLETA (2026-07-15)
 >
-> **A etapa 1 está COMPLETA.** Branch `feat/auth-colaborador`, saída de `dev`. Tudo é banco — **nada do fluxo de acesso mudou ainda**: o `/auth` segue com CPF + código de 4 dígitos, e nenhum código lê a coluna ou o papel novos. **A etapa 2 é a próxima.**
+> **Tudo concluído.** As etapas 1, 2 (2A/2B/2C) e 3 (2D) estão feitas na branch `feat/auth-colaborador`; as 8 fragilidades do laudo resolvidas; o item saiu do `backlog.md`. Falta apenas o **deploy** (bootstrap da v2 — ver [`../banco-producao.md`](../banco-producao.md)). O histórico da etapa 1 abaixo fica como registro.
 >
 > | | |
 > | --- | --- |
@@ -177,7 +179,8 @@ Consequências para o resto da pilha:
 - **[✅ feito em 2026-07-15]** **Tirar o `AND NOT is_colaborador_logged_in(id)`** da policy de UPDATE de `colaboradores`. Migration `20260715130603_*`: policy recriada só com `has_role(admin) OR has_role(coordenador)`; pré-check equivalente removido do `useColaboradores`. Verificado por papel: admin/coord editam, colaborador puro não edita direto (grava pela RPC).
 - **`DROP` das sobras:** **[✅ feito em 2026-07-15]** dropadas `is_colaborador_logged_in` e a tabela `colaborador_sessions` (migration `20260715130603_*`); template órfão `_shared/transactional-email-templates/codigo-acesso.tsx` removido; e a coluna `colab_codigo_acesso` (+ CHECK `colab_codigo_acesso_format`) dropada (migration `20260715131321_*`).
 - **[✅ feito em 2026-07-15]** **E-mail em massa do `PainelDadosColaboradores.tsx`:** **decisão — aposentar o botão inteiro.** Removida a feature (botão "Solicitar Atualização de Dados", `buildEmailHtml`, `getCamposFaltantes`, o dialog, a leitura de `email_atualizacao_log`); a página virou um painel read-only (nome, e-mail, unidade, último acesso). A tabela `email_atualizacao_log` fica (histórico). A coluna "Código de acesso" saiu dos exports de `GerenciarProva` e `GerenciarColaboradoresProva`, e `colab_codigo_acesso` saiu do tipo/erros do `useColaboradores` — o que destravou o DROP da coluna. `tsc` + `build` passam.
-- Corrigir o doc [`../estrutura/auth-e-permissoes.md`](../estrutura/auth-e-permissoes.md) se ainda restar a afirmação de que o código é comparado contra hash — o banco desmente (é texto puro).
+- **[✅ verificado em 2026-07-15]** Corrigir o doc [`../estrutura/auth-e-permissoes.md`](../estrutura/auth-e-permissoes.md) se ainda restar a afirmação de que o código é comparado contra hash. **Não restava** — o doc já foi reescrito nas subetapas anteriores e não afirma nada sobre hash; nada a corrigir.
+- **[✅ nota — fragilidade 7 resolvida]** A `check-cpf-colaborador` (única sobrevivente do modelo antigo) **normaliza o CPF** (`replace(/\D/g,'').padStart(11,'0')`) antes de comparar — a divergência de normalização entre camadas (fragilidade 7) não existe mais; a RPC velha que comparava o CPF cru foi dropada no item 3.
 
 ## Fora de escopo — dívida assumida conscientemente
 
@@ -185,7 +188,7 @@ Consequências para o resto da pilha:
 
 O que **não** foi adiado, e é o que mantém a dívida contida: com `user_id UNIQUE` e a reivindicação permitida só quando `user_id IS NULL`, o risco fica confinado à janela *antes* do primeiro vínculo. Depois de vinculada, a conta não é reivindicável de novo.
 
-**A trava de edição concorrente.** A policy de UPDATE de `colaboradores` tem `AND NOT is_colaborador_logged_in(id)`, que impede admin/coordenador de editar enquanto o colaborador está "logado". Esse mecanismo se apoia no `register_colaborador_session`, que morre na etapa 3 (qualquer um o dispara com qualquer `id` — fragilidade 8). Decidido em 2026-07-14: **a trava também vira dívida.** Não será refundada agora sobre a sessão real do Auth; a cláusula sai da policy na etapa 3 e a proteção contra edição concorrente **deixa de existir** até uma refatoração futura decidir se ela deve voltar, e sobre que fundamento.
+**A trava de edição concorrente.** ✅ **Concretizada em 2026-07-15** (2D, migration `20260715130603_*`): a cláusula `AND NOT is_colaborador_logged_in(id)` saiu da policy de UPDATE, e `is_colaborador_logged_in` + `colaborador_sessions` foram dropadas. **A proteção contra edição concorrente não existe mais** (last-write-wins) — dívida em vigor, até uma refatoração futura decidir se volta, e sobre que fundamento. O mecanismo já não protegia de verdade desde a 2A (ninguém escrevia em `colaborador_sessions`, então a função devolvia sempre `false`), e qualquer um disparava `register_colaborador_session` com qualquer `id` (fragilidade 8, também fechada pelo DROP).
 
 *Por que adiar é seguro:* a trava **se auto-expira**. `is_colaborador_logged_in` não lê um flag persistente — ela pergunta se há linha em `colaborador_sessions` com `last_activity` nos últimos 15 minutos. Sem ninguém escrevendo naquela tabela (o `register_colaborador_session` morre), toda linha envelhece e a função passa a devolver `false` para sempre. Não existe, portanto, o cenário temido de um colaborador ficar "logado" eternamente e travar a edição do coordenador. A cláusula morreria de causas naturais mesmo que ficasse — **tiramos da policy para não deixar no banco um texto que parece proteger e não protege.**
 
@@ -193,8 +196,15 @@ O que **não** foi adiado, e é o que mantém a dívida contida: com `user_id UN
 
 ## Ponto em aberto
 
-**Nenhum.** O desenho está fechado e a etapa 1 está completa.
+**Nenhum na implementação.** As etapas 1–3 estão completas; falta só o **deploy** (bootstrap da v2, ver [`../banco-producao.md`](../banco-producao.md)).
 
-O único ponto que esteve em aberto — *onde vive o backfill* — foi **resolvido em 2026-07-14** com o `seed.pos.sql` (quadro da etapa 1). Ele nunca foi dúvida de desenho, e sim uma restrição de mecânica do Supabase que só apareceu quando a primeira operação de dados foi executada: **migration não alcança dado que entra pelo dump.**
+**Dívidas conscientes que sobrevivem à refatoração** (nenhuma bloqueia o deploy):
+- **Sequestro de conta por troca de e-mail** (seção acima) — contida pelo `user_id UNIQUE` + reivindicação só com `user_id IS NULL`, mas não tratada.
+- **Edição concorrente sem trava** (seção acima) — last-write-wins, a proteção deixou de existir na 2D.
+- **Reivindicação de CPF alheio** dispara invite ao dono do e-mail (recuperável) — contida pelo rate limit.
+- Três dívidas de contas do Auth, no [`../backlog.md`](../backlog.md): login `ab@ab.com` de um coordenador, a conta duplicada do Caio, e as contas do Auth sem colaborador.
+- **Drift dos grants de `anon`/`authenticated`** (`TRUNCATE` etc.), aberto na RLS da 2D — no [`../backlog.md`](../backlog.md), sistêmico.
 
-A investigação do backfill levantou **três dívidas novas**, todas registradas no [`../backlog.md`](../backlog.md) e nenhuma delas bloqueando a etapa 2: o login `ab@ab.com` de um coordenador, a conta duplicada do Caio, e as contas do Auth que não casam com colaborador nenhum.
+**Fragilidade 7 (normalização de CPF) — resolvida:** a `check-cpf-colaborador`, única sobrevivente, normaliza o CPF antes de comparar; a RPC velha que comparava cru foi dropada.
+
+O ponto de desenho que esteve em aberto — *onde vive o backfill* — foi resolvido em 2026-07-14 com o `seed.pos.sql`: **migration não alcança dado que entra pelo dump.**
