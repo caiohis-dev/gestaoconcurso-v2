@@ -12,6 +12,14 @@ Como o **e-mail do cadastro é a prova de identidade** da reivindicação, quem 
 
 **O que ficou adiado:** auditoria de alterações de `colab_email`; troca de e-mail passando pelo fluxo do próprio Supabase Auth *após* o vínculo; e restrição de quem pode editar o campo.
 
+> **Desenho em curso (2026-07-15):** há agora um roadmap para tratar a raiz disto — [`roadmap-edicao-email-colaborador.md`](./roadmap-edicao-email-colaborador.md). Ele **fecha o sequestro para contas confirmadas** (bloqueia a edição de `colab_email` em linha vinculada-e-confirmada) e conserta o caso travado (linha vinculada-mas-pendente). A **janela do não-vinculado** (estado A) descrita acima **permanece** como dívida aceita — é o caminho legítimo de inclusão/correção de e-mail antes da reivindicação. Ainda não implementado.
+
+## 1-bis. Troca legítima de e-mail de uma conta já confirmada (saída administrativa)
+
+Recorte do [`roadmap-edicao-email-colaborador.md`](./roadmap-edicao-email-colaborador.md) deixado de fora **de propósito**. No desenho, trocar o e-mail de uma conta **confirmada** (login ativo) pertence ao **próprio dono**, via o fluxo nativo de troca de e-mail do Supabase Auth (dupla confirmação no endereço novo) — o coordenador **não** recebe essa alavanca, porque qualquer porta administrativa para reescrever o e-mail de conta confirmada **reabre o sequestro**.
+
+Fica em aberto o caso legítimo em que o dono **não consegue** fazer o autosserviço: mudou de e-mail e perdeu a caixa antiga, ou saiu e o endereço morreu. Hoje **não há saída administrativa** para isso — de propósito. Se um dia precisar existir, teria que ser uma ação **separada, restrita a `admin`** (não coordenador), **auditada**, e passando pelo admin API do Auth — decisão de **política**, não só de código. Contenção atual: o universo afetado é pequeno (a cúpula + quem já reivindicou), e o dono ainda tem o autosserviço enquanto tiver a caixa antiga.
+
 ## 2. Edição concorrente sem trava (last-write-wins)
 
 Concretizada na 2D (migration `20260715130603_*`): a cláusula `AND NOT is_colaborador_logged_in(id)` saiu da policy de UPDATE de `colaboradores`, e `is_colaborador_logged_in` + a tabela `colaborador_sessions` foram dropadas. **A proteção contra edição concorrente não existe mais** — dois gestores (ou um gestor e o próprio colaborador) podem salvar o mesmo cadastro ao mesmo tempo, e o último escreve por cima.
