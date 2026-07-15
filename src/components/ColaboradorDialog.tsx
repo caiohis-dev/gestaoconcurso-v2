@@ -45,7 +45,6 @@ const colaboradorSchema = z.object({
   colab_deficiente: z.boolean().optional().default(false),
   colab_email: z.string().min(1, 'Email obrigatório').email('Email inválido').max(255, 'Máximo 255 caracteres'),
   colab_chave_pix: z.string().max(255, 'Máximo 255 caracteres').nullable().optional(),
-  colab_codigo_acesso: z.string().regex(/^\d{4}$/, 'Código deve ter exatamente 4 dígitos').optional(),
   codigo_banco: z.string().regex(/^\d{3}$/, 'Selecione um banco').nullable().optional().or(z.literal('')),
   agencia: z.string().regex(/^\d{1,8}$/, 'Agência deve conter apenas números').nullable().optional().or(z.literal('')),
   agencia_dv: z.string().regex(/^[0-9xX]{1,2}$/, 'DV inválido').nullable().optional().or(z.literal('')),
@@ -83,8 +82,6 @@ const initialFormData = {
   colab_deficiente: false,
   colab_email: '',
   colab_chave_pix: '',
-  colab_codigo_acesso: '',
-  colab_confirma_codigo_acesso: '',
   codigo_banco: '',
   agencia: '',
   agencia_dv: '',
@@ -125,8 +122,6 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
         colab_deficiente: colaborador.colab_deficiente,
         colab_email: colaborador.colab_email || '',
         colab_chave_pix: colaborador.colab_chave_pix || '',
-        colab_codigo_acesso: colaborador.colab_codigo_acesso || '',
-        colab_confirma_codigo_acesso: '',
         codigo_banco: colaborador.codigo_banco || '',
         agencia: colaborador.agencia || '',
         agencia_dv: colaborador.agencia_dv || '',
@@ -135,7 +130,7 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
         tipo_conta: colaborador.tipo_conta || '',
       });
     } else {
-      setFormData({ ...initialFormData, colab_cpf: initialCpf ? maskCPF(initialCpf) : '', colab_codigo_acesso: '', colab_confirma_codigo_acesso: '' });
+      setFormData({ ...initialFormData, colab_cpf: initialCpf ? maskCPF(initialCpf) : '' });
     }
     setErrors({});
   }, [colaborador, open, initialCpf]);
@@ -171,16 +166,7 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
       conta: formData.conta || null,
       conta_dv: formData.conta_dv || null,
       tipo_conta: (formData.tipo_conta as 'corrente' | 'poupanca' | '') || null,
-      ...(isEditing ? {} : { colab_codigo_acesso: formData.colab_codigo_acesso }),
     };
-
-    if (!isEditing && formData.colab_codigo_acesso !== formData.colab_confirma_codigo_acesso) {
-      setErrors((prev) => ({
-        ...prev,
-        colab_confirma_codigo_acesso: 'Os códigos de acesso não coincidem.',
-      }));
-      return;
-    }
 
     try {
       colaboradorSchema.parse(data);
@@ -222,19 +208,18 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
             let friendly = raw;
             if (/cpf.*(já|ja).*cadastrad/i.test(raw)) {
               friendly = 'Este CPF já está cadastrado no sistema.';
-            } else if (/c[oó]digo.*(uso|cadastrad)/i.test(raw) || /colab_codigo_acesso/i.test(raw)) {
-              friendly = 'Este código de acesso já está em uso. Escolha outro.';
+            } else if (/e-?mail.*(uso|cadastrad)/i.test(raw)) {
+              friendly = 'Este e-mail já está em uso por outro cadastro.';
             }
             setSubmitStatus({ type: 'error', message: friendly });
             return;
           }
-          const codigo = result?.codigo_acesso;
+          const emailMascarado = result?.email_mascarado;
           setSubmitStatus({
             type: 'success',
-            message: codigo
-              ? `Colaborador cadastrado com sucesso! Código de acesso: ${codigo}`
-              : 'Colaborador cadastrado com sucesso!',
-            codigo,
+            message: emailMascarado
+              ? `Cadastro criado! Enviamos um link para ${emailMascarado} — abra-o para criar a sua senha e acessar o sistema. Confira também a caixa de spam.`
+              : 'Cadastro criado! Enviamos um link para o seu e-mail — abra-o para criar a sua senha.',
           });
         } catch (err: any) {
           setSubmitStatus({
@@ -274,61 +259,15 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Código de Acesso (apenas ao editar) */}
-          {isEditing && colaborador?.colab_codigo_acesso && (
-            <div className="bg-primary/10 border border-primary/20 rounded-lg p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label className="text-sm font-medium text-primary">Código de Acesso</Label>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Código utilizado pelo colaborador para acessar o sistema
-                  </p>
-                </div>
-                <div className="text-3xl font-mono font-bold tracking-[0.3em] text-primary">
-                  {colaborador.colab_codigo_acesso}
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Identificação */}
           <div className="space-y-4">
             <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Identificação</h3>
+            {publicMode && (
+              <p className="text-sm text-muted-foreground">
+                Ao final, enviaremos um link para o seu e-mail para você criar a sua senha de acesso.
+              </p>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {!isEditing && (
-                <div className="space-y-2 sm:col-span-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="codigo_acesso">Crie seu Código de Acesso (4 dígitos) *</Label>
-                    <span className="text-xs text-muted-foreground">{formData.colab_codigo_acesso.length}/4</span>
-                  </div>
-                  <Input
-                    id="codigo_acesso"
-                    inputMode="numeric"
-                    value={formData.colab_codigo_acesso}
-                    onChange={(e) => updateField('colab_codigo_acesso', e.target.value.replace(/\D/g, '').slice(0, 4))}
-                    maxLength={4}
-                    placeholder="0000"
-                  />
-                  {errors.colab_codigo_acesso && <p className="text-sm text-destructive">{errors.colab_codigo_acesso}</p>}
-                </div>
-              )}
-              {!isEditing && (
-                <div className="space-y-2 sm:col-span-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="confirma_codigo_acesso">Confirme seu Código de Acesso (4 dígitos) *</Label>
-                    <span className="text-xs text-muted-foreground">{formData.colab_confirma_codigo_acesso.length}/4</span>
-                  </div>
-                  <Input
-                    id="confirma_codigo_acesso"
-                    inputMode="numeric"
-                    value={formData.colab_confirma_codigo_acesso}
-                    onChange={(e) => updateField('colab_confirma_codigo_acesso', e.target.value.replace(/\D/g, '').slice(0, 4))}
-                    maxLength={4}
-                    placeholder="0000"
-                  />
-                  {errors.colab_confirma_codigo_acesso && <p className="text-sm text-destructive">{errors.colab_confirma_codigo_acesso}</p>}
-                </div>
-              )}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="matricula">Matrícula (PMVR)</Label>

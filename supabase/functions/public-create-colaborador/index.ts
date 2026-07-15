@@ -1,6 +1,11 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { z } from 'npm:zod@3';
+import { enviarLinkAcesso, mascararEmail } from '../_shared/enviar-link-acesso.ts';
+
+// Subetapa 2C: o cadastro público cria a linha de colaborador e dispara o link de
+// acesso (invite) para o e-mail informado — o mesmo fluxo da reivindicação. Não pede
+// mais o código de 4 dígitos. O vínculo com a conta é feito pelo trigger no signup.
 
 const BodySchema = z.object({
   colab_matricula: z.string().max(6).nullable().optional(),
@@ -20,9 +25,10 @@ const BodySchema = z.object({
   colab_telefone: z.number().nullable().optional(),
   colab_complemento_endereco: z.string().max(20).nullable().optional(),
   colab_deficiente: z.boolean().optional().default(false),
-  colab_email: z.string().email().max(255).nullable().optional().or(z.literal('')),
+  // E-mail é obrigatório: é para ele que o link de acesso vai. Sem e-mail, não há
+  // como a pessoa criar a senha.
+  colab_email: z.string().email('E-mail inválido').max(255),
   colab_chave_pix: z.string().max(255).nullable().optional(),
-  colab_codigo_acesso: z.string().regex(/^\d{4}$/, 'Código de acesso deve ter 4 dígitos'),
   codigo_banco: z.string().regex(/^\d{3}$/, 'Código do banco deve ter 3 dígitos').nullable().optional().or(z.literal('')),
   agencia: z.string().regex(/^\d{1,8}$/, 'Agência deve conter apenas números').nullable().optional().or(z.literal('')),
   agencia_dv: z.string().regex(/^[0-9xX]{1,2}$/, 'DV da agência inválido').nullable().optional().or(z.literal('')),
@@ -48,7 +54,7 @@ Deno.serve(async (req) => {
 
     const payload = { ...parsed.data };
     payload.colab_cpf = payload.colab_cpf.replace(/\D/g, '').padStart(11, '0');
-    if (payload.colab_email === '') payload.colab_email = null;
+    payload.colab_email = payload.colab_email.trim();
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -72,7 +78,7 @@ Deno.serve(async (req) => {
     const { data, error } = await supabase
       .from('colaboradores')
       .insert(payload)
-      .select('id, colab_codigo_acesso')
+      .select('id, colab_nome_completo, colab_email')
       .single();
 
     if (error) {
@@ -82,9 +88,7 @@ Deno.serve(async (req) => {
         if (message.includes('colab_cpf')) { message = 'CPF já cadastrado'; status = 409; }
         else if (message.includes('colab_matricula')) { message = 'Matrícula já cadastrada'; status = 409; }
         else if (message.includes('colab_pis')) { message = 'PIS já cadastrado'; status = 409; }
-        else if (message.includes('colab_codigo_acesso')) { message = 'Código de acesso já está em uso'; status = 409; }
-      } else if (message.includes('colab_codigo_acesso_format')) {
-        message = 'Código de acesso deve ter 4 dígitos numéricos';
+        else if (message.includes('colab_email')) { message = 'Este e-mail já está em uso por outro cadastro'; status = 409; }
       }
       return new Response(
         JSON.stringify({ error: message }),
@@ -92,8 +96,16 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Dispara o link de acesso (invite) para o e-mail do cadastro. O trigger vincula a
+    // conta ao criar. Uma falha de envio não desfaz o cadastro — a linha já existe e a
+    // pessoa pode reivindicar/recuperar depois.
+    await enviarLinkAcesso(supabase, {
+      email: data.colab_email as string,
+      nome: data.colab_nome_completo as string,
+    });
+
     return new Response(
-      JSON.stringify({ success: true, id: data.id, codigo_acesso: data.colab_codigo_acesso }),
+      JSON.stringify({ success: true, id: data.id, email_mascarado: mascararEmail(data.colab_email as string) }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (e) {

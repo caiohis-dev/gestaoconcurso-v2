@@ -23,6 +23,7 @@ type Resultado =
 
 interface Props {
   onClose: () => void;
+  initialCpf?: string;
 }
 
 /**
@@ -32,8 +33,8 @@ interface Props {
  * e-mail MASCARADO, nunca por extenso. Sem e-mail no cadastro → procurar o coordenador
  * (não há mais o ramo "digite um e-mail agora", que gravava e-mail sem prova).
  */
-export default function ReivindicarAcessoCard({ onClose }: Props) {
-  const [cpf, setCpf] = useState("");
+export default function ReivindicarAcessoCard({ onClose, initialCpf }: Props) {
+  const [cpf, setCpf] = useState(initialCpf ? formatCpf(initialCpf) : "");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultado, setResultado] = useState<Resultado | null>(null);
