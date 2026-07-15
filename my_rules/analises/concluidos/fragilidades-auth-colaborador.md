@@ -68,7 +68,7 @@ O front e as edge functions normalizam o CPF com `padStart(11)`; a RPC `verify_c
 
 > **✅ Fechada em 2026-07-15** (subetapa 2D, item 3). A função foi **dropada** (migration `20260715125720_*`), junto com `unregister/update_colaborador_session_activity`. Sobra só a tabela `colaborador_sessions` (órfã) e a trava `is_colaborador_logged_in` na policy de UPDATE, que saem no fim da 2D.
 
-É chamada com o `id` do `localStorage` na montagem, sem validar que a sessão é legítima — então o rastro de "está logado" (que bloqueia edição do admin, ver [`estrutura/colaboradores.md`](../../estrutura/colaboradores.md)) pode ser disparado para qualquer `id`.
+É chamada com o `id` do `localStorage` na montagem, sem validar que a sessão é legítima — então o rastro de "está logado" (que bloqueia edição do admin, ver [`../../estrutura/colaboradores.md`](../../estrutura/colaboradores.md)) pode ser disparado para qualquer `id`.
 
 ---
 

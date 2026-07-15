@@ -2,7 +2,7 @@
 
 > **Data:** 2026-07-13. **Natureza:** documento de desenho. Registra as decisões tomadas para corrigir as fragilidades do laudo [`fragilidades-auth-colaborador.md`](./fragilidades-auth-colaborador.md) e serve de roteiro da implementação. Nenhum código foi escrito ainda.
 >
-> Quando a refatoração for concluída, o que mudou é descrito em [`../estrutura/auth-e-permissoes.md`](../../estrutura/auth-e-permissoes.md) e o item correspondente sai do [`../backlog.md`](../../backlog.md). Este arquivo permanece como registro da decisão.
+> Quando a refatoração for concluída, o que mudou é descrito em [`../../estrutura/auth-e-permissoes.md`](../../estrutura/auth-e-permissoes.md) e o item correspondente sai do [`../../backlog.md`](../../backlog.md). Este arquivo permanece como registro da decisão.
 
 ## A decisão de fundo
 
@@ -17,7 +17,7 @@ A troca não é só de conveniência — ela dissolve dois problemas que o scrip
 
 ## Os fatos do banco que fundamentam o desenho
 
-Levantados no banco local em 2026-07-13 (que é a fonte de verdade — ver [`../banco-producao.md`](../../banco-producao.md)):
+Levantados no banco local em 2026-07-13 (que é a fonte de verdade — ver [`../../banco-producao.md`](../../banco-producao.md)):
 
 | Fato | Número |
 | --- | --- |
@@ -71,7 +71,7 @@ Os 3 e-mails que aparecem em 2 colaboradores cada (`suelenbertoldo9@gmail.com`, 
 
 *Por quê apagar dos dois lados:* um e-mail corresponde a exatamente um usuário no Supabase Auth. Manter o e-mail em um dos pares seria escolher arbitrariamente quem tem direito à caixa, e deixaria a outra pessoa travada sem explicação. Zerando ambos, os 6 caem no caminho do coordenador, que é quem sabe de quem é o quê. **A resolução é humana e posterior** — não bloqueia a refatoração.
 
-> **✅ Feito em 2026-07-14 — e não como migration.** A limpeza foi aplicada **dentro do `supabase/seed.local.sql`**, não em `supabase/migrations/`. O motivo está na regra do `[db.seed]`: o seed roda **depois** das migrations no `db reset` e **não roda em `db push`**. Uma migration de limpeza rodaria contra a tabela vazia (no-op) e o dump, logo depois, reintroduziria os 6 duplicados. **Dado que entra pelo dump só pode ser corrigido no dump.** Detalhes da edição (só `colab_email`; `colab_chave_pix` e `email_atualizacao_log` preservados) em [`../estrutura/desenvolvimento-local.md`](../../estrutura/desenvolvimento-local.md). Números depois da limpeza: 771 colaboradores, **517 com e-mail, 254 sem**.
+> **✅ Feito em 2026-07-14 — e não como migration.** A limpeza foi aplicada **dentro do `supabase/seed.local.sql`**, não em `supabase/migrations/`. O motivo está na regra do `[db.seed]`: o seed roda **depois** das migrations no `db reset` e **não roda em `db push`**. Uma migration de limpeza rodaria contra a tabela vazia (no-op) e o dump, logo depois, reintroduziria os 6 duplicados. **Dado que entra pelo dump só pode ser corrigido no dump.** Detalhes da edição (só `colab_email`; `colab_chave_pix` e `email_atualizacao_log` preservados) em [`../../estrutura/desenvolvimento-local.md`](../../estrutura/desenvolvimento-local.md). Números depois da limpeza: 771 colaboradores, **517 com e-mail, 254 sem**.
 >
 > **Cuidado herdado:** o `seed.local.sql` **não é versionado** (PII). A correção vive só no arquivo local e no dump que subirá para a produção da v2 — **um dump novo gerado pela `export-seed` nasce sem ela.**
 
@@ -89,7 +89,7 @@ A ordem abaixo inverte a proposta inicial (que começava pelo frontend): **a fun
 
 > ### 📍 Onde paramos — ✅ REFATORAÇÃO COMPLETA (2026-07-15)
 >
-> **Tudo concluído.** As etapas 1, 2 (2A/2B/2C) e 3 (2D) estão feitas na branch `feat/auth-colaborador`; as 8 fragilidades do laudo resolvidas; o item saiu do `backlog.md`. Falta apenas o **deploy** (bootstrap da v2 — ver [`../banco-producao.md`](../../banco-producao.md)). O histórico da etapa 1 abaixo fica como registro.
+> **Tudo concluído.** As etapas 1, 2 (2A/2B/2C) e 3 (2D) estão feitas na branch `feat/auth-colaborador`; as 8 fragilidades do laudo resolvidas; o item saiu do `backlog.md`. Falta apenas o **deploy** (bootstrap da v2 — ver [`../../banco-producao.md`](../../banco-producao.md)). O histórico da etapa 1 abaixo fica como registro.
 >
 > | | |
 > | --- | --- |
@@ -98,7 +98,7 @@ A ordem abaixo inverte a proposta inicial (que começava pelo frontend): **a fun
 > | `03842c7` | unicidade de `colab_email` e `colab_chave_pix` + coluna `tipo_chave_pix` |
 > | — | **backfill dos 12**, no `seed.pos.sql` (novo, versionado) |
 >
-> O terceiro não estava no roadmap: é um pedido à parte, feito enquanto a tabela estava aberta (ver [`../estrutura/colaboradores.md`](../../estrutura/colaboradores.md)). Ele ajuda a refatoração de raspão — o índice único do e-mail impede que o mesmo endereço volte a se repetir e reabra o problema que a limpeza fechou.
+> O terceiro não estava no roadmap: é um pedido à parte, feito enquanto a tabela estava aberta (ver [`../../estrutura/colaboradores.md`](../../estrutura/colaboradores.md)). Ele ajuda a refatoração de raspão — o índice único do e-mail impede que o mesmo endereço volte a se repetir e reabra o problema que a limpeza fechou.
 
 ### Etapa 1 — Fundação no banco (sem efeito visível)
 
@@ -107,11 +107,11 @@ A ordem abaixo inverte a proposta inicial (que começava pelo frontend): **a fun
 - **[✅ feito em 2026-07-14]** Coluna `colaboradores.user_id`, `UNIQUE`, FK para `auth.users(id)` **`ON DELETE SET NULL`** — migration `20260714162029_add_user_id_em_colaboradores.sql`. O `SET NULL` é deliberado: apagar a conta não pode apagar a pessoa (`CASCADE` destruiria folha de pagamento); o cadastro só volta a ficar não-vinculado.
 - **[✅ feito em 2026-07-14]** **Backfill dos 12** que já são usuários: preenche `colaboradores.user_id` e concede o papel `colaborador` em `user_roles`. É o "script" da conversa original — 12 linhas, não 771. Mora no **`supabase/seed.pos.sql`** (novo), pelo motivo do quadro abaixo. **Quem são os 12, um a um** (e as 3 contas do Auth que ficaram de fora): [`backfill-colaboradores-usuarios.md`](./backfill-colaboradores-usuarios.md).
 
-**Schema em migrations novas** (ver [`../estrutura/desenvolvimento-local.md`](../../estrutura/desenvolvimento-local.md) — migrations aplicadas nunca são editadas). **Mas dado não:**
+**Schema em migrations novas** (ver [`../../estrutura/desenvolvimento-local.md`](../../estrutura/desenvolvimento-local.md) — migrations aplicadas nunca são editadas). **Mas dado não:**
 
 > ⚠️ **O backfill é operação de dados e tem o mesmo problema da limpeza acima.** Como migration, ele rodaria no bootstrap de produção **antes** da carga do `seed.local.sql` — contra `colaboradores` e `auth.users` vazios, casando zero linhas — e nunca mais rodaria (migration roda uma vez). Os 12 nasceriam em produção **sem `user_id` e sem o papel `colaborador`**, e a cúpula ficaria sem acesso de colaborador, silenciosamente.
 >
-> **Decidido em 2026-07-14: um `seed.pos.sql` versionado**, acrescentado a `sql_paths` **depois** do `seed.local.sql`. Foi a única das três saídas que fica **versionada e roda sozinha no `db reset`** (as outras eram: viver dentro do dump, que se perde num dump novo; ou virar migration com o seed carregado no meio do `db push`). Em produção, onde seed não roda, ele é o **passo 5 do bootstrap** — ver [`../banco-producao.md`](../../banco-producao.md).
+> **Decidido em 2026-07-14: um `seed.pos.sql` versionado**, acrescentado a `sql_paths` **depois** do `seed.local.sql`. Foi a única das três saídas que fica **versionada e roda sozinha no `db reset`** (as outras eram: viver dentro do dump, que se perde num dump novo; ou virar migration com o seed carregado no meio do `db push`). Em produção, onde seed não roda, ele é o **passo 5 do bootstrap** — ver [`../../banco-producao.md`](../../banco-producao.md).
 >
 > As duas primeiras linhas da etapa (o enum e a coluna `user_id`) são schema puro e **não** têm esse problema: seguem como migrations normais.
 
@@ -123,7 +123,7 @@ Por isso o backfill casa por **e-mail OU por nome**, com uma trava: só vincula 
 
 Verificado antes de escrever a regra: **não há homônimos reais** entre os 771 (o único nome repetido é "TESTE AUTOMATIZADO", linha de teste). Depois do `db reset`: 12 vinculados, 12 com o papel, zero vínculos cruzados, e o nome do cadastro batendo com o da conta nas 12 linhas.
 
-Três contas do Auth **não** são colaboradores e ficaram de fora, corretamente: uma pessoa que não existe na `colaboradores`, uma "Nathalia" que não dá para desambiguar entre duas colaboradoras homônimas (papel `user`, não é cúpula), e a **segunda conta do próprio Caio** — ver as dívidas no [`../backlog.md`](../../backlog.md).
+Três contas do Auth **não** são colaboradores e ficaram de fora, corretamente: uma pessoa que não existe na `colaboradores`, uma "Nathalia" que não dá para desambiguar entre duas colaboradoras homônimas (papel `user`, não é cúpula), e a **segunda conta do próprio Caio** — ver as dívidas no [`../../backlog.md`](../../backlog.md).
 
 ### Etapa 2 — Porta única e reivindicação
 
@@ -165,7 +165,7 @@ Onde hoje há **um** link ambíguo, passam a existir **dois** caminhos, que a re
 Consequências para o resto da pilha:
 
 - **`check-cpf-colaborador` é substituído** por uma RPC nova que devolve `{existe, email_mascarado, ja_vinculado}` — e **nunca** o e-mail inteiro. Ela precisa **normalizar o CPF** (fragilidade 7: o front faz `padStart(11)`, a RPC atual compara como veio) e precisa de **rate limit**, senão trocamos um oráculo de enumeração por outro.
-- **`reset-codigo-acesso` e o `buildEmailHtml`** somem. O e-mail com a identidade visual da FEVRE (logo, cores) vira um **template do Supabase Auth**, configurado no dashboard — é trabalho novo, e cai junto no passo "auth no dashboard" do bootstrap de produção (ver [`../banco-producao.md`](../../banco-producao.md)).
+- **`reset-codigo-acesso` e o `buildEmailHtml`** somem. O e-mail com a identidade visual da FEVRE (logo, cores) vira um **template do Supabase Auth**, configurado no dashboard — é trabalho novo, e cai junto no passo "auth no dashboard" do bootstrap de produção (ver [`../../banco-producao.md`](../../banco-producao.md)).
 
 ### Etapa 3 (= subetapa 2D) — Fechar as portas velhas
 
@@ -179,7 +179,7 @@ Consequências para o resto da pilha:
 - **[✅ feito em 2026-07-15]** **Tirar o `AND NOT is_colaborador_logged_in(id)`** da policy de UPDATE de `colaboradores`. Migration `20260715130603_*`: policy recriada só com `has_role(admin) OR has_role(coordenador)`; pré-check equivalente removido do `useColaboradores`. Verificado por papel: admin/coord editam, colaborador puro não edita direto (grava pela RPC).
 - **`DROP` das sobras:** **[✅ feito em 2026-07-15]** dropadas `is_colaborador_logged_in` e a tabela `colaborador_sessions` (migration `20260715130603_*`); template órfão `_shared/transactional-email-templates/codigo-acesso.tsx` removido; e a coluna `colab_codigo_acesso` (+ CHECK `colab_codigo_acesso_format`) dropada (migration `20260715131321_*`).
 - **[✅ feito em 2026-07-15]** **E-mail em massa do `PainelDadosColaboradores.tsx`:** **decisão — aposentar o botão inteiro.** Removida a feature (botão "Solicitar Atualização de Dados", `buildEmailHtml`, `getCamposFaltantes`, o dialog, a leitura de `email_atualizacao_log`); a página virou um painel read-only (nome, e-mail, unidade, último acesso). A tabela `email_atualizacao_log` fica (histórico). A coluna "Código de acesso" saiu dos exports de `GerenciarProva` e `GerenciarColaboradoresProva`, e `colab_codigo_acesso` saiu do tipo/erros do `useColaboradores` — o que destravou o DROP da coluna. `tsc` + `build` passam.
-- **[✅ verificado em 2026-07-15]** Corrigir o doc [`../estrutura/auth-e-permissoes.md`](../../estrutura/auth-e-permissoes.md) se ainda restar a afirmação de que o código é comparado contra hash. **Não restava** — o doc já foi reescrito nas subetapas anteriores e não afirma nada sobre hash; nada a corrigir.
+- **[✅ verificado em 2026-07-15]** Corrigir o doc [`../../estrutura/auth-e-permissoes.md`](../../estrutura/auth-e-permissoes.md) se ainda restar a afirmação de que o código é comparado contra hash. **Não restava** — o doc já foi reescrito nas subetapas anteriores e não afirma nada sobre hash; nada a corrigir.
 - **[✅ nota — fragilidade 7 resolvida]** A `check-cpf-colaborador` (única sobrevivente do modelo antigo) **normaliza o CPF** (`replace(/\D/g,'').padStart(11,'0')`) antes de comparar — a divergência de normalização entre camadas (fragilidade 7) não existe mais; a RPC velha que comparava o CPF cru foi dropada no item 3.
 
 ## Dívidas assumidas e ponto em aberto
