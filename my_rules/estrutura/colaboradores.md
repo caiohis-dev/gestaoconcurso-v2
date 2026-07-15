@@ -4,7 +4,7 @@
 
 ## Entidade `colaboradores`
 
-Ver interface `Colaborador` em `src/hooks/useColaboradores.tsx`. Campos principais: `colab_matricula`, `colab_nome_completo`, `colab_cpf` (chave natural, único), `colab_data_nascimento`, `colab_pis`, endereço (`colab_rua`/`numero_casa`/`bairro`/`cidade`/`cep`/`complemento_endereco`), `colab_estado_civil`/`colab_raca`/`colab_grau_instrucao` (códigos numéricos mapeados em `src/lib/constants.ts`), dados bancários (`codigo_banco`, `agencia`, `agencia_dv`, `conta`, `conta_dv`, `tipo_conta`, `colab_chave_pix`, `tipo_chave_pix`), e credenciais do portal (`colab_codigo_acesso`, `colab_ultimo_acesso`).
+Ver interface `Colaborador` em `src/hooks/useColaboradores.tsx`. Campos principais: `colab_matricula`, `colab_nome_completo`, `colab_cpf` (chave natural, único), `colab_data_nascimento`, `colab_pis`, endereço (`colab_rua`/`numero_casa`/`bairro`/`cidade`/`cep`/`complemento_endereco`), `colab_estado_civil`/`colab_raca`/`colab_grau_instrucao` (códigos numéricos mapeados em `src/lib/constants.ts`), dados bancários (`codigo_banco`, `agencia`, `agencia_dv`, `conta`, `conta_dv`, `tipo_conta`, `colab_chave_pix`, `tipo_chave_pix`), e `colab_ultimo_acesso`. **`colab_codigo_acesso` está morto** desde a refatoração do acesso (2A–2C): nada o lê nem o escreve, colaboradores novos nascem com ele NULL (o trigger gerador saiu na migration `20260714205901`), e a coluna só continua existindo até o DROP da etapa 3/2D.
 
 ### Unicidade: CPF, PIS, e — desde 2026-07-14 — e-mail e chave PIX
 
@@ -47,10 +47,10 @@ Existia também `colaboradores_backup_20260701` (snapshot manual pontual, criado
 ## Três fluxos de cadastro
 
 1. **`/cadastro`** (`Cadastro.tsx`) — admin/coordenador logado abre `ColaboradorDialog` diretamente; fecha o dialog → volta para `/`.
-2. **`/cadastro-publico`** (`CadastroPublico.tsx`) — fluxo sem login, para o próprio colaborador se auto-cadastrar:
-   - Passo 1: informa CPF, que é checado via Edge Function `check-cpf-colaborador` (evita expor a tabela `colaboradores` a uma query pública direta).
-   - Se já existe, mostra mensagem orientando a usar "Estou sem meu código" em vez de recadastrar.
-   - Se não existe, abre `ColaboradorDialog` em `publicMode` com `initialCpf` pré-preenchido — o insert nesse modo público provavelmente passa pela Edge Function `public-create-colaborador` (valida payload com Zod antes de tocar no banco), não diretamente via `supabase.from('colaboradores').insert`, para não expor a tabela a escrita anônima direta.
+2. **`/cadastro-publico`** (`CadastroPublico.tsx`) — fluxo sem login, para o próprio colaborador se auto-cadastrar (reescrito na subetapa 2C):
+   - Passo 1: informa CPF, checado via Edge Function `check-cpf-colaborador` (devolve só `{exists}`, sem expor a tabela nem o e-mail).
+   - **Se já existe, converge para a reivindicação:** o `ReivindicarAcessoCard` é mostrado ali mesmo, com o CPF pré-preenchido (a pessoa recebe o link no e-mail do cadastro). Não recomeça um cadastro.
+   - Se não existe, abre `ColaboradorDialog` em `publicMode`. **Não há mais código de 4 dígitos**; o e-mail é obrigatório. O insert passa pela Edge Function `public-create-colaborador`, que após criar a linha **dispara o link de acesso** (invite) para o e-mail via o helper `_shared/enviar-link-acesso.ts`. A conta é vinculada pelo trigger `handle_new_user` (ver [`auth-e-permissoes.md`](./auth-e-permissoes.md)). O sucesso instrui a pessoa a abrir o e-mail e criar a senha.
 3. **`/cadastro-lote`** (`CadastroLote.tsx`) — importação em massa via planilha Excel (`xlsx`/SheetJS), com auto-mapeamento de colunas e sanitização linha a linha **documentados em detalhe em `docs/cadastro-lote-sanitizacao.md`** (raiz do repo) — esse doc específico está atualizado e deve ser a referência ao mexer nesse fluxo, não este arquivo.
 
 ## `useColaboradores.tsx` — regras de negócio no CRUD

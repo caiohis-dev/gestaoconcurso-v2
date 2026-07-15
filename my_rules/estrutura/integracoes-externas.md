@@ -21,9 +21,11 @@ Todas em `supabase/functions/`, CORS liberado (`Access-Control-Allow-Origin: *`)
 |---|---|
 | `create-admin` | Cria usuário no Supabase Auth + atribui role (admin/coordenador/superadmin) — usado por `useUsers.createUser` |
 | `create-coordenador` | Fluxo específico de criação de coordenador (usa `serve` do `deno.land/std`, padrão ligeiramente diferente das demais que usam `Deno.serve` direto — histórico de escrita em momentos diferentes, não um problema funcional) |
-| `check-cpf-colaborador` | Checa existência de CPF sem expor a tabela `colaboradores` publicamente — usado em `/cadastro-publico`, valida entrada com Zod |
-| `public-create-colaborador` | Insere colaborador a partir do fluxo público (sem sessão), valida payload extensivamente com Zod (limites de tamanho por campo, replicando as constraints de `colaboradores`) |
-| `reset-codigo-acesso` | Fluxo de "esqueci meu código de acesso", valida `cpf` (+ `email` opcional) com Zod |
+| `check-cpf-colaborador` | Checa existência de CPF — devolve só `{exists}` (endurecida na 2B; antes vazava o e-mail). Usada em `/cadastro-publico` para decidir cadastrar-ou-reivindicar |
+| `reivindicar-acesso` | Reivindicação (2B): CPF → `{existe, ja_vinculado, email_mascarado}`, e dispara o link de acesso. Rate limit por IP (`reivindicacao_rate_limit`) |
+| `public-create-colaborador` | Cadastro público (reescrito na 2C): insere a linha e dispara o link de acesso. Não pede mais código de 4 dígitos; e-mail obrigatório |
+| `reset-codigo-acesso` | **Morta no fluxo** desde a 2A (o "esqueci código" foi aposentado). Ainda no repo; DROP é limpeza da etapa 3/2D |
+| `_shared/enviar-link-acesso.ts` | Helper (não é function): generateLink invite + HTML da FEVRE + `send-email`. Usado por `reivindicar-acesso` e `public-create-colaborador` |
 | `send-email` | Ver seção acima |
 
 `supabase/config.toml` só configura explicitamente `verify_jwt = false` para `create-coordenador` — as demais seguem o padrão default do Supabase (a menos que sobrescrito em outro lugar não revisado aqui).
