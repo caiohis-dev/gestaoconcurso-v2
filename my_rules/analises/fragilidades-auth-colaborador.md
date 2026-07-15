@@ -2,7 +2,7 @@
 
 > **Data:** 2026-07-13. **Natureza:** laudo de segurança, feito por leitura de código e banco (nada foi alterado). É um retrato do estado **antes** da refatoração — não são vulnerabilidades abertas hoje.
 >
-> **Status (2026-07-15):** o login por CPF+código morreu (2A/2B/2C) e as fragilidades 2, 3, 4, 5 e 6 caíram por remoção. **A fragilidade 1 (o nó central) está fechada** desde 2026-07-15: a subetapa 2D item 1 revogou o `EXECUTE` de `PUBLIC` nas RPCs mortas do portal velho (migration `20260715072758_*`) — `anon`/`authenticated` já recebem `permission denied`. A **RLS de verdade** em `colaboradores` também já entrou (2026-07-15, migration `20260715073500_*`): o SELECT `USING (true)` — que deixava todo `authenticated` ler as 771 linhas — virou `has_role(admin) OR has_role(coordenador) OR user_id = auth.uid()`. **Falta na 2D:** o `DROP` das sobras (aí a fragilidade 8, `register_colaborador_session`, some de vez) e a retirada da trava `is_colaborador_logged_in` da policy de UPDATE. Estado por subetapa em [`roadmap-auth-colaborador.md`](./roadmap-auth-colaborador.md).
+> **Status (2026-07-15):** o login por CPF+código morreu (2A/2B/2C) e as fragilidades 2, 3, 4, 5 e 6 caíram por remoção. **A fragilidade 1 (o nó central) está fechada** desde 2026-07-15: a subetapa 2D item 1 revogou o `EXECUTE` de `PUBLIC` nas RPCs mortas do portal velho (migration `20260715072758_*`) — `anon`/`authenticated` já recebem `permission denied`. A **RLS de verdade** em `colaboradores` também já entrou (2026-07-15, migration `20260715073500_*`): o SELECT `USING (true)` — que deixava todo `authenticated` ler as 771 linhas — virou `has_role(admin) OR has_role(coordenador) OR user_id = auth.uid()`. E as **RPCs mortas foram dropadas** (item 3, migration `20260715125720_*`, + remoção da Edge Function `reset-codigo-acesso`) — com isso a **fragilidade 8 (`register_colaborador_session`) some de vez**. **Falta na 2D:** só o `DROP` das últimas sobras (`colab_codigo_acesso`, tabela `colaborador_sessions`, função `is_colaborador_logged_in`) e a retirada da trava `is_colaborador_logged_in` da policy de UPDATE. Estado por subetapa em [`roadmap-auth-colaborador.md`](./roadmap-auth-colaborador.md).
 
 ## Escopo lido
 
@@ -65,6 +65,8 @@ Se o colaborador não tem e-mail cadastrado, a função aceita o e-mail passado 
 O front e as edge functions normalizam o CPF com `padStart(11)`; a RPC `verify_colaborador_codigo_acesso` compara o CPF **como veio**, sem normalizar. Se algum CPF foi gravado sem o zero à esquerda ou com máscara, login e reset podem discordar sobre qual linha é "a mesma pessoa". Mais bug de consistência que segurança, mas mora no caminho de autenticação.
 
 ### 8. `register_colaborador_session` é acionável por qualquer `id`
+
+> **✅ Fechada em 2026-07-15** (subetapa 2D, item 3). A função foi **dropada** (migration `20260715125720_*`), junto com `unregister/update_colaborador_session_activity`. Sobra só a tabela `colaborador_sessions` (órfã) e a trava `is_colaborador_logged_in` na policy de UPDATE, que saem no fim da 2D.
 
 É chamada com o `id` do `localStorage` na montagem, sem validar que a sessão é legítima — então o rastro de "está logado" (que bloqueia edição do admin, ver [`estrutura/colaboradores.md`](../estrutura/colaboradores.md)) pode ser disparado para qualquer `id`.
 

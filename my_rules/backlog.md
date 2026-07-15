@@ -17,12 +17,12 @@ Junto com a refatoração, **corrigir a funcionalidade de "Faltou"**: quando uma
 
 ## Refatorar a segurança do acesso do colaborador (`/auth`)
 
-**Status:** em andamento — **etapa 1 + subetapas 2A/2B/2C concluídas em 2026-07-14; 2D em curso: `REVOKE` (fragilidade 1) e RLS de verdade feitos em 2026-07-15**
+**Status:** em andamento — **etapa 1 + subetapas 2A/2B/2C concluídas em 2026-07-14; 2D em curso: `REVOKE` (fragilidade 1), RLS de verdade e `DROP` das RPCs antigas feitos em 2026-07-15**
 **Área:** Auth e Permissões (ver [`estrutura/auth-e-permissoes.md`](./estrutura/auth-e-permissoes.md))
 
-O portal do colaborador migrou para o Supabase Auth. Já feito: fundação no banco + backfill dos 12 (etapa 1); porta única `/auth` e identidade por `auth.uid()` (2A); reivindicação dos 759 (2B); cadastro público sem código, com link por e-mail (2C). **Da 2D já caíram:** o `REVOKE` do `EXECUTE` público das RPCs mortas (fragilidade 1, o nó central — fechada) e a **RLS de verdade em `colaboradores`** por `user_id = auth.uid()` (o SELECT deixou de ser `USING (true)`).
+O portal do colaborador migrou para o Supabase Auth. Já feito: fundação no banco + backfill dos 12 (etapa 1); porta única `/auth` e identidade por `auth.uid()` (2A); reivindicação dos 759 (2B); cadastro público sem código, com link por e-mail (2C). **Da 2D já caíram:** o `REVOKE` do `EXECUTE` público das RPCs mortas (fragilidade 1, o nó central — fechada); a **RLS de verdade em `colaboradores`** por `user_id = auth.uid()` (o SELECT deixou de ser `USING (true)`); e o **`DROP` das RPCs antigas** + remoção da Edge Function `reset-codigo-acesso` (com isso a fragilidade 8 fechou).
 
-**Falta na 2D (= etapa 3):** aposentar as RPCs antigas e as Edge Functions mortas (`verify_colaborador_codigo_acesso`, `get_colaborador_by_id`, `reset-codigo-acesso`, `register/unregister_colaborador_session`, etc. — a `check-cpf-colaborador` **fica**); tirar `AND NOT is_colaborador_logged_in(id)` da policy de UPDATE; `DROP` das sobras (`colab_codigo_acesso`, `colaborador_sessions`, `is_colaborador_logged_in`, template `codigo-acesso.tsx`); e **repensar o e-mail em massa do `PainelDadosColaboradores.tsx`**, que ainda embute o código morto e aponta para o login antigo (ver [`estrutura/documentos-e-relatorios.md`](./estrutura/documentos-e-relatorios.md)).
+**Falta na 2D (= etapa 3):** tirar `AND NOT is_colaborador_logged_in(id)` da policy de UPDATE; `DROP` das últimas sobras (`colab_codigo_acesso` + CHECK, tabela `colaborador_sessions`, função `is_colaborador_logged_in`, template órfão `codigo-acesso.tsx`); e **repensar o e-mail em massa do `PainelDadosColaboradores.tsx`**, que ainda embute o código morto e aponta para o login antigo (ver [`estrutura/documentos-e-relatorios.md`](./estrutura/documentos-e-relatorios.md)). A Edge Function `check-cpf-colaborador` **fica**.
 
 O laudo original dos 8 pontos está em [`analises/fragilidades-auth-colaborador.md`](./analises/fragilidades-auth-colaborador.md); o roteiro completo e o estado de cada subetapa, em [`analises/roadmap-auth-colaborador.md`](./analises/roadmap-auth-colaborador.md).
 
