@@ -665,6 +665,24 @@ export type Database = {
         }
         Relationships: []
       }
+      reivindicacao_rate_limit: {
+        Row: {
+          created_at: string
+          id: number
+          ip: string
+        }
+        Insert: {
+          created_at?: string
+          id?: never
+          ip: string
+        }
+        Update: {
+          created_at?: string
+          id?: never
+          ip?: string
+        }
+        Relationships: []
+      }
       sala_prova: {
         Row: {
           created_at: string | null
@@ -903,10 +921,6 @@ export type Database = {
         }
         Returns: string
       }
-      check_colaborador_has_password: {
-        Args: { p_cpf: string }
-        Returns: boolean
-      }
       check_prova_lock: {
         Args: { p_prova_id: string }
         Returns: {
@@ -928,45 +942,6 @@ export type Database = {
       finalizar_prova_unidade: {
         Args: { p_prova_unidade_id: string; p_user_id: string }
         Returns: boolean
-      }
-      get_colaborador_by_id: {
-        Args: { p_colaborador_id: string }
-        Returns: {
-          cpf: string
-          id: string
-          nome_completo: string
-        }[]
-      }
-      get_colaborador_full_data: {
-        Args: { p_colaborador_id: string }
-        Returns: {
-          agencia: string
-          agencia_dv: string
-          codigo_banco: string
-          colab_bairro: string
-          colab_cep: number
-          colab_chave_pix: string
-          colab_cidade: string
-          colab_complemento_endereco: string
-          colab_cpf: string
-          colab_data_nascimento: string
-          colab_deficiente: boolean
-          colab_email: string
-          colab_estado_civil: number
-          colab_grau_instrucao: number
-          colab_matricula: string
-          colab_nacionalidade: string
-          colab_nome_completo: string
-          colab_numero_casa: number
-          colab_pis: string
-          colab_raca: number
-          colab_rua: string
-          colab_telefone: number
-          conta: string
-          conta_dv: string
-          id: string
-          tipo_conta: string
-        }[]
       }
       get_coordenador_colaboradores: {
         Args: { p_user_id: string }
@@ -1036,120 +1011,9 @@ export type Database = {
         Args: { p_prova_unidade_id: string; p_user_id: string }
         Returns: boolean
       }
-      register_colaborador_session: {
-        Args: { p_colaborador_id: string }
-        Returns: undefined
-      }
       release_prova_lock: {
         Args: { p_prova_id: string; p_user_id: string }
         Returns: boolean
-      }
-      set_colaborador_password: {
-        Args: { p_colaborador_id: string; p_password: string }
-        Returns: boolean
-      }
-      unregister_colaborador_session: {
-        Args: { p_colaborador_id: string }
-        Returns: undefined
-      }
-      update_colaborador_bank_data: {
-        Args: {
-          p_agencia: string
-          p_agencia_dv: string
-          p_codigo_banco: string
-          p_colaborador_id: string
-          p_conta: string
-          p_conta_dv: string
-          p_tipo_conta: string
-        }
-        Returns: boolean
-      }
-      update_colaborador_data:
-        | {
-            Args: {
-              p_bairro: string
-              p_cep: number
-              p_cidade: string
-              p_colaborador_id: string
-              p_complemento: string
-              p_deficiente: boolean
-              p_estado_civil: number
-              p_grau_instrucao: number
-              p_matricula: string
-              p_numero_casa: number
-              p_pis: string
-              p_raca: number
-              p_rua: string
-              p_telefone: number
-            }
-            Returns: boolean
-          }
-        | {
-            Args: {
-              p_bairro: string
-              p_cep: number
-              p_chave_pix: string
-              p_cidade: string
-              p_colaborador_id: string
-              p_complemento: string
-              p_deficiente: boolean
-              p_email: string
-              p_estado_civil: number
-              p_grau_instrucao: number
-              p_matricula: string
-              p_numero_casa: number
-              p_pis: string
-              p_raca: number
-              p_rua: string
-              p_telefone: number
-            }
-            Returns: boolean
-          }
-        | {
-            Args: {
-              p_bairro: string
-              p_cep: number
-              p_cidade: string
-              p_colaborador_id: string
-              p_complemento: string
-              p_deficiente: boolean
-              p_estado_civil: number
-              p_grau_instrucao: number
-              p_numero_casa: number
-              p_raca: number
-              p_rua: string
-              p_telefone: number
-            }
-            Returns: boolean
-          }
-      update_colaborador_data_full: {
-        Args: {
-          p_bairro: string
-          p_cep: number
-          p_chave_pix: string
-          p_cidade: string
-          p_colaborador_id: string
-          p_complemento: string
-          p_cpf: string
-          p_data_nascimento: string
-          p_deficiente: boolean
-          p_email: string
-          p_estado_civil: number
-          p_grau_instrucao: number
-          p_matricula: string
-          p_nacionalidade: string
-          p_nome_completo: string
-          p_numero_casa: number
-          p_pis: string
-          p_raca: number
-          p_rua: string
-          p_telefone: number
-        }
-        Returns: boolean
-      }
-      update_colaborador_session_activity: {
-        Args: { p_colaborador_id: string }
-        Returns: undefined
       }
       update_meu_colaborador: {
         Args: {
@@ -1189,22 +1053,6 @@ export type Database = {
       update_prova_lock_activity: {
         Args: { p_prova_id: string; p_user_id: string }
         Returns: boolean
-      }
-      verify_colaborador_codigo_acesso: {
-        Args: { p_codigo: string; p_cpf: string }
-        Returns: string
-      }
-      verify_colaborador_first_access: {
-        Args: { p_cpf: string; p_data_nascimento: string }
-        Returns: {
-          cpf: string
-          id: string
-          nome_completo: string
-        }[]
-      }
-      verify_colaborador_password: {
-        Args: { p_cpf: string; p_password: string }
-        Returns: string
       }
       verify_user_password: {
         Args: { p_email: string; p_password: string }
