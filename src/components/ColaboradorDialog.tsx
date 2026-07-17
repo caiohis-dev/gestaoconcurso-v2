@@ -664,8 +664,16 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
     </Dialog>
 
     {submitStatus && (
+      // Este aviso convive com o Dialog aberto, e precisa vencer duas defesas dele:
+      //   z-[60]            — o DialogContent do Radix vive num portal anexado ao body,
+      //                       depois deste nó no DOM; com z-index igual (z-50) ele
+      //                       pintaria por cima e engoliria o aviso.
+      //   pointer-events-auto — com um dialog modal aberto, o Radix põe
+      //                       pointer-events:none no <body> e só a camada dele volta a
+      //                       receber clique; sem isto o aviso aparece e nada responde.
+      // No publicMode o dialog não se deixa fechar, então não há como contornar por fora.
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in p-4"
+        className="fixed inset-0 z-[60] pointer-events-auto flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in p-4"
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >

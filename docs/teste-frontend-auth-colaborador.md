@@ -38,10 +38,14 @@ Roteiro de teste manual da UI cobrindo a refatoração do acesso do colaborador 
 
 ## D. Cadastro público (2C)
 
+> **Este bloco nunca tinha sido rodado, e escondia um fluxo sem final** (achado em 2026-07-16, corrigido). Ao enviar, a tela ficava **intacta e em silêncio** — no sucesso *e* no erro. Eram duas defesas do Radix sobre o aviso, que vive **fora do portal** do `Dialog`: (1) o `DialogContent` é `z-50` num portal anexado ao `body`, **depois** do aviso no DOM, então com `z-index` igual ele pintava por cima; (2) com dialog modal aberto o Radix põe `pointer-events: none` no `<body>` e só a camada dele volta a receber clique — o aviso aparecia e o botão **não respondia**. No `publicMode` o dialog **não se deixa fechar**, então não havia como contornar por fora. Hoje o aviso é `z-[60] pointer-events-auto`. **Ao mexer no `ColaboradorDialog`, os dois valores são load-bearing.**
+
 - [ ] **D1** — `/cadastro-publico` → **não** pede código de 4 dígitos.
-- [ ] **D2** — Preencher **Telefone + Email** (ambos `required` nativo) + resto e enviar → "Cadastro criado, confira o e-mail"; a linha nasce com código **NULL**; o trigger vincula a conta.
+- [ ] **D2** — Preencher **Telefone + Email** (ambos `required` nativo) + resto e enviar → aparece o cartão verde **"Cadastro realizado!"** por cima do formulário; a linha nasce com código **NULL**; o trigger vincula a conta.
 - [ ] **D3** — Enviar com **CPF já existente** → mostra o `ReivindicarAcessoCard` **inline**, com CPF pré-preenchido.
 - [ ] **D4** — Tentar submeter **sem Telefone** → o browser barra (não confie em "passou" sem preencher Telefone).
+- [ ] **D5** *(regressão de 2026-07-16)* — No cartão de sucesso, clicar **"Continuar"** → fecha e vai para `/auth`. **O botão precisa responder ao clique** — era exatamente o que o `pointer-events: none` do body matava.
+- [ ] **D6** *(regressão de 2026-07-16 — o caminho de erro)* — Cadastrar com um **e-mail já usado** por outro cadastro → aparece o cartão **vermelho** com a mensagem, e "Fechar" funciona. Este era o pior sintoma: sem aviso, a pessoa reenviava para sempre sem saber por quê.
 
 ## E. Recuperação de senha (nativo — 2A)
 
