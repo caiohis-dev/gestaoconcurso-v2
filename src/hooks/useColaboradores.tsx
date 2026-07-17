@@ -3,6 +3,22 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 
+// Traduz a violação de índice único (CPF, matrícula, PIS, e-mail e chave PIX são
+// UNIQUE) numa frase para a pessoa. Devolve null quando o erro não é de duplicidade,
+// para o chamador manter a própria mensagem. A constraint violada vem no nome do índice
+// (ex.: colaboradores_colab_email_key), que o supabase-js pode entregar em .message ou
+// em .details — olhamos os dois.
+function mensagemDuplicidade(error: Error): string | null {
+  const raw = `${error.message} ${(error as { details?: string }).details ?? ''}`;
+  if (!raw.includes('duplicate key')) return null;
+  if (raw.includes('colab_cpf')) return 'CPF já cadastrado';
+  if (raw.includes('colab_matricula')) return 'Matrícula já cadastrada';
+  if (raw.includes('colab_pis')) return 'PIS já cadastrado';
+  if (raw.includes('colab_email')) return 'Este e-mail já está cadastrado para outro colaborador. Verifique o endereço e tente novamente.';
+  if (raw.includes('colab_chave_pix')) return 'Esta chave PIX já está cadastrada para outro colaborador. Cada chave pertence a uma única pessoa — verifique e tente novamente.';
+  return 'Um dos dados informados já está cadastrado para outro colaborador.';
+}
+
 export interface Colaborador {
   id: string;
   colab_matricula: string | null;
@@ -117,19 +133,9 @@ export function useColaboradores(options: UseColaboradoresOptions = {}) {
       });
     },
     onError: (error: Error) => {
-      let message = error.message;
-      if (error.message.includes('duplicate key')) {
-        if (error.message.includes('colab_cpf')) {
-          message = 'CPF já cadastrado';
-        } else if (error.message.includes('colab_matricula')) {
-          message = 'Matrícula já cadastrada';
-        } else if (error.message.includes('colab_pis')) {
-          message = 'PIS já cadastrado';
-        }
-      }
       toast({
         title: 'Erro ao cadastrar',
-        description: message,
+        description: mensagemDuplicidade(error) ?? error.message,
         variant: 'destructive',
       });
     },
@@ -159,6 +165,8 @@ export function useColaboradores(options: UseColaboradoresOptions = {}) {
 
       if (error.message.includes('row-level security policy')) {
         message = 'Você não tem permissão para editar este colaborador.';
+      } else {
+        message = mensagemDuplicidade(error) ?? message;
       }
 
       toast({

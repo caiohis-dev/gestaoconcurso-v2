@@ -59,6 +59,8 @@ Roteiro de teste manual da UI cobrindo a refatoração do acesso do colaborador 
 - [ ] **F3** — Admin/coord **editar** um colaborador que "está logado" → edita normalmente (**trava de sessão removida** — sem bloqueio "colaborador online").
 - [ ] **F4** — Abrir o `ColaboradorDialog` (criar e editar) → **sem** campos de código de acesso; sem exibição de código.
 - [ ] **F5** — Conferir a `ColaboradoresList` → **sem** badge/indicador de "colaborador online".
+- [ ] **F6** *(regressão de 2026-07-16)* — **Cadastrar** um colaborador novo com um **e-mail que já é de outro** → mensagem clara ("Este e-mail já está cadastrado para outro colaborador…"), **não** o `duplicate key value violates unique constraint` cru. O campo aceita a digitação de propósito (igual a CPF/matrícula/PIS): a unicidade é checada no **salvar**, pelo banco.
+- [ ] **F7** *(regressão de 2026-07-16)* — Mesma coisa na **edição** de um colaborador, e também com **chave PIX** duplicada → mensagem amigável nos dois caminhos (criar e editar traduzem os 5 campos únicos: CPF, matrícula, PIS, e-mail, PIX).
 
 ## G. Painel de dados + exports (e-mail em massa aposentado — 2D)
 
