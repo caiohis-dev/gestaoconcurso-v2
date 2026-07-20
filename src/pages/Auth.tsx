@@ -107,22 +107,28 @@ export default function Auth() {
     }
 
     setIsSubmitting(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(emailReset.trim(), {
-      redirectTo: `${window.location.origin}/redefinir-senha`,
+    // EF própria em vez do resetPasswordForEmail nativo: o nativo é enviado pelo SMTP
+    // do GoTrue (local: Mailpit; produção: serviço embutido do Supabase), que não passa
+    // pela send-email e não tem o visual da FEVRE. A EF gera o mesmo link do Auth e o
+    // envia pela Hostinger, como todo o resto do sistema.
+    const { error } = await supabase.functions.invoke("recuperar-senha", {
+      body: { email: emailReset.trim() },
     });
     setIsSubmitting(false);
 
     if (error) {
       toast({
         title: "Erro ao enviar",
-        description: error.message,
+        description: "Não foi possível enviar o link agora. Tente novamente em instantes.",
         variant: "destructive",
       });
       return;
     }
 
     // Sempre confirmamos, mesmo que o e-mail não exista: dizer "este e-mail não tem
-    // conta" transformaria esta tela num oráculo de quem está cadastrado.
+    // conta" transformaria esta tela num oráculo de quem está cadastrado. A EF sustenta
+    // a mesma regra do lado do servidor — responde igual para conta inexistente e para
+    // envio em cooldown.
     setResetEnviado(true);
   };
 

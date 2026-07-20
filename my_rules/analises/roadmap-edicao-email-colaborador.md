@@ -145,11 +145,13 @@ A EF foi exercitada ponta a ponta por HTTP, com JWT de admin, **12 casos**: os t
 | `user_roles` | `colaborador+user` | **`colaborador+user` — preservados** |
 | `email_confirmed_at` | NULL | NULL — segue pendente, como deve |
 
-**`user_id` e papéis sobreviveram — é o ponto inteiro do renomear.** O `generateLink('recovery')` **funciona em conta não-confirmada** (era a incerteza da mecânica nova): o único erro no log foi o `send-email` (`failed to lookup address information`), o SMTP que notoriamente não entrega local — e a EF reportou isso pelo caminho de `aviso`, com `ok:false`, sem fingir sucesso.
+**`user_id` e papéis sobreviveram — é o ponto inteiro do renomear.** O `generateLink('recovery')` **funciona em conta não-confirmada** (era a incerteza da mecânica nova): o único erro no log foi o `send-email` (`failed to lookup address information`) — e a EF reportou isso pelo caminho de `aviso`, com `ok:false`, sem fingir sucesso.
+
+> **Correção de 2026-07-20.** Este parágrafo dizia que o erro era "o SMTP que notoriamente não entrega local". **A premissa era falsa.** A causa era um typo no `SMTP_HOST` do `supabase/functions/.env`: `mtp.hostinger.com` em vez de `smtp.` — daí o `failed to lookup address information`, que é falha de **DNS**, não de entrega. Corrigido o typo, o envio local funciona normalmente. Fica registrado porque é exatamente o tipo de premissa que faz alguém no futuro descartar um sintoma legítimo como "ah, é o SMTP local".
 
 **O espécime foi restaurado** aos valores originais (`auth_email` e `profiles.email` de volta a `exemplo2@exemplo3.com`, `recovery_token` limpo), e o `consultar` confirma `divergentes: true` de novo — o `CAIO TESTE` continua disponível como caso de teste do estado B pela UI.
 
-**A UI** (o `CorrigirEmailAcessoDialog`, o botão no `ColaboradorDialog`) **foi rodada e aprovada em 2026-07-20** — bloco `J` da bateria, os 7 casos. Segue sem teste só o **envio real do e-mail**, que localmente não sai (SMTP), e por isso o J3 fecha pelo toast de aviso, não pelo de sucesso.
+**A UI** (o `CorrigirEmailAcessoDialog`, o botão no `ColaboradorDialog`) **foi rodada e aprovada em 2026-07-20** — bloco `J` da bateria, os 7 casos. O **envio real do e-mail** também passou a funcionar em 2026-07-20 (era um typo no `SMTP_HOST`, não uma limitação do ambiente), então o **J3 fecha pelo toast de sucesso** — o de aviso virou sinal de problema.
 
 ## Ponto em aberto
 

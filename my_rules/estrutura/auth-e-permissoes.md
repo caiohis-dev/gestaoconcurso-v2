@@ -15,6 +15,19 @@
 - Logout força `window.location.href = '/auth'` (reload completo, para não deixar estado React fantasma) e limpa as chaves `sb-*`/`supabase` do `localStorage`. **Cuidado herdado:** esse reload duro destrói qualquer `navigate(..., { state })` chamado logo depois de `signOut()` — foi o bug que sumiu com a mensagem de sucesso ao salvar o perfil, na 2A.
 - Roteamento pós-login (em `Auth.tsx`): admin → `/dashboard`, coordenador → `/`, só-colaborador → `/perfil-colaborador`. Os 12 gestor+colaborador caem na gestão e chegam ao cadastro pelo item de menu "Meu Cadastro".
 
+### Recuperação de senha — EF própria, não o fluxo nativo (2026-07-20)
+
+O "esqueci minha senha" de `/auth` **não usa mais** `supabase.auth.resetPasswordForEmail`. Agora chama a Edge Function **`recuperar-senha`**, que gera o link com `generateLink('recovery')` e o envia pela `send-email`.
+
+**Por que sair do nativo:** os e-mails do fluxo nativo são compostos e enviados pelo **SMTP do próprio GoTrue** — local, o Mailpit (`[local_smtp]`, porta 54324); em produção, o serviço embutido do Supabase, fortemente limitado. Nenhum dos dois passa pela `send-email`, então aquele e-mail não tinha o visual da FEVRE nem saía pela Hostinger. A regra hoje é **todo e-mail sai pela `send-email`** (ver [`integracoes-externas.md`](./integracoes-externas.md)).
+
+**O preço, e por que ele é obrigatório:** sair do nativo joga fora duas proteções que o GoTrue dava de graça, e a EF precisa repô-las **explicitamente**. Quem for mexer nessa função tem que preservar as duas:
+
+1. **Anti-enumeração.** O nativo nunca revela se a conta existe. O `generateLink` **falha de forma distinguível** quando ela não existe, então *toda* saída da EF é a mesma frase genérica — conta existente, inexistente ou em cooldown. Inclusive o cooldown: devolver `429` ali revelaria que a conta existe. Quebrar isso transforma a tela de login num oráculo de quem tem cadastro.
+2. **Rate limit.** Com `service_role` a EF passa por cima dos tetos do GoTrue. O limite voltou como **cooldown de 2 min por conta**, lido do `recovery_sent_at` que o próprio Auth grava — **sem tabela nova**. Ele cobre também a **rotação de token**: cada `generateLink` invalida o anterior, então dois cliques em "enviar" matariam o link do primeiro e-mail, que é justamente o que a pessoa costuma abrir.
+
+O teto por conta basta para o risco real, porque **só existe envio para conta existente** — não dá para varrer endereços quaisquer. Um limite por IP (padrão da `reivindicar-acesso`) só faria falta contra ataque distribuído mirando muitas contas; ficou como evolução.
+
 ### Como uma conta de colaborador nasce e se vincula (subetapa 2B)
 
 - **Reivindicação (os 759 que já eram cadastrados, sem conta):** em `/auth`, "Primeiro acesso" abre o `ReivindicarAcessoCard` → CPF → a Edge Function **`reivindicar-acesso`** localiza o cadastro e devolve **`{existe, ja_vinculado, email_mascarado}`** (o e-mail inteiro nunca sai do servidor), disparando um `generateLink('invite')` enviado com HTML da FEVRE via `send-email`. A pessoa clica, cai em `/redefinir-senha`, define a senha, entra. Rate limit de 5/15 min por IP (tabela `reivindicacao_rate_limit`, migration `20260714201650`).

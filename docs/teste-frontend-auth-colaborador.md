@@ -4,7 +4,8 @@ Roteiro de teste manual da UI cobrindo a refatoração do acesso do colaborador 
 
 ## ⚠️ Antes de começar — 3 cuidados críticos
 
-1. **Os e-mails dos 771 colaboradores são de pessoas reais.** **Nunca** dispare o caminho de envio real (reivindicação / cadastro público) contra um e-mail real. Localmente o e-mail do Auth cai no **Mailpit (http://127.0.0.1:54324)**; o `send-email` (SMTP Hostinger) **não** entrega local sem credenciais — prefira testar os fluxos de envio com um **colaborador de teste criado por você** (e-mail tipo `teste+algo@example.com`).
+1. **⚠️ Os e-mails dos 771 colaboradores são de pessoas reais — e desde 2026-07-20 o envio local SAI DE VERDADE.** Até então o `SMTP_HOST` estava com um typo (`mtp.` em vez de `smtp.hostinger.com`) e nada saía; era um freio acidental, e este aviso dizia o contrário do que hoje acontece. **Corrigido o typo, o ambiente local envia pela conta real da Hostinger, com SPF/DKIM da FEVRE.** Um disparo errado aqui chega na caixa da pessoa como e-mail legítimo da fundação. **Nunca** rode reivindicação, cadastro público ou recuperação de senha contra a linha de um colaborador real: use um **colaborador de teste criado por você**, com e-mail de uma caixa **sua**. E note que `@example.com` **não** serve mais como rede de proteção — o envio é tentado de verdade.
+   - Os e-mails **nativos do Auth** (os que o GoTrue ainda compõe sozinho) continuam caindo no **Mailpit (http://127.0.0.1:54324)**, porque não há `[auth.email.smtp]` no `config.toml`. A recuperação de senha **saiu** dessa categoria: agora passa pela EF `recuperar-senha` → `send-email` → Hostinger.
 2. **Tokens de invite/recuperação são de uso único** — abrir o link por `curl` para "conferir" o queima, e o navegador depois vê "link inválido". Não é bug.
 3. Rode com **Supabase local** (`sg docker -c 'supabase status'`) e o app (`npm run dev`). Tenha à mão uma conta **admin**, uma **coordenador**, uma **gestor+colaborador** (um dos 12) e uma **colaborador puro**.
 
@@ -47,10 +48,15 @@ Roteiro de teste manual da UI cobrindo a refatoração do acesso do colaborador 
 - [ ] **D5** *(regressão de 2026-07-16)* — No cartão de sucesso, clicar **"Continuar"** → fecha e vai para `/auth`. **O botão precisa responder ao clique** — era exatamente o que o `pointer-events: none` do body matava.
 - [ ] **D6** *(regressão de 2026-07-16 — o caminho de erro)* — Cadastrar com um **e-mail já usado** por outro cadastro → aparece o cartão **vermelho** com a mensagem, e "Fechar" funciona. Este era o pior sintoma: sem aviso, a pessoa reenviava para sempre sem saber por quê.
 
-## E. Recuperação de senha (nativo — 2A)
+## E. Recuperação de senha (EF `recuperar-senha` — reescrito em 2026-07-20)
 
-- [ ] **E1** — `/auth` → "Esqueci minha senha" → fluxo nativo do Supabase Auth.
-- [ ] **E2** — Concluir → Mailpit → abrir link → cai em `/redefinir-senha`, troca a senha, novo login funciona.
+> **Deixou de ser o fluxo nativo.** O `resetPasswordForEmail` saiu do `Auth.tsx`: agora é a EF `recuperar-senha`, que gera o link com `generateLink` e envia pela `send-email`/Hostinger, com o visual da FEVRE. **O e-mail sai de verdade e não cai mais no Mailpit** — use uma caixa sua. Exige `npm run supabase:functions:serve`.
+
+- [x] **E1** — `/auth` → "Esqueci minha senha" → e-mail chega **com o visual da FEVRE** (não o template cru do Supabase), assunto "Redefinição de senha", botão "Redefinir minha senha". *(Aprovado em 2026-07-20.)*
+- [x] **E2** — Concluir → abrir link → cai em `/redefinir-senha`, troca a senha, novo login funciona. *(Aprovado em 2026-07-20.)*
+- [x] **E3** *(cooldown)* — Pedir de novo em menos de 2 min → a tela confirma igual, mas **nenhum segundo e-mail sai** (log: `em cooldown, envio suprimido`). É o esperado: o limite protege contra bombardeio e evita que o link do primeiro e-mail seja invalidado pelo segundo. *(Verificado por HTTP em 2026-07-20, **não pela UI**.)*
+- [x] **E4** *(anti-enumeração)* — E-mail sem conta → **a mesma** mensagem do caso com conta. A tela não pode virar oráculo de quem tem cadastro; a EF sustenta a regra no servidor. *(Verificado por HTTP em 2026-07-20, **não pela UI**.)*
+- [ ] **E5** *(a porta fechada)* — `POST` na `send-email` com a **anon key** (a que vai no bundle do frontend) → **403**. Sem isso, qualquer um envia e-mail arbitrário pelo servidor da FEVRE. *(Verificado por HTTP em 2026-07-20; fica no checklist por ser regressão silenciosa — se voltar a passar, o open relay reabriu.)*
 
 ## F. Gestão de colaboradores (RLS + trava removida — 2D)
 
@@ -108,7 +114,7 @@ Roteiro de teste manual da UI cobrindo a refatoração do acesso do colaborador 
 
 - [x] **J1** *(estado C)* — Editar um colaborador vinculado-confirmado → clicar "O e-mail está errado e ele nunca conseguiu entrar?" → o dialog explica que a conta **já foi confirmada** e **não oferece formulário**, só "Fechar".
 - [x] **J2** *(estado B)* — Editar `CAIO TESTE` → mesmo link → o dialog mostra o aviso âmbar com **os dois endereços** (conta `exemplo2@exemplo3.com`, cadastro `contato@…`) e **pré-preenche** o campo com o do cadastro.
-- [x] **J3** *(a correção)* — Confirmar em J2 → toast de sucesso. Localmente o **e-mail não sai** (SMTP), então o esperado é o toast de **aviso** ("o link não saiu"), **não** o de sucesso — e isso está certo. Conferir no banco: `auth.users.email` mudou, **`user_id` NÃO mudou**, `profiles.email` acompanhou, `user_roles` intactos.
+- [x] **J3** *(a correção)* — Confirmar em J2 → **toast de sucesso, e o e-mail chega de verdade**. ⚠️ **Mudou em 2026-07-20:** este caso mandava esperar o toast de *aviso* ("o link não saiu"), porque se acreditava que o SMTP não entregava local. Não era o SMTP — era um typo no `SMTP_HOST`. Corrigido, **o aviso passou a ser sinal de problema real**, não o resultado normal. Conferir no banco: `auth.users.email` mudou, **`user_id` NÃO mudou**, `profiles.email` acompanhou, `user_roles` intactos.
 - [x] **J4** — Reabrir o dialog depois de J3 → o aviso de divergência **some** (`divergentes: false`); tentar corrigir para o mesmo e-mail → recusa "Este já é o e-mail da conta de acesso."
 - [x] **J5** *(negativo)* — Em J2, informar um e-mail que **já é de outro colaborador** → recusa clara, e **nada** é escrito.
 - [x] **J6** *(estado A)* — Numa linha não-vinculada o link **nem aparece** (o campo é editável e não há o que corrigir).
@@ -116,4 +122,4 @@ Roteiro de teste manual da UI cobrindo a refatoração do acesso do colaborador 
 
 ---
 
-**Notas:** os itens **C2 / D2 / E2 dependem do Mailpit** (envio local); para evitar qualquer envio, teste só até a tela de "confira o e-mail" e valide o vínculo direto no banco. **H3**, **I7** e **J7** são os que precisam de terminal (curl/psql), não de UI. O bloco **J** exige `npm run supabase:functions:serve` além do `npm run dev`.
+**Notas:** **C2 e D2** ainda dependem do **Mailpit** (`http://127.0.0.1:54324`) para os e-mails que o GoTrue compõe sozinho; **E2 não depende mais** — a recuperação de senha saiu do fluxo nativo e o e-mail sai pela Hostinger. Para evitar **qualquer** envio real, teste só até a tela de "confira o e-mail" e valide o vínculo direto no banco. **H3**, **I7**, **J7** e **E5** precisam de terminal (curl/psql), não de UI. Os blocos **E** e **J** exigem `npm run supabase:functions:serve` além do `npm run dev`.

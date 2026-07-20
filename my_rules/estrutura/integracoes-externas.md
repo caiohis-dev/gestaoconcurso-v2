@@ -6,11 +6,15 @@
 
 Havia um client HTTP genérico (`src/services/n8nService.ts`) para webhooks n8n, configurado via `VITE_N8N_BASE_URL`. Foi removido por decisão explícita do usuário, junto com seu único caso de uso real: o fluxo de "Esqueci minha senha" do admin (`RecuperarSenhaAdmin.tsx`, rota `/recuperar-senha-admin`, linkada em `AuthAdmin.tsx`), que chamava `/auth/reset-init` e `/auth/reset-confirm` via n8n.
 
-**Consequência (atualizada na subetapa 2A):** o fluxo n8n morreu, mas a recuperação de senha **voltou** — agora nativa. A porta única `/auth` tem "esqueci minha senha" via `supabase.auth.resetPasswordForEmail`, com destino em `/redefinir-senha` (`/auth-admin` redireciona para `/auth`). Vale para admin e colaborador, sem nenhuma dependência de n8n. Ver [`auth-e-permissoes.md`](./auth-e-permissoes.md).
+**Consequência (2A, revista em 2026-07-20):** o fluxo n8n morreu e a recuperação de senha **voltou**. Ela foi nativa (`supabase.auth.resetPasswordForEmail`) até 2026-07-20, quando passou para a EF **`recuperar-senha`**: o nativo é composto e enviado pelo SMTP do **próprio GoTrue** — local, o Mailpit; em produção, o serviço embutido do Supabase, fortemente limitado — e portanto **não passava pela `send-email`**, sem o visual da FEVRE e sem a Hostinger. A porta única `/auth` mantém o "esqueci minha senha", com destino em `/redefinir-senha` (`/auth-admin` redireciona para `/auth`). Vale para admin e colaborador. Ver [`auth-e-permissoes.md`](./auth-e-permissoes.md).
 
 ## E-mail transacional
 
-- Edge Function **`send-email`** (`supabase/functions/send-email/index.ts`) — SMTP via `denomailer`, recebe `{ to, subject, html }` e envia. Não gera o HTML, apenas despacha — quem monta o corpo é o caller. Hoje o caller principal é o helper `_shared/enviar-link-acesso.ts` (link de acesso da reivindicação/cadastro público). O antigo caller `buildEmailHtml` do `PainelDadosColaboradores.tsx` foi removido na 2D (e-mail em massa aposentado).
+**Regra (2026-07-20): todo e-mail do sistema sai pela `send-email`.** É o único ponto de saída, e por isso é onde ficam o SMTP da Hostinger e o visual da FEVRE.
+
+- Edge Function **`send-email`** (`supabase/functions/send-email/index.ts`) — SMTP via `denomailer`, recebe `{ to, subject, html }` e envia. Não gera o HTML, apenas despacha — quem monta o corpo é o caller. Callers: o helper `_shared/enviar-link-acesso.ts` (link de acesso da reivindicação, cadastro público e correção de e-mail) e a EF `recuperar-senha`. O antigo caller `buildEmailHtml` do `PainelDadosColaboradores.tsx` foi removido na 2D (e-mail em massa aposentado).
+- **Só aceita `service_role`** (fechado em 2026-07-20). O `verify_jwt` padrão **não basta**: a anon key é um JWT válido e é pública — vai no bundle do frontend. Sem a checagem, qualquer um dispara e-mail arbitrário **pelo servidor da FEVRE**, passando por SPF/DKIM, o que é um vetor de phishing contra os próprios colaboradores. Nenhum código do frontend chama a `send-email`; quem chama são as EFs. **Se alguma tela precisar enviar e-mail, o caminho é uma EF nova, não afrouxar esta.**
+- **`SMTP_HOST` é `smtp.hostinger.com`.** Já esteve como `mtp.` (typo), o que produzia `failed to lookup address information` — falha de **DNS**, facilmente confundida com "SMTP não funciona local". Porta `465` com `tls: true` (TLS implícito); `587` exigiria STARTTLS e **não** funciona com a configuração atual do código.
 - Templates React/TSX em `supabase/functions/_shared/transactional-email-templates/`: sobrou `atualizacao-dados.tsx` (aviso de atualização cadastral). O `codigo-acesso.tsx` era órfão (código de acesso aposentado em 2A–2C) e **foi removido na 2D**; o e-mail de acesso agora é o HTML da FEVRE em `_shared/enviar-link-acesso.ts`.
 
 ## Edge Functions administrativas
@@ -25,10 +29,12 @@ Todas em `supabase/functions/`, CORS liberado (`Access-Control-Allow-Origin: *`)
 | `reivindicar-acesso` | Reivindicação (2B): CPF → `{existe, ja_vinculado, email_mascarado}`, e dispara o link de acesso. Rate limit por IP (`reivindicacao_rate_limit`) |
 | `public-create-colaborador` | Cadastro público (reescrito na 2C): insere a linha e dispara o link de acesso. Não pede mais código de 4 dígitos; e-mail obrigatório |
 | `reset-codigo-acesso` | **Morta no fluxo** desde a 2A (o "esqueci código" foi aposentado). Ainda no repo; DROP é limpeza da etapa 3/2D |
-| `_shared/enviar-link-acesso.ts` | Helper (não é function): generateLink invite + HTML da FEVRE + `send-email`. Usado por `reivindicar-acesso` e `public-create-colaborador` |
-| `send-email` | Ver seção acima |
+| `corrigir-email-acesso` | Correção do e-mail de acesso em linha vinculada-pendente (estado B): **renomeia** a conta, não apaga. Modos `consultar`/`corrigir`; só `admin`/`coordenador` |
+| `recuperar-senha` | "Esqueci minha senha" (2026-07-20), no lugar do `resetPasswordForEmail` nativo. Pública. Repõe à mão o que o fluxo nativo dava de graça: **anti-enumeração** (resposta genérica sempre) e **cooldown** de 2 min por conta, lido do `recovery_sent_at` que o próprio Auth grava — sem tabela nova |
+| `_shared/enviar-link-acesso.ts` | Helper (não é function): generateLink + HTML da FEVRE + `send-email`. Usado por `reivindicar-acesso`, `public-create-colaborador`, `corrigir-email-acesso` e `recuperar-senha`. O parâmetro `contexto` (`primeiro-acesso`/`redefinir`) muda o texto e **não** coincide com o `tipo` do link: a correção de e-mail usa link `recovery` por razão técnica, mas para a pessoa é primeiro acesso |
+| `send-email` | Ver seção acima — **só `service_role`** |
 
-`supabase/config.toml` só configura explicitamente `verify_jwt = false` para `create-coordenador` — as demais seguem o padrão default do Supabase (a menos que sobrescrito em outro lugar não revisado aqui).
+`supabase/config.toml` só configura explicitamente `verify_jwt = false` para `create-coordenador` — as demais seguem o padrão default do Supabase. **Atenção:** esse default (`verify_jwt = true`) aceita a **anon key**, que é pública. Ele impede chamada anônima crua, mas **não** é controle de acesso; onde importa quem chama, a checagem é no corpo da function (como na `send-email`).
 
 ### `export-seed` — removida em 2026-07-12
 

@@ -18,8 +18,28 @@
 // "esqueci minha senha".
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 
-export function buildEmailHtml(nome: string, link: string): string {
+// O texto muda conforme o que a pessoa vai fazer, e isso NÃO é o mesmo que o `tipo`
+// do link: a correção de e-mail (corrigir-email-acesso) usa link 'recovery' por razão
+// técnica — o invite falha em conta existente — mas para a pessoa continua sendo o
+// primeiro acesso. Por isso o contexto é um parâmetro à parte.
+type Contexto = 'primeiro-acesso' | 'redefinir';
+
+const COPY: Record<Contexto, { intro: string; botao: string; ignorar: string }> = {
+  'primeiro-acesso': {
+    intro: 'Para criar a sua senha e acessar o Sistema de Cadastro de Colaboradores, clique no botão abaixo.',
+    botao: 'Criar minha senha',
+    ignorar: 'Se você não pediu este acesso, ignore este e-mail — nenhuma ação será tomada.',
+  },
+  redefinir: {
+    intro: 'Recebemos um pedido para redefinir a sua senha do Sistema de Cadastro de Colaboradores. Clique no botão abaixo para escolher uma nova.',
+    botao: 'Redefinir minha senha',
+    ignorar: 'Se você não pediu a redefinição, ignore este e-mail — sua senha atual continua valendo.',
+  },
+};
+
+export function buildEmailHtml(nome: string, link: string, contexto: Contexto = 'primeiro-acesso'): string {
   const primeiroNome = (nome || 'Colaborador').split(' ')[0];
+  const copy = COPY[contexto];
   return `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
 <body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;">
@@ -32,19 +52,18 @@ export function buildEmailHtml(nome: string, link: string): string {
         <tr><td style="padding:8px 40px 0;">
           <h1 style="color:#0f172a;font-size:22px;margin:16px 0 8px;">Olá, ${primeiroNome}!</h1>
           <p style="color:#334155;font-size:15px;line-height:1.6;margin:0 0 20px;">
-            Para criar a sua senha e acessar o Sistema de Cadastro de Colaboradores,
-            clique no botão abaixo.
+            ${copy.intro}
           </p>
         </td></tr>
         <tr><td align="center" style="padding:8px 40px 24px;">
           <a href="${link}" style="background:#dc2626;color:#ffffff;text-decoration:none;font-size:16px;font-weight:bold;padding:14px 32px;border-radius:8px;display:inline-block;">
-            Criar minha senha
+            ${copy.botao}
           </a>
         </td></tr>
         <tr><td style="padding:0 40px 24px;">
           <p style="color:#64748b;font-size:13px;line-height:1.6;margin:0;">
-            Se você não pediu este acesso, ignore este e-mail — nenhuma ação será tomada.
-            O link é pessoal e expira em algumas horas.
+            ${copy.ignorar}
+            O link é pessoal e expira em 1 hora.
           </p>
         </td></tr>
         <tr><td align="center" style="padding:16px 40px 32px;border-top:1px solid #e2e8f0;">
@@ -67,7 +86,7 @@ export function mascararEmail(email: string): string {
 
 export async function enviarLinkAcesso(
   supabase: SupabaseClient,
-  params: { email: string; nome: string; tipo?: 'invite' | 'recovery' },
+  params: { email: string; nome: string; tipo?: 'invite' | 'recovery'; contexto?: Contexto },
 ): Promise<{ ok: boolean }> {
   const siteUrl = Deno.env.get('SITE_URL') ?? 'http://127.0.0.1:8080';
 
@@ -82,7 +101,8 @@ export async function enviarLinkAcesso(
     return { ok: false };
   }
 
-  const html = buildEmailHtml(params.nome, linkData.properties.action_link);
+  const contexto = params.contexto ?? 'primeiro-acesso';
+  const html = buildEmailHtml(params.nome, linkData.properties.action_link, contexto);
   const sendResp = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/send-email`, {
     method: 'POST',
     headers: {
@@ -91,7 +111,9 @@ export async function enviarLinkAcesso(
     },
     body: JSON.stringify({
       to: params.email,
-      subject: 'Acesso ao Sistema de Cadastro de Colaboradores — FEVRE',
+      subject: contexto === 'redefinir'
+        ? 'Redefinição de senha — Sistema de Cadastro de Colaboradores FEVRE'
+        : 'Acesso ao Sistema de Cadastro de Colaboradores — FEVRE',
       html,
     }),
   });
