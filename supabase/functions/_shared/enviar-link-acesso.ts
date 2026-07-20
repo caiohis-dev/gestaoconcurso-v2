@@ -1,14 +1,21 @@
 // Envio do link de acesso do colaborador — compartilhado entre reivindicar-acesso
-// (subetapa 2B) e public-create-colaborador (subetapa 2C).
+// (subetapa 2B), public-create-colaborador (subetapa 2C) e corrigir-email-acesso
+// (Etapa 2 da edição de colab_email).
 //
-// Cria a conta no Auth via generateLink('invite') e envia o link com o visual da
-// FEVRE pela função send-email. Ao criar a conta, o trigger on_auth_user_created
-// vincula user_id e concede o papel 'colaborador' (migration 20260714201650).
+// Envia o link com o visual da FEVRE pela função send-email. O tipo do link depende
+// de a conta já existir:
+//   'invite'   (padrão) — a conta ainda NÃO existe. O generateLink a cria, e o trigger
+//                         on_auth_user_created vincula user_id e concede 'colaborador'
+//                         (migration 20260714201650).
+//   'recovery'          — a conta JÁ existe (o invite falharia). É o caso da correção
+//                         de e-mail, que renomeia a conta em vez de recriá-la: o
+//                         vínculo já está de pé, e o link só serve para a pessoa criar
+//                         a senha. Ao abri-lo, o Auth também confirma o endereço.
 //
-// Não lança: devolve { ok } para o chamador decidir. Se o invite falha (ex.: já
-// existe conta no Auth com esse e-mail), ou o e-mail não sai (SMTP), a operação de
-// negócio que chamou (cadastrar, reivindicar) não deve ser desfeita por causa disso —
-// a pessoa ainda entra por "esqueci minha senha".
+// Não lança: devolve { ok } para o chamador decidir. Se o generateLink falha, ou o
+// e-mail não sai (SMTP), a operação de negócio que chamou (cadastrar, reivindicar,
+// corrigir) não deve ser desfeita por causa disso — a pessoa ainda entra por
+// "esqueci minha senha".
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 
 export function buildEmailHtml(nome: string, link: string): string {
@@ -60,12 +67,12 @@ export function mascararEmail(email: string): string {
 
 export async function enviarLinkAcesso(
   supabase: SupabaseClient,
-  params: { email: string; nome: string },
+  params: { email: string; nome: string; tipo?: 'invite' | 'recovery' },
 ): Promise<{ ok: boolean }> {
   const siteUrl = Deno.env.get('SITE_URL') ?? 'http://127.0.0.1:8080';
 
   const { data: linkData, error: linkErr } = await supabase.auth.admin.generateLink({
-    type: 'invite',
+    type: params.tipo ?? 'invite',
     email: params.email,
     options: { redirectTo: `${siteUrl}/redefinir-senha` },
   });

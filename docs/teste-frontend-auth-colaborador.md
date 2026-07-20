@@ -1,6 +1,6 @@
 # Bateria de teste manual — frontend do acesso do colaborador
 
-Roteiro de teste manual da UI cobrindo a refatoração do acesso do colaborador (etapas 1–3, concluídas em 2026-07-15). Rode de cima a baixo. Cada bloco indica **o que valida**. O histórico do que mudou está em [`../my_rules/analises/concluidos/roadmap-auth-colaborador.md`](../my_rules/analises/concluidos/roadmap-auth-colaborador.md); as dívidas assumidas em [`../my_rules/analises/dividas-auth-colaborador.md`](../my_rules/analises/dividas-auth-colaborador.md).
+Roteiro de teste manual da UI cobrindo a refatoração do acesso do colaborador (etapas 1–3, concluídas em 2026-07-15) **e a edição de `colab_email` sensível à identidade (2026-07-16): a trava no bloco `I` e a correção do estado B no bloco `J` — os dois rodados e aprovados em 2026-07-20**. Rode de cima a baixo. Cada bloco indica **o que valida**. O histórico do que mudou está em [`../my_rules/analises/concluidos/roadmap-auth-colaborador.md`](../my_rules/analises/concluidos/roadmap-auth-colaborador.md); as dívidas assumidas em [`../my_rules/analises/dividas-auth-colaborador.md`](../my_rules/analises/dividas-auth-colaborador.md).
 
 ## ⚠️ Antes de começar — 3 cuidados críticos
 
@@ -73,6 +73,47 @@ Roteiro de teste manual da UI cobrindo a refatoração do acesso do colaborador 
 - [ ] **H2** — Colaborador puro tenta rota de gestão → bloqueado (papel `colaborador` fora da hierarquia).
 - [ ] **H3** *(opcional, via terminal — não UI)* — chamar uma RPC antiga (`get_colaborador_full_data`) com a anon key → `permission denied` / função não existe (REVOKE + DROP da 2D).
 
+## I. `colab_email` travado em linha vinculada (Etapa 1 — 2026-07-16)
+
+> **Rodado inteiro e aprovado em 2026-07-20** (o `I7` já tinha rodado em 2026-07-16). Até então a Etapa 1 estava verificada só por `tsc`/`build`. Contexto em [`../my_rules/analises/roadmap-edicao-email-colaborador.md`](../my_rules/analises/roadmap-edicao-email-colaborador.md).
+>
+> Para escolher as linhas de cada estado (A / B / C), rode:
+> ```sql
+> SELECT c.colab_nome_completo, c.colab_email, u.email AS auth_email,
+>        CASE WHEN c.user_id IS NULL THEN 'A'
+>             WHEN u.email_confirmed_at IS NULL THEN 'B' ELSE 'C' END AS estado
+> FROM colaboradores c LEFT JOIN auth.users u ON u.id = c.user_id
+> WHERE c.user_id IS NOT NULL;
+> ```
+> No banco local de hoje: **759 em A**, **1 em B** (`CAIO TESTE`), **12 em C**.
+
+- [x] **I1** *(estado A)* — Admin/coord edita um colaborador **não vinculado** → `colab_email` **editável**; trocar e salvar → persiste. É o caminho dos 254 sem e-mail: **não pode ter regredido**.
+- [x] **I2** *(estado C)* — Editar um colaborador **vinculado e confirmado** → `colab_email` **read-only** (fundo acinzentado) + nota de que virou o login. **Continua legível e copiável** (é `readOnly`, não `disabled`).
+- [x] **I3** *(estado B)* — Editar `CAIO TESTE` (vinculado pendente) → **também read-only**. A Etapa 1 trava por `user_id`, sem distinguir pendente de confirmada.
+- [x] **I4** — Numa linha vinculada, **alterar outro campo** (ex.: telefone) e salvar → salva normalmente, **e o `colab_email` não muda no banco**. Confirmar no SQL acima. *(Valida que o campo sai do payload sem levar o resto junto.)*
+- [x] **I5** — Novo cadastro (`/cadastro`) e cadastro público (`/cadastro-publico`) → `colab_email` **editável e obrigatório**. Linha nova não tem `user_id`: a trava **não pode** vazar para a criação.
+- [x] **I6** *(perfil do próprio colaborador)* — Logar como colaborador → `/perfil-colaborador` → `colab_email` **read-only sempre**, com a nota. Editar outro campo e salvar → salva, e o e-mail **permanece** no banco.
+- [x] **I7** *(resíduo conhecido — deve FALHAR a trava)* — Via terminal, `PATCH` direto no PostgREST em `colaboradores` com JWT de coordenador, mudando `colab_email` de linha vinculada → **passa**. Não é bug: a trava é de UI, sem trigger (decisão de 2026-07-16). Registrado em [`../my_rules/analises/dividas-auth-colaborador.md`](../my_rules/analises/dividas-auth-colaborador.md) §1.
+
+## J. Corrigir e-mail de acesso — a UI da Etapa 2 (2026-07-16)
+
+> **A Edge Function foi verificada** ponta a ponta por HTTP em 2026-07-16 (12 casos: os 3 estados, as recusas, a correção real, a idempotência) — ver o roadmap. **A UI foi rodada e aprovada em 2026-07-20.** Para repetir, precisa de `npm run dev` **e** `npm run supabase:functions:serve`.
+>
+> O `CAIO TESTE` é o espécime de estado B: `colab_email` `contato@caioteixeira.net.br` contra login `exemplo2@exemplo3.com`. **Hoje ele está no estado pós-J3** (a corrida de 2026-07-20 sincronizou a conta e não foi restaurada) — para repetir o bloco, restaure antes com:
+> ```sql
+> UPDATE auth.users SET email='exemplo2@exemplo3.com', recovery_token='', recovery_sent_at=NULL
+>  WHERE id='bee702b6-55c5-49a4-8986-4c929b593c0e';
+> UPDATE profiles SET email='exemplo2@exemplo3.com' WHERE id='bee702b6-55c5-49a4-8986-4c929b593c0e';
+> ```
+
+- [x] **J1** *(estado C)* — Editar um colaborador vinculado-confirmado → clicar "O e-mail está errado e ele nunca conseguiu entrar?" → o dialog explica que a conta **já foi confirmada** e **não oferece formulário**, só "Fechar".
+- [x] **J2** *(estado B)* — Editar `CAIO TESTE` → mesmo link → o dialog mostra o aviso âmbar com **os dois endereços** (conta `exemplo2@exemplo3.com`, cadastro `contato@…`) e **pré-preenche** o campo com o do cadastro.
+- [x] **J3** *(a correção)* — Confirmar em J2 → toast de sucesso. Localmente o **e-mail não sai** (SMTP), então o esperado é o toast de **aviso** ("o link não saiu"), **não** o de sucesso — e isso está certo. Conferir no banco: `auth.users.email` mudou, **`user_id` NÃO mudou**, `profiles.email` acompanhou, `user_roles` intactos.
+- [x] **J4** — Reabrir o dialog depois de J3 → o aviso de divergência **some** (`divergentes: false`); tentar corrigir para o mesmo e-mail → recusa "Este já é o e-mail da conta de acesso."
+- [x] **J5** *(negativo)* — Em J2, informar um e-mail que **já é de outro colaborador** → recusa clara, e **nada** é escrito.
+- [x] **J6** *(estado A)* — Numa linha não-vinculada o link **nem aparece** (o campo é editável e não há o que corrigir).
+- [x] **J7** *(permissão)* — Logado como **colaborador puro**, chamar a EF direto → **403** ("Só a coordenação pode corrigir o e-mail de acesso").
+
 ---
 
-**Notas:** os itens **C2 / D2 / E2 dependem do Mailpit** (envio local); para evitar qualquer envio, teste só até a tela de "confira o e-mail" e valide o vínculo direto no banco. O **H3** é o único que precisa de terminal (curl/psql), não de UI.
+**Notas:** os itens **C2 / D2 / E2 dependem do Mailpit** (envio local); para evitar qualquer envio, teste só até a tela de "confira o e-mail" e valide o vínculo direto no banco. **H3**, **I7** e **J7** são os que precisam de terminal (curl/psql), não de UI. O bloco **J** exige `npm run supabase:functions:serve` além do `npm run dev`.

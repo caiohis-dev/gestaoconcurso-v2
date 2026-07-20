@@ -41,14 +41,18 @@ O trabalho: varrer `information_schema.role_table_grants` por `grantee IN ('anon
 
 ---
 
-## Edição de `colab_email` sensível à identidade (bloquear + reconciliar)
+## Troca de e-mail de conta confirmada (estado C) — sem caminho no app
 
-**Status:** pendente — desenho fechado em 2026-07-15, **implementação não iniciada**
+**Status:** pendente — aberto em 2026-07-16, ao fechar as Etapas 1 e 2 da edição de `colab_email`
 **Área:** Auth e Permissões (ver [`estrutura/auth-e-permissoes.md`](./estrutura/auth-e-permissoes.md))
 
-Depois da refatoração do acesso do colaborador, `colab_email` virou a âncora de identidade do login — mas o dialog "Editar colaborador" ainda o edita como campo comum, o que dessincroniza cadastro e conta do Auth. Isso gera dois sintomas do mesmo defeito: o **caso travado** (e-mail digitado errado → conta pendente órfã no endereço velho, sem conserto pela UI) e a **dívida de sequestro** (trocar o e-mail de um login ativo = tomar a conta de alguém).
+As três etapas da edição de `colab_email` sensível à identidade **estão feitas** (trava de UI + a EF `corrigir-email-acesso`, que renomeia a conta pendente do estado B). **Sobra o estado C:** quem tem login **confirmado** não consegue trocar o próprio e-mail pelo app — e a coordenação também não, de propósito (dar essa alavanca à coordenação reabriria o sequestro). Hoje a única saída é o dashboard do Auth, na mão.
 
-O desenho completo — os três estados de uma linha (não-vinculada → livre; vinculada-pendente → lógica de reconciliação; vinculada-confirmada → bloquear) e as três etapas propostas — está em [`analises/roadmap-edicao-email-colaborador.md`](./analises/roadmap-edicao-email-colaborador.md). A saída administrativa para conta confirmada fica de fora de propósito, anotada como dívida em [`analises/dividas-auth-colaborador.md`](./analises/dividas-auth-colaborador.md) (§1-bis).
+Faltam as duas pontas: **(1) o caminho principal** — `supabase.auth.updateUser({ email })` no `PerfilColaborador`, com a dupla confirmação nativa e o sync de volta para `colab_email` quando confirmar; **(2) a exceção administrativa** — o dono que perdeu a caixa antiga, que exigiria ação separada, restrita a `admin`, auditada. Detalhe e o porquê de cada uma ter ficado de fora em [`analises/dividas-auth-colaborador.md`](./analises/dividas-auth-colaborador.md) §1-bis.
+
+**Resíduo relacionado (§1):** a trava de `colab_email` é **de UI, não de banco** — a RPC `update_meu_colaborador` ainda aceita `p_email` e a policy de UPDATE ainda alcança a coluna, então uma chamada direta ao PostgREST re-ancora a linha. Fechar isso pede trigger (que dispara mesmo para `service_role`, então precisaria de escape para a `corrigir-email-acesso`) ou tirar a coluna do alcance da policy.
+
+---
 
 ## Sanear as chaves PIX e preencher `tipo_chave_pix`
 

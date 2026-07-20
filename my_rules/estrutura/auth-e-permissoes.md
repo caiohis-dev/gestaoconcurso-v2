@@ -34,6 +34,39 @@
 - **Trava de edição concorrente removida (2D, 2026-07-15):** a policy de UPDATE de `colaboradores` perdeu o `AND NOT is_colaborador_logged_in(id)` — agora é só `has_role(admin) OR has_role(coordenador)`. A função `is_colaborador_logged_in` e a tabela `colaborador_sessions` foram **dropadas** (migration `20260715130603_*`). A proteção contra edição concorrente vira dívida assumida (last-write-wins). Sobra órfão do template `codigo-acesso.tsx` — removido no mesmo passo.
 - **Coluna `colab_codigo_acesso` removida (2D, 2026-07-15):** era a credencial do login por código, morta desde 2A–2C. Dropada (migration `20260715131321_*`, com o CHECK `colab_codigo_acesso_format`) depois de limpar suas últimas pontas no front — o e-mail em massa do `PainelDadosColaboradores` foi **aposentado** e a coluna "Código de acesso" saiu de dois exports. **Com isso a subetapa 2D está completa e a refatoração inteira do acesso do colaborador (etapas 1–3) está fechada.**
 
+### `colab_email` é âncora de identidade, não campo comum (Etapa 1, 2026-07-16)
+
+Depois da refatoração do acesso, `colab_email` acumulou **dois papéis**: dado de contato **e** identidade de login (é por ele que o trigger `handle_new_user` casa conta com cadastro). Enquanto ninguém reivindicou, os dois coincidem; **assim que existe conta, quem manda no login é `auth.users.email`**, e `colab_email` vira projeção dele. Editá-lo numa linha vinculada **dessincroniza** cadastro e conta — e não é só política: um `UPDATE` vindo do front **não alcança `auth.users`** (exige admin API / `service_role`), então o caminho normal de edição é *fisicamente incapaz* de manter os dois em sincronia.
+
+**O estado da linha decide o que a edição significa** — os três estados, e o que hoje está implementado:
+
+| Estado | Condição | Comportamento |
+|---|---|---|
+| **A** | `user_id IS NULL` | ✅ **Livre** — é o caminho dos 254 sem e-mail e do conserto de typo *antes* da reivindicação |
+| **B** | Vinculado, conta não-confirmada | 🚫 Travado no formulário, ✅ **corrigível pela ação deliberada** — a EF `corrigir-email-acesso` (Etapa 2) |
+| **C** | Vinculado, conta confirmada | 🚫 Travado — a troca pertence ao dono, e **não há caminho no app** (dívida aberta) |
+
+**O que a Etapa 1 fez (só front, sem migration):**
+
+- **`Colaborador` (em `useColaboradores.tsx`) passou a declarar `user_id`.** A coluna já vinha nos `select('*')`; faltava no tipo. `ColaboradorInsert` a exclui — quem preenche `user_id` é o trigger, nunca o cliente.
+- **`ColaboradorDialog` (gestão):** `colab_email` fica **read-only quando `user_id` não é nulo** (`isVinculado`), com nota explicando que aquele e-mail virou o login. Nesse caso o campo sai **do payload do update e da validação** (`colaboradorSchema.omit({ colab_email: true })`) — o `omit` também evita travar o salvamento de uma linha vinculada cujo `colab_email` fosse nulo, já que o schema o exige.
+- **`PerfilColaborador` (o próprio colaborador):** `colab_email` **read-only sempre**. Quem enxerga essa página está logado, logo a linha é sempre vinculada — é o estado C por definição. Esta tela **não estava no desenho original** da Etapa 1 e foi incluída em 2026-07-16: sem ela, o dialog de gestão remeteria a troca "ao próprio colaborador" enquanto o caminho do colaborador (`update_meu_colaborador`, que escreve `colab_email` e não toca `auth.users`) produzia exatamente a dessincronia que a etapa existe para impedir.
+
+**Limite conhecido e aceito:** a trava é **de UI**. Decidiu-se (2026-07-16) **não** pôr trigger no banco: um `BEFORE UPDATE` barrando `colab_email` em linha vinculada fecharia junto o caminho da **Etapa 2** — a `corrigir-email-acesso` também faz `UPDATE` em `colab_email`, e trigger **dispara mesmo para `service_role`** (ao contrário de RLS, que ele contorna) —, exigindo escape por flag de sessão. Logo, **a RPC `update_meu_colaborador` ainda aceita `p_email`** e a policy de UPDATE de admin/coordenador ainda alcança a coluna: uma chamada direta ao PostgREST contorna a trava. Ver a dívida em [`../analises/dividas-auth-colaborador.md`](../analises/dividas-auth-colaborador.md) e o desenho completo em [`../analises/roadmap-edicao-email-colaborador.md`](../analises/roadmap-edicao-email-colaborador.md).
+
+### A saída do estado B: `corrigir-email-acesso` (Etapa 2, 2026-07-16)
+
+Travar o campo (Etapa 1) impede o estrago novo, mas não conserta quem já está preso. A **Edge Function `corrigir-email-acesso`** é a saída deliberada — no lugar certo, e não como edição casual de formulário. Ponto de entrada: um link discreto sob o campo travado do `ColaboradorDialog` ("O e-mail está errado e ele nunca conseguiu entrar?"), que abre o `CorrigirEmailAcessoDialog`.
+
+- **Uma função, dois modos.** `consultar` devolve `{ estado, email_cadastro, email_conta, divergentes }`; `corrigir` executa. O modo `consultar` existe porque **separar B de C exige ler `auth.users`, e isso só a EF faz** — o front nunca vê o Auth. É a UI perguntando o que renderizar.
+- **Autorização:** espelha exatamente a policy de UPDATE de `colaboradores` — `has_role(admin) OR has_role(coordenador)`. Como `has_role` é **match literal, sem hierarquia**, um superadmin sem linha `admin` não passa aqui, igual à tabela.
+- **A mecânica é renomear, não apagar.** `admin.updateUserById(user_id, { email, email_confirm: false })` → atualiza `colab_email` → atualiza `profiles.email` (o trigger só o escreve no nascimento da conta; ele **não** acompanha o rename) → envia link **`recovery`** (o `invite` falharia: a conta existe). A conta **segue pendente** — quem confirma é a pessoa, ao abrir o link no endereço novo. É a prova de posse da caixa.
+- **Por que não apagar** (o desenho original mandava `deleteUser` + reinvite): **15 colunas em 11 tabelas** referenciam `auth.users`. As de `CASCADE` (`profiles`, `user_roles`, `coordenadores_prova.user_id`) sumiriam **em silêncio** — um papel `coordenador` concedido por admin seria **perdido**, porque o trigger só reconcede `user` e `colaborador` — e as **11 de `NO ACTION`** (`created_by`/`sent_by`) fariam o DELETE **falhar**. Renomear preserva o `user_id` e, com ele, todos os vínculos **por construção**. A análise inteira está em [`../analises/roadmap-edicao-email-colaborador.md`](../analises/roadmap-edicao-email-colaborador.md).
+- **Tudo que pode recusar, recusa antes de escrever:** estado ≠ B, e-mail já no cadastro de outro (o índice único é funcional sobre `lower(trim(...))`), conta já existente no destino, e-mail igual ao da conta. **A comparação é contra o e-mail da CONTA, não contra `colab_email`** — o caso típico é `colab_email` já corrigido e a conta parada no endereço velho.
+- **O helper compartilhado mudou:** `_shared/enviar-link-acesso.ts` ganhou `tipo?: 'invite' | 'recovery'`, com **`'invite'` como padrão** — `reivindicar-acesso` e `public-create-colaborador` seguem intactos.
+
+**Consequência operacional:** o **estado B tem saída no app**; o **estado C não tem caminho nenhum** — nem pelo dono, nem pela coordenação —, e a correção segue manual (dashboard do Auth). Isso é **decisão, não esquecimento**: ver a dívida em [`../analises/dividas-auth-colaborador.md`](../analises/dividas-auth-colaborador.md) §1-bis. O banco local tem **1 linha em B já dessincronizada** (`colab_email` `contato@caioteixeira.net.br` contra login `exemplo2@exemplo3.com`) — o caso travado em carne e osso, preservado de propósito como caso de teste.
+
 ### Perfis
 
 - `/perfil` — dados do próprio usuário (tabela `profiles`), qualquer conta.

@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import CorrigirEmailAcessoDialog from '@/components/CorrigirEmailAcessoDialog';
 import { ESTADO_CIVIL_OPTIONS, RACA_OPTIONS, GRAU_INSTRUCAO_OPTIONS } from '@/lib/constants';
 import { maskDateBR, brDateToIso, isoToBrDate, maskCPF, maskPIS, onlyDigits } from '@/lib/utils';
 import { useBancos, TIPO_CONTA_OPTIONS } from '@/hooks/useBancos';
@@ -97,8 +98,12 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isPublicSubmitting, setIsPublicSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [corrigirEmailOpen, setCorrigirEmailOpen] = useState(false);
   const isEditing = !!colaborador;
   const isSubmitting = isCreating || isUpdating || isPublicSubmitting;
+  // Numa linha já reivindicada, colab_email é a projeção do login: só o Auth o altera com
+  // consistência, e um UPDATE daqui não alcança auth.users.
+  const isVinculado = !!colaborador?.user_id;
 
   useEffect(() => {
     if (colaborador) {
@@ -168,8 +173,14 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
       tipo_conta: (formData.tipo_conta as 'corrente' | 'poupanca' | '') || null,
     };
 
+    const { colab_email: _emailAncorado, ...dataSemEmail } = data;
+
     try {
-      colaboradorSchema.parse(data);
+      if (isVinculado) {
+        colaboradorSchema.omit({ colab_email: true }).parse(dataSemEmail);
+      } else {
+        colaboradorSchema.parse(data);
+      }
     } catch (error) {
       if (error instanceof z.ZodError) {
         const fieldErrors: Record<string, string> = {};
@@ -184,7 +195,7 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
     }
 
     if (isEditing && colaborador) {
-      update({ id: colaborador.id, ...data }, {
+      update({ id: colaborador.id, ...(isVinculado ? dataSemEmail : data) }, {
         onSuccess: () => onOpenChange(false),
       });
     } else if (publicMode) {
@@ -368,7 +379,9 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="email">Email *</Label>
-                  <span className="text-xs text-muted-foreground">{formData.colab_email.length}/255</span>
+                  {!isVinculado && (
+                    <span className="text-xs text-muted-foreground">{formData.colab_email.length}/255</span>
+                  )}
                 </div>
                 <Input
                   id="email"
@@ -377,9 +390,29 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
                   onChange={(e) => updateField('colab_email', e.target.value)}
                   maxLength={255}
                   placeholder="email@exemplo.com"
-                  required
+                  required={!isVinculado}
+                  readOnly={isVinculado}
+                  className={isVinculado ? 'bg-muted text-muted-foreground' : undefined}
                 />
-                {errors.colab_email && <p className="text-sm text-destructive">{errors.colab_email}</p>}
+                {isVinculado ? (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      Este colaborador já criou o acesso dele, e este e-mail passou a ser o login.
+                      Por isso ele não é editável aqui — trocá-lo aqui não mudaria o login, só faria
+                      o cadastro divergir da conta.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="link"
+                      className="h-auto p-0 text-xs"
+                      onClick={() => setCorrigirEmailOpen(true)}
+                    >
+                      O e-mail está errado e ele nunca conseguiu entrar?
+                    </Button>
+                  </>
+                ) : (
+                  errors.colab_email && <p className="text-sm text-destructive">{errors.colab_email}</p>
+                )}
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -662,6 +695,15 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
         </form>
       </DialogContent>
     </Dialog>
+
+    {isVinculado && colaborador && (
+      <CorrigirEmailAcessoDialog
+        open={corrigirEmailOpen}
+        onOpenChange={setCorrigirEmailOpen}
+        colaboradorId={colaborador.id}
+        colaboradorNome={colaborador.colab_nome_completo}
+      />
+    )}
 
     {submitStatus && (
       // Este aviso convive com o Dialog aberto, e precisa vencer duas defesas dele:

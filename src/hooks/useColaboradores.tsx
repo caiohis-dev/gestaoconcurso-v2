@@ -21,6 +21,8 @@ function mensagemDuplicidade(error: Error): string | null {
 
 export interface Colaborador {
   id: string;
+  /** Conta do Auth que reivindicou este cadastro. Não-nulo = colab_email é a âncora do login. */
+  user_id: string | null;
   colab_matricula: string | null;
   colab_nome_completo: string | null;
   colab_cpf: string;
@@ -51,7 +53,7 @@ export interface Colaborador {
   updated_at: string;
 }
 
-export type ColaboradorInsert = Omit<Colaborador, 'id' | 'created_at' | 'updated_at' | 'colab_ultimo_acesso'>;
+export type ColaboradorInsert = Omit<Colaborador, 'id' | 'created_at' | 'updated_at' | 'colab_ultimo_acesso' | 'user_id'>;
 
 export interface UseColaboradoresOptions {
   /** When true, fetches all collaborators regardless of role (for adding to exams) */

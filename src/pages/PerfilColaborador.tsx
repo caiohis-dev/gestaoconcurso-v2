@@ -265,6 +265,8 @@ export default function PerfilColaborador() {
       p_estado_civil: parseInt(formData.colab_estado_civil) || 0,
       p_raca: parseInt(formData.colab_raca) || 0,
       p_deficiente: formData.colab_deficiente,
+      // Reescreve o e-mail carregado, sem alterá-lo: o campo é read-only porque colab_email é a
+      // âncora do login, e a RPC não alcança auth.users.
       p_email: formData.colab_email,
       p_chave_pix: formData.colab_chave_pix,
     });
@@ -556,17 +558,20 @@ export default function PerfilColaborador() {
                 />
               </div>
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="email">E-mail</Label>
-                  <span className="text-xs text-muted-foreground">{formData.colab_email.length}/255</span>
-                </div>
+                <Label htmlFor="email">E-mail</Label>
                 <Input
                   id="email"
                   type="email"
                   value={formData.colab_email}
-                  onChange={(e) => setFormData({ ...formData, colab_email: e.target.value })}
-                  maxLength={100}
+                  readOnly
+                  className="bg-muted text-muted-foreground"
                 />
+                <p className="text-xs text-muted-foreground">
+                  Este é o e-mail do seu acesso: é com ele que você entra no sistema e recebe a
+                  recuperação de senha. Trocá-lo significa trocar a sua conta de acesso — não é uma
+                  edição de cadastro, então não acontece por aqui. Se precisar mudar, fale com a
+                  coordenação.
+                </p>
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
