@@ -92,3 +92,16 @@ Falta apenas, no dia: a **ref do projeto novo** no Supabase.
 O Lovable já foi removido do **código** em 2026-07-11 (`lovable-tagger`, boilerplate, `.lovable/`), e o site do Lovable **não existe mais** — o projeto está temporariamente fora do ar (situação em 2026-07-12). Não há mais deploy ativo em lugar nenhum.
 
 Publicar a v2 em infraestrutura própria (ex.: Vercel, Netlify, ou build estático em qualquer host), incluindo o domínio. O build de produção (`npm run build`) é um Vite estático comum e não depende de nada do Lovable. Depende do bootstrap do banco acima (o frontend precisa apontar para o Supabase novo).
+
+---
+
+## Verificar exposição da `send-email` no projeto Supabase antigo (v1)
+
+**Status:** pendente — **a verificar antes de considerar o assunto fechado**
+**Área:** Segurança / Infraestrutura (ver [`estrutura/integracoes-externas.md`](./estrutura/integracoes-externas.md))
+
+Em 2026-07-20 descobriu-se que a `send-email` **não checava quem a chamava**. O `verify_jwt` padrão exige um JWT, mas a **anon key é um JWT válido e é pública** — vai no bundle do frontend. Qualquer pessoa com essa chave podia mandar `{to, subject, html}` arbitrário **pelo servidor SMTP da FEVRE**: o e-mail sai com SPF/DKIM legítimos e serve de vetor de phishing contra os próprios colaboradores. **Corrigido no código** (a função passou a exigir `service_role`).
+
+**O que falta:** a correção vale para o código deste repo. **O projeto Supabase antigo (v1) pode ainda ter a versão vulnerável publicada** — e uma Edge Function fica acessível pela URL do projeto **independentemente de o frontend estar no ar** (hoje não está). Se o projeto v1 ainda existe, o endpoint provavelmente continua chamável com a anon key antiga.
+
+**A fazer:** confirmar se o projeto v1 ainda está ativo; se estiver, ou republicar a `send-email` corrigida nele, ou remover a function, ou derrubar o projeto. Enquanto isso não for verificado, considere as credenciais SMTP da Hostinger como **potencialmente já expostas a uso indevido** — vale checar o volume de envio na conta e, na dúvida, **trocar `SMTP_PASS`** (a senha está nos secrets das EFs e no `.env` local, então a troca é barata).
