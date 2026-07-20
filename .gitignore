@@ -24,6 +24,12 @@ dist-ssr
 supabase/.branches
 supabase/.temp
 
+# Consultas salvas pelo editor SQL do Studio local. Nascem como "Untitled query
+# N.sql", pertencem ao root (quem escreve é o container) e são rascunho de quem
+# está na máquina — não fazem parte do projeto. Uma consulta que valha a pena
+# guardar vai para a documentação ou para uma migration, não para cá.
+supabase/snippets/
+
 # Dumps de produção (export-seed): carregam CPF, PIS, conta bancária, chave PIX
 # de colaboradores reais e hashes de senha. Nunca versionar.
 seed_*.sql
