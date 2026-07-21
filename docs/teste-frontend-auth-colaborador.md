@@ -28,14 +28,19 @@ Roteiro de teste manual da UI cobrindo a refatoração do acesso do colaborador 
 - [ ] **B3** — Editar **dados bancários** e salvar → persiste (via `update_meus_dados_bancarios`).
 - [ ] **B4** — Como gestor+colaborador, ir por "Meu Cadastro" e salvar → salva **sem** te expulsar da sessão de gestão.
 
-## C. Primeiro acesso / reivindicação (2B)
+## C. Porta única "Estou sem minha senha" — caminho do CPF (2B, unificado em 2026-07-20)
 
-- [ ] **C1** — `/auth` → "Primeiro acesso", CPF de **colaborador não vinculado com e-mail** → mostra e-mail **mascarado** (`j2***@…`), nunca inteiro.
-- [ ] **C2** — Concluir → checar **Mailpit** → chega o link de invite; abrir → define senha → loga → `/perfil-colaborador`.
-- [ ] **C3** — CPF **já vinculado** → mensagem de "já tem conta" (não reenvia invite).
-- [ ] **C4** — CPF **sem e-mail** no cadastro → orienta procurar o coordenador (ramo `needsEmail` morto).
-- [ ] **C5** — CPF **inexistente** → resposta genérica, sem revelar nada.
-- [ ] **C6** — Repetir a reivindicação **6×** rápido (mesmo IP) → o **6º é cortado** (rate limit 5/15min).
+> **Os dois links viraram um.** "Primeiro acesso (já sou cadastrado)" e "Esqueci minha senha" foram substituídos por **"Estou sem minha senha"**, com **um campo** que aceita CPF **ou** e-mail (detecção pelo `@`). O caminho do e-mail está no bloco **E**.
+>
+> ⚠️ **As respostas dos dois caminhos são assimétricas de propósito** — o CPF revela o e-mail mascarado, o e-mail não revela nada. Se algum caso abaixo parecer "inconsistente" com o bloco E, **é o desenho**, não bug: ver o item da porta única em [`../my_rules/backlog.md`](../my_rules/backlog.md).
+
+- [x] **C1** — `/auth` → "Estou sem minha senha", CPF de **colaborador não vinculado com e-mail** → mostra e-mail **mascarado** (`j2***@…`), nunca inteiro.
+- [x] **C2** — Concluir → **o e-mail chega de verdade** (não mais Mailpit — ver o cuidado nº 1); abrir → define senha → loga → `/perfil-colaborador`.
+- [x] **C3** — CPF **já vinculado** → mensagem de "já tem conta" (não reenvia invite), orientando informar o **e-mail no mesmo campo** para receber o link de redefinição.
+- [x] **C4** — CPF **sem e-mail** no cadastro → orienta procurar o coordenador (ramo `needsEmail` morto). **Segue sendo beco sem saída, por decisão** — são 254 pessoas.
+- [x] **C5** — CPF **inexistente** → resposta genérica, sem revelar nada.
+- [x] **C6** — Repetir **6×** rápido (mesmo IP) → o **6º é cortado** (rate limit 5/15min).
+- [x] **C7** *(orçamento compartilhado)* — Gastar o teto pelo **e-mail** (bloco E) e em seguida tentar pelo **CPF** → **também 429**. As duas portas dividem a mesma tabela `reivindicacao_rate_limit` de propósito: separadas, o atacante somaria 5 + 5.
 
 ## D. Cadastro público (2C)
 
@@ -48,14 +53,19 @@ Roteiro de teste manual da UI cobrindo a refatoração do acesso do colaborador 
 - [ ] **D5** *(regressão de 2026-07-16)* — No cartão de sucesso, clicar **"Continuar"** → fecha e vai para `/auth`. **O botão precisa responder ao clique** — era exatamente o que o `pointer-events: none` do body matava.
 - [ ] **D6** *(regressão de 2026-07-16 — o caminho de erro)* — Cadastrar com um **e-mail já usado** por outro cadastro → aparece o cartão **vermelho** com a mensagem, e "Fechar" funciona. Este era o pior sintoma: sem aviso, a pessoa reenviava para sempre sem saber por quê.
 
-## E. Recuperação de senha (EF `recuperar-senha` — reescrito em 2026-07-20)
+## E. Porta única — caminho do e-mail (EF `recuperar-senha`, 2026-07-20)
 
 > **Deixou de ser o fluxo nativo.** O `resetPasswordForEmail` saiu do `Auth.tsx`: agora é a EF `recuperar-senha`, que gera o link com `generateLink` e envia pela `send-email`/Hostinger, com o visual da FEVRE. **O e-mail sai de verdade e não cai mais no Mailpit** — use uma caixa sua. Exige `npm run supabase:functions:serve`.
+>
+> **A EF decide sozinha entre `recovery` e `invite`**: se o e-mail já tem conta, redefine; se é cadastro em **estado A** (sem conta), manda o invite e o trigger vincula. O front não sabe qual dos dois aconteceu — e não deve saber.
 
-- [x] **E1** — `/auth` → "Esqueci minha senha" → e-mail chega **com o visual da FEVRE** (não o template cru do Supabase), assunto "Redefinição de senha", botão "Redefinir minha senha". *(Aprovado em 2026-07-20.)*
+- [x] **E1** — `/auth` → "Estou sem minha senha" → informar **e-mail com conta** → e-mail chega **com o visual da FEVRE** (não o template cru do Supabase), assunto "Redefinição de senha", botão "Redefinir minha senha". *(Aprovado em 2026-07-20.)*
 - [x] **E2** — Concluir → abrir link → cai em `/redefinir-senha`, troca a senha, novo login funciona. *(Aprovado em 2026-07-20.)*
+- [x] **E6** *(estado A por e-mail — o ramo que faz a porta única cumprir a promessa)* — Informar o e-mail de um cadastro **sem conta** → chega o **invite** ("Criar minha senha"), a conta nasce, o trigger vincula `user_id` e concede `user`+`colaborador`, e ela fica **pendente** (`email_confirmed_at` NULL). Sem este ramo a tela prometeria à maioria e não entregaria. *(Verificado por HTTP em 2026-07-20, **não pela UI**.)*
+- [x] **E7** *(cooldown depois do invite)* — Logo após o E6, pedir de novo → **nada sai**. ⚠️ O cooldown olha os **três** carimbos (`recovery_sent_at`, `confirmation_sent_at`, `invited_at`), porque o invite deixa `recovery_sent_at` **NULL**. Olhando só o recovery, a segunda chamada mandaria um link novo que **invalidaria o invite recém-enviado** — e a pessoa abriria o primeiro e-mail, já morto. *(Verificado por HTTP em 2026-07-20.)*
 - [x] **E3** *(cooldown)* — Pedir de novo em menos de 2 min → a tela confirma igual, mas **nenhum segundo e-mail sai** (log: `em cooldown, envio suprimido`). É o esperado: o limite protege contra bombardeio e evita que o link do primeiro e-mail seja invalidado pelo segundo. *(Verificado por HTTP em 2026-07-20, **não pela UI**.)*
-- [x] **E4** *(anti-enumeração)* — E-mail sem conta → **a mesma** mensagem do caso com conta. A tela não pode virar oráculo de quem tem cadastro; a EF sustenta a regra no servidor. *(Verificado por HTTP em 2026-07-20, **não pela UI**.)*
+- [x] **E4** *(anti-enumeração)* — E-mail sem conta **e sem cadastro** → **a mesma** mensagem dos casos E1 e E6. A tela não pode virar oráculo de quem tem cadastro; a EF sustenta a regra no servidor. *(Verificado por HTTP em 2026-07-20, **não pela UI**.)*
+- [x] **E8** *(a dica que salva os 254)* — A tela de "link enviado" do caminho do e-mail mostra o aviso **"tente pelo CPF"**. Sem ele, quem tem cadastro **sem e-mail** digita o e-mail pessoal, não recebe nada e não tem como saber por quê — a resposta é genérica por desenho. Pelo CPF o servidor acha e explica (C4).
 - [ ] **E5** *(a porta fechada)* — `POST` na `send-email` com a **anon key** (a que vai no bundle do frontend) → **403**. Sem isso, qualquer um envia e-mail arbitrário pelo servidor da FEVRE. *(Verificado por HTTP em 2026-07-20; fica no checklist por ser regressão silenciosa — se voltar a passar, o open relay reabriu.)*
 
 ## F. Gestão de colaboradores (RLS + trava removida — 2D)

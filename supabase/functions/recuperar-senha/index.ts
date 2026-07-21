@@ -36,6 +36,17 @@ const BodySchema = z.object({
 // ataque distribuído mirando muitas contas ao mesmo tempo — fica como evolução.
 const COOLDOWN_MIN = 2;
 
+// Teto por IP, além do cooldown por conta. Passou a ser necessário quando esta função
+// ganhou o ramo de estado A: ali o invite CRIA conta, e o cooldown por conta não
+// protege a primeira chamada de cada e-mail — alguém com a lista de e-mails dispararia
+// uma leva inteira. Mesmos números da reivindicar-acesso (a outra porta pública).
+//
+// Deliberadamente a MESMA tabela da reivindicar-acesso: as duas portas dividem um só
+// orçamento, senão o atacante somaria 5 pelo CPF mais 5 pelo e-mail. O 429 daqui não
+// vaza nada — é por IP, não por conta, e não diz se o e-mail existe.
+const RATE_LIMIT_MAX = 5;
+const RATE_LIMIT_JANELA_MIN = 15;
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -64,6 +75,19 @@ Deno.serve(async (req) => {
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, serviceKey);
 
+    // --- Rate limit por IP (orçamento compartilhado com a reivindicar-acesso) ---
+    const ip = (req.headers.get('x-forwarded-for') ?? '').split(',')[0].trim() || 'desconhecido';
+    const desde = new Date(Date.now() - RATE_LIMIT_JANELA_MIN * 60_000).toISOString();
+    const { count } = await supabase
+      .from('reivindicacao_rate_limit')
+      .select('*', { count: 'exact', head: true })
+      .eq('ip', ip)
+      .gte('created_at', desde);
+    if ((count ?? 0) >= RATE_LIMIT_MAX) {
+      return jsonResp({ error: 'Muitas tentativas. Aguarde alguns minutos e tente de novo.' }, 429);
+    }
+    await supabase.from('reivindicacao_rate_limit').insert({ ip });
+
     // Localiza a conta no Auth. O supabase-js não filtra listUsers por e-mail, então
     // vai direto no endpoint admin do GoTrue. O `filter` é busca parcial — o
     // e-mail exato é conferido depois, senão "ana@x.com" casaria com "mariana@x.com".
@@ -82,14 +106,55 @@ Deno.serve(async (req) => {
       (u) => String(u.email ?? '').trim().toLowerCase() === email,
     );
 
-    // Conta não existe: silêncio. Mesma resposta, mesmo tempo de espera aparente.
+    // Sem conta no Auth NÃO significa "não tem nada aqui". A maioria dos colaboradores
+    // está no estado A: cadastro existe, conta nunca foi criada. Para essa pessoa o que
+    // resolve é o INVITE (que cria a conta e o trigger vincula), não o recovery — é o
+    // mesmo raciocínio que o servidor já faz pelo CPF na reivindicar-acesso, aplicado
+    // ao e-mail. Sem este ramo, a porta única prometeria justamente para a maioria e
+    // não entregaria: resposta genérica e nenhum e-mail saindo.
     if (!user) {
-      console.log('recuperar-senha: sem conta para o e-mail informado (resposta genérica)');
+      const { data: colabA } = await supabase
+        .from('colaboradores')
+        .select('colab_nome_completo')
+        .ilike('colab_email', email)
+        .is('user_id', null)
+        .maybeSingle();
+
+      if (!colabA) {
+        console.log('recuperar-senha: sem conta e sem cadastro para o e-mail (resposta genérica)');
+        return jsonResp(RESPOSTA_GENERICA);
+      }
+
+      // Cooldown aqui é indireto: o invite CRIA a conta, então a segunda chamada já cai
+      // no ramo de cima — e é por isso que aquele cooldown precisa olhar
+      // `confirmation_sent_at`/`invited_at`, não só `recovery_sent_at` (que o invite
+      // deixa NULL). Ver o comentário lá em cima.
+      const { ok: okInvite } = await enviarLinkAcesso(supabase, {
+        email,
+        nome: (colabA.colab_nome_completo as string | undefined) ?? '',
+        tipo: 'invite',
+        contexto: 'primeiro-acesso',
+      });
+      if (!okInvite) console.error('recuperar-senha: invite falhou para cadastro em estado A');
+
+      console.log('recuperar-senha: estado A localizado por e-mail, invite enviado');
       return jsonResp(RESPOSTA_GENERICA);
     }
 
     // Cooldown. Também genérico: um 429 aqui revelaria que a conta existe.
-    const ultimoEnvio = user.recovery_sent_at ? new Date(String(user.recovery_sent_at)) : null;
+    //
+    // Olha os TRÊS carimbos, não só o recovery_sent_at: o generateLink('invite') grava
+    // `confirmation_sent_at`/`invited_at` e deixa `recovery_sent_at` NULL. Considerar só
+    // o recovery deixaria passar o pior caso — quem acabou de receber o invite (pelo
+    // ramo de estado A logo abaixo, ou pela reivindicar-acesso) pediria de novo e
+    // receberia um recovery na hora, e esse segundo link INVALIDA o primeiro. A pessoa
+    // então abre o e-mail do invite, que é o que costuma chegar primeiro, e ele já morreu.
+    const carimbos = [user.recovery_sent_at, user.confirmation_sent_at, user.invited_at]
+      .filter(Boolean)
+      .map((t) => new Date(String(t)).getTime())
+      .filter((t) => !Number.isNaN(t));
+    const ultimoEnvio = carimbos.length ? new Date(Math.max(...carimbos)) : null;
+
     if (ultimoEnvio && Date.now() - ultimoEnvio.getTime() < COOLDOWN_MIN * 60_000) {
       console.log('recuperar-senha: em cooldown, envio suprimido (resposta genérica)');
       return jsonResp(RESPOSTA_GENERICA);

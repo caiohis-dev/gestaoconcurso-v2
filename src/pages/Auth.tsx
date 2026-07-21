@@ -1,24 +1,19 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import fevreLogo from "@/assets/fevre-logo.png";
-import { CheckCircle2, X, ArrowLeft, Mail } from "lucide-react";
+import { CheckCircle2, X, ArrowLeft } from "lucide-react";
 import ReivindicarAcessoCard from "@/components/ReivindicarAcessoCard";
 import { z } from "zod";
 
 const loginSchema = z.object({
   email: z.string().email("E-mail inválido"),
   password: z.string().min(6, "Senha deve ter no mínimo 6 caracteres"),
-});
-
-const emailSchema = z.object({
-  email: z.string().email("E-mail inválido"),
 });
 
 export default function Auth() {
@@ -30,10 +25,7 @@ export default function Auth() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loginData, setLoginData] = useState({ email: "", password: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [showEsqueciSenha, setShowEsqueciSenha] = useState(false);
   const [showReivindicar, setShowReivindicar] = useState(false);
-  const [emailReset, setEmailReset] = useState("");
-  const [resetEnviado, setResetEnviado] = useState(false);
 
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
@@ -93,45 +85,6 @@ export default function Auth() {
     }
   };
 
-  const handleEsqueciSenha = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrors({});
-
-    try {
-      emailSchema.parse({ email: emailReset });
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        setErrors({ emailReset: error.errors[0]?.message ?? "E-mail inválido" });
-        return;
-      }
-    }
-
-    setIsSubmitting(true);
-    // EF própria em vez do resetPasswordForEmail nativo: o nativo é enviado pelo SMTP
-    // do GoTrue (local: Mailpit; produção: serviço embutido do Supabase), que não passa
-    // pela send-email e não tem o visual da FEVRE. A EF gera o mesmo link do Auth e o
-    // envia pela Hostinger, como todo o resto do sistema.
-    const { error } = await supabase.functions.invoke("recuperar-senha", {
-      body: { email: emailReset.trim() },
-    });
-    setIsSubmitting(false);
-
-    if (error) {
-      toast({
-        title: "Erro ao enviar",
-        description: "Não foi possível enviar o link agora. Tente novamente em instantes.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Sempre confirmamos, mesmo que o e-mail não exista: dizer "este e-mail não tem
-    // conta" transformaria esta tela num oráculo de quem está cadastrado. A EF sustenta
-    // a mesma regra do lado do servidor — responde igual para conta inexistente e para
-    // envio em cooldown.
-    setResetEnviado(true);
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -177,7 +130,7 @@ export default function Auth() {
           </p>
         </div>
 
-        {!showEsqueciSenha && !showReivindicar && (
+        {!showReivindicar && (
           <Card className="border-none shadow-lg">
             <CardHeader className="space-y-1 pb-4">
               <CardTitle className="text-xl text-center">Entrar</CardTitle>
@@ -225,22 +178,18 @@ export default function Auth() {
                   Novo Colaborador
                 </Button>
 
+                {/* Porta única (2026-07-20). Antes eram dois links — "Primeiro acesso
+                    (já sou cadastrado)" e "Esqueci minha senha" — que pediam à pessoa
+                    para se classificar segundo user_id/email_confirmed_at, estado do
+                    banco a que ela não tem acesso. Agora ela só diz quem é, e o
+                    servidor decide entre invite e recovery. */}
                 <button
                   type="button"
                   onClick={() => setShowReivindicar(true)}
                   className="w-full text-sm text-primary hover:underline"
                   disabled={isSubmitting}
                 >
-                  Primeiro acesso (já sou cadastrado)
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowEsqueciSenha(true)}
-                  className="w-full text-sm text-muted-foreground hover:underline"
-                  disabled={isSubmitting}
-                >
-                  Esqueci minha senha
+                  Estou sem minha senha
                 </button>
               </form>
             </CardContent>
@@ -257,78 +206,7 @@ export default function Auth() {
               <ArrowLeft className="h-4 w-4" />
               Voltar
             </button>
-            <ReivindicarAcessoCard onClose={() => setShowReivindicar(false)} />
-          </>
-        )}
-
-        {showEsqueciSenha && (
-          <>
-            <button
-              type="button"
-              onClick={() => {
-                setShowEsqueciSenha(false);
-                setResetEnviado(false);
-                setErrors({});
-              }}
-              className="mb-4 flex items-center gap-2 text-sm text-primary hover:underline"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Voltar
-            </button>
-
-            <Card className="border-none shadow-lg">
-              <CardHeader className="space-y-1 pb-4">
-                <CardTitle className="text-xl text-center">Esqueci minha senha</CardTitle>
-                <CardDescription className="text-center">
-                  Enviaremos um link para você definir uma senha nova
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {resetEnviado ? (
-                  <div className="flex flex-col items-center text-center space-y-4 py-4">
-                    <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                      <Mail className="w-8 h-8 text-green-600 dark:text-green-400" />
-                    </div>
-                    <p className="text-foreground font-medium">
-                      Se houver uma conta com esse e-mail, o link acabou de ser enviado.
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Não esqueça de conferir a caixa de spam.
-                    </p>
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => {
-                        setShowEsqueciSenha(false);
-                        setResetEnviado(false);
-                      }}
-                    >
-                      Voltar para o login
-                    </Button>
-                  </div>
-                ) : (
-                  <form onSubmit={handleEsqueciSenha} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="reset-email">E-mail</Label>
-                      <Input
-                        id="reset-email"
-                        type="email"
-                        placeholder="seu@email.com"
-                        value={emailReset}
-                        onChange={(e) => setEmailReset(e.target.value)}
-                        disabled={isSubmitting}
-                      />
-                      {errors.emailReset && (
-                        <p className="text-sm text-destructive">{errors.emailReset}</p>
-                      )}
-                    </div>
-                    <Button type="submit" className="w-full" disabled={isSubmitting}>
-                      {isSubmitting ? "Enviando..." : "Enviar link"}
-                    </Button>
-                  </form>
-                )}
-              </CardContent>
-            </Card>
+            <ReivindicarAcessoCard onClose={() => setShowReivindicar(false)} permitirEmail />
           </>
         )}
 

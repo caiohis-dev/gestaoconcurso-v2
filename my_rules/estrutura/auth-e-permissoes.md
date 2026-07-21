@@ -15,6 +15,25 @@
 - Logout força `window.location.href = '/auth'` (reload completo, para não deixar estado React fantasma) e limpa as chaves `sb-*`/`supabase` do `localStorage`. **Cuidado herdado:** esse reload duro destrói qualquer `navigate(..., { state })` chamado logo depois de `signOut()` — foi o bug que sumiu com a mensagem de sucesso ao salvar o perfil, na 2A.
 - Roteamento pós-login (em `Auth.tsx`): admin → `/dashboard`, coordenador → `/`, só-colaborador → `/perfil-colaborador`. Os 12 gestor+colaborador caem na gestão e chegam ao cadastro pelo item de menu "Meu Cadastro".
 
+### Porta única "Estou sem minha senha" (2026-07-20)
+
+A tela `/auth` tinha **dois links** — "Primeiro acesso (já sou cadastrado)" e "Esqueci minha senha" — que pediam à pessoa para se classificar segundo `user_id` e `email_confirmed_at`: estado do **banco**, a que ela não tem acesso nenhum. Hoje é **um link** e **um campo**, que aceita **CPF ou e-mail** (detecção pelo `@`). A pessoa diz quem é; **o servidor decide** entre `invite` e `recovery`. O botão **"Novo Colaborador" permanece** — é intenção diferente ("não estou cadastrado"), e a classificação que sobrou ("sou novo" vs. "sou eu, sem senha") é fácil.
+
+Componente: `ReivindicarAcessoCard` com a prop **`permitirEmail`**. Sem ela (o `CadastroPublico`, que chega com o CPF já conferido) o comportamento é o antigo, só CPF.
+
+**⚠️ As duas respostas são assimétricas de propósito — não uniformize.** Cada input vaza coisa diferente, com economia de ataque diferente:
+
+| Input | EF | Política | Por quê |
+|---|---|---|---|
+| **CPF** | `reivindicar-acesso` | **Revela**: e-mail mascarado, e distingue "sem e-mail" de "não encontrado" | Concessão já aceita e contida por rate limit. O mascarado diz **qual caixa abrir** — quem tem vários e-mails depende disso |
+| **E-mail** | `recuperar-senha` | **Não revela nada**: resposta idêntica em todos os casos | Anti-enumeração: lista de e-mails se compra pronta e se testa em massa |
+
+Uniformizar "para ficar consistente" quebra um dos dois lados: revelando, reabre a enumeração por e-mail; calando, mata o e-mail mascarado e o aviso que os **254 sem e-mail** recebem. Para esses 254 a tela do caminho do e-mail traz a dica **"tente pelo CPF"** — sem ela eles digitariam o e-mail pessoal, não receberiam nada e não teriam como saber por quê.
+
+**Rate limit compartilhado.** As duas portas gravam na **mesma** tabela `reivindicacao_rate_limit` (5/15 min por IP). Separadas, o atacante somaria 5 pelo CPF **mais** 5 pelo e-mail.
+
+**O que a porta única ainda não resolve:** os **254 sem e-mail** seguem dependendo do coordenador (decisão explícita), e o CPF de quem **já tem conta** informa em vez de mandar o link — a pessoa precisa reinformar o e-mail. Fechar esse segundo caso esbarra no estado B, onde `colab_email` e o e-mail da conta divergem e mandar para a conta não ajudaria.
+
 ### Recuperação de senha — EF própria, não o fluxo nativo (2026-07-20)
 
 O "esqueci minha senha" de `/auth` **não usa mais** `supabase.auth.resetPasswordForEmail`. Agora chama a Edge Function **`recuperar-senha`**, que gera o link com `generateLink('recovery')` e o envia pela `send-email`.
@@ -24,7 +43,10 @@ O "esqueci minha senha" de `/auth` **não usa mais** `supabase.auth.resetPasswor
 **O preço, e por que ele é obrigatório:** sair do nativo joga fora duas proteções que o GoTrue dava de graça, e a EF precisa repô-las **explicitamente**. Quem for mexer nessa função tem que preservar as duas:
 
 1. **Anti-enumeração.** O nativo nunca revela se a conta existe. O `generateLink` **falha de forma distinguível** quando ela não existe, então *toda* saída da EF é a mesma frase genérica — conta existente, inexistente ou em cooldown. Inclusive o cooldown: devolver `429` ali revelaria que a conta existe. Quebrar isso transforma a tela de login num oráculo de quem tem cadastro.
-2. **Rate limit.** Com `service_role` a EF passa por cima dos tetos do GoTrue. O limite voltou como **cooldown de 2 min por conta**, lido do `recovery_sent_at` que o próprio Auth grava — **sem tabela nova**. Ele cobre também a **rotação de token**: cada `generateLink` invalida o anterior, então dois cliques em "enviar" matariam o link do primeiro e-mail, que é justamente o que a pessoa costuma abrir.
+2. **Rate limit.** Com `service_role` a EF passa por cima dos tetos do GoTrue. O limite voltou como **cooldown de 2 min por conta** — **sem tabela nova** —, mais o teto por IP compartilhado com a `reivindicar-acesso`. Ele cobre também a **rotação de token**: cada `generateLink` invalida o anterior, então dois cliques em "enviar" matariam o link do primeiro e-mail, que é justamente o que a pessoa costuma abrir.
+   - **O cooldown olha três carimbos, não um.** `recovery_sent_at`, `confirmation_sent_at` e `invited_at` — porque `generateLink('invite')` grava os dois últimos e deixa `recovery_sent_at` **NULL**. Olhando só o recovery, quem acabou de receber um invite pediria de novo e receberia um link novo **que invalida o invite recém-enviado**; a pessoa abriria o primeiro e-mail, já morto. Foi bug real, pego no teste de 2026-07-20.
+
+**A EF atende os dois estados.** Se o e-mail tem conta, manda `recovery`. Se não tem conta mas **existe cadastro em estado A** com aquele `colab_email`, manda `invite` — é o mesmo raciocínio que o servidor já faz pelo CPF. Sem esse ramo, a porta única prometeria à maioria (os 759 do estado A) e não entregaria nada. **Não custa privacidade:** a resposta segue genérica nos dois casos.
 
 O teto por conta basta para o risco real, porque **só existe envio para conta existente** — não dá para varrer endereços quaisquer. Um limite por IP (padrão da `reivindicar-acesso`) só faria falta contra ataque distribuído mirando muitas contas; ficou como evolução.
 
