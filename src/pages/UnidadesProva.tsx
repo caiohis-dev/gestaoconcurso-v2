@@ -39,7 +39,7 @@ export default function UnidadesProva() {
 
   useEffect(() => {
     if (!authLoading && !user) {
-      navigate("/auth-admin");
+      navigate("/auth");
     }
   }, [user, authLoading, navigate]);
 

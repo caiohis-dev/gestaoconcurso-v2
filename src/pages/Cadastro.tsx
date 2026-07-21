@@ -11,7 +11,7 @@ export default function Cadastro() {
 
   useEffect(() => {
     if (!loading && !user) {
-      navigate('/auth-admin');
+      navigate('/auth');
     } else if (!loading && !isAdmin && !isCoordenador) {
       navigate('/');
     }

@@ -15,7 +15,7 @@
 -- Hoje, portanto, não há nada a semear: `colaboradores`, `provas`, `unidades_prova` etc.
 -- começam vazias em dev local por design. Se quiser dados de exemplo para testar fluxos
 -- de ponta a ponta, adicione INSERTs abaixo desta linha — mantendo campos sensíveis
--- (colab_codigo_acesso/hash) com valores obviamente de teste, nunca dados reais.
+-- (colab_cpf, colab_pis, dados bancários) com valores obviamente de teste, nunca dados reais.
 --
 -- Para desenvolver contra os dados reais de produção, use supabase/seed.local.sql
 -- (não versionado, contém PII — ver my_rules/estrutura/desenvolvimento-local.md).

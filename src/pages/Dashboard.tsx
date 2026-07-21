@@ -22,7 +22,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!loading && !user) {
-      navigate("/auth-admin");
+      navigate("/auth");
     } else if (!loading && user && role !== null && !isAdmin) {
       // Wait until role is loaded before bouncing non-admins, otherwise we'd
       // redirect admins while their role is still being fetched.

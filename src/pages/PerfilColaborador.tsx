@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useColaboradorAuth } from '@/hooks/useColaboradorAuth';
+import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -45,9 +45,9 @@ interface ColaboradorData {
 
 export default function PerfilColaborador() {
   const navigate = useNavigate();
-  const { colaborador, signOut, loading } = useColaboradorAuth();
+  const { user, signOut, loading, rolesLoaded, isColaborador } = useAuth();
   const { toast } = useToast();
-  
+
   const [colaboradorData, setColaboradorData] = useState<ColaboradorData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -94,70 +94,56 @@ export default function PerfilColaborador() {
         description: 'Você foi desconectado por inatividade.',
         variant: 'destructive',
       });
+      // signOut do useAuth já recarrega a página em /auth.
       signOut();
-      navigate('/auth');
     }, INACTIVITY_TIMEOUT);
-  }, [signOut, navigate, toast]);
+  }, [signOut, toast]);
 
-  // Set up inactivity logout and session activity tracking
+  // Logout por inatividade. As chamadas a register/update/unregister_colaborador_session
+  // saíram na etapa 2A: aquela "sessão" era gravada por qualquer um, com qualquer id
+  // (fragilidade 8), e a sessão de verdade agora é a do Supabase Auth.
   useEffect(() => {
     const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
-    
-    // Update session activity in database periodically
-    const updateSessionActivity = async () => {
-      if (colaborador?.id) {
-        await supabase.rpc('update_colaborador_session_activity', { 
-          p_colaborador_id: colaborador.id 
-        });
-      }
-    };
 
     const handleActivity = () => {
       resetInactivityTimer();
     };
 
-    // Start the timer
     resetInactivityTimer();
 
-    // Update session activity every 2 minutes
-    const activityInterval = setInterval(updateSessionActivity, 2 * 60 * 1000);
-    // Also update immediately
-    updateSessionActivity();
-
-    // Add event listeners
     events.forEach(event => {
       document.addEventListener(event, handleActivity);
     });
 
     return () => {
-      // Cleanup
       if (inactivityTimeoutRef.current) {
         clearTimeout(inactivityTimeoutRef.current);
       }
-      clearInterval(activityInterval);
       events.forEach(event => {
         document.removeEventListener(event, handleActivity);
       });
     };
-  }, [resetInactivityTimer, colaborador?.id]);
+  }, [resetInactivityTimer]);
 
+  // A guarda da rota: precisa de sessão do Auth E do papel de colaborador. Um admin
+  // que não seja colaborador não tem cadastro para ver aqui.
   useEffect(() => {
-    if (!loading && !colaborador) {
-      navigate('/auth');
+    if (loading || !rolesLoaded) return;
+    if (!user || !isColaborador) {
+      navigate('/auth', { replace: true });
     }
-  }, [colaborador, loading, navigate]);
+  }, [user, isColaborador, loading, rolesLoaded, navigate]);
 
   useEffect(() => {
-    if (colaborador?.id) {
+    if (user && isColaborador) {
       fetchColaboradorData();
     }
-  }, [colaborador?.id]);
+  }, [user?.id, isColaborador]);
 
   const fetchColaboradorData = async () => {
-    if (!colaborador?.id) return;
-
-    const { data, error } = await supabase
-      .rpc('get_colaborador_full_data', { p_colaborador_id: colaborador.id });
+    // Sem parâmetro: a RPC resolve o colaborador por auth.uid() -> colaboradores.user_id.
+    // Não há id vindo do cliente para forjar.
+    const { data, error } = await supabase.rpc('get_meu_colaborador');
 
     if (error) {
       console.error('Erro ao carregar dados:', error);
@@ -232,7 +218,7 @@ export default function PerfilColaborador() {
   };
 
   const handleSave = async () => {
-    if (!colaborador?.id) return;
+    if (!user || !isColaborador) return;
 
     // Client-side NOT NULL validations
     if (!formData.colab_nome_completo.trim()) {
@@ -261,8 +247,7 @@ export default function PerfilColaborador() {
     }
 
     setIsSaving(true);
-    const { data, error } = await supabase.rpc('update_colaborador_data_full', {
-      p_colaborador_id: colaborador.id,
+    const { data, error } = await supabase.rpc('update_meu_colaborador', {
       p_nome_completo: formData.colab_nome_completo.trim(),
       p_cpf: cpfClean,
       p_nacionalidade: formData.colab_nacionalidade || '',
@@ -280,6 +265,8 @@ export default function PerfilColaborador() {
       p_estado_civil: parseInt(formData.colab_estado_civil) || 0,
       p_raca: parseInt(formData.colab_raca) || 0,
       p_deficiente: formData.colab_deficiente,
+      // Reescreve o e-mail carregado, sem alterá-lo: o campo é read-only porque colab_email é a
+      // âncora do login, e a RPC não alcança auth.users.
       p_email: formData.colab_email,
       p_chave_pix: formData.colab_chave_pix,
     });
@@ -287,8 +274,7 @@ export default function PerfilColaborador() {
     // Update bank fields via dedicated RPC
     let bankError: unknown = null;
     if (!error) {
-      const { error: bErr } = await supabase.rpc('update_colaborador_bank_data', {
-        p_colaborador_id: colaborador.id,
+      const { error: bErr } = await supabase.rpc('update_meus_dados_bancarios', {
         p_codigo_banco: formData.codigo_banco || '',
         p_agencia: formData.agencia || '',
         p_agencia_dv: formData.agencia_dv || '',
@@ -310,8 +296,12 @@ export default function PerfilColaborador() {
       if (error.code === '23505') {
         if (error.message?.includes('colab_matricula') || error.details?.includes('colab_matricula')) {
           errorMessage = 'Esta matrícula já está cadastrada para outro colaborador. Verifique o número e tente novamente.';
+        } else if (error.message?.includes('colab_chave_pix') || error.details?.includes('colab_chave_pix')) {
+          errorMessage = 'Esta chave PIX já está cadastrada para outro colaborador. Cada chave pertence a uma única pessoa — verifique e tente novamente.';
         } else if (error.message?.includes('colab_pis') || error.details?.includes('colab_pis')) {
           errorMessage = 'Este PIS já está cadastrado para outro colaborador. Verifique o número e tente novamente.';
+        } else if (error.message?.includes('colab_email') || error.details?.includes('colab_email')) {
+          errorMessage = 'Este e-mail já está cadastrado para outro colaborador. Verifique o endereço e tente novamente.';
         } else {
           errorMessage = 'Um dos dados informados já está cadastrado para outro colaborador.';
         }
@@ -332,13 +322,15 @@ export default function PerfilColaborador() {
       const msg = (bankError as { message?: string })?.message || 'Não foi possível salvar os dados bancários.';
       toast({ title: 'Erro nos dados bancários', description: msg, variant: 'destructive' });
     } else {
-      // Success - logout and redirect to success page
-      signOut();
-      navigate('/auth', { 
-        state: { 
-          successMessage: 'Dados atualizados com sucesso! Faça login novamente para continuar.' 
-        } 
+      // Sucesso: confirma e mantém a sessão. Antes, salvar deslogava e mandava para
+      // /auth — herança do modelo de sessão efêmera (CPF + código). Com a sessão real
+      // do Auth isso expulsava os 12 gestor+colaborador da sessão de gestão só por
+      // editarem o próprio cadastro, então o logout saiu daqui.
+      toast({
+        title: 'Dados atualizados com sucesso!',
+        description: 'Suas alterações foram salvas.',
       });
+      fetchColaboradorData();
     }
   };
 
@@ -566,17 +558,20 @@ export default function PerfilColaborador() {
                 />
               </div>
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="email">E-mail</Label>
-                  <span className="text-xs text-muted-foreground">{formData.colab_email.length}/255</span>
-                </div>
+                <Label htmlFor="email">E-mail</Label>
                 <Input
                   id="email"
                   type="email"
                   value={formData.colab_email}
-                  onChange={(e) => setFormData({ ...formData, colab_email: e.target.value })}
-                  maxLength={100}
+                  readOnly
+                  className="bg-muted text-muted-foreground"
                 />
+                <p className="text-xs text-muted-foreground">
+                  Este é o e-mail do seu acesso: é com ele que você entra no sistema e recebe a
+                  recuperação de senha. Trocá-lo significa trocar a sua conta de acesso — não é uma
+                  edição de cadastro, então não acontece por aqui. Se precisar mudar, fale com a
+                  coordenação.
+                </p>
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">

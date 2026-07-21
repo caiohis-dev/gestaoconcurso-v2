@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
 
     const { data, error } = await supabase
       .from('colaboradores')
-      .select('id, colab_email')
+      .select('id')
       .eq('colab_cpf', cpf)
       .maybeSingle();
 
@@ -47,8 +47,11 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Só o booleano. O e-mail NÃO sai daqui — quem precisa localizar o cadastro para
+    // reivindicar usa reivindicar-acesso, que devolve o e-mail mascarado. Devolver o
+    // endereço inteiro aqui era um oráculo: varrer CPFs entregava uma lista de e-mails.
     return new Response(
-      JSON.stringify({ exists: !!data, email: data?.colab_email ?? null }),
+      JSON.stringify({ exists: !!data }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (e) {

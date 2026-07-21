@@ -137,7 +137,7 @@ export default function CadastroLote() {
 
   useEffect(() => {
     if (!loading && !user) {
-      navigate('/auth-admin');
+      navigate('/auth');
     } else if (!loading && !isAdmin && !isCoordenador) {
       navigate('/');
     }
@@ -245,6 +245,8 @@ export default function CadastroLote() {
     if (m.includes('cpf já cadastrado')) return 'CPF duplicado';
     if (m.includes('matrícula já cadastrada')) return 'Matrícula duplicada';
     if (m.includes('pis já cadastrado')) return 'PIS duplicado';
+    if (m.includes('colab_email')) return 'E-mail duplicado';
+    if (m.includes('colab_chave_pix')) return 'Chave PIX duplicada';
     if (m.includes('registro duplicado')) return 'Duplicidade';
     if (m.includes('excede o tamanho permitido') || m.includes('value too long')) return 'Tamanho excedido';
     if (m.includes('data inválida') || m.includes('date/time field value out of range') || m.includes('invalid input syntax for type date')) return 'Data inválida';

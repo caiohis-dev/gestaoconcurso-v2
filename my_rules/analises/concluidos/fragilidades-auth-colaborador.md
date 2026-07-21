@@ -1,6 +1,8 @@
 # Análise — Fragilidades do fluxo de acesso do colaborador (`/auth`)
 
-> **Data:** 2026-07-13. **Natureza:** laudo de segurança, feito por leitura de código e banco (nada foi alterado). É um retrato do estado **antes** da refatoração — quando a refatoração for feita, o item correspondente sai do [`backlog.md`](../backlog.md) e o que mudou é descrito em [`estrutura/auth-e-permissoes.md`](../estrutura/auth-e-permissoes.md); este arquivo fica como registro histórico do ponto de partida.
+> **Data:** 2026-07-13. **Natureza:** laudo de segurança, feito por leitura de código e banco (nada foi alterado). É um retrato do estado **antes** da refatoração — não são vulnerabilidades abertas hoje.
+>
+> **Status (2026-07-15):** o login por CPF+código morreu (2A/2B/2C) e as fragilidades 2, 3, 4, 5 e 6 caíram por remoção. **A fragilidade 1 (o nó central) está fechada** desde 2026-07-15: a subetapa 2D item 1 revogou o `EXECUTE` de `PUBLIC` nas RPCs mortas do portal velho (migration `20260715072758_*`) — `anon`/`authenticated` já recebem `permission denied`. A **RLS de verdade** em `colaboradores` também já entrou (2026-07-15, migration `20260715073500_*`): o SELECT `USING (true)` — que deixava todo `authenticated` ler as 771 linhas — virou `has_role(admin) OR has_role(coordenador) OR user_id = auth.uid()`. As **RPCs mortas foram dropadas** (item 3, migration `20260715125720_*`, + remoção da Edge Function `reset-codigo-acesso`) — com isso a **fragilidade 8 fechou**. A **trava de edição concorrente saiu** da policy de UPDATE, com `is_colaborador_logged_in` e `colaborador_sessions` dropadas (migration `20260715130603_*`). E a **coluna `colab_codigo_acesso` foi dropada** (migration `20260715131321_*`), fechando de vez a fragilidade 2 (código em texto puro): o e-mail em massa que a usava foi aposentado e a coluna saiu dos exports. **A 2D está completa — todas as 8 fragilidades do laudo estão resolvidas.** Estado por subetapa em [`roadmap-auth-colaborador.md`](./roadmap-auth-colaborador.md).
 
 ## Escopo lido
 
@@ -22,6 +24,8 @@ O ponto crítico é que **essas RPCs recebem o `p_colaborador_id` do cliente e c
 ## Fragilidades graves
 
 ### 1. Qualquer um edita/lê os dados de qualquer colaborador sabendo só o UUID
+
+> **✅ Fechada em 2026-07-15** (subetapa 2D, item 1). O `EXECUTE` foi revogado de `PUBLIC` nessas RPCs (migration `20260715072758_*`); a anon key não as alcança mais. O `DROP` delas ainda vem (item 3), mas a porta já está trancada.
 
 As RPCs `update_colaborador_data_full`, `get_colaborador_full_data` e `set_colaborador_password` têm `GRANT EXECUTE` para `PUBLIC` e **não checam nada** — nenhuma senha, nenhum código, nenhuma sessão. Executam direto o `UPDATE ... WHERE id = p_colaborador_id`. Como a `anon key` é pública (está no bundle do front), qualquer pessoa com a URL do Supabase pode:
 
@@ -62,7 +66,9 @@ O front e as edge functions normalizam o CPF com `padStart(11)`; a RPC `verify_c
 
 ### 8. `register_colaborador_session` é acionável por qualquer `id`
 
-É chamada com o `id` do `localStorage` na montagem, sem validar que a sessão é legítima — então o rastro de "está logado" (que bloqueia edição do admin, ver [`estrutura/colaboradores.md`](../estrutura/colaboradores.md)) pode ser disparado para qualquer `id`.
+> **✅ Fechada em 2026-07-15** (subetapa 2D, item 3). A função foi **dropada** (migration `20260715125720_*`), junto com `unregister/update_colaborador_session_activity`. Sobra só a tabela `colaborador_sessions` (órfã) e a trava `is_colaborador_logged_in` na policy de UPDATE, que saem no fim da 2D.
+
+É chamada com o `id` do `localStorage` na montagem, sem validar que a sessão é legítima — então o rastro de "está logado" (que bloqueia edição do admin, ver [`../../estrutura/colaboradores.md`](../../estrutura/colaboradores.md)) pode ser disparado para qualquer `id`.
 
 ---
 

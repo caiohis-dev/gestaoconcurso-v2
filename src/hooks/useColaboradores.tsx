@@ -3,8 +3,26 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 
+// Traduz a violação de índice único (CPF, matrícula, PIS, e-mail e chave PIX são
+// UNIQUE) numa frase para a pessoa. Devolve null quando o erro não é de duplicidade,
+// para o chamador manter a própria mensagem. A constraint violada vem no nome do índice
+// (ex.: colaboradores_colab_email_key), que o supabase-js pode entregar em .message ou
+// em .details — olhamos os dois.
+function mensagemDuplicidade(error: Error): string | null {
+  const raw = `${error.message} ${(error as { details?: string }).details ?? ''}`;
+  if (!raw.includes('duplicate key')) return null;
+  if (raw.includes('colab_cpf')) return 'CPF já cadastrado';
+  if (raw.includes('colab_matricula')) return 'Matrícula já cadastrada';
+  if (raw.includes('colab_pis')) return 'PIS já cadastrado';
+  if (raw.includes('colab_email')) return 'Este e-mail já está cadastrado para outro colaborador. Verifique o endereço e tente novamente.';
+  if (raw.includes('colab_chave_pix')) return 'Esta chave PIX já está cadastrada para outro colaborador. Cada chave pertence a uma única pessoa — verifique e tente novamente.';
+  return 'Um dos dados informados já está cadastrado para outro colaborador.';
+}
+
 export interface Colaborador {
   id: string;
+  /** Conta do Auth que reivindicou este cadastro. Não-nulo = colab_email é a âncora do login. */
+  user_id: string | null;
   colab_matricula: string | null;
   colab_nome_completo: string | null;
   colab_cpf: string;
@@ -24,7 +42,6 @@ export interface Colaborador {
   colab_deficiente: boolean;
   colab_email: string | null;
   colab_chave_pix: string | null;
-  colab_codigo_acesso: string | null;
   colab_ultimo_acesso: string | null;
   codigo_banco: string | null;
   agencia: string | null;
@@ -36,7 +53,7 @@ export interface Colaborador {
   updated_at: string;
 }
 
-export type ColaboradorInsert = Omit<Colaborador, 'id' | 'created_at' | 'updated_at' | 'colab_codigo_acesso' | 'colab_ultimo_acesso'> & { colab_codigo_acesso?: string };
+export type ColaboradorInsert = Omit<Colaborador, 'id' | 'created_at' | 'updated_at' | 'colab_ultimo_acesso' | 'user_id'>;
 
 export interface UseColaboradoresOptions {
   /** When true, fetches all collaborators regardless of role (for adding to exams) */
@@ -118,23 +135,9 @@ export function useColaboradores(options: UseColaboradoresOptions = {}) {
       });
     },
     onError: (error: Error) => {
-      let message = error.message;
-      if (error.message.includes('duplicate key')) {
-        if (error.message.includes('colab_cpf')) {
-          message = 'CPF já cadastrado';
-        } else if (error.message.includes('colab_matricula')) {
-          message = 'Matrícula já cadastrada';
-        } else if (error.message.includes('colab_pis')) {
-          message = 'PIS já cadastrado';
-        } else if (error.message.includes('colab_codigo_acesso')) {
-          message = 'Este código de acesso já está em uso. Escolha outro.';
-        }
-      } else if (error.message.includes('colab_codigo_acesso_format')) {
-        message = 'Código de acesso deve ter exatamente 4 dígitos numéricos.';
-      }
       toast({
         title: 'Erro ao cadastrar',
-        description: message,
+        description: mensagemDuplicidade(error) ?? error.message,
         variant: 'destructive',
       });
     },
@@ -142,15 +145,6 @@ export function useColaboradores(options: UseColaboradoresOptions = {}) {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, ...colaborador }: Partial<Colaborador> & { id: string }) => {
-      // First check if the collaborator is currently logged in
-      const { data: isLoggedIn } = await supabase.rpc('is_colaborador_logged_in', {
-        p_colaborador_id: id
-      });
-
-      if (isLoggedIn) {
-        throw new Error('COLABORADOR_LOGGED_IN');
-      }
-
       const { data, error } = await supabase
         .from('colaboradores')
         .update(colaborador)
@@ -170,13 +164,13 @@ export function useColaboradores(options: UseColaboradoresOptions = {}) {
     },
     onError: (error: Error) => {
       let message = error.message;
-      
-      if (error.message === 'COLABORADOR_LOGGED_IN') {
-        message = 'Não é possível editar este colaborador pois ele está logado no sistema. Aguarde o colaborador sair ou a sessão expirar.';
-      } else if (error.message.includes('new row violates row-level security policy')) {
-        message = 'Não é possível editar este colaborador pois ele está logado no sistema.';
+
+      if (error.message.includes('row-level security policy')) {
+        message = 'Você não tem permissão para editar este colaborador.';
+      } else {
+        message = mensagemDuplicidade(error) ?? message;
       }
-      
+
       toast({
         title: 'Erro ao atualizar',
         description: message,

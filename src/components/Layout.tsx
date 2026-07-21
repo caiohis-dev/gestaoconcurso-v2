@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, User, Menu, Home, Building2, Settings, FileText, LayoutDashboard, Users } from "lucide-react";
+import { LogOut, User, Menu, Home, Building2, Settings, FileText, LayoutDashboard, Users, UserCircle } from "lucide-react";
 import fevreLogo from "@/assets/fevre-logo.png";
 
 interface LayoutProps {
@@ -18,7 +18,7 @@ interface LayoutProps {
 }
 
 export default function Layout({ children }: LayoutProps) {
-  const { user, role, signOut, isAdmin, isSuperAdmin, isCoordenador, isLoggingOut } = useAuth();
+  const { user, role, signOut, isAdmin, isSuperAdmin, isCoordenador, isColaborador, isLoggingOut } = useAuth();
   const location = useLocation();
 
   const navLinks = [
@@ -27,11 +27,15 @@ export default function Layout({ children }: LayoutProps) {
     { href: "/provas", label: "Provas", icon: FileText, showFor: ['admin', 'superadmin', 'coordenador'] },
     { href: "/unidades-prova", label: "Unidades de Prova", icon: Building2, showFor: ['admin', 'superadmin'] },
     { href: "/gerenciar-usuarios", label: "Usuários", icon: Users, showFor: ['superadmin'] },
+    // O caminho dos 12 que são gestor E colaborador até o próprio cadastro. Quem é só
+    // colaborador nunca vê o Layout — vai direto para /perfil-colaborador no login.
+    { href: "/perfil-colaborador", label: "Meu Cadastro", icon: UserCircle, showFor: ['colaborador'] },
   ].filter(link => {
     if (!link.showFor) return true;
     if (isSuperAdmin && link.showFor.includes('superadmin')) return true;
     if (isAdmin && link.showFor.includes('admin')) return true;
     if (isCoordenador && link.showFor.includes('coordenador')) return true;
+    if (isColaborador && link.showFor.includes('colaborador')) return true;
     return false;
   });
 

@@ -7,10 +7,30 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.1"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -32,35 +52,6 @@ export type Database = {
         }
         Relationships: []
       }
-      colaborador_sessions: {
-        Row: {
-          colaborador_id: string
-          created_at: string | null
-          id: string
-          last_activity: string | null
-        }
-        Insert: {
-          colaborador_id: string
-          created_at?: string | null
-          id?: string
-          last_activity?: string | null
-        }
-        Update: {
-          colaborador_id?: string
-          created_at?: string | null
-          id?: string
-          last_activity?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "colaborador_sessions_colaborador_id_fkey"
-            columns: ["colaborador_id"]
-            isOneToOne: true
-            referencedRelation: "colaboradores"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       colaboradores: {
         Row: {
           agencia: string | null
@@ -70,7 +61,6 @@ export type Database = {
           colab_cep: number | null
           colab_chave_pix: string | null
           colab_cidade: string | null
-          colab_codigo_acesso: string | null
           colab_complemento_endereco: string | null
           colab_cpf: string
           colab_data_nascimento: string
@@ -93,8 +83,10 @@ export type Database = {
           created_at: string | null
           created_by: string | null
           id: string
+          tipo_chave_pix: string | null
           tipo_conta: string | null
           updated_at: string | null
+          user_id: string | null
         }
         Insert: {
           agencia?: string | null
@@ -104,7 +96,6 @@ export type Database = {
           colab_cep?: number | null
           colab_chave_pix?: string | null
           colab_cidade?: string | null
-          colab_codigo_acesso?: string | null
           colab_complemento_endereco?: string | null
           colab_cpf: string
           colab_data_nascimento: string
@@ -127,8 +118,10 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           id?: string
+          tipo_chave_pix?: string | null
           tipo_conta?: string | null
           updated_at?: string | null
+          user_id?: string | null
         }
         Update: {
           agencia?: string | null
@@ -138,7 +131,6 @@ export type Database = {
           colab_cep?: number | null
           colab_chave_pix?: string | null
           colab_cidade?: string | null
-          colab_codigo_acesso?: string | null
           colab_complemento_endereco?: string | null
           colab_cpf?: string
           colab_data_nascimento?: string
@@ -161,8 +153,10 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           id?: string
+          tipo_chave_pix?: string | null
           tipo_conta?: string | null
           updated_at?: string | null
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -173,93 +167,6 @@ export type Database = {
             referencedColumns: ["codigo_compe"]
           },
         ]
-      }
-      colaboradores_backup_20260701: {
-        Row: {
-          colab_bairro: string | null
-          colab_cep: number | null
-          colab_chave_pix: string | null
-          colab_cidade: string | null
-          colab_codigo_acesso: string | null
-          colab_complemento_endereco: string | null
-          colab_cpf: string
-          colab_data_nascimento: string
-          colab_deficiente: boolean
-          colab_email: string | null
-          colab_estado_civil: number | null
-          colab_grau_instrucao: number | null
-          colab_matricula: string | null
-          colab_nacionalidade: string | null
-          colab_nome_completo: string
-          colab_numero_casa: number | null
-          colab_pis: string | null
-          colab_raca: number | null
-          colab_rua: string | null
-          colab_senha: string | null
-          colab_telefone: number | null
-          colab_ultimo_acesso: string | null
-          created_at: string | null
-          created_by: string | null
-          id: string
-          updated_at: string | null
-        }
-        Insert: {
-          colab_bairro?: string | null
-          colab_cep?: number | null
-          colab_chave_pix?: string | null
-          colab_cidade?: string | null
-          colab_codigo_acesso?: string | null
-          colab_complemento_endereco?: string | null
-          colab_cpf: string
-          colab_data_nascimento: string
-          colab_deficiente?: boolean
-          colab_email?: string | null
-          colab_estado_civil?: number | null
-          colab_grau_instrucao?: number | null
-          colab_matricula?: string | null
-          colab_nacionalidade?: string | null
-          colab_nome_completo: string
-          colab_numero_casa?: number | null
-          colab_pis?: string | null
-          colab_raca?: number | null
-          colab_rua?: string | null
-          colab_senha?: string | null
-          colab_telefone?: number | null
-          colab_ultimo_acesso?: string | null
-          created_at?: string | null
-          created_by?: string | null
-          id?: string
-          updated_at?: string | null
-        }
-        Update: {
-          colab_bairro?: string | null
-          colab_cep?: number | null
-          colab_chave_pix?: string | null
-          colab_cidade?: string | null
-          colab_codigo_acesso?: string | null
-          colab_complemento_endereco?: string | null
-          colab_cpf?: string
-          colab_data_nascimento?: string
-          colab_deficiente?: boolean
-          colab_email?: string | null
-          colab_estado_civil?: number | null
-          colab_grau_instrucao?: number | null
-          colab_matricula?: string | null
-          colab_nacionalidade?: string | null
-          colab_nome_completo?: string
-          colab_numero_casa?: number | null
-          colab_pis?: string | null
-          colab_raca?: number | null
-          colab_rua?: string | null
-          colab_senha?: string | null
-          colab_telefone?: number | null
-          colab_ultimo_acesso?: string | null
-          created_at?: string | null
-          created_by?: string | null
-          id?: string
-          updated_at?: string | null
-        }
-        Relationships: []
       }
       colaboradores_prova: {
         Row: {
@@ -726,6 +633,24 @@ export type Database = {
         }
         Relationships: []
       }
+      reivindicacao_rate_limit: {
+        Row: {
+          created_at: string
+          id: number
+          ip: string
+        }
+        Insert: {
+          created_at?: string
+          id?: never
+          ip: string
+        }
+        Update: {
+          created_at?: string
+          id?: never
+          ip?: string
+        }
+        Relationships: []
+      }
       sala_prova: {
         Row: {
           created_at: string | null
@@ -964,10 +889,6 @@ export type Database = {
         }
         Returns: string
       }
-      check_colaborador_has_password: {
-        Args: { p_cpf: string }
-        Returns: boolean
-      }
       check_prova_lock: {
         Args: { p_prova_id: string }
         Returns: {
@@ -990,16 +911,20 @@ export type Database = {
         Args: { p_prova_unidade_id: string; p_user_id: string }
         Returns: boolean
       }
-      get_colaborador_by_id: {
-        Args: { p_colaborador_id: string }
-        Returns: {
-          cpf: string
-          id: string
-          nome_completo: string
-        }[]
+      get_coordenador_colaboradores: {
+        Args: { p_user_id: string }
+        Returns: string[]
       }
-      get_colaborador_full_data: {
-        Args: { p_colaborador_id: string }
+      get_coordenador_prova_ids: {
+        Args: { p_user_id: string }
+        Returns: string[]
+      }
+      get_coordenador_prova_unidade_ids: {
+        Args: { p_user_id: string }
+        Returns: string[]
+      }
+      get_meu_colaborador: {
+        Args: never
         Returns: {
           agencia: string
           agencia_dv: string
@@ -1029,18 +954,6 @@ export type Database = {
           tipo_conta: string
         }[]
       }
-      get_coordenador_colaboradores: {
-        Args: { p_user_id: string }
-        Returns: string[]
-      }
-      get_coordenador_prova_ids: {
-        Args: { p_user_id: string }
-        Returns: string[]
-      }
-      get_coordenador_prova_unidade_ids: {
-        Args: { p_user_id: string }
-        Returns: string[]
-      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -1049,14 +962,11 @@ export type Database = {
         Returns: boolean
       }
       hash_password: { Args: { password: string }; Returns: string }
-      is_colaborador_logged_in: {
-        Args: { p_colaborador_id: string }
-        Returns: boolean
-      }
       is_coordenador_prova: {
         Args: { p_prova_id: string; p_user_id: string }
         Returns: boolean
       }
+      meu_colaborador_id: { Args: never; Returns: string }
       reabrir_prova: {
         Args: { p_prova_id: string; p_user_id: string }
         Returns: boolean
@@ -1065,99 +975,16 @@ export type Database = {
         Args: { p_prova_unidade_id: string; p_user_id: string }
         Returns: boolean
       }
-      register_colaborador_session: {
-        Args: { p_colaborador_id: string }
-        Returns: undefined
-      }
       release_prova_lock: {
         Args: { p_prova_id: string; p_user_id: string }
         Returns: boolean
       }
-      set_colaborador_password: {
-        Args: { p_colaborador_id: string; p_password: string }
-        Returns: boolean
-      }
-      unregister_colaborador_session: {
-        Args: { p_colaborador_id: string }
-        Returns: undefined
-      }
-      update_colaborador_bank_data: {
-        Args: {
-          p_agencia: string
-          p_agencia_dv: string
-          p_codigo_banco: string
-          p_colaborador_id: string
-          p_conta: string
-          p_conta_dv: string
-          p_tipo_conta: string
-        }
-        Returns: boolean
-      }
-      update_colaborador_data:
-        | {
-            Args: {
-              p_bairro: string
-              p_cep: number
-              p_cidade: string
-              p_colaborador_id: string
-              p_complemento: string
-              p_deficiente: boolean
-              p_estado_civil: number
-              p_grau_instrucao: number
-              p_matricula: string
-              p_numero_casa: number
-              p_pis: string
-              p_raca: number
-              p_rua: string
-              p_telefone: number
-            }
-            Returns: boolean
-          }
-        | {
-            Args: {
-              p_bairro: string
-              p_cep: number
-              p_chave_pix: string
-              p_cidade: string
-              p_colaborador_id: string
-              p_complemento: string
-              p_deficiente: boolean
-              p_email: string
-              p_estado_civil: number
-              p_grau_instrucao: number
-              p_matricula: string
-              p_numero_casa: number
-              p_pis: string
-              p_raca: number
-              p_rua: string
-              p_telefone: number
-            }
-            Returns: boolean
-          }
-        | {
-            Args: {
-              p_bairro: string
-              p_cep: number
-              p_cidade: string
-              p_colaborador_id: string
-              p_complemento: string
-              p_deficiente: boolean
-              p_estado_civil: number
-              p_grau_instrucao: number
-              p_numero_casa: number
-              p_raca: number
-              p_rua: string
-              p_telefone: number
-            }
-            Returns: boolean
-          }
-      update_colaborador_data_full: {
+      update_meu_colaborador: {
         Args: {
           p_bairro: string
           p_cep: number
           p_chave_pix: string
           p_cidade: string
-          p_colaborador_id: string
           p_complemento: string
           p_cpf: string
           p_data_nascimento: string
@@ -1176,29 +1003,20 @@ export type Database = {
         }
         Returns: boolean
       }
-      update_colaborador_session_activity: {
-        Args: { p_colaborador_id: string }
-        Returns: undefined
+      update_meus_dados_bancarios: {
+        Args: {
+          p_agencia: string
+          p_agencia_dv: string
+          p_codigo_banco: string
+          p_conta: string
+          p_conta_dv: string
+          p_tipo_conta: string
+        }
+        Returns: boolean
       }
       update_prova_lock_activity: {
         Args: { p_prova_id: string; p_user_id: string }
         Returns: boolean
-      }
-      verify_colaborador_codigo_acesso: {
-        Args: { p_codigo: string; p_cpf: string }
-        Returns: string
-      }
-      verify_colaborador_first_access: {
-        Args: { p_cpf: string; p_data_nascimento: string }
-        Returns: {
-          cpf: string
-          id: string
-          nome_completo: string
-        }[]
-      }
-      verify_colaborador_password: {
-        Args: { p_cpf: string; p_password: string }
-        Returns: string
       }
       verify_user_password: {
         Args: { p_email: string; p_password: string }
@@ -1206,7 +1024,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "user" | "coordenador" | "superadmin"
+      app_role: "admin" | "user" | "coordenador" | "superadmin" | "colaborador"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1332,9 +1150,13 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
-      app_role: ["admin", "user", "coordenador", "superadmin"],
+      app_role: ["admin", "user", "coordenador", "superadmin", "colaborador"],
     },
   },
 } as const
+

@@ -56,9 +56,40 @@ A `export-seed` **não existe mais** no projeto: era um canal de exfiltração d
 Consequências práticas:
 
 - **O arquivo não vem do repositório.** Num clone novo, `supabase db reset` **falha** enquanto `seed.local.sql` não existir. Ou remova o caminho de `sql_paths` no `config.toml` para rodar só com o `seed.sql` versionado, ou gere um dump novo redeployando a `export-seed` a partir de [`../historico/`](../historico/) (e removendo-a de novo em seguida).
-- **A ordem em `sql_paths` importa**: `seed.sql` antes de `seed.local.sql`.
+- **A ordem em `sql_paths` importa**: `seed.sql` antes de `seed.local.sql`, e `seed.pos.sql` **depois** dos dois (ver seção própria abaixo).
 - O dump preserva os **UUIDs e os hashes de senha de produção**, então os logins reais funcionam em dev local. Isso é útil e perigoso na mesma medida — trate o banco local como se fosse produção.
 - Todo `INSERT` do dump tem `ON CONFLICT DO NOTHING`, e o arquivo é envelopado em `SET session_replication_role = replica` para desligar triggers durante a carga (senão `on_auth_user_created` duplicaria `profiles`/`user_roles`).
+- ⚠️ **O dump carrega DUAS correções manuais (2026-07-14 e 2026-07-15)** (ver abaixo). **Um dump novo, gerado pela `export-seed`, nasce sem elas** — e precisa recebê-las de novo, senão a refatoração do acesso do colaborador quebra (a segunda quebra o próprio `db reset`).
+
+### As correções manuais que vivem dentro do dump
+
+**Por que no dump e não numa migration:** `[db.seed]` roda **depois** das migrations no `db reset`, e **não roda em `db push`**. Uma migration de limpeza de dados rodaria contra a tabela ainda vazia (no-op) e o seed, logo em seguida, reintroduziria o problema. Para dados que *entram pelo dump*, a correção precisa morar *no dump* — que é o que alimenta tanto o dev local quanto a carga inicial do banco de produção da v2 (ver [`../banco-producao.md`](../banco-producao.md)).
+
+**1. E-mails duplicados zerados (2026-07-14).** Nas **6 linhas** de `colaboradores` que compartilhavam **3 e-mails duplicados** (`suelenbertoldo9@gmail.com`, `yann_vr9@hotmail.com`, `teste@example.com` — dois colaboradores cada), o `colab_email` foi **zerado nos dois lados de cada par**. O motivo (um e-mail = um usuário no Supabase Auth; escolher um dos pares seria arbitrário) está em [`../analises/roadmap-auth-colaborador.md`](../analises/concluidos/roadmap-auth-colaborador.md). Alterada **só** a coluna `colab_email` das 6 linhas; a `colab_chave_pix` foi preservada (a SOLANGE BERTOLDO RAIMUNDO usa o mesmo e-mail como chave PIX, dado bancário) e as 3 linhas de `email_atualizacao_log` também.
+
+**2. Coluna `colab_codigo_acesso` removida dos INSERTs (2026-07-15).** A migration `20260715131321_*` **dropa** a coluna `colab_codigo_acesso` (2D). Mas o dump insere `colaboradores` com lista de colunas **explícita** que incluía `colab_codigo_acesso` — então, no `db reset`, as migrations dropam a coluna e a carga do dump quebra com `column "colab_codigo_acesso" does not exist`. A coluna (e seu valor) foi **removida das 771 linhas de INSERT** do `seed.local.sql`, via script com tokenizer que respeita aspas (2 linhas tinham `\n` embutido no endereço). Nenhum outro dado mudou; o `email_atualizacao_log` e as demais tabelas ficaram intactos. **Qualquer dump novo precisa passar pela mesma remoção** — ou ser gerado de uma base que já não tem a coluna.
+
+Efeito nos números: `colaboradores` segue com 771 linhas; **com e-mail cai de 523 para 517**, e **sem e-mail sobe de 248 para 254**. Os 6 passam a depender do coordenador para receber um e-mail válido quando quiserem acesso ao portal.
+
+## `seed.pos.sql` — operações de dados versionadas (2026-07-14)
+
+O terceiro e último arquivo de `sql_paths`. Ele existe porque a correção acima expôs um buraco: **dado que entra pelo dump só pode ser corrigido depois da carga do dump** — e o único lugar que roda depois é o seed. Mas o dump **não é versionado**, então tudo que mora lá dentro se perde quando um dump novo é gerado.
+
+O `seed.pos.sql` é a metade dessa correção que **sobrevive**: ele roda depois do `seed.local.sql`, é **versionado**, e por isso **não pode conter PII** — nenhum CPF, nome ou e-mail aparece nele. Ele carrega **regras**, não pessoas.
+
+A divisão que ficou combinada:
+
+| onde | o que vai | versionado? |
+| --- | --- | --- |
+| `supabase/migrations/` | **schema** — coluna, índice, enum, constraint, RLS, função | sim |
+| `supabase/seed.pos.sql` | **dado, quando exprimível como regra genérica** | sim |
+| `supabase/seed.local.sql` (o dump) | **dado, quando é cirurgia em linhas específicas** (carrega PII) | **não** |
+
+Tudo no `seed.pos.sql` precisa ser **idempotente** (roda a cada `db reset`, e roda de novo se alguém o executar à mão) e **seguro contra base vazia** (num clone sem o dump, ele casa zero linhas e não quebra).
+
+**Em produção ele não roda sozinho:** `db push` não executa seed nenhum. Lá ele é um **passo manual do bootstrap**, logo depois da carga do dump — ver [`../banco-producao.md`](../banco-producao.md).
+
+Hoje ele contém uma coisa só: o **backfill dos 12 colaboradores que já eram usuários** do Auth (2 admins + 10 coordenadores), que preenche `colaboradores.user_id` e concede o papel `colaborador`. O porquê está em [`../analises/roadmap-auth-colaborador.md`](../analises/concluidos/roadmap-auth-colaborador.md).
 
 ## Gotcha importante: GRANTs não vinham das migrations (corrigido em 2026-07-12)
 
@@ -66,7 +97,7 @@ Sintoma, quando existia: você digitava e-mail e senha corretos, o login **não 
 
 A causa era um drift entre produção e as migrations. Em produção o schema foi criado pelo dashboard do Lovable/Supabase, cujo DDL roda como `supabase_admin`; o *default privilege* desse role em `public` concede DML completo a `anon`/`authenticated`/`service_role`, então as tabelas nasceram acessíveis pela API — **mas esses `GRANT`s nunca foram registrados em migration nenhuma**. Localmente, `supabase db reset` aplica as migrations como `postgres`, cujo default privilege concede apenas `TRUNCATE`/`REFERENCES`/`TRIGGER`. Mesmas migrations, resultado diferente: 15 das 18 tabelas nasciam sem `SELECT`.
 
-O sintoma enganava porque o PostgREST devolve `42501 permission denied` **antes** de avaliar a RLS. Então `useAuth.fetchUserRole` voltava vazio, `role` ficava `null`, e `AuthAdmin` — que só navega quando `user && role !== null` (`src/pages/AuthAdmin.tsx`) — parava sem erro. O login em si funcionava; era o passo seguinte que morria em silêncio.
+O sintoma enganava porque o PostgREST devolve `42501 permission denied` **antes** de avaliar a RLS. Então `useAuth.fetchUserRoles` voltava vazio, `role` ficava `null`, e a tela de login — que só navega quando os papéis resolveram — parava sem erro. O login em si funcionava; era o passo seguinte que morria em silêncio. (Naming da época: o hook era `fetchUserRole` e a porta era `AuthAdmin.tsx`; desde a subetapa 2A é `fetchUserRoles` e a porta única `Auth.tsx`, que espera `rolesLoaded`.)
 
 Corrigido pela migration `20260712010000_grant_api_roles_table_privileges.sql`, que concede os privilégios e — importante — define `ALTER DEFAULT PRIVILEGES FOR ROLE postgres`, para que **tabelas criadas por migrations futuras não reintroduzam o bug**. Em produção a migration é um no-op.
 

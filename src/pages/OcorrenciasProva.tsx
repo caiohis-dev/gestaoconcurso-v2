@@ -241,7 +241,7 @@ export default function OcorrenciasProva() {
     );
   }
 
-  if (!user) return <Navigate to="/auth-admin" replace />;
+  if (!user) return <Navigate to="/auth" replace />;
   if (!isAdminOrSuper && !isCoordenador) return <Navigate to="/" replace />;
 
   const prova = provas.find((p) => p.id === provaId);

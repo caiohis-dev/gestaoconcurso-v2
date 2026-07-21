@@ -27,7 +27,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Search, Pencil, Trash2, Users, Loader2, Circle, Clock, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Search, Pencil, Trash2, Users, Loader2, Clock, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { ESTADO_CIVIL_MAP } from '@/lib/constants';
 import ColaboradorDialog from './ColaboradorDialog';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -86,7 +86,6 @@ function SortableHeader({ label, column, currentColumn, direction, onSort }: Sor
 
 export default function ColaboradoresList() {
   const { colaboradores, isLoading, delete: deleteColaborador, isDeleting } = useColaboradores({ fetchAll: true });
-  const { isOnline, onlineCount } = useOnlineColaboradores();
   const { isAdmin, isCoordenador } = useAuth();
   const { toast } = useToast();
   
@@ -100,7 +99,6 @@ export default function ColaboradoresList() {
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [editLoadingId, setEditLoadingId] = useState<string | null>(null);
-  const [showOnlyOnline, setShowOnlyOnline] = useState(false);
   const [sortColumn, setSortColumn] = useState<'nome' | 'ultimo_acesso' | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
@@ -149,7 +147,6 @@ export default function ColaboradoresList() {
             c.colab_cpf.toString().includes(search)
           );
         })
-        .filter((c) => !showOnlyOnline || isOnline(c.id))
     : [];
 
 
@@ -171,8 +168,7 @@ export default function ColaboradoresList() {
     return sortDirection === 'asc' ? comparison : -comparison;
   });
 
-  // Get selectable collaborators (those who are not online)
-  const selectableColaboradores = sortedColaboradores.filter(c => !isOnline(c.id));
+  const selectableColaboradores = sortedColaboradores;
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -263,22 +259,6 @@ export default function ColaboradoresList() {
             <Users className="h-3 w-3" />
             {filteredColaboradores.length} colaborador(es)
           </Badge>
-          {onlineCount > 0 && (
-            <Badge
-              variant="default"
-              className={cn(
-                "gap-1 cursor-pointer select-none",
-                showOnlyOnline
-                  ? "bg-green-700 hover:bg-green-600 ring-2 ring-green-400 ring-offset-1"
-                  : "bg-green-600 hover:bg-green-700"
-              )}
-              onClick={() => setShowOnlyOnline((prev) => !prev)}
-              title={showOnlyOnline ? "Clique para mostrar todos" : "Clique para mostrar apenas online"}
-            >
-              <Circle className="h-2 w-2 fill-current" />
-              {onlineCount} online {showOnlyOnline && '(filtro ativo)'}
-            </Badge>
-          )}
         </div>
         {canEditDelete && someSelected && (
           <div className="flex items-center gap-2">
@@ -318,7 +298,6 @@ export default function ColaboradoresList() {
                         />
                       </TableHead>
                     )}
-                    <TableHead className="font-semibold w-[60px]">Status</TableHead>
                     <TableHead className="font-semibold">Matrícula</TableHead>
                     <SortableHeader
                       label="Nome"
@@ -342,7 +321,6 @@ export default function ColaboradoresList() {
                 </TableHeader>
                 <TableBody>
                   {sortedColaboradores.map((colaborador) => {
-                    const colaboradorOnline = isOnline(colaborador.id);
                     return (
                     <TableRow key={colaborador.id} className={cn(
                       "hover:bg-muted/30",
@@ -353,29 +331,10 @@ export default function ColaboradoresList() {
                           <Checkbox
                             checked={selectedIds.has(colaborador.id)}
                             onCheckedChange={(checked) => handleSelectOne(colaborador.id, !!checked)}
-                            disabled={colaboradorOnline}
                             aria-label={`Selecionar ${colaborador.colab_nome_completo}`}
                           />
                         </TableCell>
                       )}
-                      <TableCell>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div className="flex items-center justify-center">
-                              <Circle 
-                                className={`h-3 w-3 ${
-                                  colaboradorOnline 
-                                    ? 'fill-green-500 text-green-500' 
-                                    : 'fill-gray-300 text-gray-300 dark:fill-gray-600 dark:text-gray-600'
-                                }`} 
-                              />
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            {colaboradorOnline ? 'Online - Não pode ser editado' : 'Offline'}
-                          </TooltipContent>
-                        </Tooltip>
-                      </TableCell>
                       <TableCell className="font-mono">{colaborador.colab_matricula || '-'}</TableCell>
                       <TableCell className="font-medium">{colaborador.colab_nome_completo || '-'}</TableCell>
                       <TableCell className="font-mono text-sm">{formatCPF(colaborador.colab_cpf)}</TableCell>

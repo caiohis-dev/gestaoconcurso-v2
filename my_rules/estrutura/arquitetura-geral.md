@@ -19,7 +19,7 @@ O projeto foi originalmente gerado pelo **Lovable** (plataforma low-code), mas e
 | Roteamento | React Router DOM 6 (rotas declaradas em `src/App.tsx`) |
 | Estilo | Tailwind CSS + `tailwindcss-animate`, tokens HSL em `src/index.css` |
 | Componentes | shadcn/ui (`src/components/ui/*`, configurado via `components.json`) |
-| Estado servidor | TanStack React Query 5 — usado de forma consistente na maioria dos hooks de entidade (`useQuery`/`useMutation` + `invalidateQueries`); alguns hooks mais antigos/específicos de página (ex.: `PainelDadosColaboradores.tsx`, `useColaboradorAuth.tsx`) fazem fetch manual com `useState`/`useEffect` em vez de React Query — não assuma cache automático sem checar o hook específico |
+| Estado servidor | TanStack React Query 5 — usado de forma consistente na maioria dos hooks de entidade (`useQuery`/`useMutation` + `invalidateQueries`); alguns hooks mais antigos/específicos de página (ex.: `PainelDadosColaboradores.tsx`) fazem fetch manual com `useState`/`useEffect` em vez de React Query — não assuma cache automático sem checar o hook específico |
 | Formulários | React Hook Form + Zod |
 | PDF | jsPDF + jspdf-autotable (geração 100% client-side, ver [`documentos-e-relatorios.md`](./documentos-e-relatorios.md)) |
 | Planilhas | xlsx (SheetJS) — usado em `CadastroLote.tsx` para importação em massa |
@@ -69,7 +69,7 @@ Toda lógica de negócio sensível ou que exige elevação de privilégio vive e
 |---|---|---|
 | `/` | `Index` | [`colaboradores.md`](./colaboradores.md) — listagem |
 | `/dashboard` | `Dashboard` | [`documentos-e-relatorios.md`](./documentos-e-relatorios.md) |
-| `/auth`, `/auth-admin` | Login admin (sem recuperação de senha própria — removida em 2026-07-11, ver [`integracoes-externas.md`](./integracoes-externas.md)) | [`auth-e-permissoes.md`](./auth-e-permissoes.md) |
+| `/auth` | Porta única de login (Supabase Auth, e-mail/senha, com "esqueci minha senha" nativo). `/auth-admin` redireciona para cá; `/redefinir-senha` é o destino do link de reset | [`auth-e-permissoes.md`](./auth-e-permissoes.md) |
 | `/cadastro`, `/cadastro-publico`, `/cadastro-lote` | Cadastro de colaborador | [`colaboradores.md`](./colaboradores.md) |
 | `/perfil`, `/perfil-colaborador` | Perfil admin vs. colaborador | [`colaboradores.md`](./colaboradores.md), [`auth-e-permissoes.md`](./auth-e-permissoes.md) |
 | `/unidades-prova`, `/salas-prova/:unidadeId` | Cadastro de unidades e salas (template) | [`provas-e-unidades.md`](./provas-e-unidades.md) |
@@ -87,7 +87,7 @@ Navegação visível no header (`Layout.tsx`) é filtrada por role, mas isso é 
 
 ## 6. Pontos de atenção / higiene do repositório
 
-- **`docs/cadastro-lote-sanitizacao.md`** é documentação específica e detalhada do fluxo de importação em lote — parece atualizada, referenciada em [`colaboradores.md`](./colaboradores.md).
+- **`docs/features/cadastro-lote-sanitizacao.md`** é documentação específica e detalhada do fluxo de importação em lote — parece atualizada, referenciada em [`colaboradores.md`](./colaboradores.md).
 - **`public/auth_users_export.csv`** existe no repo mas contém só o cabeçalho (sem linhas de dados) — não é vazamento de dados reais no momento, mas vale perguntar por que um artefato de export está versionado em `public/` (fica publicamente acessível se servido como estático).
 - **`src/integrations/supabase/types.ts`** é gerado automaticamente pelo Supabase CLI — não editar à mão. Já **`client.ts`**, apesar de um dia ter carregado o mesmo aviso, **é mantido à mão** (tem um wrapper de `fetch` que corrige o `expires_at` das respostas de auth); o comentário enganoso foi corrigido em 2026-07-11.
 - **Deploy ainda no Lovable** — a limpeza de 2026-07-11 removeu o Lovable do *código*, mas o site continua sendo publicado pela plataforma. Migrar hospedagem é trabalho pendente e separado.

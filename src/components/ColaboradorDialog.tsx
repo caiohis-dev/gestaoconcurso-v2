@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import CorrigirEmailAcessoDialog from '@/components/CorrigirEmailAcessoDialog';
 import { ESTADO_CIVIL_OPTIONS, RACA_OPTIONS, GRAU_INSTRUCAO_OPTIONS } from '@/lib/constants';
 import { maskDateBR, brDateToIso, isoToBrDate, maskCPF, maskPIS, onlyDigits } from '@/lib/utils';
 import { useBancos, TIPO_CONTA_OPTIONS } from '@/hooks/useBancos';
@@ -45,7 +46,6 @@ const colaboradorSchema = z.object({
   colab_deficiente: z.boolean().optional().default(false),
   colab_email: z.string().min(1, 'Email obrigatório').email('Email inválido').max(255, 'Máximo 255 caracteres'),
   colab_chave_pix: z.string().max(255, 'Máximo 255 caracteres').nullable().optional(),
-  colab_codigo_acesso: z.string().regex(/^\d{4}$/, 'Código deve ter exatamente 4 dígitos').optional(),
   codigo_banco: z.string().regex(/^\d{3}$/, 'Selecione um banco').nullable().optional().or(z.literal('')),
   agencia: z.string().regex(/^\d{1,8}$/, 'Agência deve conter apenas números').nullable().optional().or(z.literal('')),
   agencia_dv: z.string().regex(/^[0-9xX]{1,2}$/, 'DV inválido').nullable().optional().or(z.literal('')),
@@ -83,8 +83,6 @@ const initialFormData = {
   colab_deficiente: false,
   colab_email: '',
   colab_chave_pix: '',
-  colab_codigo_acesso: '',
-  colab_confirma_codigo_acesso: '',
   codigo_banco: '',
   agencia: '',
   agencia_dv: '',
@@ -99,9 +97,13 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
   const [formData, setFormData] = useState(initialFormData);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isPublicSubmitting, setIsPublicSubmitting] = useState(false);
-  const [submitStatus, setSubmitStatus] = useState<{ type: 'success' | 'error'; message: string; codigo?: string } | null>(null);
+  const [submitStatus, setSubmitStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [corrigirEmailOpen, setCorrigirEmailOpen] = useState(false);
   const isEditing = !!colaborador;
   const isSubmitting = isCreating || isUpdating || isPublicSubmitting;
+  // Numa linha já reivindicada, colab_email é a projeção do login: só o Auth o altera com
+  // consistência, e um UPDATE daqui não alcança auth.users.
+  const isVinculado = !!colaborador?.user_id;
 
   useEffect(() => {
     if (colaborador) {
@@ -125,8 +127,6 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
         colab_deficiente: colaborador.colab_deficiente,
         colab_email: colaborador.colab_email || '',
         colab_chave_pix: colaborador.colab_chave_pix || '',
-        colab_codigo_acesso: colaborador.colab_codigo_acesso || '',
-        colab_confirma_codigo_acesso: '',
         codigo_banco: colaborador.codigo_banco || '',
         agencia: colaborador.agencia || '',
         agencia_dv: colaborador.agencia_dv || '',
@@ -135,7 +135,7 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
         tipo_conta: colaborador.tipo_conta || '',
       });
     } else {
-      setFormData({ ...initialFormData, colab_cpf: initialCpf ? maskCPF(initialCpf) : '', colab_codigo_acesso: '', colab_confirma_codigo_acesso: '' });
+      setFormData({ ...initialFormData, colab_cpf: initialCpf ? maskCPF(initialCpf) : '' });
     }
     setErrors({});
   }, [colaborador, open, initialCpf]);
@@ -171,19 +171,16 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
       conta: formData.conta || null,
       conta_dv: formData.conta_dv || null,
       tipo_conta: (formData.tipo_conta as 'corrente' | 'poupanca' | '') || null,
-      ...(isEditing ? {} : { colab_codigo_acesso: formData.colab_codigo_acesso }),
     };
 
-    if (!isEditing && formData.colab_codigo_acesso !== formData.colab_confirma_codigo_acesso) {
-      setErrors((prev) => ({
-        ...prev,
-        colab_confirma_codigo_acesso: 'Os códigos de acesso não coincidem.',
-      }));
-      return;
-    }
+    const { colab_email: _emailAncorado, ...dataSemEmail } = data;
 
     try {
-      colaboradorSchema.parse(data);
+      if (isVinculado) {
+        colaboradorSchema.omit({ colab_email: true }).parse(dataSemEmail);
+      } else {
+        colaboradorSchema.parse(data);
+      }
     } catch (error) {
       if (error instanceof z.ZodError) {
         const fieldErrors: Record<string, string> = {};
@@ -198,7 +195,7 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
     }
 
     if (isEditing && colaborador) {
-      update({ id: colaborador.id, ...data }, {
+      update({ id: colaborador.id, ...(isVinculado ? dataSemEmail : data) }, {
         onSuccess: () => onOpenChange(false),
       });
     } else if (publicMode) {
@@ -222,19 +219,18 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
             let friendly = raw;
             if (/cpf.*(já|ja).*cadastrad/i.test(raw)) {
               friendly = 'Este CPF já está cadastrado no sistema.';
-            } else if (/c[oó]digo.*(uso|cadastrad)/i.test(raw) || /colab_codigo_acesso/i.test(raw)) {
-              friendly = 'Este código de acesso já está em uso. Escolha outro.';
+            } else if (/e-?mail.*(uso|cadastrad)/i.test(raw)) {
+              friendly = 'Este e-mail já está em uso por outro cadastro.';
             }
             setSubmitStatus({ type: 'error', message: friendly });
             return;
           }
-          const codigo = result?.codigo_acesso;
+          const emailMascarado = result?.email_mascarado;
           setSubmitStatus({
             type: 'success',
-            message: codigo
-              ? `Colaborador cadastrado com sucesso! Código de acesso: ${codigo}`
-              : 'Colaborador cadastrado com sucesso!',
-            codigo,
+            message: emailMascarado
+              ? `Cadastro criado! Enviamos um link para ${emailMascarado} — abra-o para criar a sua senha e acessar o sistema. Confira também a caixa de spam.`
+              : 'Cadastro criado! Enviamos um link para o seu e-mail — abra-o para criar a sua senha.',
           });
         } catch (err: any) {
           setSubmitStatus({
@@ -274,61 +270,15 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Código de Acesso (apenas ao editar) */}
-          {isEditing && colaborador?.colab_codigo_acesso && (
-            <div className="bg-primary/10 border border-primary/20 rounded-lg p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label className="text-sm font-medium text-primary">Código de Acesso</Label>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Código utilizado pelo colaborador para acessar o sistema
-                  </p>
-                </div>
-                <div className="text-3xl font-mono font-bold tracking-[0.3em] text-primary">
-                  {colaborador.colab_codigo_acesso}
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Identificação */}
           <div className="space-y-4">
             <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Identificação</h3>
+            {publicMode && (
+              <p className="text-sm text-muted-foreground">
+                Ao final, enviaremos um link para o seu e-mail para você criar a sua senha de acesso.
+              </p>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {!isEditing && (
-                <div className="space-y-2 sm:col-span-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="codigo_acesso">Crie seu Código de Acesso (4 dígitos) *</Label>
-                    <span className="text-xs text-muted-foreground">{formData.colab_codigo_acesso.length}/4</span>
-                  </div>
-                  <Input
-                    id="codigo_acesso"
-                    inputMode="numeric"
-                    value={formData.colab_codigo_acesso}
-                    onChange={(e) => updateField('colab_codigo_acesso', e.target.value.replace(/\D/g, '').slice(0, 4))}
-                    maxLength={4}
-                    placeholder="0000"
-                  />
-                  {errors.colab_codigo_acesso && <p className="text-sm text-destructive">{errors.colab_codigo_acesso}</p>}
-                </div>
-              )}
-              {!isEditing && (
-                <div className="space-y-2 sm:col-span-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="confirma_codigo_acesso">Confirme seu Código de Acesso (4 dígitos) *</Label>
-                    <span className="text-xs text-muted-foreground">{formData.colab_confirma_codigo_acesso.length}/4</span>
-                  </div>
-                  <Input
-                    id="confirma_codigo_acesso"
-                    inputMode="numeric"
-                    value={formData.colab_confirma_codigo_acesso}
-                    onChange={(e) => updateField('colab_confirma_codigo_acesso', e.target.value.replace(/\D/g, '').slice(0, 4))}
-                    maxLength={4}
-                    placeholder="0000"
-                  />
-                  {errors.colab_confirma_codigo_acesso && <p className="text-sm text-destructive">{errors.colab_confirma_codigo_acesso}</p>}
-                </div>
-              )}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="matricula">Matrícula (PMVR)</Label>
@@ -429,7 +379,9 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="email">Email *</Label>
-                  <span className="text-xs text-muted-foreground">{formData.colab_email.length}/255</span>
+                  {!isVinculado && (
+                    <span className="text-xs text-muted-foreground">{formData.colab_email.length}/255</span>
+                  )}
                 </div>
                 <Input
                   id="email"
@@ -438,9 +390,29 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
                   onChange={(e) => updateField('colab_email', e.target.value)}
                   maxLength={255}
                   placeholder="email@exemplo.com"
-                  required
+                  required={!isVinculado}
+                  readOnly={isVinculado}
+                  className={isVinculado ? 'bg-muted text-muted-foreground' : undefined}
                 />
-                {errors.colab_email && <p className="text-sm text-destructive">{errors.colab_email}</p>}
+                {isVinculado ? (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      Este colaborador já criou o acesso dele, e este e-mail passou a ser o login.
+                      Por isso ele não é editável aqui — trocá-lo aqui não mudaria o login, só faria
+                      o cadastro divergir da conta.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="link"
+                      className="h-auto p-0 text-xs"
+                      onClick={() => setCorrigirEmailOpen(true)}
+                    >
+                      O e-mail está errado e ele nunca conseguiu entrar?
+                    </Button>
+                  </>
+                ) : (
+                  errors.colab_email && <p className="text-sm text-destructive">{errors.colab_email}</p>
+                )}
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -724,9 +696,26 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
       </DialogContent>
     </Dialog>
 
+    {isVinculado && colaborador && (
+      <CorrigirEmailAcessoDialog
+        open={corrigirEmailOpen}
+        onOpenChange={setCorrigirEmailOpen}
+        colaboradorId={colaborador.id}
+        colaboradorNome={colaborador.colab_nome_completo}
+      />
+    )}
+
     {submitStatus && (
+      // Este aviso convive com o Dialog aberto, e precisa vencer duas defesas dele:
+      //   z-[60]            — o DialogContent do Radix vive num portal anexado ao body,
+      //                       depois deste nó no DOM; com z-index igual (z-50) ele
+      //                       pintaria por cima e engoliria o aviso.
+      //   pointer-events-auto — com um dialog modal aberto, o Radix põe
+      //                       pointer-events:none no <body> e só a camada dele volta a
+      //                       receber clique; sem isto o aviso aparece e nada responde.
+      // No publicMode o dialog não se deixa fechar, então não há como contornar por fora.
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in p-4"
+        className="fixed inset-0 z-[60] pointer-events-auto flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in p-4"
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
@@ -763,11 +752,6 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
             <p className="text-lg text-foreground font-medium">
               {submitStatus.message}
             </p>
-            {submitStatus.type === 'success' && (
-              <p className="text-sm text-red-600 font-semibold">
-                Guarde seu Código de Acesso. Confira também sua caixa de Spam.
-              </p>
-            )}
             <Button
               type="button"
               onClick={() => {

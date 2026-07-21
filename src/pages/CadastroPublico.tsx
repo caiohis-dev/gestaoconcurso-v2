@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ColaboradorDialog from '@/components/ColaboradorDialog';
+import ReivindicarAcessoCard from '@/components/ReivindicarAcessoCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, ArrowLeft } from 'lucide-react';
 import fevreLogo from '@/assets/fevre-logo.png';
 
 const formatCpf = (value: string) => {
@@ -20,7 +21,7 @@ const formatCpf = (value: string) => {
 
 export default function CadastroPublico() {
   const navigate = useNavigate();
-  const [step, setStep] = useState<'check' | 'form'>('check');
+  const [step, setStep] = useState<'check' | 'form' | 'ja_existe'>('check');
   const [cpf, setCpf] = useState('');
   const [cpfValido, setCpfValido] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -57,7 +58,9 @@ export default function CadastroPublico() {
       }
 
       if (result?.exists) {
-        setError('Este CPF já está cadastrado no sistema. Caso queira receber seu código de acesso no email, volte na tela principal e clique em "Estou sem meu código".');
+        // As duas portas convergem: quem já está cadastrado não recomeça um cadastro —
+        // segue para a reivindicação (recebe o link no e-mail do cadastro).
+        setStep('ja_existe');
         return;
       }
 
@@ -87,6 +90,31 @@ export default function CadastroPublico() {
           publicMode
           initialCpf={cpfValido}
         />
+      </div>
+    );
+  }
+
+  if (step === 'ja_existe') {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-muted/30 p-4">
+        <div className="w-full max-w-md animate-fade-in">
+          <div className="flex flex-col items-center mb-6">
+            <img src={fevreLogo} alt="FEVRE Logo" className="h-24 w-auto mb-4" />
+            <h1 className="text-2xl font-bold text-foreground">Você já tem cadastro</h1>
+            <p className="text-muted-foreground text-center text-sm">
+              Encontramos um cadastro com esse CPF. Vamos criar o seu acesso.
+            </p>
+          </div>
+          <ReivindicarAcessoCard onClose={() => navigate('/auth')} initialCpf={cpf.replace(/\D/g, '')} />
+          <button
+            type="button"
+            onClick={() => { setStep('check'); setCpf(''); }}
+            className="mt-4 w-full flex items-center justify-center gap-2 text-sm text-primary hover:underline"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Usar outro CPF
+          </button>
+        </div>
       </div>
     );
   }

@@ -94,7 +94,7 @@ export default function GerenciarProva() {
   }
 
   if (!user) {
-    return <Navigate to="/auth-admin" replace />;
+    return <Navigate to="/auth" replace />;
   }
 
   if (!isAdmin && !isCoordenador) {
@@ -320,8 +320,7 @@ export default function GerenciarProva() {
         .select(`
           colaboradores_prova!inner (
             colaboradores (
-              colab_nome_completo,
-              colab_codigo_acesso
+              colab_nome_completo
             )
           )
         `)
@@ -334,7 +333,6 @@ export default function GerenciarProva() {
         .filter((c: any) => c)
         .map((c: any) => ({
           "Nome completo": c.colab_nome_completo || "",
-          "Código de acesso": c.colab_codigo_acesso || "",
         }))
         .sort((a, b) => a["Nome completo"].localeCompare(b["Nome completo"]));
 

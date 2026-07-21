@@ -11,9 +11,9 @@
 
 ## `/painel-dados-colaboradores/:provaId` (`PainelDadosColaboradores.tsx`)
 
-Painel consolidado dos colaboradores alocados numa prova, com busca, ordenação (nome / último acesso) e **checagem de campos obrigatórios pendentes** (`CAMPOS_OBRIGATORIOS`: CPF, data de nascimento, nome, nacionalidade, PIS, telefone, chave PIX, endereço completo, estado civil, raça, grau de instrução) via `getCamposFaltantes`.
+Painel read-only dos colaboradores alocados numa prova (nome, e-mail, unidade, último acesso), com busca e ordenação por nome / último acesso. Restrito a `isAdmin`. Faz fetch manual (`useState`/`useEffect`), não React Query.
 
-Tem uma função de **reenvio de e-mail com código de acesso** (`buildEmailHtml` monta o HTML inline do e-mail, referenciando `fevre.online` como domínio) — o texto do e-mail muda dependendo de haver ou não campos pendentes ("atualize seus dados" vs. "acesse o sistema"). Esse e-mail é presumivelmente enviado via a Edge Function `send-email` (ver [`integracoes-externas.md`](./integracoes-externas.md)), já que não há SMTP client no frontend.
+> **Envio de e-mail em massa aposentado na 2D (2026-07-15).** A página tinha um botão "Solicitar Atualização de Dados" que mandava e-mail em lote (`buildEmailHtml` + `send-email`) aos colaboradores com campos pendentes ou sem primeiro acesso. Esse e-mail embutia `colab_codigo_acesso` (morto) e apontava para o login antigo `fevre.online/auth`; na 2D optou-se por **remover a feature inteira** (botão, `buildEmailHtml`, `getCamposFaltantes`, o dialog e a leitura de `email_atualizacao_log`), não reescrevê-la. A tabela `email_atualizacao_log` **fica** (histórico de 232 envios), apenas deixou de ser alimentada. Ver [`../analises/roadmap-auth-colaborador.md`](../analises/concluidos/roadmap-auth-colaborador.md).
 
 ## `/dashboard` (`Dashboard.tsx`)
 
