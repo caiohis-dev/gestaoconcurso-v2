@@ -69,7 +69,7 @@ Toda lógica de negócio sensível ou que exige elevação de privilégio vive e
 |---|---|---|
 | `/` | `Index` | [`colaboradores.md`](./colaboradores.md) — listagem |
 | `/dashboard` | `Dashboard` | [`documentos-e-relatorios.md`](./documentos-e-relatorios.md) |
-| `/auth` | Porta única de login (Supabase Auth, e-mail/senha, com "esqueci minha senha" nativo). `/auth-admin` redireciona para cá; `/redefinir-senha` é o destino do link de reset | [`auth-e-permissoes.md`](./auth-e-permissoes.md) |
+| `/auth` | Porta única de login (Supabase Auth, e-mail/senha) + o link **"Estou sem minha senha"**, que aceita CPF ou e-mail e resolve invite/recovery no servidor (EF própria desde 2026-07-20 — não é mais o reset nativo). `/auth-admin` redireciona para cá; `/redefinir-senha` é o destino do link | [`auth-e-permissoes.md`](./auth-e-permissoes.md) |
 | `/cadastro`, `/cadastro-publico`, `/cadastro-lote` | Cadastro de colaborador | [`colaboradores.md`](./colaboradores.md) |
 | `/perfil`, `/perfil-colaborador` | Perfil admin vs. colaborador | [`colaboradores.md`](./colaboradores.md), [`auth-e-permissoes.md`](./auth-e-permissoes.md) |
 | `/unidades-prova`, `/salas-prova/:unidadeId` | Cadastro de unidades e salas (template) | [`provas-e-unidades.md`](./provas-e-unidades.md) |

@@ -19,8 +19,9 @@ import { enviarLinkAcesso } from '../_shared/enviar-link-acesso.ts';
 //      genérica: mesma resposta para conta existente, inexistente ou em cooldown.
 //      Quem quebrar isso transforma a tela de login num oráculo de quem tem cadastro.
 //   2. Rate limit — o nativo tem teto embutido (max_frequency, por IP). Com
-//      service_role passamos por cima de tudo, então o teto volta aqui pelo
-//      recovery_sent_at (ver COOLDOWN_MIN).
+//      service_role passamos por cima de tudo, então o teto volta aqui em dois
+//      níveis: cooldown por conta (COOLDOWN_MIN, lido de TRÊS carimbos do Auth)
+//      e teto por IP compartilhado com a reivindicar-acesso.
 const BodySchema = z.object({
   email: z.string().email().max(255),
 });
@@ -30,10 +31,7 @@ const BodySchema = z.object({
 // generateLink invalida o link anterior, então clicar "enviar" duas vezes mataria o
 // link do primeiro e-mail, que costuma ser justamente o que a pessoa abre.
 //
-// O teto por conta basta para o risco real: o generateLink só produz link para conta
-// existente, então não dá para varrer endereços quaisquer. Um limite por IP (padrão
-// da reivindicar-acesso, tabela reivindicacao_rate_limit) só faria falta contra
-// ataque distribuído mirando muitas contas ao mesmo tempo — fica como evolução.
+// ⚠️ Sozinho ele NÃO basta — ver o teto por IP logo abaixo, e o porquê lá.
 const COOLDOWN_MIN = 2;
 
 // Teto por IP, além do cooldown por conta. Passou a ser necessário quando esta função
