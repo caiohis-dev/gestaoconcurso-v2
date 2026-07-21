@@ -1,0 +1,294 @@
+# Roadmap — Tela de entrada por módulos ("hub")
+# Criado em 2026-07-21. Nada aqui foi implementado — este arquivo é o desenho.
+# Convenção do projeto: análise concluída vai para analises/concluidos/; enquanto
+# o trabalho estiver vivo, este arquivo fica na raiz de analises/.
+
+roadmap:
+  titulo: "Tela de entrada por módulos — preparação do terreno para os próximos módulos"
+  criado: "2026-07-21"
+  status: "desenho FECHADO — D1..D5 confirmadas pelo usuário em 2026-07-21; nenhuma decisão pendente. NADA implementado."
+  branch:
+    nome: feat/modulos
+    base: dev            # regra do projeto: tema sai de dev e volta para dev (versionamento.md)
+    lembrete: "mergear quando o tema fechar — a feat/auth-colaborador acumulou 41 commits em 7 dias por não ter um 'acabou' explícito"
+
+  contexto: |
+    O headerbar atual (src/components/Layout.tsx:24-40) mistura dois planos:
+    - Configuração geral do sistema: "Usuários" (superadmin) e "Meu Cadastro"
+      (dimensão colaborador dos 12 híbridos).
+    - Módulo "Aplicação de Provas": Dashboard, Colaboradores, Provas, Unidades de Prova
+      — e todas as sub-rotas alcançadas a partir delas.
+    O sistema vai ganhar outros módulos. Antes deles, precisa existir uma tela de
+    entrada (hub) que mostre a cada usuário os módulos a que ele tem acesso.
+
+  matriz_de_acesso:                # quem vê o quê no hub, HOJE
+    superadmin: [aplicacao-provas]  # + config geral (Usuários) fora dos cards
+    admin:      [aplicacao-provas]
+    coordenador: [aplicacao-provas]
+    colaborador_puro: []            # nunca vê o hub — segue direto para /perfil-colaborador
+    observacao: "admin/superadmin = todos os módulos; como só existe um, a matriz hoje é degenerada. O valor está no MECANISMO: módulo novo = 1 entrada no registro."
+
+  principios:
+    - "Segurança continua no servidor. O hub e o filtro de navLinks são UX: escondem, não barram. Quem barra é RLS + as checagens das EFs + os guards de página. Nenhuma ação deste roadmap relaxa um guard existente."
+    - "Nenhuma mudança de banco. Acesso a módulo deriva dos papéis que já existem em user_roles (via useAuth). Não criar tabela de módulos, não criar enum novo."
+    - "Uma fonte de verdade. O registro de módulos alimenta o hub, o header e os guards — nunca duplicar a lista de rotas de um módulo em dois lugares."
+    - "O colaborador puro não é tocado. O fluxo dele (/auth → /perfil-colaborador, sem Layout) permanece byte a byte igual — acabou de ser testado e aprovado (bateria 2026-07-21)."
+
+  decisoes:
+    - id: D1
+      titulo: "O hub é a nova rota raiz (/); Colaboradores sai de / e vira /colaboradores"
+      decidido: "sim — CONFIRMADO pelo usuário em 2026-07-21"
+      racional: |
+        Alternativa rejeitada: hub em /inicio mantendo / = Colaboradores. Rejeitada porque
+        (a) a raiz de um sistema multi-módulo deve responder "o que eu posso fazer?", não
+        abrir um módulo específico; (b) as 12 referências navegando para "/" nos guards
+        (Provas.tsx:73, Dashboard.tsx:29, GerenciarProva.tsx:101, OcorrenciasProva.tsx:245,
+        GerenciarSalasDistribuidas.tsx:84, SalasProva.tsx:61, GerenciarColaboradoresProva.tsx:410,
+        DocumentosImpressao.tsx:79, GerenciarUsuarios.tsx:98, UnidadesProva.tsx:48,
+        PainelDadosColaboradores.tsx:136, Layout.tsx:50) significam "acesso negado → vai para
+        um lugar seguro". Com o hub na raiz, esse destino passa a ser "a tela com o que você
+        PODE acessar" — semântica correta SEM editar esses 10 arquivos. Com /inicio, cada um
+        deles precisaria de edição.
+      consequencia: "A única migração de rota é Colaboradores: / → /colaboradores. Não existe rota /colaboradores hoje (verificado no App.tsx), então não há colisão."
+
+    - id: D2
+      titulo: "Config geral (Usuários, Meu Cadastro, Alterar Cadastro) NÃO vira card no hub"
+      decidido: "sim"
+      racional: |
+        O hub lista módulos de trabalho. Configuração é outra natureza: fica acessível de
+        qualquer lugar pelo header — "Usuários" como link de nav (só superadmin, como hoje),
+        "Meu Cadastro" idem (só quem tem a dimensão colaborador), "Alterar Cadastro" (/perfil)
+        segue no dropdown do avatar. Quando houver mais itens de configuração, aí sim avaliar
+        um módulo "Administração".
+
+    - id: D3
+      titulo: "Pós-login, TODO gestor cai no hub — inclusive o coordenador que só tem 1 módulo"
+      decidido: "sim — CONFIRMADO pelo usuário em 2026-07-21"
+      racional: |
+        Alternativa rejeitada: auto-entrar no módulo quando o usuário só tem um. Rejeitada
+        porque (a) cria dois comportamentos de login que convergem quando novos módulos
+        chegarem — churn de UX; (b) o hub é onde módulos novos APARECEM; pular o hub
+        esconderia a novidade justamente de quem a recebe; (c) o custo é um clique.
+        Colaborador puro segue fora: /perfil-colaborador direto (Auth.tsx:51 não muda).
+
+    - id: D4
+      titulo: "Entrada do módulo Aplicação de Provas depende do papel"
+      decidido: "sim"
+      racional: |
+        O card do módulo leva para o "melhor primeiro lugar" de cada papel, preservando o
+        que o pós-login de hoje já pratica (Auth.tsx:49-52): admin/superadmin → /dashboard,
+        coordenador → /colaboradores. Registrado no registro de módulos como função
+        rotaEntrada(ctx), não como campo fixo.
+
+    - id: D5
+      titulo: "Guards de página existentes NÃO são removidos nem refatorados neste tema"
+      decidido: "sim"
+      racional: |
+        Cada página de gestão tem guard próprio (padrão Dashboard.tsx:26-31). Eles seguem
+        funcionando e o destino navigate("/") deles fica CORRETO de graça com a D1.
+        Centralizar guards num RequireModulo é melhoria real, mas é outro tema — misturar
+        os dois transformaria uma feature de navegação numa refatoração de autorização.
+        Anotar no backlog como pendência separada.
+
+  # ───────────────────────────────────────────────────────────────────────────
+  etapas:
+
+    - id: 1
+      titulo: "Registro de módulos — a fonte de verdade"
+      objetivo: "Um arquivo que descreve os módulos; hub, header e futuras telas leem dele."
+      acoes:
+        - acao: "Criar src/lib/modulos.ts"
+          detalhe: |
+            Exportar:
+              type ModuloId = 'aplicacao-provas';        // union — cresce com o sistema
+              interface Modulo {
+                id: ModuloId;
+                nome: string;                            // "Aplicação de Provas"
+                descricao: string;                       // 1 frase para o card do hub
+                icone: LucideIcon;                       // ex.: ClipboardList
+                // Papéis de GESTÃO com acesso (a dimensão 'colaborador' fica fora — D2):
+                papeis: Array<'superadmin' | 'admin' | 'coordenador'>;
+                // Para onde o card leva, por papel (D4):
+                rotaEntrada: (ctx: { isAdmin: boolean; isCoordenador: boolean }) => string;
+                // Prefixos de rota que PERTENCEM ao módulo — usado pelo header para
+                // saber "estou dentro de qual módulo?" (etapa 4):
+                prefixosRota: string[];
+              }
+              export const MODULOS: Modulo[] = [ aplicacaoProvas ];
+              export function modulosDoUsuario(a: Pick<ReturnType<typeof useAuth>,
+                'isAdmin' | 'isSuperAdmin' | 'isCoordenador'>): Modulo[];
+              export function moduloDaRota(pathname: string): Modulo | null;
+          conteudo_aplicacao_provas: |
+            prefixosRota — levantado do App.tsx real (não inventar):
+              /dashboard, /colaboradores, /provas, /unidades-prova,
+              /salas-prova, /gerenciar-prova, /gerenciar-salas-distribuidas,
+              /gerenciar-colaboradores-prova, /ocorrencias-prova,
+              /funcoes-colaboradores, /documentos-impressao,
+              /painel-dados-colaboradores, /cadastro, /cadastro-lote, /treinamento
+            ATENÇÃO: /cadastro-publico NÃO entra (página pública, sem Layout);
+            /perfil, /perfil-colaborador, /gerenciar-usuarios NÃO entram (config geral — D2).
+            matching por prefixo: moduloDaRota usa startsWith em cada prefixo + '/'
+            ou igualdade exata, para /cadastro não capturar /cadastro-publico.
+        - acao: "Sem teste automatizado novo"
+          detalhe: "O projeto não tem suíte de testes; a verificação é tsc + a bateria manual (etapa 6). Não introduzir framework de teste dentro deste tema."
+      verificacao:
+        - "npx tsc --noEmit limpo"
+        - "moduloDaRota('/cadastro-publico') === null (conferir manualmente no console ou por um uso temporário)"
+
+    - id: 2
+      titulo: "A tela de entrada (hub)"
+      objetivo: "Página nova que lista os cards dos módulos do usuário."
+      acoes:
+        - acao: "Criar src/pages/Inicio.tsx"
+          detalhe: |
+            - useAuth(): { user, loading, rolesLoaded, isAdmin, isSuperAdmin, isCoordenador,
+              isColaborador, isLoggingOut }.
+            - Guard de entrada (mesmo padrão do Index.tsx atual):
+                * isLoggingOut → return null (não competir com o reload do signOut);
+                * loading || !rolesLoaded → spinner (Loader2, como Index.tsx:23-28).
+                  ⚠️ esperar rolesLoaded é obrigatório: decidir com papéis não carregados
+                  renderiza hub vazio para todo mundo (comentário em useAuth.tsx:85-88);
+                * !user → navigate('/auth', { replace: true }).
+            - Colaborador PURO (isColaborador && role === null):
+              <Navigate to="/perfil-colaborador" replace /> — ele não tem hub; cobre o
+              caso de digitar / na barra do navegador.
+            - Corpo: <Layout> + grid de cards (grid-cols-1 sm:grid-cols-2 lg:grid-cols-3)
+              de modulosDoUsuario(). Card (shadcn Card, padrão visual dos existentes):
+              ícone + nome + descricao + botão "Entrar" → navigate(rotaEntrada(ctx)).
+            - Estado vazio (papel 'user' puro, sem módulo nenhum): mensagem neutra
+              "Seu usuário ainda não tem acesso a nenhum módulo. Fale com a administração."
+              — não é erro, é o estado real de conta recém-criada sem papel.
+        - acao: "NÃO plugar em rota ainda"
+          detalhe: "A troca de rotas é a etapa 3, atômica. Nesta etapa o arquivo existe e compila, só."
+      verificacao:
+        - "npx tsc --noEmit e npm run build limpos"
+
+    - id: 3
+      titulo: "Troca de rotas — hub assume a raiz, Colaboradores vira /colaboradores"
+      objetivo: "Executar a D1 de uma vez, num commit só, com a varredura de referências."
+      acoes:
+        - acao: "Renomear src/pages/Index.tsx → src/pages/Colaboradores.tsx"
+          detalhe: |
+            git mv (preserva histórico). Renomear o componente Index → Colaboradores.
+            Manter TODO o conteúdo (guard, header da página, botões condicionais).
+        - acao: "Editar src/App.tsx"
+          detalhe: |
+            - import Inicio from './pages/Inicio'; import Colaboradores from './pages/Colaboradores';
+              (remover import de Index).
+            - <Route path='/' element={<Inicio />} />
+            - <Route path='/colaboradores' element={<Colaboradores />} />
+            - Demais rotas intactas.
+        - acao: "Atualizar os pontos onde '/' significava 'lista de Colaboradores'"
+          detalhe: |
+            Levantamento feito em 2026-07-21 (grep em src/):
+            1. src/pages/Auth.tsx:50 — coordenador pós-login: navigate('/') PERMANECE
+               (agora significa hub — é a D3). Linha 49 (admin → /dashboard) TROCA para
+               navigate('/', ...) também: admin passa a cair no hub (D3). Linha 52
+               (fallback papel nenhum) permanece '/': cai no hub e vê o estado vazio.
+            2. Os 10 navigate('/')/Navigate to='/' de guard (lista na D1) — NÃO MEXER:
+               'barrado → hub' é o comportamento desejado.
+            3. src/components/Layout.tsx:50 — logo aponta para '/': NÃO MEXER (logo → hub
+               é convenção universal).
+            4. Varredura obrigatória além do grep de rotas: procurar strings
+               'Colaboradores' em navegação programática e <Link> que apontem para '/'
+               esperando a lista (ex.: botões 'Voltar' em Cadastro.tsx/CadastroLote.tsx,
+               se existirem) → trocar para '/colaboradores'.
+               Comando: grep -rn "to=\"/\"\|navigate(\"/\"\|navigate('/'" src/ e revisar
+               caso a caso QUAL era a intenção (hub ou lista).
+        - acao: "Ajustar o item 'Colaboradores' do navLinks (Layout.tsx:26)"
+          detalhe: "href '/' → '/colaboradores'. (A reforma completa do header é a etapa 4; aqui é só o href para nada quebrar no meio do tema.)"
+      verificacao:
+        - "tsc + build limpos"
+        - "Smoke manual: login admin → hub; card → /dashboard; header 'Colaboradores' → /colaboradores; URL / com colaborador puro → /perfil-colaborador"
+
+    - id: 4
+      titulo: "Header ciente de módulo"
+      objetivo: "Dentro de um módulo, o header mostra os links DAQUELE módulo + volta ao hub; no hub, só config geral."
+      acoes:
+        - acao: "Reformar navLinks em src/components/Layout.tsx"
+          detalhe: |
+            - const moduloAtual = moduloDaRota(location.pathname);  // registro da etapa 1
+            - Estrutura nova em 3 grupos:
+              a) link fixo 'Início' (ícone Home, href '/') — visível sempre que houver
+                 moduloAtual (dentro de módulo); no hub, omitido (já está lá);
+              b) links do módulo atual — HOJE, para aplicacao-provas, os mesmos 4 com os
+                 MESMOS showFor de hoje (Layout.tsx:25-28), apenas com Colaboradores
+                 apontando para /colaboradores. Migrar a definição desses 4 links para
+                 dentro do registro (campo navLinks do Modulo) para não duplicar;
+              c) config geral, SEMPRE visível (independe de módulo):
+                 'Usuários' (showFor superadmin), 'Meu Cadastro' (showFor colaborador) —
+                 comportamento idêntico ao atual.
+            - A lógica de filtro por papel (Layout.tsx:33-40) permanece a mesma; só muda a
+              origem da lista.
+            - Mobile menu (Layout.tsx:111-127) consome o MESMO array — nenhuma lógica própria.
+        - acao: "Título/subtítulo do header"
+          detalhe: "Opcional barato: no hub, subtítulo segue 'Sistema de Cadastro'; dentro de módulo, trocar por moduloAtual.nome. Um ternário — se alongar, cortar."
+      verificacao:
+        - "Por papel: superadmin no hub (nav = Usuários), superadmin em /provas (nav = Início + 4 links + Usuários), coordenador em /colaboradores (nav = Início + Colaboradores + Provas + Meu Cadastro se híbrido)"
+        - "Mobile menu espelha o desktop"
+
+    - id: 5
+      titulo: "Pós-login e cantos do roteamento"
+      objetivo: "Todos os caminhos de entrada convergem para o destino certo."
+      acoes:
+        - acao: "src/pages/Auth.tsx:49-52 — destino final por papel"
+          detalhe: |
+            if (isAdmin) navigate('/')                    // era /dashboard — D3
+            else if (isCoordenador) navigate('/')          // já era /
+            else if (isColaborador) navigate('/perfil-colaborador')  // INTACTO
+            else navigate('/')                             // estado vazio do hub
+            Simplifica para: colaborador puro → /perfil-colaborador; resto → '/'.
+            ⚠️ manter a espera por rolesLoaded que já existe (Auth.tsx:~47).
+        - acao: "Conferir RedefinirSenha.tsx e CadastroPublico.tsx"
+          detalhe: "Se navegarem para '/' pós-ação, o destino agora é o hub — verificar se a intenção era essa (provavelmente sim para gestor; colaborador que redefine senha deve ir para /perfil-colaborador ou /auth). Ajustar caso a caso."
+        - acao: "NotFound.tsx"
+          detalhe: "Se o botão 'voltar' apontar para '/', ganha o hub de graça — conferir, não deve precisar de mudança."
+      verificacao:
+        - "Login com cada um dos 4 perfis de teste da bateria (admin, coordenador, gestor+colaborador, colaborador puro) termina na tela certa"
+
+    - id: 6
+      titulo: "Qualidade, documentação e fechamento"
+      acoes:
+        - acao: "Suíte estática completa"
+          detalhe: "npx tsc --noEmit && npx eslint . && npm run build — os três limpos (padrão dos temas anteriores)."
+        - acao: "Criar docs/teste-frontend-modulos.md — bateria manual do tema"
+          detalhe: |
+            Blocos mínimos:
+            A. Hub por papel (admin vê card; coordenador vê card; papel 'user' vê estado
+               vazio; colaborador puro NUNCA vê o hub — redirect).
+            B. Navegação (card → entrada certa por papel; 'Início' volta ao hub; links do
+               módulo; config geral visível em todo lugar).
+            C. Rotas diretas na barra (/ , /colaboradores, /dashboard como coordenador →
+               barrado → cai no hub; /cadastro-publico segue público e SEM Layout).
+            D. Regressão do colaborador puro (login → /perfil-colaborador; / →
+               /perfil-colaborador; nada do fluxo dele mudou).
+            E. Mobile (menu hambúrguer espelha o desktop nos dois contextos).
+        - acao: "Atualizar my_rules/estrutura/arquitetura-geral.md"
+          detalhe: "Nova seção 'Módulos e a tela de entrada': o conceito, o registro (src/lib/modulos.ts) como fonte de verdade, o mapa de rotas por módulo, e a regra 'módulo novo = 1 entrada no registro'. É o doc que o próximo módulo vai ler."
+        - acao: "Atualizar my_rules/estrutura/auth-e-permissoes.md"
+          detalhe: "Acrescentar a matriz papel × módulo e reafirmar: hub/nav é UX, autorização é RLS+EF+guards. (Regra do projeto: mudança toca o domínio → o doc do domínio acompanha.)"
+        - acao: "Backlog (my_rules/backlog.md)"
+          detalhe: |
+            - Marcar este item como concluído quando a bateria passar.
+            - ADICIONAR item novo (saldo da D5): 'Centralizar guards de página num
+              RequireModulo lido do registro de módulos' — pendente, não urgente.
+        - acao: "Fechar o tema"
+          detalhe: "Merge --no-ff feat/modulos → dev, push, apagar a branch — no fechamento, não semanas depois."
+      verificacao:
+        - "Bateria docs/teste-frontend-modulos.md rodada e aprovada"
+        - "git branch -a mostra só main e dev no remoto"
+
+  fora_de_escopo:
+    - "Qualquer módulo novo de verdade — este tema só prepara o terreno."
+    - "Tabela/enum de módulos no banco — acesso deriva dos papéis existentes."
+    - "Refatoração dos guards de página (vira item de backlog — D5)."
+    - "Mudanças no fluxo do colaborador puro."
+    - "Permissões por módulo mais finas que papel (ex.: módulo X só para o usuário Y) — quando precisar, aí sim vira modelagem de banco."
+
+  riscos:
+    - risco: "Alguma referência a '/' com intenção 'lista de Colaboradores' escapar da varredura"
+      mitigacao: "O modo de falha é benigno: a pessoa cai no hub e clica em Colaboradores. Nada quebra, nada vaza. A bateria (bloco B) pega os caminhos importantes."
+    - risco: "moduloDaRota capturar rota pública por prefixo (ex.: /cadastro vs /cadastro-publico)"
+      mitigacao: "Matching por igualdade-ou-prefixo-com-barra, verificado na etapa 1."
+    - risco: "Decidir navegação antes de rolesLoaded e renderizar hub vazio num piscar"
+      mitigacao: "Regra já documentada em useAuth.tsx:85-88 — o hub espera rolesLoaded como o Auth.tsx já faz."
