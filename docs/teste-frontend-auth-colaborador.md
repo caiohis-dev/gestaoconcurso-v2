@@ -1,6 +1,6 @@
 # Bateria de teste manual — frontend do acesso do colaborador
 
-Roteiro de teste manual da UI cobrindo a refatoração do acesso do colaborador (etapas 1–3, concluídas em 2026-07-15) **e a edição de `colab_email` sensível à identidade (2026-07-16): a trava no bloco `I` e a correção do estado B no bloco `J` — os dois rodados e aprovados em 2026-07-20**. Rode de cima a baixo. Cada bloco indica **o que valida**. O histórico do que mudou está em [`../my_rules/analises/concluidos/roadmap-auth-colaborador.md`](../my_rules/analises/concluidos/roadmap-auth-colaborador.md); as dívidas assumidas em [`../my_rules/analises/dividas-auth-colaborador.md`](../my_rules/analises/dividas-auth-colaborador.md).
+Roteiro de teste manual da UI cobrindo a refatoração do acesso do colaborador (etapas 1–3, concluídas em 2026-07-15) **e a edição de `colab_email` sensível à identidade (2026-07-16): a trava no bloco `I` e a correção do estado B no bloco `J` — os dois rodados e aprovados em 2026-07-20**. Rode de cima a baixo. Cada bloco indica **o que valida**. Os blocos `A`–`J` se concluem; a seção **`K` (conferência perpétua)** não — ela guarda o que precisa ser reconferido a cada mexida, e seus checkboxes ficam abertos de propósito. O histórico do que mudou está em [`../my_rules/analises/concluidos/roadmap-auth-colaborador.md`](../my_rules/analises/concluidos/roadmap-auth-colaborador.md); as dívidas assumidas em [`../my_rules/analises/dividas-auth-colaborador.md`](../my_rules/analises/dividas-auth-colaborador.md).
 
 ## ⚠️ Antes de começar — 3 cuidados críticos
 
@@ -66,7 +66,7 @@ Roteiro de teste manual da UI cobrindo a refatoração do acesso do colaborador 
 - [x] **E3** *(cooldown)* — Pedir de novo em menos de 2 min → a tela confirma igual, mas **nenhum segundo e-mail sai** (log: `em cooldown, envio suprimido`). É o esperado: o limite protege contra bombardeio e evita que o link do primeiro e-mail seja invalidado pelo segundo. *(Verificado por HTTP em 2026-07-20, **não pela UI**.)*
 - [x] **E4** *(anti-enumeração)* — E-mail sem conta **e sem cadastro** → **a mesma** mensagem dos casos E1 e E6. A tela não pode virar oráculo de quem tem cadastro; a EF sustenta a regra no servidor. *(Verificado por HTTP em 2026-07-20, **não pela UI**.)*
 - [x] **E8** *(a dica que salva os 254)* — A tela de "link enviado" do caminho do e-mail mostra o aviso **"tente pelo CPF"**. Sem ele, quem tem cadastro **sem e-mail** digita o e-mail pessoal, não recebe nada e não tem como saber por quê — a resposta é genérica por desenho. Pelo CPF o servidor acha e explica (C4).
-- [ ] **E5** *(a porta fechada)* — `POST` na `send-email` com a **anon key** (a que vai no bundle do frontend) → **403**. Sem isso, qualquer um envia e-mail arbitrário pelo servidor da FEVRE. *(Verificado por HTTP em 2026-07-20; fica no checklist por ser regressão silenciosa — se voltar a passar, o open relay reabriu.)*
+> **A porta fechada da `send-email` saiu deste bloco** (era o `E5`) e virou o `K1`, na seção **K — Conferência perpétua**. Ela foi verificada, mas não é uma tarefa que termina: é regressão silenciosa.
 
 ## F. Gestão de colaboradores (RLS + trava removida — 2D)
 
@@ -132,4 +132,15 @@ Roteiro de teste manual da UI cobrindo a refatoração do acesso do colaborador 
 
 ---
 
-**Notas:** **C2 e D2** ainda dependem do **Mailpit** (`http://127.0.0.1:54324`) para os e-mails que o GoTrue compõe sozinho; **E2 não depende mais** — a recuperação de senha saiu do fluxo nativo e o e-mail sai pela Hostinger. Para evitar **qualquer** envio real, teste só até a tela de "confira o e-mail" e valide o vínculo direto no banco. **H3**, **I7**, **J7** e **E5** precisam de terminal (curl/psql), não de UI. Os blocos **E** e **J** exigem `npm run supabase:functions:serve` além do `npm run dev`.
+## K. Conferência perpétua — regressões silenciosas
+
+> **Esta seção não se conclui.** Os itens abaixo já foram verificados e **passaram**; eles ficam aqui porque, se voltarem a falhar, **nada quebra visivelmente** — ninguém percebe pela UI, não há erro no log do app, e a falha só aparece quando alguém de fora já a explorou. Por isso os checkboxes **não devem ser marcados**: um `[x]` aqui tira o item do radar, que é exatamente o efeito que não queremos.
+>
+> **Quando rodar:** ao mexer na EF citada, ao mudar `verify_jwt`/`config.toml` das functions, e antes de cada deploy para produção.
+
+- [ ] **K1** *(ex-`E5` — a porta fechada da `send-email`)* — `POST` na `send-email` com a **anon key** (a que vai no bundle do frontend) → tem que dar **403**. Se der 200, o **open relay reabriu**: qualquer um na internet envia e-mail arbitrário pelo servidor da FEVRE, com SPF/DKIM da fundação. *(Verificado por HTTP em 2026-07-20.)*
+  - ⚠️ **`verify_jwt = true` não protege isto** — a anon key **é** um JWT válido e **é pública**. A checagem de `service_role` vive no corpo da function; quem refatorar a `send-email` e "simplificar" essa verificação reabre o buraco sem nenhum sinal.
+
+---
+
+**Notas:** **C2 e D2** ainda dependem do **Mailpit** (`http://127.0.0.1:54324`) para os e-mails que o GoTrue compõe sozinho; **E2 não depende mais** — a recuperação de senha saiu do fluxo nativo e o e-mail sai pela Hostinger. Para evitar **qualquer** envio real, teste só até a tela de "confira o e-mail" e valide o vínculo direto no banco. **H3**, **I7**, **J7** e **K1** precisam de terminal (curl/psql), não de UI. Os blocos **E** e **J** exigem `npm run supabase:functions:serve` além do `npm run dev`.
