@@ -262,6 +262,39 @@ export type Database = {
           },
         ]
       }
+      editais: {
+        Row: {
+          cabecalho_linha1: string | null
+          cabecalho_linha2: string | null
+          created_at: string | null
+          created_by: string | null
+          id: string
+          n_candidatos: number | null
+          nome: string
+          updated_at: string | null
+        }
+        Insert: {
+          cabecalho_linha1?: string | null
+          cabecalho_linha2?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          n_candidatos?: number | null
+          nome: string
+          updated_at?: string | null
+        }
+        Update: {
+          cabecalho_linha1?: string | null
+          cabecalho_linha2?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          n_candidatos?: number | null
+          nome?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       email_atualizacao_log: {
         Row: {
           colaborador_id: string
@@ -589,6 +622,7 @@ export type Database = {
         Row: {
           created_at: string | null
           created_by: string | null
+          edital_id: string | null
           finalizada_at: string | null
           id: string
           prova_cabecalho_linha1: string | null
@@ -604,6 +638,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           created_by?: string | null
+          edital_id?: string | null
           finalizada_at?: string | null
           id?: string
           prova_cabecalho_linha1?: string | null
@@ -619,6 +654,7 @@ export type Database = {
         Update: {
           created_at?: string | null
           created_by?: string | null
+          edital_id?: string | null
           finalizada_at?: string | null
           id?: string
           prova_cabecalho_linha1?: string | null
@@ -631,7 +667,15 @@ export type Database = {
           prova_n_candidatos?: number | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "provas_edital_id_fkey"
+            columns: ["edital_id"]
+            isOneToOne: false
+            referencedRelation: "editais"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       reivindicacao_rate_limit: {
         Row: {
