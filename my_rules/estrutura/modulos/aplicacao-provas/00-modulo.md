@@ -63,7 +63,7 @@ Todas em `prefixosRota`. **Cada página tem o seu guard, escrito à mão** — n
 
 ## Regras de negócio que o BANCO garante (2026-07-25)
 
-Até 2026-07-25 as validações viviam **só** no Zod dos formulários, e uma chamada direta ao PostgREST as ignorava inteiras. A migration `20260725202722_fortificar_constraints_db.sql` espelhou 17 delas como `CHECK`. O mapa completo (regra Zod × coluna × contagem de violações) está em [`../../../analises/db-constraints-mapeamento.md`](../../../analises/db-constraints-mapeamento.md); a prova de que barram, em [`../../../../docs/bateria-db-constraints.sql`](../../../../docs/bateria-db-constraints.sql).
+Até 2026-07-25 as validações viviam **só** no Zod dos formulários, e uma chamada direta ao PostgREST as ignorava inteiras. A migration `20260725202722_fortificar_constraints_db.sql` espelhou 17 delas como `CHECK`. O mapa completo (regra Zod × coluna × contagem de violações) está em [`../../../analises/concluidos/db-constraints-mapeamento.md`](../../../analises/concluidos/db-constraints-mapeamento.md); a prova de que barram, em [`../../../../docs/bateria-db-constraints.sql`](../../../../docs/bateria-db-constraints.sql).
 
 | Tabela | Garantido |
 |---|---|

@@ -44,7 +44,7 @@ Prioridade dentro do grupo: **`useOcorrencias` e `useCoordenadorUnidades` primei
 
 **4. Edge Functions: zero cobertura.** São 8 (`check-cpf-colaborador`, `corrigir-email-acesso`, `create-admin`, `create-coordenador`, `public-create-colaborador`, `recuperar-senha`, `reivindicar-acesso`, `send-email`) mais `_shared/`. Rodam em Deno, fora do alcance do Vitest como está montado — exigiria decisão de ferramenta (Deno test) antes de qualquer código. **Não é continuação natural da suíte atual; é tema próprio.** Registrar aqui para não parecer esquecimento: é onde vivem as políticas de anti-enumeração, rate limit e cooldown, ou seja, a lógica mais sensível do sistema.
 
-**5. O que deliberadamente NÃO se testa com Vitest.** As constraints de banco (ver [`analises/roadmap-db-constraints.yaml`](./analises/roadmap-db-constraints.yaml), etapa 3): a suíte roda contra um **mock** do Supabase, sem Postgres. Um teste ali afirmaria o mock, não o banco. A verificação correta é bateria SQL contra o banco local.
+**5. O que deliberadamente NÃO se testa com Vitest.** As constraints de banco: a suíte roda contra um **mock** do Supabase, sem Postgres, então um teste ali afirmaria o mock, não o banco. A verificação correta é bateria SQL contra o banco local — feita, em [`../docs/bateria-db-constraints.sql`](../docs/bateria-db-constraints.sql) (22 casos). Histórico do tema em [`analises/concluidos/roadmap-db-constraints.yaml`](./analises/concluidos/roadmap-db-constraints.yaml).
 
 ### Dívida de contexto que a suíte carrega
 

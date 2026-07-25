@@ -26,6 +26,8 @@ Unicidade responde "esse valor já existe?". **Formato** é outra pergunta, e at
 
 O e-mail exige um formato mínimo (`algo@algo.algo`, sem espaços) e **ausência é `NULL`, nunca `''`** — o que conversa com o aviso do índice acima.
 
+⚠️ **O `CadastroLote` teve de mudar junto, e o motivo importa.** A importação gravava os textos crus da planilha, sem `trim` — e planilha traz espaço nas pontas o tempo todo. Foi assim que os 22 e-mails com espaço entraram. Enquanto não havia constraint, isso era cosmético; com `chk_colab_email_formato`, a **linha inteira falharia na importação**. O `CadastroLote` passou a normalizar todo campo textual (`trim`, e vazio vira `NULL`) e a traduzir violação de CHECK em erro legível ("E-mail com formato inválido" em vez de "Outros"). **Lição para constraint futura:** antes de apertar o banco, olhe quem escreve nele *sem* passar pelo formulário — no caso, a importação em lote e as Edge Functions.
+
 **O que o índice do PIX não resolve (dívida consciente):** a mesma chave escrita em formatos diferentes ainda passa — `127.139.687-47` e `12713968747` são a mesma chave no arranjo do BACEN e valores distintos aqui. Das 565 chaves preenchidas, **94 estão em formatos mistos** (CPF pontuado, telefone com parênteses, espaços internos) e **uma tem 21 dígitos** — não é chave válida de tipo nenhum. Normalizar isso é mexer em dado bancário de 565 pessoas e ficou fora de escopo.
 
 Consequência no app: salvar cadastro agora pode falhar com `23505`. `PerfilColaborador` traduz o erro (mensagem específica para e-mail e para chave PIX) e o `CadastroLote` classifica as linhas recusadas como "E-mail duplicado" / "Chave PIX duplicada".
