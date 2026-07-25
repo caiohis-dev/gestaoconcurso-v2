@@ -10,11 +10,21 @@ Ver interface `Colaborador` em `src/hooks/useColaboradores.tsx`. Campos principa
 
 Além de `colab_cpf` e `colab_pis` (que já eram `UNIQUE` de origem), `colab_email` e `colab_chave_pix` passaram a ser únicos na migration `20260714163506_*`. **Mas não como `UNIQUE (coluna)`:** são **índices funcionais sobre `lower(trim(...))`**.
 
-*Por quê:* um `UNIQUE` comum é sensível a caixa e a espaço, e deixaria conviver `Joao@x.com` com `joao@x.com` — que o Supabase Auth trata como **o mesmo usuário**. Isso reabriria o problema que a limpeza dos e-mails duplicados fechou, já que a reivindicação de cadastro usa o e-mail como prova de identidade. Indexando a forma normalizada, a comparação acontece na hora, e os **12 e-mails gravados com maiúscula e os 22 com espaço em volta continuam gravados como estão** — nenhum dado foi reescrito.
+*Por quê:* um `UNIQUE` comum é sensível a caixa e a espaço, e deixaria conviver `Joao@x.com` com `joao@x.com` — que o Supabase Auth trata como **o mesmo usuário**. Isso reabriria o problema que a limpeza dos e-mails duplicados fechou, já que a reivindicação de cadastro usa o e-mail como prova de identidade. Indexando a forma normalizada, a comparação acontece na hora, sem reescrever o dado gravado: os **12 e-mails com maiúscula continuam como estão**.
+
+> **Atualização de 2026-07-25:** este parágrafo dizia também que "os 22 com espaço em volta continuam gravados como estão". **Não continuam** — foram normalizados com `trim` no dump quando a CHECK `chk_colab_email_formato` entrou (ver [`../../transversais/desenvolvimento-local.md`](../../transversais/desenvolvimento-local.md), correção 3). Hoje são **0** e-mails com espaço sobrando. **As 21 chaves PIX com espaço, essas sim, seguem intactas** — não há constraint de formato sobre elas, e mexer em dado bancário é o item de backlog do saneamento do PIX.
 
 **Múltiplos NULLs seguem permitidos** (`lower(trim(NULL))` é `NULL`, e o Postgres não considera NULLs iguais entre si): os 254 sem e-mail e os 206 sem chave PIX convivem sem conflito.
 
 ⚠️ **Não pode existir string vazia nessas colunas.** Duas linhas com `''` colidiriam no índice. Hoje todos os caminhos de escrita convertem `''` em `NULL` — `ColaboradorDialog` e `public-create-colaborador` no código, e a RPC `update_colaborador_data_full` via `NULLIF`. Um caminho novo que grave `''` quebra o salvamento do **segundo** cadastro vazio: converta na origem, não afrouxe o índice.
+
+### Formato: o que o banco passou a exigir (2026-07-25)
+
+Unicidade responde "esse valor já existe?". **Formato** é outra pergunta, e até 2026-07-25 o banco não a fazia. Agora faz — `chk_colab_nome_preenchido`, `chk_colab_cpf_numerico`, `chk_colab_telefone_positivo`, `chk_colab_numero_casa_nao_negativo`, `chk_colab_email_formato` (migration `20260725202722_*`).
+
+⚠️ **O CPF é o caso que mais surpreende:** o Zod usa `.length(11)`, que conta **caracteres**, não dígitos — `'abcdefghijk'` passava na validação do formulário. E a coluna é `CHAR(11)`, que também aceitava. Ou seja, **nem o front nem o banco garantiam que um CPF fosse numérico**. Hoje o banco exige `^[0-9]{11}$`. O dígito verificador continua sem checagem em lugar nenhum — é algoritmo, não formato, e ficou fora de escopo.
+
+O e-mail exige um formato mínimo (`algo@algo.algo`, sem espaços) e **ausência é `NULL`, nunca `''`** — o que conversa com o aviso do índice acima.
 
 **O que o índice do PIX não resolve (dívida consciente):** a mesma chave escrita em formatos diferentes ainda passa — `127.139.687-47` e `12713968747` são a mesma chave no arranjo do BACEN e valores distintos aqui. Das 565 chaves preenchidas, **94 estão em formatos mistos** (CPF pontuado, telefone com parênteses, espaços internos) e **uma tem 21 dígitos** — não é chave válida de tipo nenhum. Normalizar isso é mexer em dado bancário de 565 pessoas e ficou fora de escopo.
 

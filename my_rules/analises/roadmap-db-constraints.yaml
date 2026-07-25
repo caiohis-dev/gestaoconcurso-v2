@@ -11,7 +11,20 @@ roadmap:
   titulo: "Espelhamento das regras de negócio (Zod) como Check Constraints no banco de dados"
   criado: "2026-07-24"
   revisado: "2026-07-25"
-  status: "desenho FECHADO e revisado — aguardando início do trabalho."
+  status: |
+    EM EXECUÇÃO. Etapas 1, 2 e 3 CONCLUÍDAS em 2026-07-25, na branch feat/db-constraints:
+      - etapa 1: analises/db-constraints-mapeamento.md (18 regras medidas contra dados reais)
+      - etapa 2: migration 20260725202722_fortificar_constraints_db.sql (17 CHECKs), validada
+                 por `supabase db reset` completo — as 771 linhas reais passam
+      - etapa 3: docs/bateria-db-constraints.sql (22 casos, 22 ok) + conferência HTTP (400/23514)
+    Falta a etapa 4 (docs + merge em dev).
+
+    ACHADO DA EXECUÇÃO, que corrige a D4 e vale para todo tema futuro: `seed.pos.sql`
+    NÃO consegue satisfazer constraint. Ele roda DEPOIS da carga do dump, e as
+    constraints vêm das migrations, que rodam ANTES — então dado sujo derruba o
+    `db reset` no INSERT do dump, muito antes de o seed.pos.sql ter vez. Saneamento
+    que existe para caber numa constraint tem de morar NO DUMP. Foi o que aconteceu
+    com os 24 e-mails; virou a terceira correção manual do dump.
   branch:
     nome: feat/db-constraints
     base: dev
