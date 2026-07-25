@@ -63,6 +63,16 @@ Regras de negócio observadas:
 
 ## Acesso de coordenador (`coordenadores_prova`)
 
+> ### ⚠️ Duas coisas achadas em 2026-07-25 que precisam ser lidas antes de mexer aqui
+>
+> **1. `is_coordenador_prova` NÃO olha o papel — só esta tabela.** A função é um `EXISTS` em `coordenadores_prova` por `(user_id, prova_id)`. Ela é usada na policy de `ocorrencias_colaborador` e nas RPCs `finalizar_prova_unidade` e `encerrar_ocorrencias_unidade`. Logo, **linha aqui = acesso real**, mesmo que a pessoa não tenha o papel `coordenador` em `user_roles`.
+>
+> Isso torna crítica a ordem de `useUsers.updateRole` ao revogar: ele apaga (1) o papel e (2) os vínculos desta tabela, em dois passos sem transação. **Falhar no passo 2 tira o papel e mantém o acesso** — a tela mostra alguém sem coordenação, e o banco continua deixando essa pessoa mexer nas ocorrências daquelas provas.
+>
+> **2. `addCoordenadorAccess` fabrica alocação para preencher a FK.** `coordenadores_prova.colaborador_prova_id` é obrigatório; quando a unidade da prova não tem nenhuma alocação, o hook pega **qualquer colaborador** (`.limit(1)`, sem ordenação) e cria uma linha em `colaboradores_prova` só para satisfazer a FK — sem função e sem valor. Como `colaboradores_prova` é a alocação real (base de relatório e pagamento), isso é dado inventado indistinguível do verdadeiro.
+>
+> A raiz é de modelagem: **coordenar uma prova não é trabalhar numa sala dela**, mas o acesso está amarrado a uma alocação. Item no [`backlog.md`](../../../backlog.md).
+
 `useCoordenadoresProva.tsx` só considera "elegível" para virar coordenador um `colaboradores_prova` cuja `funcao_id` esteja em `FUNCOES_COORDENACAO` (acima). A concessão de acesso em si (inserir em `coordenadores_prova` + role `coordenador` em `user_roles`) tem dois caminhos possíveis no código com precondições diferentes — detalhado em [`auth-e-permissoes.md`](../../transversais/auth-e-permissoes.md), não duplicado aqui.
 
 Remover o acesso de um coordenador (`deleteMutation`) também remove a role `coordenador` de `user_roles` **se** essa era a última prova em que o usuário tinha acesso de coordenador (checagem de `otherAssignments` antes de remover a role).
