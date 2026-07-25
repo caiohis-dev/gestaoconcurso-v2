@@ -13,7 +13,7 @@
 - **`colaborador` NÃO entra nessa hierarquia** — é dimensão paralela, exposta como **`isColaborador`** (`roles.includes('colaborador')`), não como valor de `role`. O hook guarda o array `roles` completo justamente porque uma pessoa acumula gestão + colaborador (os 12 do backfill). Espremer num papel único rebaixaria os 10 coordenadores que também são colaboradores.
 - **`rolesLoaded`**: há uma janela entre `setUser` e o fim do fetch de papéis em que o usuário existe e os papéis ainda não. Quem decide para onde navegar (o `/auth`, as guardas de rota) **espera `rolesLoaded`**, senão decide sobre um conjunto vazio.
 - Logout força `window.location.href = '/auth'` (reload completo, para não deixar estado React fantasma) e limpa as chaves `sb-*`/`supabase` do `localStorage`. **Cuidado herdado:** esse reload duro destrói qualquer `navigate(..., { state })` chamado logo depois de `signOut()` — foi o bug que sumiu com a mensagem de sucesso ao salvar o perfil, na 2A.
-- Roteamento pós-login (em `Auth.tsx`): admin → `/dashboard`, coordenador → `/`, só-colaborador → `/perfil-colaborador`. Os 12 gestor+colaborador caem na gestão e chegam ao cadastro pelo item de menu "Meu Cadastro".
+- Roteamento pós-login (em `Auth.tsx`, desde 2026-07-24): **colaborador puro → `/perfil-colaborador`; todo o resto → `/`** (o hub por módulos — ver [`arquitetura-geral.md`](./arquitetura-geral.md) §6). Antes o admin ia direto a `/dashboard`; agora todo gestor passa pelo hub. Os 12 gestor+colaborador caem no hub e chegam ao cadastro pelo item de menu "Meu Cadastro". A definição de "colaborador puro" (`isColaborador && role === null`) é a **mesma** aqui e no guard do `Inicio.tsx` — ver a matriz de módulos adiante.
 
 ### Porta única "Estou sem minha senha" (2026-07-20)
 
@@ -114,6 +114,22 @@ Travar o campo (Etapa 1) impede o estrago novo, mas não conserta quem já está
 - Tabela `user_roles` (`user_id`, `role`) — um usuário pode ter mais de uma role.
 - `coordenador` é a role mais restrita das "de equipe": um coordenador só enxerga as provas/unidades a que foi explicitamente vinculado via `coordenadores_prova` (ver `useCoordenadorUnidades.tsx`, que resolve os `prova_unidade_id`s permitidos via RPC `get_coordenador_prova_unidade_ids`). Páginas de gestão (`GerenciarProva`, `OcorrenciasProva`) filtram listas no client usando esse resultado — a filtragem client-side é só UX; a proteção real está nas policies/RPCs que também checam `is_coordenador_prova`.
 - Gestão de usuários/roles é feita em `/gerenciar-usuarios` (`useUsers.tsx`), restrita a `superadmin` na navegação.
+
+### Módulos: o que cada papel vê no hub (2026-07-24)
+
+A tela de entrada por módulos (o mecanismo em [`arquitetura-geral.md`](./arquitetura-geral.md) §6) deriva o acesso **dos papéis que já existem** — sem tabela nem enum de módulos no banco. A matriz de hoje, com um módulo só, é degenerada de propósito; o que importa é a regra.
+
+| Papel | Vê o hub? | Módulos no hub | Entrada do card *Aplicação de Provas* |
+|---|---|---|---|
+| `superadmin` | sim | Aplicação de Provas (+ "Usuários" no header, fora dos cards) | `/dashboard` |
+| `admin` | sim | Aplicação de Provas | `/dashboard` |
+| `coordenador` | sim | Aplicação de Provas | `/colaboradores` |
+| `user` puro | sim | **nenhum** — vê o estado vazio ("fale com a administração") | — |
+| `colaborador` puro (`role === null`) | **não** | — cai direto em `/perfil-colaborador` | — |
+
+**O combo `user` + `colaborador` existe, e `user` prevalece.** Uma pessoa pode ter os dois papéis; `resolveRoleGestao` devolve `'user'` (não `null`), então ela **não** é "colaborador puro": cai no **hub** (estado vazio, pois `user` não tem módulo), não no portal do colaborador. Ela ainda alcança o próprio cadastro pelo item "Meu Cadastro" do header (`showFor: ['colaborador']`, sempre visível). Foi decisão explícita (2026-07-24): a dimensão de gestão manda sobre a de colaborador na hora de escolher o destino.
+
+**Reforço — hub e `navLinks` são UX, não autorização.** Esconder um card ou um link não protege rota nenhuma; quem barra é RLS + as checagens das Edge Functions + os guards de página (cada página de gestão tem o seu, padrão `Dashboard.tsx`). Centralizar esses guards num `RequireModulo` lido do registro é melhoria pendente (backlog), deliberadamente fora do tema que criou o hub.
 
 ### Duas formas distintas de conceder acesso de coordenador — atenção ao mexer aqui
 

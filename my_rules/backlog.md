@@ -4,6 +4,17 @@ Lista de trabalho planejado, ainda não iniciado. Itens concluídos devem ser re
 
 ---
 
+## Centralizar os guards de página num `RequireModulo`
+
+**Status:** pendente — aberto em 2026-07-24, como saldo da D5 do tema "tela de entrada por módulos"
+**Área:** Auth e Permissões (ver [`estrutura/auth-e-permissoes.md`](./estrutura/auth-e-permissoes.md)) / Arquitetura (ver [`estrutura/arquitetura-geral.md`](./estrutura/arquitetura-geral.md) §6)
+
+Cada página de gestão hoje tem o **próprio** guard, repetido à mão (padrão `Dashboard.tsx`: checa papel, senão `navigate("/")`). O registro de módulos (`src/lib/modulos.ts`) já sabe, por rota, qual módulo e quais papéis — então dá para trocar os ~11 guards espalhados por **um** wrapper `RequireModulo` que lê o registro e decide num lugar só.
+
+Foi **deixado de fora de propósito** do tema que criou o hub (decisão D5 do [`analises/roadmap-modulos.yaml`](./analises/roadmap-modulos.yaml)): misturar uma refatoração de autorização com uma feature de navegação transformaria uma coisa em duas. Os guards atuais **continuam corretos** — o destino `navigate("/")` deles virou "cai no hub" de graça —, então isto é melhoria de manutenção, **não urgente**. Ao fazer, manter o princípio: o wrapper é UX/roteamento; RLS + EFs continuam sendo a barreira real.
+
+---
+
 ## Refatorar diálogo "Nova Ocorrência" para modelo wizard
 
 **Status:** pendente

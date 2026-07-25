@@ -619,7 +619,7 @@ export default function CadastroLote() {
     <Layout>
       <div className="container mx-auto p-6 max-w-5xl">
         <div className="flex items-center gap-4 mb-8">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
+          <Button variant="ghost" size="icon" onClick={() => navigate('/colaboradores')}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
@@ -1077,7 +1077,7 @@ export default function CadastroLote() {
                             <ArrowLeft className="mr-2 h-4 w-4" />
                             Novo Cadastro em Lote
                           </Button>
-                          <Button onClick={() => navigate('/')} className="flex-1">
+                          <Button onClick={() => navigate('/colaboradores')} className="flex-1">
                             <Users className="mr-2 h-4 w-4" />
                             Ver Colaboradores
                           </Button>

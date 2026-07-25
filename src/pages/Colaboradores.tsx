@@ -6,7 +6,7 @@ import ColaboradoresList from "@/components/ColaboradoresList";
 import { Button } from "@/components/ui/button";
 import { Loader2, UserPlus, Briefcase, FileSpreadsheet } from "lucide-react";
 
-export default function Index() {
+export default function Colaboradores() {
   const { user, loading, isAdmin, isCoordenador, isLoggingOut } = useAuth();
   const navigate = useNavigate();
 

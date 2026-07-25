@@ -4,7 +4,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
-import Index from "./pages/Index";
+import Inicio from "./pages/Inicio";
+import Colaboradores from "./pages/Colaboradores";
 import Auth from "./pages/Auth";
 import RedefinirSenha from "./pages/RedefinirSenha";
 import Cadastro from "./pages/Cadastro";
@@ -38,7 +39,8 @@ const App = () => (
           <Sonner />
           <BrowserRouter>
             <Routes>
-              <Route path="/" element={<Index />} />
+              <Route path="/" element={<Inicio />} />
+              <Route path="/colaboradores" element={<Colaboradores />} />
               <Route path="/dashboard" element={<Dashboard />} />
               {/* Porta única desde a etapa 2A: colaborador e gestor entram pelo mesmo
                   lugar. /auth-admin sobrevive só como atalho para links antigos. */}

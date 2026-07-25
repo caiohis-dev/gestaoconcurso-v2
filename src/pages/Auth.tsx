@@ -19,7 +19,7 @@ const loginSchema = z.object({
 export default function Auth() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, loading, rolesLoaded, signIn, isAdmin, isCoordenador, isColaborador } = useAuth();
+  const { user, loading, rolesLoaded, signIn, isColaborador, role } = useAuth();
   const { toast } = useToast();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -40,17 +40,16 @@ export default function Auth() {
     }
   }, [location.state]);
 
-  // Para onde a pessoa vai depois de entrar. Um papel de gestão manda: os 12 que são
-  // colaborador E gestor caem na área de gestão, e alcançam o próprio cadastro pelo
-  // menu. Quem é só colaborador vai direto para o portal dele.
+  // Para onde a pessoa vai depois de entrar. Colaborador PURO (só a dimensão
+  // colaborador, nenhum papel de gestão) vai direto ao portal dele. Todo o resto —
+  // gestor, os 12 híbridos, ou conta sem papel — cai no hub, que mostra os módulos de
+  // cada um (ou o estado vazio). Mesma definição de "puro" que o guard do Inicio.tsx.
   useEffect(() => {
     if (loading || !rolesLoaded || !user) return;
 
-    if (isAdmin) navigate("/dashboard", { replace: true });
-    else if (isCoordenador) navigate("/", { replace: true });
-    else if (isColaborador) navigate("/perfil-colaborador", { replace: true });
+    if (isColaborador && role === null) navigate("/perfil-colaborador", { replace: true });
     else navigate("/", { replace: true });
-  }, [user, loading, rolesLoaded, isAdmin, isCoordenador, isColaborador, navigate]);
+  }, [user, loading, rolesLoaded, isColaborador, role, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
