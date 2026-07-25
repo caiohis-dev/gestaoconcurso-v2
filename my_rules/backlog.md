@@ -13,28 +13,14 @@ Cada página de gestão hoje tem o **próprio** guard, repetido à mão (padrão
 
 Foi **deixado de fora de propósito** do tema que criou o hub (decisão D5 do [`analises/concluidos/roadmap-modulos.yaml`](./analises/concluidos/roadmap-modulos.yaml)): misturar uma refatoração de autorização com uma feature de navegação transformaria uma coisa em duas. Ao fazer, manter o princípio: o wrapper é UX/roteamento; RLS + EFs continuam sendo a barreira real.
 
-> **Correção do que estava escrito aqui (achado em 2026-07-25, ao mapear os guards para o contrato do módulo):** este item afirmava que "os guards atuais continuam corretos". **Um não está.** `Colaboradores.tsx` **só checa login** — não tem a checagem de papel que as outras 14 páginas têm, então qualquer conta autenticada (inclusive `user` puro ou colaborador) alcança `/colaboradores` pela URL. Não é vazamento — desde a 2D a RLS só devolve a própria linha a quem não é admin/coordenador, então a lista chega vazia —, mas é justamente o tipo de omissão silenciosa que um wrapper único elimina por construção. Isso **eleva a prioridade** do item de "manutenção" para "há uma inconsistência real a corrigir". Inventário de guards por rota no contrato do módulo: [`estrutura/modulos/aplicacao-provas/00-modulo.md`](./estrutura/modulos/aplicacao-provas/00-modulo.md).
-
----
-
-## `useProvaLock`: `isLoading` fica preso e trava a tela de alocação
-
-**Status:** pendente — **achado por teste automatizado** em 2026-07-25
-**Área:** Aplicação de Provas (ver [`estrutura/modulos/aplicacao-provas/provas-e-unidades.md`](./estrutura/modulos/aplicacao-provas/provas-e-unidades.md))
-
-`useProvaLock` nasce com `isLoading: true` e **só resolve esse estado dentro de `acquireLock`**. Mas o efeito de mount só chama `acquireLock` quando todos os parâmetros existem:
-
-```js
-if (enabled && provaId && userId && userName) acquireLock();
-```
-
-A guarda defensiva que existe **dentro** de `acquireLock` (`if (!provaId || ... ) { setState isLoading:false; return; }`) é portanto **código morto** — ela nunca é alcançada. Resultado: com `enabled: false` ou parâmetro faltando, `isLoading` permanece `true` para sempre.
-
-**Por que não é teórico:** `GerenciarColaboradoresProva.tsx:413` renderiza tela de carregamento enquanto `unidadeLock.isLoading`. O `enabled` de lá é `!!provaUnidadeId && !!user && !!userName`, e `userName` é preenchido por um `.then()` **sem `.catch`**. Se essa consulta de perfil rejeitar, `userName` nunca chega, `enabled` nunca vira `true` — e a página fica presa no spinner **sem erro, sem timeout e sem saída**. No caminho feliz o defeito é invisível, porque `userName` resolve em milissegundos.
-
-**Conserto sugerido:** resolver o estado no próprio efeito quando a guarda barrar (`else setState(prev => ({...prev, isLoading: false}))`), ou remover a guarda interna e deixar `acquireLock` ser sempre chamado, já que ela existe justamente para esse caso. Vale também dar `.catch` ao fetch de `userName`, para o `enabled` não depender de uma promise que pode nunca resolver.
-
-**Ao corrigir:** dois testes em `src/hooks/useProvaLock.test.tsx` marcados `⚠️ DEFEITO` afirmam hoje o comportamento **errado** (que `isLoading` continua `true`). Eles vão quebrar quando o conserto entrar — é proposital, e o sinal de que devem ser reescritos para o comportamento correto.
+> **Correção do que estava escrito aqui (2026-07-25):** este item afirmava que "os guards atuais continuam corretos". **Dois não estavam** — e a omissão é do mesmo tipo nos dois: o `useEffect` manda para `/auth` quem não está logado e **para por aí**, sem o `navigate("/")` por papel que as outras páginas têm.
+>
+> - `Colaboradores.tsx` — **corrigido em 2026-07-25** (`isAdmin || isCoordenador`, esperando `rolesLoaded`).
+> - `FuncoesColaboradores.tsx` — **ainda aberto.** `isAdmin` só esconde as ações de escrita; a lista de funções é visível a qualquer conta autenticada que digite `/funcoes-colaboradores`. Não foi corrigido junto porque **o papel certo é decisão de produto**: o único link para a página é admin-only, o que sugere `isAdmin`, mas não está decidido se o coordenador precisa consultar a lista. Escolher errado tira uma tela de quem usa.
+>
+> Nenhum dos dois é vazamento de dado (a RLS contém), mas **duas ocorrências da mesma omissão em 15 páginas é o argumento do item**, não uma coincidência: guard escrito à mão erra por esquecimento, e o erro é silencioso — nada quebra, a página só fica aberta demais. Isso **eleva a prioridade** de "manutenção" para "há inconsistência real a corrigir". Ao implementar o wrapper, decidir o papel de `/funcoes-colaboradores` faz parte do trabalho. Inventário de guards por rota: [`estrutura/modulos/aplicacao-provas/00-modulo.md`](./estrutura/modulos/aplicacao-provas/00-modulo.md).
+>
+> **Dois detalhes que o wrapper precisa herdar** (achados ao consertar o `Colaboradores.tsx`): esperar **`rolesLoaded`**, não só `loading` — cada refresh de token reabre a janela em que o usuário existe e os papéis ainda não, e decidir ali expulsa coordenador; e respeitar **`isLoggingOut`**, senão o logout dispara o bounce por papel antes do redirect.
 
 ---
 

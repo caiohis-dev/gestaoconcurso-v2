@@ -7,19 +7,26 @@ import { Button } from "@/components/ui/button";
 import { Loader2, UserPlus, Briefcase, FileSpreadsheet } from "lucide-react";
 
 export default function Colaboradores() {
-  const { user, loading, isAdmin, isCoordenador, isLoggingOut } = useAuth();
+  const { user, loading, rolesLoaded, isAdmin, isCoordenador, isLoggingOut } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
     if (isLoggingOut) return;
-    if (loading) return;
+    // Esperar `rolesLoaded`, não só `loading`: um refresh de token reabre a janela em
+    // que o usuário já existe e os papéis ainda não — decidir ali expulsaria coordenador.
+    if (loading || !rolesLoaded) return;
     if (!user) {
       navigate("/auth", { replace: true });
+    } else if (!isAdmin && !isCoordenador) {
+      // O módulo Aplicação de Provas é de gestão (ver src/lib/modulos.ts). A RLS já
+      // devolve lista vazia a quem não é admin/coordenador; este guard é a barreira
+      // de UX que faltava aqui e que as outras páginas do módulo já tinham.
+      navigate("/", { replace: true });
     }
-  }, [user, loading, navigate, isLoggingOut]);
+  }, [user, loading, rolesLoaded, isAdmin, isCoordenador, navigate, isLoggingOut]);
 
 
-  if (loading) {
+  if (loading || !rolesLoaded) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -27,7 +34,7 @@ export default function Colaboradores() {
     );
   }
 
-  if (!user) {
+  if (!user || (!isAdmin && !isCoordenador)) {
     return null;
   }
 
