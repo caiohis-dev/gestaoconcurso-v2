@@ -19,6 +19,27 @@ const FUNCOES_COORDENACAO = [
 
 Esses UUIDs literais identificam quais linhas de `funcoes_colaboradores` contam como "função de coordenação" para fins de elegibilidade de acesso de coordenador. **Isso é frágil por construção**: se essas duas linhas forem excluídas e recriadas (mesmo com nome idêntico), ganham novo UUID e o vínculo quebra silenciosamente — não há lookup por `cargo_nome` nesse ponto do código. Se for mexer em seeds/migrations que tocam `funcoes_colaboradores`, verifique se esses IDs específicos ainda existem antes de assumir que a elegibilidade de coordenador continua funcionando.
 
+**E há uma segunda tela acoplada a estas linhas, por outro caminho:** `useFiscaisSala` (em `useSalasDistribuidas.tsx`) identifica o fiscal pelo **nome**, com `includes("fiscal") && includes("sala")`. Renomear a função esvazia aquela lista sem erro. Duas telas, dois acoplamentos diferentes, ambos silenciosos — ver o ponto frágil 1 do [contrato do módulo](./00-modulo.md).
+
+### ⚠️⚠️ Excluir uma função NÃO é bloqueado pelo banco — ele apaga em cascata
+
+Verificado no banco em 2026-07-25. As três FKs que apontam para `funcoes_colaboradores` são **destrutivas, não protetivas**:
+
+| Tabela | `ON DELETE` | O que acontece ao excluir a função |
+|---|---|---|
+| `colaboradores_prova` | **SET NULL** | toda alocação que usava a função fica **sem função** — inclusive em provas já realizadas |
+| `meta_colaboradores_unidade` | **CASCADE** | as metas daquela função **somem** |
+| `valores_funcao_prova` | **CASCADE** | os valores de pagamento **somem** |
+
+Ou seja: excluir uma função em uso **não dá erro**. Ela apaga dados de várias provas em silêncio, incluindo registro financeiro.
+
+**A única barreira é o cliente:** `useFuncoesAssociadas` pergunta às três tabelas se a função está em uso e a página desabilita o botão. Duas consequências que precisam sobreviver a refatoração:
+
+1. **`isFuncaoAssociada` devolve `false` enquanto carrega.** Hoje isso não morde porque `FuncoesColaboradores.tsx` só renderiza a tabela depois de `isLoadingAssociacoes` virar `false`. **Quem reusar o hook em outro lugar precisa gatear pelo `isLoading` também** — confiar só no booleano reabre a janela.
+2. **Se uma tabela nova passar a referenciar `funcao_id`, ela tem de entrar nas três consultas do hook** — senão a exclusão volta a ser liberada para funções em uso, sem nada acusar.
+
+Fechar isso de verdade é trabalho de banco (trigger que recusa, ou `ON DELETE RESTRICT`) — item no [`backlog.md`](../../../backlog.md).
+
 ### `useFuncoesAssociadas.tsx` — proteção contra exclusão de função em uso
 
 Verifica se uma função está referenciada em qualquer uma de três tabelas (`valores_funcao_prova`, `colaboradores_prova`, `meta_colaboradores_unidade`) e expõe `isFuncaoAssociada(funcaoId)`. Usado pela UI de `/funcoes-colaboradores` para impedir exclusão/edição de funções já em uso — ao adicionar uma quarta tabela que referencia `funcao_id`, essa função precisa ser atualizada também, senão a checagem fica incompleta.
