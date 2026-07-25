@@ -59,7 +59,7 @@ Consequências práticas:
 - **A ordem em `sql_paths` importa**: `seed.sql` antes de `seed.local.sql`, e `seed.pos.sql` **depois** dos dois (ver seção própria abaixo).
 - O dump preserva os **UUIDs e os hashes de senha de produção**, então os logins reais funcionam em dev local. Isso é útil e perigoso na mesma medida — trate o banco local como se fosse produção.
 - Todo `INSERT` do dump tem `ON CONFLICT DO NOTHING`, e o arquivo é envelopado em `SET session_replication_role = replica` para desligar triggers durante a carga (senão `on_auth_user_created` duplicaria `profiles`/`user_roles`).
-- ⚠️ **O dump carrega DUAS correções manuais (2026-07-14 e 2026-07-15)** (ver abaixo). **Um dump novo, gerado pela `export-seed`, nasce sem elas** — e precisa recebê-las de novo, senão a refatoração do acesso do colaborador quebra (a segunda quebra o próprio `db reset`).
+- ⚠️ **O dump carrega TRÊS correções manuais (2026-07-14, 2026-07-15 e 2026-07-25)** (ver abaixo). **Um dump novo, gerado pela `export-seed`, nasce sem elas** — e precisa recebê-las de novo. **Duas delas quebram o próprio `db reset`** se faltarem: a segunda (coluna que não existe mais) e a terceira (e-mails que violam a CHECK de formato).
 
 ### As correções manuais que vivem dentro do dump
 
@@ -70,6 +70,16 @@ Consequências práticas:
 **2. Coluna `colab_codigo_acesso` removida dos INSERTs (2026-07-15).** A migration `20260715131321_*` **dropa** a coluna `colab_codigo_acesso` (2D). Mas o dump insere `colaboradores` com lista de colunas **explícita** que incluía `colab_codigo_acesso` — então, no `db reset`, as migrations dropam a coluna e a carga do dump quebra com `column "colab_codigo_acesso" does not exist`. A coluna (e seu valor) foi **removida das 771 linhas de INSERT** do `seed.local.sql`, via script com tokenizer que respeita aspas (2 linhas tinham `\n` embutido no endereço). Nenhum outro dado mudou; o `email_atualizacao_log` e as demais tabelas ficaram intactos. **Qualquer dump novo precisa passar pela mesma remoção** — ou ser gerado de uma base que já não tem a coluna.
 
 Efeito nos números: `colaboradores` segue com 771 linhas; **com e-mail cai de 523 para 517**, e **sem e-mail sobe de 248 para 254**. Os 6 passam a depender do coordenador para receber um e-mail válido quando quiserem acesso ao portal.
+
+**3. `colab_email` saneado para caber na CHECK de formato (2026-07-25).** A migration `20260725202722_fortificar_constraints_db.sql` criou `chk_colab_email_formato`. **24 linhas** não passariam, então o dump foi corrigido antes:
+
+- **22 tinham só espaço nas pontas** (`' fulano@gmail.com'`) — endereço válido, sujeira de importação. Normalizadas com `trim`.
+- **1 typo de domínio:** `conceicaorosana55@gmailcom` → `conceicaorosana55@gmail.com` (decisão do usuário).
+- **1 sem `@` nenhum** (`reaportalvr.com`, um site) — **anulada**, porque não há e-mail a derivar dali.
+
+Efeito nos números: **com e-mail cai de 517 para 516**, **sem e-mail sobe de 254 para 255**. Alterada só a coluna `colab_email` da região de `INSERT` de `colaboradores`; as linhas de `email_atualizacao_log` que repetem os mesmos endereços ficaram **intactas** (é histórico de envio, não cadastro), seguindo o precedente da correção 1. Verificado antes de mexer que **nenhuma `colab_chave_pix` era igual a um dos 24 valores** — senão a correção teria reescrito dado bancário.
+
+⚠️ **Por que no dump, e não em migration nem no `seed.pos.sql`:** é a ordem do `db reset`. As migrations rodam **antes** da carga do dump, então a CHECK já existe quando o `INSERT` sujo chega — e o reset quebraria ali. O `seed.pos.sql` roda **depois** do dump, tarde demais pelo mesmo motivo (e, além disso, é versionado e **não pode conter PII**). Para dado que precisa satisfazer uma constraint, o único lugar possível é o próprio dump. **Generalize:** toda constraint nova exige que o dump já esteja limpo — `seed.pos.sql` não serve para satisfazer constraint.
 
 ## `seed.pos.sql` — operações de dados versionadas (2026-07-14)
 
@@ -86,6 +96,8 @@ A divisão que ficou combinada:
 | `supabase/seed.local.sql` (o dump) | **dado, quando é cirurgia em linhas específicas** (carrega PII) | **não** |
 
 Tudo no `seed.pos.sql` precisa ser **idempotente** (roda a cada `db reset`, e roda de novo se alguém o executar à mão) e **seguro contra base vazia** (num clone sem o dump, ele casa zero linhas e não quebra).
+
+⚠️ **O que ele NÃO consegue fazer:** satisfazer uma constraint. Como ele roda **depois** da carga do dump, e as constraints vêm das migrations (que rodam **antes**), um dado que viole uma CHECK derruba o `db reset` no `INSERT` do dump — muito antes de o `seed.pos.sql` ter chance de corrigi-lo. Saneamento que existe para caber numa constraint tem de morar **no dump**. Foi o caso da correção 3, acima.
 
 **Em produção ele não roda sozinho:** `db push` não executa seed nenhum. Lá ele é um **passo manual do bootstrap**, logo depois da carga do dump — ver [`../banco-producao.md`](../../banco-producao.md).
 

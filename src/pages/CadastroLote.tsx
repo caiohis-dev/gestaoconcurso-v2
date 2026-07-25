@@ -250,6 +250,14 @@ export default function CadastroLote() {
     if (m.includes('registro duplicado')) return 'Duplicidade';
     if (m.includes('excede o tamanho permitido') || m.includes('value too long')) return 'Tamanho excedido';
     if (m.includes('data inválida') || m.includes('date/time field value out of range') || m.includes('invalid input syntax for type date')) return 'Data inválida';
+    // As CHECK constraints de 2026-07-25 devolvem `violates check constraint "chk_..."`.
+    // Sem estes ramos a linha cairia em "Outros", que não diz à pessoa o que corrigir
+    // na planilha. Ver docs/bateria-db-constraints.sql.
+    if (m.includes('chk_colab_email_formato')) return 'E-mail com formato inválido';
+    if (m.includes('chk_colab_cpf_numerico')) return 'CPF não numérico';
+    if (m.includes('chk_colab_nome_preenchido')) return 'Nome em branco';
+    if (m.includes('chk_colab_telefone_positivo')) return 'Telefone inválido';
+    if (m.includes('violates check constraint')) return 'Valor fora da regra do banco';
     if (m.includes('formato inválido') || m.includes('invalid input syntax')) return 'Formato inválido';
     if (m.includes('campo obrigatório') || m.includes('null value') || m.includes('campos obrigatórios faltando')) return 'Campo obrigatório';
     return 'Outros';
@@ -308,26 +316,39 @@ export default function CadastroLote() {
       return linha[colunaExcel];
     };
 
+    // Planilha traz espaço nas pontas o tempo todo — foi assim que 22 e-mails entraram
+    // com espaço no cadastro. Desde as CHECK constraints de 2026-07-25 isso deixou de
+    // ser cosmético: `chk_colab_email_formato` REJEITA e-mail com espaço, e a linha
+    // inteira falharia na importação. Normalizar aqui é a origem certa — o índice único
+    // de e-mail e PIX já compara por `lower(trim(...))`, então isto só alinha a escrita
+    // ao que a unicidade sempre assumiu.
+    const texto = (colunaBanco: string): string | null => {
+      const valor = getValor(colunaBanco);
+      if (valor === null || valor === undefined) return null;
+      const limpo = valor.toString().trim();
+      return limpo === '' ? null : limpo;
+    };
+
     const colaborador = {
-      colab_matricula: getValor('colab_matricula')?.toString() || null,
-      colab_nome_completo: getValor('colab_nome_completo')?.toString() || '',
+      colab_matricula: texto('colab_matricula'),
+      colab_nome_completo: texto('colab_nome_completo') || '',
       colab_cpf: getValor('colab_cpf')?.toString().replace(/\D/g, '').padStart(11, '0') || '',
       colab_data_nascimento: converterDataExcel(getValor('colab_data_nascimento')),
-      colab_nacionalidade: getValor('colab_nacionalidade')?.toString() || null,
+      colab_nacionalidade: texto('colab_nacionalidade'),
       colab_pis: getValor('colab_pis')?.toString().replace(/\D/g, '') || null,
-      colab_rua: getValor('colab_rua')?.toString() || null,
+      colab_rua: texto('colab_rua'),
       colab_numero_casa: getValor('colab_numero_casa') ? parseInt(getValor('colab_numero_casa').toString()) : null,
-      colab_bairro: getValor('colab_bairro')?.toString() || null,
-      colab_cidade: getValor('colab_cidade')?.toString() || null,
+      colab_bairro: texto('colab_bairro'),
+      colab_cidade: texto('colab_cidade'),
       colab_cep: getValor('colab_cep') ? parseInt(getValor('colab_cep').toString().replace(/\D/g, '')) : null,
       colab_estado_civil: getValor('colab_estado_civil') ? parseInt(getValor('colab_estado_civil').toString()) : null,
       colab_raca: getValor('colab_raca') ? parseInt(getValor('colab_raca').toString()) : null,
       colab_grau_instrucao: getValor('colab_grau_instrucao') ? parseInt(getValor('colab_grau_instrucao').toString()) : null,
       colab_telefone: getValor('colab_telefone') ? parseInt(getValor('colab_telefone').toString().replace(/\D/g, '')) : null,
-      colab_complemento_endereco: getValor('colab_complemento_endereco')?.toString() || null,
+      colab_complemento_endereco: texto('colab_complemento_endereco'),
       colab_deficiente: getValor('colab_deficiente')?.toString().toLowerCase() === 'true',
-      colab_email: getValor('colab_email')?.toString() || null,
-      colab_chave_pix: getValor('colab_chave_pix')?.toString() || null
+      colab_email: texto('colab_email'),
+      colab_chave_pix: texto('colab_chave_pix')
     };
 
     // Truncamento silencioso para campos textuais tolerantes: mantém apenas o número máximo de caracteres

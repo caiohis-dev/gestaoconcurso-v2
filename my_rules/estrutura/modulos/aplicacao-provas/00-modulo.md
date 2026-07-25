@@ -61,6 +61,26 @@ Todas em `prefixosRota`. **Cada página tem o seu guard, escrito à mão** — n
 
 **Duas omissões idênticas em 15 páginas não é coincidência** — é o que guard escrito à mão produz, e o erro é silencioso: nada quebra, a página só fica aberta demais. É o argumento do `RequireModulo` no [`backlog.md`](../../../backlog.md), que elimina a classe inteira por construção.
 
+## Regras de negócio que o BANCO garante (2026-07-25)
+
+Até 2026-07-25 as validações viviam **só** no Zod dos formulários, e uma chamada direta ao PostgREST as ignorava inteiras. A migration `20260725202722_fortificar_constraints_db.sql` espelhou 17 delas como `CHECK`. O mapa completo (regra Zod × coluna × contagem de violações) está em [`../../../analises/concluidos/db-constraints-mapeamento.md`](../../../analises/concluidos/db-constraints-mapeamento.md); a prova de que barram, em [`../../../../docs/bateria-db-constraints.sql`](../../../../docs/bateria-db-constraints.sql).
+
+| Tabela | Garantido |
+|---|---|
+| `unidades_prova` | nome e sigla não-vazios (após `trim`); `unid_andares >= 1` |
+| `sala_prova` | capacidade e número positivos; `sala_andar >= 1` quando informado |
+| `provas` | edital denormalizado não-vazio; candidatos positivos; **`hora_final > hora_inicio`** |
+| `funcoes_colaboradores` | `cargo_nome` não-vazio |
+| `colaboradores` | nome não-vazio; **CPF exatamente 11 dígitos**; telefone positivo; nº da casa não-negativo; e-mail com formato mínimo |
+
+Três coisas que valem saber antes de mexer aqui:
+
+1. **O CPF não era validado por ninguém.** O Zod usa `.length(11)`, que conta **caracteres** — `'abcdefghijk'` passava —, e a coluna é `CHAR(11)`. Nem front nem banco exigiam dígito. Hoje o banco exige.
+2. **Nos horários, o banco é mais rígido que o formulário.** O Zod declara os horários como `z.string().optional()` e não confere ordem nenhuma; a CHECK barra prova que termina antes (ou no mesmo instante em que) começa. Foi decisão consciente — se um formulário novo permitir salvar isso, o erro vem do banco.
+3. **`unid_sigla` e `prova_edital` são `CHAR`**, não `VARCHAR`: o Postgres preenche com espaços, então `length()` é sempre o tamanho da coluna. Só `length(trim(...))` diz alguma coisa.
+
+**Ficaram de fora, de propósito:** o teto de `sala_andar` (depende de `unid_andares` de *outra* tabela — `CHECK` não expressa, e um `CHECK` com função consultando outra tabela **não é reavaliado** quando ela muda, virando mentira silenciosa); o dígito verificador do CPF (algoritmo, não formato); e o teto de 99 andares (número redondo de formulário, não limite de prédio).
+
 ## Tabelas que o módulo possui
 
 ```

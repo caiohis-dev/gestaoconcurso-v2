@@ -11,7 +11,34 @@ roadmap:
   titulo: "Espelhamento das regras de negócio (Zod) como Check Constraints no banco de dados"
   criado: "2026-07-24"
   revisado: "2026-07-25"
-  status: "desenho FECHADO e revisado — aguardando início do trabalho."
+  status: |
+    ✅ CONCLUÍDO em 2026-07-25. As 4 etapas foram executadas na branch feat/db-constraints,
+    mergeada em `dev`. Este arquivo vive em analises/concluidos/ como registro do desenho e
+    das decisões; o estado atual do sistema está na documentação de estrutura.
+
+    Etapas 1, 2 e 3:
+      - etapa 1: analises/db-constraints-mapeamento.md (18 regras medidas contra dados reais)
+      - etapa 2: migration 20260725202722_fortificar_constraints_db.sql (17 CHECKs), validada
+                 por `supabase db reset` completo — as 771 linhas reais passam
+      - etapa 3: docs/bateria-db-constraints.sql (22 casos, 22 ok) + conferência HTTP (400/23514)
+    Etapa 4: docs de estrutura atualizadas, análises movidas para concluidos/, merge em
+    `dev`. A subida a produção NÃO foi feita, por desenho — a migration sobe em lote na
+    próxima release tagueada, pelo roteiro de banco-producao.md.
+
+    DOIS ACHADOS DA EXECUÇÃO, que valem para todo tema futuro:
+
+    1. `seed.pos.sql` NÃO consegue satisfazer constraint — isto CORRIGE a D4. Ele roda
+       DEPOIS da carga do dump, e as constraints vêm das migrations, que rodam ANTES;
+       dado sujo derruba o `db reset` no INSERT do dump, muito antes de o seed.pos.sql
+       ter vez. Saneamento que existe para caber numa constraint tem de morar NO DUMP.
+       Foi o caso dos 24 e-mails; virou a terceira correção manual do dump.
+
+    2. Antes de apertar o banco, olhe quem escreve nele SEM passar pelo formulário.
+       O `CadastroLote` gravava o texto cru da planilha, sem trim — e planilha traz
+       espaço nas pontas o tempo todo (foi assim que os 22 e-mails sujos entraram).
+       Com a CHECK de e-mail, a linha inteira passaria a falhar na importação. Corrigido
+       no mesmo tema: o lote normaliza todo campo textual e traduz violação de CHECK em
+       erro legível. Uma constraint sem esse passo transfere o problema para o usuário.
   branch:
     nome: feat/db-constraints
     base: dev
