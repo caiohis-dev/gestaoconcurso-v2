@@ -85,13 +85,17 @@ roadmap:
         alimenta a sugestão inicial no cadastro da prova.
 
     - id: D4
-      titulo: "CRUD de Editais numa página nova /editais, item do módulo Aplicação de Provas"
-      decidido: "sim — CONFIRMADO pelo usuário em 2026-07-24"
+      titulo: "CRUD de Editais numa página nova /editais; Editais é MÓDULO próprio (card no hub)"
+      decidido: "sim — CONFIRMADO pelo usuário em 2026-07-24 (revisado no mesmo dia)"
       racional: |
         Segue o padrão de rotas/registro que o tema anterior (hub por módulos) montou:
-        /editais é uma rota nova, com uma entrada em src/lib/modulos.ts (navLinks +
-        prefixosRota do módulo aplicacao-provas). O form de Prova troca o campo de texto
-        livre por um SELETOR de edital existente.
+        /editais é uma rota nova, com uma entrada em src/lib/modulos.ts. O form de Prova
+        troca o campo de texto livre por um SELETOR de edital existente.
+        REVISÃO (2026-07-24): a primeira versão pôs Editais como link no header do módulo
+        Aplicação de Provas. O usuário pediu para tirá-lo de lá e transformá-lo num MÓDULO
+        próprio — um card no Início, no mesmo modelo do card Aplicação de Provas. Motivo:
+        o edital é a base sobre a qual as provas existem, uma área de trabalho à parte, não
+        um sub-item da aplicação. Só admin/superadmin veem o card (papeis do módulo).
 
     - id: D5
       titulo: "edital_id é NULLABLE no banco, mas OBRIGATÓRIO no app"

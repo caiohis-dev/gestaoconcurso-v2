@@ -121,9 +121,9 @@ A tela de entrada por módulos (o mecanismo em [`arquitetura-geral.md`](./arquit
 
 | Papel | Vê o hub? | Módulos no hub | Entrada do card *Aplicação de Provas* |
 |---|---|---|---|
-| `superadmin` | sim | Aplicação de Provas (+ "Usuários" no header, fora dos cards) | `/dashboard` |
-| `admin` | sim | Aplicação de Provas | `/dashboard` |
-| `coordenador` | sim | Aplicação de Provas | `/colaboradores` |
+| `superadmin` | sim | Aplicação de Provas + Editais (+ "Usuários" no header, fora dos cards) | `/dashboard` |
+| `admin` | sim | Aplicação de Provas + Editais | `/dashboard` |
+| `coordenador` | sim | Aplicação de Provas (Editais é só admin) | `/colaboradores` |
 | `user` puro | sim | **nenhum** — vê o estado vazio ("fale com a administração") | — |
 | `colaborador` puro (`role === null`) | **não** | — cai direto em `/perfil-colaborador` | — |
 
