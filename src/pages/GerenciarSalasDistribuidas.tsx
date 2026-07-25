@@ -241,7 +241,7 @@ export default function GerenciarSalasDistribuidas() {
             <div>
               <h1 className="text-2xl font-bold text-foreground">Gerenciar Salas Distribuídas</h1>
               <p className="text-muted-foreground">
-                {prova?.prova_edital?.trim()} - {formatDate(prova?.prova_data || null)}
+                {prova?.editais?.nome} - {formatDate(prova?.prova_data || null)}
               </p>
             </div>
           </div>

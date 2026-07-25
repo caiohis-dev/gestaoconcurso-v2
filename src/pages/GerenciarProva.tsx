@@ -259,7 +259,7 @@ export default function GerenciarProva() {
         const valorPagamento = cp.funcao_id ? (valoresFuncaoMap[cp.funcao_id] ?? "") : "";
         
         return {
-          "Edital": prova.prova_edital?.trim() || "",
+          "Edital": prova.editais?.nome || "",
           "Sigla Unidade": unidSigla,
           "Matrícula": colab?.colab_matricula || "",
           "Nome Completo": colab?.colab_nome_completo || "",
@@ -291,7 +291,7 @@ export default function GerenciarProva() {
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "Colaboradores");
 
-      const fileName = `colaboradores_${prova.prova_edital?.trim().replace(/\s+/g, "_") || "prova"}.xls`;
+      const fileName = `colaboradores_${(prova.editais?.nome ?? "").replace(/\s+/g, "_") || "prova"}.xls`;
       XLSX.writeFile(workbook, fileName);
 
       toast({
@@ -349,7 +349,7 @@ export default function GerenciarProva() {
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "Coordenadores");
 
-      const fileName = `coordenadores_${prova.prova_edital?.trim().replace(/\s+/g, "_") || "prova"}.xlsx`;
+      const fileName = `coordenadores_${(prova.editais?.nome ?? "").replace(/\s+/g, "_") || "prova"}.xlsx`;
       XLSX.writeFile(workbook, fileName);
 
       toast({
@@ -439,7 +439,7 @@ export default function GerenciarProva() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `cargos_${prova.prova_edital?.trim().replace(/\s+/g, "_") || "prova"}.csv`;
+      link.download = `cargos_${(prova.editais?.nome ?? "").replace(/\s+/g, "_") || "prova"}.csv`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -475,7 +475,7 @@ export default function GerenciarProva() {
             <div className="flex-1">
               <h1 className="text-2xl font-bold text-foreground">Gerenciar Prova</h1>
               <p className="text-muted-foreground">
-                {prova?.prova_edital?.trim()} - {formatDate(prova?.prova_data || null)}
+                {prova?.editais?.nome} - {formatDate(prova?.prova_data || null)}
               </p>
             </div>
             <div className="flex gap-2">
@@ -578,7 +578,7 @@ export default function GerenciarProva() {
           <div className="flex-1">
             <h1 className="text-2xl font-bold text-foreground">Gerenciar Prova</h1>
             <p className="text-muted-foreground">
-              {prova?.prova_edital?.trim()} - {formatDate(prova?.prova_data || null)}
+              {prova?.editais?.nome} - {formatDate(prova?.prova_data || null)}
             </p>
           </div>
           <div className="flex flex-wrap justify-end gap-2">
@@ -867,7 +867,7 @@ export default function GerenciarProva() {
             open={valoresDialogOpen}
             onOpenChange={setValoresDialogOpen}
             provaId={provaId}
-            provaEdital={prova.prova_edital || ""}
+            provaEdital={prova.editais?.nome || ""}
           />
       )}
 

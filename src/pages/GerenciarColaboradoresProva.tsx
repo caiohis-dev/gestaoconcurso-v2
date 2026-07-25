@@ -341,7 +341,7 @@ export default function GerenciarColaboradoresProva() {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Colaboradores");
 
-      const edital = (prova?.prova_edital || "edital").trim().replace(/[^\w\-]+/g, "_");
+      const edital = (prova?.editais?.nome || "edital").replace(/[^\w\-]+/g, "_");
       const sigla = (unidade?.unid_sigla || "unidade").trim().replace(/[^\w\-]+/g, "_");
       XLSX.writeFile(wb, `colaboradores_${edital}_${sigla}.xlsx`);
     } catch (e: any) {
@@ -479,7 +479,7 @@ export default function GerenciarColaboradoresProva() {
                 )}
               </h1>
               <p className="text-muted-foreground">
-                {prova?.prova_edital?.trim()} - {formatDate(prova?.prova_data || null)}
+                {prova?.editais?.nome} - {formatDate(prova?.prova_data || null)}
               </p>
               {unidadeFinalizada && (
                 <p className="text-sm text-red-700 mt-1">
@@ -842,7 +842,7 @@ export default function GerenciarColaboradoresProva() {
           open={coordenadoresDialogOpen}
           onOpenChange={setCoordenadoresDialogOpen}
           provaId={prova.id}
-          provaEdital={prova.prova_edital}
+          provaEdital={prova.editais?.nome || ""}
           provaUnidadeId={provaUnidadeId}
         />
       )}

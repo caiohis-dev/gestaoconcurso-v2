@@ -167,7 +167,7 @@ export default function DocumentosImpressao() {
         });
       });
 
-      const edital = prova.prova_edital?.trim() || "PROVA";
+      const edital = prova.editais?.nome || "PROVA";
       
       // Format exam date for title
       const dataProvaFormatada = formatDateBR(prova.prova_data) || "";
@@ -407,7 +407,7 @@ export default function DocumentosImpressao() {
           <div className="flex-1">
             <h1 className="text-2xl font-bold text-foreground">Documentos de Impressão</h1>
             <p className="text-muted-foreground">
-              {prova?.prova_edital?.trim()}
+              {prova?.editais?.nome}
             </p>
           </div>
         </div>
@@ -432,7 +432,7 @@ export default function DocumentosImpressao() {
                 <div className="flex-1 text-center font-serif text-sm space-y-1">
                   <p className="font-normal">{headerLine1}</p>
                   <p className="font-normal">{headerLine2}</p>
-                  <p className="font-normal">{prova?.prova_edital?.trim() || "EDITAL"}</p>
+                  <p className="font-normal">{prova?.editais?.nome || "EDITAL"}</p>
                   <p className="font-normal">{"{UNIDADE DE PROVA}"}</p>
                 </div>
               </div>
