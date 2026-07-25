@@ -1,0 +1,269 @@
+# Roadmap — Editais como entidade (extrair o edital da prova)
+# Criado em 2026-07-24. NADA aqui foi implementado — este arquivo é o desenho.
+# Convenção do projeto: enquanto o trabalho estiver vivo, fica na raiz de analises/;
+# concluído, vai para analises/concluidos/.
+
+roadmap:
+  titulo: "Editais como entidade — a prova deixa de ter um edital em texto livre e passa a referenciar um Edital cadastrado"
+  criado: "2026-07-24"
+  status: "desenho FECHADO nas decisões do usuário (D1–D4, 2026-07-24); D5–D7 são propostas do desenho, a confirmar. NADA implementado."
+  branch:
+    nome: feat/editais
+    base: dev            # regra do projeto: tema sai de dev e volta para dev
+    lembrete: "mergear --no-ff quando o tema fechar, e apagar a branch — não deixar acumular commits sem um 'acabou' explícito"
+
+  contexto: |
+    Hoje "edital" não é entidade: é a coluna `provas.prova_edital`, um CHAR(30) NOT NULL
+    de texto livre (migrations 20251224164946 e 20251224170545). Junto dela, a prova
+    carrega três campos que na verdade descrevem o concurso, não a sessão de prova:
+      - prova_n_candidatos       INTEGER
+      - prova_cabecalho_linha1   TEXT  (default 'FUNDAÇÃO EDUCACIONAL DE VOLTA REDONDA')
+      - prova_cabecalho_linha2   TEXT  (default 'Coordenação de Concursos e Processos Seletivos')
+    (migrations 20251224164946 e 20260116151128).
+
+    Levantamento importante: no BANCO esses quatro campos só aparecem na definição da
+    tabela `provas` — NENHUMA função, RPC, view ou policy os lê (grep em migrations).
+    As tabelas-filhas (prova_unidades, locks, etc.) referenciam `provas.id`, não o
+    edital. Logo, o lado servidor da mudança é contido: mexe na tabela `provas` e num
+    backfill de dados; não toca a teia de RPCs de gestão de prova.
+
+    No FRONT, ao contrário, `prova_edital` é lido em ~12 arquivos (títulos de tela,
+    textos de PDF, nomes de arquivo de export). Essa é a maior parte do trabalho.
+
+    Dado atual (banco local = cópia de prod, 2026-07-24): 2 provas, 2 editais distintos
+    ("Edital 001/2026 SMA", "Edital 002/2026 - SMA") — hoje é 1:1 na prática. A migração
+    de dados é minúscula.
+
+  # ───────────────────────────────────────────────────────────────────────────
+  modelo_de_dados: |
+    O Edital é um MODELO/PADRÃO do concurso; a prova é a sessão operacional. A herança
+    edital→prova é de UI (sugestão editável na criação), NÃO um trigger de banco. Isso
+    preserva a semântica atual: alocação e PDFs continuam lendo da PRÓPRIA prova.
+
+    editais (tabela NOVA):
+      id                uuid  PK
+      nome              text  NOT NULL, único (case-insensitive)  ← a identidade
+      n_candidatos      integer                                   ← default/sugestão
+      cabecalho_linha1  text  (default FEVRE)                     ← default/sugestão
+      cabecalho_linha2  text  (default FEVRE)                     ← default/sugestão
+      created_at / updated_at / created_by   (padrão das outras tabelas)
+
+    provas (ALTERADA):
+      - REMOVE  prova_edital (CHAR(30))
+      + ADD     edital_id  uuid  REFERENCES editais(id)  ON DELETE RESTRICT
+      - MANTÉM  prova_n_candidatos, prova_cabecalho_linha1, prova_cabecalho_linha2
+                (cada prova tem os SEUS; a UI os pré-preenche a partir do edital)
+
+    Os 4 campos que o usuário listou ("número de candidatos, Linha 1 do Cabeçalho,
+    Linha 2 do Cabeçalho e Nome do Edital") são exatamente as colunas de `editais`.
+    Três deles seguem existindo TAMBÉM em `provas`, por decisão (D2/D3).
+
+  decisoes:
+    - id: D1
+      titulo: "Um edital tem VÁRIAS provas (1→N). A prova referencia o edital."
+      decidido: "sim — CONFIRMADO pelo usuário em 2026-07-24"
+      consequencia: "provas.edital_id (FK). É a cardinalidade que dá sentido a extrair a entidade Editais."
+
+    - id: D2
+      titulo: "Número de candidatos FICA na prova; o edital tem o dele como sugestão"
+      decidido: "sim — CONFIRMADO pelo usuário em 2026-07-24"
+      racional: |
+        A alocação de candidatos por sala é por PROVA (GerenciarProva.tsx:204-206:
+        naoAlocados = prova_n_candidatos − alocados). Mover o número para o edital,
+        com 1→N provas, faria provas diferentes dividirem o mesmo total — conta errada.
+        Então prova_n_candidatos PERMANECE como fonte de verdade da prova. O edital
+        guarda um n_candidatos que a UI oferece como SUGESTÃO ao criar uma prova nova
+        (herança de UI, editável).
+
+    - id: D3
+      titulo: "Cabeçalho linha 1 e 2 existem nos DOIS — cada um tem o seu"
+      decidido: "sim — CONFIRMADO pelo usuário em 2026-07-24"
+      racional: |
+        O edital tem as linhas de cabeçalho como padrão; a prova mantém as suas,
+        editáveis. Os PDFs (DocumentosImpressao.tsx:51-52) continuam lendo de
+        prova.prova_cabecalho_linha1/2 — NÃO passam a ler do edital. O edital só
+        alimenta a sugestão inicial no cadastro da prova.
+
+    - id: D4
+      titulo: "CRUD de Editais numa página nova /editais, item do módulo Aplicação de Provas"
+      decidido: "sim — CONFIRMADO pelo usuário em 2026-07-24"
+      racional: |
+        Segue o padrão de rotas/registro que o tema anterior (hub por módulos) montou:
+        /editais é uma rota nova, com uma entrada em src/lib/modulos.ts (navLinks +
+        prefixosRota do módulo aplicacao-provas). O form de Prova troca o campo de texto
+        livre por um SELETOR de edital existente.
+
+    - id: D5
+      titulo: "edital_id é NULLABLE no banco, mas OBRIGATÓRIO no app"
+      decidido: "PROPOSTA do desenho — a confirmar"
+      racional: |
+        O CHAR(30) era NOT NULL, então o instinto é edital_id NOT NULL. Mas a ordem do
+        `db reset` impede: migrations rodam ANTES do seed.pos.sql, e é o seed.pos que faz
+        o backfill (criar editais e ligar as provas existentes). Um NOT NULL na migration
+        seria validado contra provas ainda sem edital_id → reset quebra. Alternativas:
+        (a) edital_id nullable no banco + o form de Prova exige selecionar um edital
+            (recomendado — sem edital cadastrado não dá para criar prova, que é o ponto);
+        (b) NOT NULL só faria sentido depois do backfill, o que a ordem migration→seed
+            não permite manter no reset — descartada.
+      consequencia: "FK real + ON DELETE RESTRICT garantem integridade; a obrigatoriedade vira regra de UI, como prova_edital de facto já era (o form sempre mandava)."
+
+    - id: D6
+      titulo: "Apagar um edital com provas é BLOQUEADO (ON DELETE RESTRICT)"
+      decidido: "PROPOSTA do desenho — a confirmar"
+      racional: "Apagar um edital não pode sumir com provas em silêncio. RESTRICT obriga a lidar com as provas antes. (CASCADE seria destrutivo demais para uma entidade-modelo.)"
+
+    - id: D7
+      titulo: "nome do edital vira TEXT único (case-insensitive), aposentando o CHAR(30)"
+      decidido: "PROPOSTA do desenho — a confirmar"
+      racional: |
+        CHAR(30) faz padding com espaços — é a origem dos ~15 `.trim()` espalhados. Numa
+        tabela própria, `nome` vira TEXT com índice único funcional sobre lower(trim(...))
+        (mesmo padrão de colab_email). Isso permite o seletor sem duplicatas e remove a
+        necessidade dos `.trim()` nos consumidores. O limite de 30 pode virar um CHECK de
+        comprimento se ainda fizer sentido, ou ser abandonado.
+
+  # ───────────────────────────────────────────────────────────────────────────
+  etapas:
+
+    - id: 1
+      titulo: "Banco — tabela editais + FK na prova + backfill no seed"
+      objetivo: "Schema em migration; dado em seed.pos.sql (regra do projeto)."
+      acoes:
+        - acao: "Migration NOVA (schema apenas)"
+          detalhe: |
+            - CREATE TABLE public.editais (colunas do modelo_de_dados acima).
+            - Índice único funcional em lower(btrim(nome)).
+            - ALTER TABLE public.provas ADD COLUMN edital_id uuid
+              REFERENCES public.editais(id) ON DELETE RESTRICT;  (NULLABLE — ver D5)
+            - RLS: ENABLE + policies espelhando `provas`:
+              SELECT para authenticated (USING true, como provas hoje);
+              INSERT/UPDATE/DELETE só admin (has_role(auth.uid(),'admin')).
+            - TRIGGER update_editais_updated_at (reusar update_updated_at_column()).
+            - NÃO dropar prova_edital ainda NESTA migration se o backfill depender dela;
+              dropar em passo posterior OU depois do backfill — ver risco de ordem.
+              Recomendado: manter prova_edital até o backfill do seed.pos ter de onde ler,
+              e dropá-la numa migration seguinte (ou aceitar mantê-la morta e limpar depois).
+        - acao: "Backfill em supabase/seed.pos.sql (dado, idempotente, seguro contra base vazia)"
+          detalhe: |
+            Regra genérica, sem PII (nome de edital não é dado pessoal) — é o lugar certo
+            pela regra do projeto (schema→migration, dado-regra→seed.pos, dado-linha→dump).
+            Passos idempotentes:
+              1. INSERT em editais um registro por DISTINCT btrim(prova_edital) das provas
+                 (ON CONFLICT no índice único → nada), copiando n_candidatos/cabecalho de
+                 uma prova daquele edital como default (hoje 1:1, então não-ambíguo).
+              2. UPDATE provas SET edital_id = (edital casado por nome) WHERE edital_id IS NULL.
+            Roda no `db reset` (depois do dump) e é passo MANUAL do bootstrap de prod.
+      verificacao:
+        - "db reset limpo; toda prova fica com edital_id preenchido; editais tem 1 linha por edital distinto"
+        - "Rodar o seed.pos duas vezes não duplica (idempotência)"
+
+    - id: 2
+      titulo: "Camada de dados no front"
+      acoes:
+        - acao: "Regenerar src/integrations/supabase/types.ts (Supabase CLI) — não editar à mão"
+        - acao: "useEditais.tsx (novo) — espelha useProvas: query + create/update/delete + toasts"
+        - acao: "Ajustar useProvas.tsx"
+          detalhe: |
+            - A interface Prova PERDE prova_edital e GANHA edital_id + o join
+              `editais: { nome, n_candidatos, cabecalho_linha1, cabecalho_linha2 } | null`.
+            - A query de provas passa a fazer select com join no edital
+              (select("*, editais(...)")). TODOS os consumidores dependem desse join
+              trazer o nome — sem ele, o nome do edital some da UI.
+            - ProvaInsert/ProvaUpdate trocam prova_edital por edital_id.
+      verificacao: ["tsc limpo"]
+
+    - id: 3
+      titulo: "Página /editais + registro no módulo"
+      acoes:
+        - acao: "src/pages/Editais.tsx (lista) + src/components/EditalDialog.tsx (form: nome, n_candidatos, linha1, linha2)"
+          detalhe: "Guard de admin no padrão das páginas de gestão (barrado → navigate('/'), que hoje é o hub)."
+        - acao: "App.tsx: <Route path='/editais' element={<Editais/>} />"
+        - acao: "src/lib/modulos.ts: adicionar /editais aos prefixosRota e um item em navLinks do módulo aplicacao-provas (showFor admin/superadmin)"
+          detalhe: "Aproveita a fonte de verdade criada no tema do hub — o header já lê dela."
+      verificacao: ["tsc+build limpos; /editais aparece no header para admin; guard barra não-admin"]
+
+    - id: 4
+      titulo: "ProvaDialog — seletor de edital + herança de sugestão"
+      acoes:
+        - acao: "Trocar o Input livre de prova_edital por um Select de editais (useEditais)"
+        - acao: "Ao selecionar um edital, pré-preencher prova_n_candidatos + prova_cabecalho_linha1/2 com os valores do edital, como SUGESTÃO editável (D2/D3)"
+          detalhe: "Só pré-preenche em prova NOVA (ou quando o campo estiver vazio); ao editar prova existente, respeitar os valores já salvos dela."
+        - acao: "Estado 'nenhum edital cadastrado' → mensagem + link para /editais (não dá para criar prova sem edital — D5)"
+      verificacao: ["criar prova exige escolher edital; os 3 campos vêm preenchidos e continuam editáveis; salvar grava os valores da prova"]
+
+    - id: 5
+      titulo: "Consumidores de prova_edital → nome via join (varredura)"
+      objetivo: "Trocar prova.prova_edital?.trim() por prova.editais?.nome em ~12 arquivos, e largar o .trim() (TEXT, não CHAR)."
+      acoes:
+        - acao: "Inventário levantado por grep em 2026-07-24 (revisar cada um):"
+          detalhe: |
+            - Provas.tsx:158 (texto de confirmação de exclusão)
+            - GerenciarProva.tsx: 262 (coluna "Edital" no export), 294/352/442 (nomes de
+              arquivo), 478/581 (título de tela), 870 (prop provaEdital para filho)
+            - GerenciarSalasDistribuidas.tsx:244 (título)
+            - OcorrenciasProva.tsx: 357 (var edital do PDF), 370 (texto no PDF), 426 (nome
+              do arquivo), 450 (título)
+            - GerenciarColaboradoresProva.tsx: 344/346 (nome de arquivo), 482 (título),
+              845 (prop)
+            - DocumentosImpressao.tsx: 170/215 (edital no PDF), 377 (nome de arquivo),
+              410 (título). ATENÇÃO: o cabeçalho (headerLine1/2, linhas 51-52 e 433-434)
+              continua vindo da PROVA — não trocar para o edital (D3).
+            - ProvaCard.tsx:121 (card)
+            - CoordenadoresProvaDialog.tsx: 48/56/242 (prop provaEdital + exibição)
+            - ValoresFuncaoProvaDialog.tsx: 33/40/93 (prop provaEdital + título)
+            - GerenciarUsuarios.tsx: 295/465 (exibição em lista)
+            - useUsers.tsx: 66 (select do join) e 79-81 (dedupe da lista por nome do edital)
+        - acao: "Onde a prova é passada a um filho como `provaEdital` (string), passar o nome do edital resolvido do join"
+      verificacao:
+        - "grep -rn 'prova_edital' src/ retorna só o esperado (idealmente nada além de types e do join)"
+        - "Cada tela/PDF/arquivo que mostrava o edital continua mostrando o nome"
+
+    - id: 6
+      titulo: "Treinamento.tsx (onboarding) e textos"
+      acoes:
+        - acao: "Atualizar as passagens que ensinam o fluxo antigo"
+          detalhe: |
+            Treinamento.tsx:738/755/784 e a menção em DocumentosImpressao.tsx:441 ("As
+            informações acima podem ser alteradas no cadastro do Edital") — refletir o
+            fluxo novo: cadastrar o Edital primeiro (/editais), depois a Prova escolhe um.
+      verificacao: ["textos coerentes com o fluxo edital-primeiro"]
+
+    - id: 7
+      titulo: "Qualidade, documentação e fechamento"
+      acoes:
+        - acao: "Suíte estática: tsc + eslint (sem regressão) + build"
+        - acao: "docs/teste-frontend-editais.md — bateria manual"
+          detalhe: |
+            Blocos mínimos: A. CRUD de editais (criar/editar/excluir; excluir com prova
+            vinculada é bloqueado — D6; nome duplicado é barrado — D7). B. Prova: seletor
+            de edital, herança de sugestão dos 3 campos, edição preserva os da prova.
+            C. Consumidores: nome do edital aparece em cada tela/PDF/export. D. Cabeçalho:
+            editar a linha do edital NÃO muda o PDF de uma prova já salva (D3). E. Guard
+            de admin em /editais.
+        - acao: "Atualizar my_rules/estrutura/provas-e-unidades.md"
+          detalhe: "Novo modelo edital↔prova (1→N), a FK, e a regra 'edital = modelo, prova = operacional; herança é de UI'."
+        - acao: "Atualizar my_rules/estrutura/documentos-e-relatorios.md"
+          detalhe: "Cabeçalho: edital fornece o default; a prova é a fonte que o PDF lê."
+        - acao: "Atualizar my_rules/estrutura/arquitetura-geral.md"
+          detalhe: "Tabela de rotas (+/editais) e a §6 dos módulos (novo item navLinks do módulo aplicacao-provas)."
+        - acao: "Fechar: merge --no-ff feat/editais → dev, push (com ok), apagar a branch"
+      verificacao: ["bateria rodada; docs de estrutura acompanham o domínio tocado"]
+
+  fora_de_escopo:
+    - "Tirar n_candidatos/cabecalho de dentro da prova — eles FICAM (D2/D3)."
+    - "Mudar a matemática de alocação (segue lendo prova_n_candidatos)."
+    - "Fazer os PDFs lerem o cabeçalho do edital — leem da prova (D3)."
+    - "Permissões novas por edital — acesso deriva do papel, como em provas."
+    - "NOT NULL em edital_id no banco (fica app-enforced — D5), a menos que se decida uma migration pós-bootstrap."
+
+  riscos:
+    - risco: "Ordem migration→seed: um NOT NULL ou um DROP de prova_edital cedo demais quebra o db reset"
+      mitigacao: "Schema na migration, backfill no seed.pos (roda depois do dump). edital_id nullable (D5). Se dropar prova_edital, fazê-lo só depois de o backfill ter lido dela — passo/migration posterior."
+    - risco: "O join do edital faltar na query de provas → o nome some de TODAS as telas de uma vez"
+      mitigacao: "A etapa 2 centraliza o join no useProvas; a bateria bloco C confere tela a tela."
+    - risco: "Algum consumidor de prova_edital escapar da varredura → nome vazio num PDF/arquivo"
+      mitigacao: "Inventário da etapa 5 + grep final; modo de falha é benigno (nome em branco), não vaza dado."
+    - risco: "Confundir cabeçalho do edital com o da prova e trocar a fonte do PDF (violaria a D3)"
+      mitigacao: "Etapa 5 marca explicitamente: DocumentosImpressao lê o cabeçalho da PROVA; o edital só alimenta a sugestão no ProvaDialog."
+    - risco: "Nome do edital duplicado por caixa/espaço"
+      mitigacao: "Índice único funcional lower(btrim(nome)) — D7."
