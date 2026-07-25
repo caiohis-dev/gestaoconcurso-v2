@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -82,6 +83,11 @@ export function UnidadeProvaDialog({
           <DialogTitle>
             {isEditing ? "Editar Unidade de Prova" : "Nova Unidade de Prova"}
           </DialogTitle>
+          <DialogDescription>
+            {isEditing
+              ? "Atualize o local onde as provas são aplicadas. O número de andares limita em que andar as salas podem ficar."
+              : "Cadastre o local onde as provas são aplicadas. O número de andares limita em que andar as salas podem ficar."}
+          </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>

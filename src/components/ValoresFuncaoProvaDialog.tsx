@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -91,6 +92,10 @@ export function ValoresFuncaoProvaDialog({
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle>Cadastrar Funções dos Colaboradores - {provaEdital.trim()}</DialogTitle>
+          <DialogDescription>
+            Defina o valor pago por função nesta prova. O valor é congelado no momento da
+            alocação: alterá-lo aqui não muda o que já foi alocado.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">

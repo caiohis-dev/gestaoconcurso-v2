@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -83,9 +84,12 @@ export function MetaColaboradoresDialog({
             <Users className="h-5 w-5" />
             Definir Número de Colaboradores
           </DialogTitle>
-          <p className="text-sm text-muted-foreground mt-1">
+          {/* Era um <p> solto: visualmente uma descrição, mas o Radix não o enxergava
+              (nem o leitor de tela). Como DialogDescription já vem com
+              `text-sm text-muted-foreground`, a troca não muda o visual. */}
+          <DialogDescription className="mt-1">
             {unidadeNome}
-          </p>
+          </DialogDescription>
         </DialogHeader>
 
         {isLoadingAll ? (

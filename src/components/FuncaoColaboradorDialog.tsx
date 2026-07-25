@@ -5,6 +5,7 @@ import * as z from "zod";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -88,6 +89,13 @@ export default function FuncaoColaboradorDialog({
           <DialogTitle>
             {funcao ? "Editar Função" : "Nova Função"}
           </DialogTitle>
+          <DialogDescription>
+            {!funcao
+              ? "Cadastre uma função que poderá ser atribuída aos colaboradores nas provas."
+              : isFuncaoSistema(funcao)
+                ? "Função básica do sistema: o nome não pode ser alterado."
+                : "Atualize os dados da função."}
+          </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>

@@ -6,6 +6,7 @@ import { Link } from "react-router-dom";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -137,6 +138,13 @@ export function ProvaDialog({
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{isEditing ? "Editar Prova" : "Nova Prova"}</DialogTitle>
+          <DialogDescription>
+            {semEditais
+              ? "É preciso ter um edital cadastrado antes de criar uma prova."
+              : isEditing
+                ? "Atualize os dados da prova. Trocar o edital não sobrescreve os campos já preenchidos."
+                : "Escolha o edital: os dados dele entram como ponto de partida e podem ser ajustados."}
+          </DialogDescription>
         </DialogHeader>
 
         {semEditais ? (
