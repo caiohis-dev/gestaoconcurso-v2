@@ -27,6 +27,15 @@ export interface EditalUpdate {
   cabecalho_linha2?: string | null;
 }
 
+// Traduz o erro de nome duplicado (índice único editais_nome_key, código 23505) para
+// PT-BR. Qualquer outro erro cai na própria mensagem, ou no fallback.
+function mensagemErroEdital(error: { message: string; code?: string }, fallback: string): string {
+  const nomeDuplicado =
+    error.code === "23505" || /duplicate key|unique constraint|editais_nome_key/i.test(error.message);
+  if (nomeDuplicado) return "Já existe um edital com esse nome.";
+  return error.message || fallback;
+}
+
 export function useEditais() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -61,8 +70,12 @@ export function useEditais() {
       queryClient.invalidateQueries({ queryKey: ["editais"] });
       toast({ title: "Edital criado", description: "O edital foi criado com sucesso." });
     },
-    onError: (error: Error) => {
-      toast({ title: "Erro ao criar edital", description: error.message, variant: "destructive" });
+    onError: (error: { message: string; code?: string }) => {
+      toast({
+        title: "Erro ao criar edital",
+        description: mensagemErroEdital(error, "Não foi possível criar o edital."),
+        variant: "destructive",
+      });
     },
   });
 
@@ -85,8 +98,12 @@ export function useEditais() {
       queryClient.invalidateQueries({ queryKey: ["provas"] });
       toast({ title: "Edital atualizado", description: "O edital foi atualizado com sucesso." });
     },
-    onError: (error: Error) => {
-      toast({ title: "Erro ao atualizar edital", description: error.message, variant: "destructive" });
+    onError: (error: { message: string; code?: string }) => {
+      toast({
+        title: "Erro ao atualizar edital",
+        description: mensagemErroEdital(error, "Não foi possível atualizar o edital."),
+        variant: "destructive",
+      });
     },
   });
 
