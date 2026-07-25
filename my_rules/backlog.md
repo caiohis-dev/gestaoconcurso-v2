@@ -17,6 +17,27 @@ Foi **deixado de fora de propósito** do tema que criou o hub (decisão D5 do [`
 
 ---
 
+## `useProvaLock`: `isLoading` fica preso e trava a tela de alocação
+
+**Status:** pendente — **achado por teste automatizado** em 2026-07-25
+**Área:** Aplicação de Provas (ver [`estrutura/modulos/aplicacao-provas/provas-e-unidades.md`](./estrutura/modulos/aplicacao-provas/provas-e-unidades.md))
+
+`useProvaLock` nasce com `isLoading: true` e **só resolve esse estado dentro de `acquireLock`**. Mas o efeito de mount só chama `acquireLock` quando todos os parâmetros existem:
+
+```js
+if (enabled && provaId && userId && userName) acquireLock();
+```
+
+A guarda defensiva que existe **dentro** de `acquireLock` (`if (!provaId || ... ) { setState isLoading:false; return; }`) é portanto **código morto** — ela nunca é alcançada. Resultado: com `enabled: false` ou parâmetro faltando, `isLoading` permanece `true` para sempre.
+
+**Por que não é teórico:** `GerenciarColaboradoresProva.tsx:413` renderiza tela de carregamento enquanto `unidadeLock.isLoading`. O `enabled` de lá é `!!provaUnidadeId && !!user && !!userName`, e `userName` é preenchido por um `.then()` **sem `.catch`**. Se essa consulta de perfil rejeitar, `userName` nunca chega, `enabled` nunca vira `true` — e a página fica presa no spinner **sem erro, sem timeout e sem saída**. No caminho feliz o defeito é invisível, porque `userName` resolve em milissegundos.
+
+**Conserto sugerido:** resolver o estado no próprio efeito quando a guarda barrar (`else setState(prev => ({...prev, isLoading: false}))`), ou remover a guarda interna e deixar `acquireLock` ser sempre chamado, já que ela existe justamente para esse caso. Vale também dar `.catch` ao fetch de `userName`, para o `enabled` não depender de uma promise que pode nunca resolver.
+
+**Ao corrigir:** dois testes em `src/hooks/useProvaLock.test.tsx` marcados `⚠️ DEFEITO` afirmam hoje o comportamento **errado** (que `isLoading` continua `true`). Eles vão quebrar quando o conserto entrar — é proposital, e o sinal de que devem ser reescritos para o comportamento correto.
+
+---
+
 ## Rodar a suíte de testes automaticamente (CI e/ou pre-commit)
 
 **Status:** pendente — aberto em 2026-07-25, junto com a introdução dos testes
