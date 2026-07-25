@@ -117,7 +117,7 @@ Ver [`../../transversais/testes.md`](../../transversais/testes.md) para infra e 
 
 | Coberto | Sem cobertura |
 |---|---|
-| `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useProvaLock` | `useProvas`, `useProvaUnidades`, `useSalasDistribuidas`, `useUnidadesProva`, `useSalasProva`, `useFuncoesColaboradores`, `useFuncoesAssociadas` |
+| `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useProvaLock` | `useProvas`, `useProvaUnidades`, `useSalasDistribuidas`, `useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade`, `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useCoordenadorUnidades`, `useOcorrencias` |
 | Schemas Zod: `ColaboradorDialog`, `UnidadeProvaDialog`, `SalaProvaDialog`, `FuncaoColaboradorDialog`, `ProvaDialog` | UI dos diálogos, exceto `ProvaDialog` |
 
 Não há mais teste marcado `⚠️ DEFEITO` neste módulo: os dois de `useProvaLock` que afirmavam o `isLoading` preso viraram teste de regressão quando o bug foi corrigido, em 2026-07-25.

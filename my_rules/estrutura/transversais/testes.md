@@ -99,7 +99,9 @@ async function carregarEDepois(sequencia) {
 | Hooks de dados | `useEditais`, `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useProvaLock` |
 | UI | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx` |
 
-**Sem cobertura ainda:** `useProvas`, `useProvaUnidades`, `useSalasDistribuidas`, `useUnidadesProva`, `useSalasProva`, `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers`, e os demais diálogos.
+**Sem cobertura ainda — 12 hooks** (esta lista já esteve errada, dizendo 8): `useProvas`, `useProvaUnidades`, `useUnidadesProva`, `useSalasProva`, `useSalasDistribuidas`, `useUnidadeCapacidade`, `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useCoordenadorUnidades`, `useOcorrencias`, `useUsers`, `useBancos`. Mais **10 dos 12 diálogos**, **as 23 páginas** (zero cobertura — daí os guards de papel não terem rede) e **as 8 Edge Functions** (rodam em Deno, fora do alcance desta suíte).
+
+O inventário completo, com ordem de prioridade e o que **não** se testa aqui, está no [`backlog.md`](../../backlog.md) → "Completar a suíte de testes (Vitest)".
 
 ## O princípio
 

@@ -4,6 +4,60 @@ Lista de trabalho planejado, ainda não iniciado. Itens concluídos devem ser re
 
 ---
 
+## Completar a suíte de testes (Vitest) — onde paramos e o que falta
+
+**Status:** parcial — a suíte existe e roda desde 2026-07-25; a cobertura está **incompleta por decisão**, não por esquecimento
+**Área:** Infraestrutura / transversal (ver [`estrutura/transversais/testes.md`](./estrutura/transversais/testes.md) para infra, convenções e as **5 armadilhas**)
+
+Este item é o marco: quem retomar os testes começa por aqui. **Leia `testes.md` antes de escrever teste novo** — as armadilhas ali custaram tempo real (a sequência do mock consumida pela listagem; `.at(-1)` pegando o refetch e não a mutation; `act()` no que atualiza provider; fake timers com `shouldAdvanceTime`; e o caminho do `pagehide`, que não passa pelo mock do Supabase).
+
+### Onde paramos (2026-07-25)
+
+**285 testes em 20 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
+
+Coberto:
+
+| Camada | O que já tem |
+|---|---|
+| Registro de módulos | `lib/modulos.test.ts` — inclui invariantes sobre `MODULOS` inteiro |
+| Schemas Zod (9) | `ColaboradorDialog`, `EditalDialog`, `FuncaoColaboradorDialog`, `ProvaDialog`, `SalaProvaDialog`, `UnidadeProvaDialog`, `pages/Auth`, `pages/GerenciarUsuarios` |
+| Auth | `useAuth.test.tsx` — hierarquia, `colaborador` paralelo, `rolesLoaded`, `signOut` |
+| Hooks de dados (8) | `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useEditais`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useValoresFuncaoProva` (+ `useAuth`) |
+| UI de diálogo (2) | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx` |
+| A própria infra | `src/test/supabase-mock.test.ts` — o mock tem teste próprio |
+
+### O que falta, em ordem de valor
+
+**1. Hooks sem cobertura — são 12, não 8.**
+
+> ⚠️ **Correção de um número que estava errado.** `testes.md` e o `00-modulo.md` listavam **8** hooks descobertos. O inventário real de 2026-07-25 dá **12**: a lista antiga esquecia `useBancos`, `useCoordenadorUnidades`, `useOcorrencias` e `useUnidadeCapacidade`.
+
+Faltam: `useProvas`, `useProvaUnidades`, `useUnidadesProva`, `useSalasProva`, `useSalasDistribuidas`, `useUnidadeCapacidade`, `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useCoordenadorUnidades`, `useOcorrencias`, `useUsers`, `useBancos`.
+
+Prioridade dentro do grupo: **`useOcorrencias` e `useCoordenadorUnidades` primeiro** — o primeiro porque ocorrências têm regra irreversível (encerramento) e efeito que hoje *não* acontece (o "Faltou", ver item próprio abaixo); o segundo porque é o que decide o que um coordenador enxerga, e errar ali é vazamento de escopo. `useBancos` é provavelmente lista estática — último.
+
+**2. UI de diálogo — 2 de 12 cobertos.** Sem nenhum teste: `CoordenadoresProvaDialog`, `CorrigirEmailAcessoDialog`, `MetaColaboradoresDialog`, `PasswordConfirmDialog`, `SalaExtraDialog`, `ValoresFuncaoProvaDialog`. Com teste de schema mas sem teste de interação: `ColaboradorDialog`, `FuncaoColaboradorDialog`, `SalaProvaDialog`, `UnidadeProvaDialog`.
+
+`PasswordConfirmDialog` merece atenção especial: é a barreira de confirmação de ações destrutivas (encerrar ocorrências, excluir prova). É o diálogo em que uma regressão silenciosa custa mais caro.
+
+**3. Páginas: zero cobertura.** São **23 páginas** e nenhuma tem teste de comportamento — os dois arquivos em `pages/` testam só schemas Zod. **Consequência direta:** os guards de papel não têm rede nenhuma. Foi por isso que duas páginas ficaram sem checagem de papel por meses sem nada acusar, e é a razão de o `RequireModulo` (item abaixo) ser arriscado enquanto isso não existir. Um teste de guard por página é repetitivo e barato — bom candidato a `it.each` sobre uma tabela rota × papel esperado.
+
+**4. Edge Functions: zero cobertura.** São 8 (`check-cpf-colaborador`, `corrigir-email-acesso`, `create-admin`, `create-coordenador`, `public-create-colaborador`, `recuperar-senha`, `reivindicar-acesso`, `send-email`) mais `_shared/`. Rodam em Deno, fora do alcance do Vitest como está montado — exigiria decisão de ferramenta (Deno test) antes de qualquer código. **Não é continuação natural da suíte atual; é tema próprio.** Registrar aqui para não parecer esquecimento: é onde vivem as políticas de anti-enumeração, rate limit e cooldown, ou seja, a lógica mais sensível do sistema.
+
+**5. O que deliberadamente NÃO se testa com Vitest.** As constraints de banco (ver [`analises/roadmap-db-constraints.yaml`](./analises/roadmap-db-constraints.yaml), etapa 3): a suíte roda contra um **mock** do Supabase, sem Postgres. Um teste ali afirmaria o mock, não o banco. A verificação correta é bateria SQL contra o banco local.
+
+### Dívida de contexto que a suíte carrega
+
+- **Mudança de produção feita para viabilizar os testes:** os 9 schemas Zod passaram a ser `export`ados dos componentes (8 arquivos; só a palavra `export`). Custo aceito: +9 avisos de `react-refresh/only-export-components`.
+- **Baseline de lint do repo: 93 problemas (69 erros, 24 avisos)** por `npm run lint`. Se subir, é coisa nova. (Atenção: `npx eslint src` dá 90 — a diferença são arquivos fora de `src`.)
+- **Enquanto não houver CI**, fechar tema inclui rodar à mão: `npm test`, `npx tsc --noEmit -p tsconfig.app.json` e `npm run build`.
+
+### A automação ficou para o fim, por decisão
+
+**O usuário decidiu em 2026-07-25 deixar o CI para o final.** Não é esquecimento — está registrado no item próprio abaixo ("Rodar a suíte de testes automaticamente"), que segue válido e continua sendo o de maior alavancagem da lista. A consequência de a decisão valer: **nada roda a suíte sozinho**, então cada tema fechado depende de alguém lembrar. Escrever mais teste rende menos até o CI existir — o que é justamente o argumento para não perseguir 100% de cobertura antes dele.
+
+---
+
 ## Centralizar os guards de página num `RequireModulo`
 
 **Status:** pendente — aberto em 2026-07-24, como saldo da D5 do tema "tela de entrada por módulos"
@@ -26,7 +80,7 @@ Foi **deixado de fora de propósito** do tema que criou o hub (decisão D5 do [`
 
 ## Rodar a suíte de testes automaticamente (CI e/ou pre-commit)
 
-**Status:** pendente — aberto em 2026-07-25, junto com a introdução dos testes
+**Status:** pendente — aberto em 2026-07-25, junto com a introdução dos testes. **Adiado por decisão do usuário no mesmo dia: "deixar o CI para o final."** Segue sendo o item de maior alavancagem da lista; o adiamento é escolha consciente de ordem, não reavaliação do valor.
 **Área:** Infraestrutura (ver [`estrutura/transversais/arquitetura-geral.md`](./estrutura/transversais/arquitetura-geral.md))
 
 O projeto ganhou uma suíte de regressão em 2026-07-25 (Vitest + React Testing Library, `npm test`), mas **nada a executa sozinho**: não há `.github/workflows/`, não há hook de pre-commit. Os testes só rodam quando alguém digita o comando.
