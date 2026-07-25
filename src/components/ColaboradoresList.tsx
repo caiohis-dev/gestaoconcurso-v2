@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useColaboradores, Colaborador } from '@/hooks/useColaboradores';
 import { supabase } from '@/integrations/supabase/client';
-import { useOnlineColaboradores } from '@/hooks/useOnlineColaboradores';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';

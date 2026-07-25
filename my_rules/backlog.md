@@ -7,18 +7,42 @@ Lista de trabalho planejado, ainda não iniciado. Itens concluídos devem ser re
 ## Centralizar os guards de página num `RequireModulo`
 
 **Status:** pendente — aberto em 2026-07-24, como saldo da D5 do tema "tela de entrada por módulos"
-**Área:** Auth e Permissões (ver [`estrutura/auth-e-permissoes.md`](./estrutura/auth-e-permissoes.md)) / Arquitetura (ver [`estrutura/arquitetura-geral.md`](./estrutura/arquitetura-geral.md) §6)
+**Área:** Auth e Permissões (ver [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md)) / Arquitetura (ver [`estrutura/transversais/arquitetura-geral.md`](./estrutura/transversais/arquitetura-geral.md) §6)
 
 Cada página de gestão hoje tem o **próprio** guard, repetido à mão (padrão `Dashboard.tsx`: checa papel, senão `navigate("/")`). O registro de módulos (`src/lib/modulos.ts`) já sabe, por rota, qual módulo e quais papéis — então dá para trocar os ~11 guards espalhados por **um** wrapper `RequireModulo` que lê o registro e decide num lugar só.
 
-Foi **deixado de fora de propósito** do tema que criou o hub (decisão D5 do [`analises/roadmap-modulos.yaml`](./analises/roadmap-modulos.yaml)): misturar uma refatoração de autorização com uma feature de navegação transformaria uma coisa em duas. Os guards atuais **continuam corretos** — o destino `navigate("/")` deles virou "cai no hub" de graça —, então isto é melhoria de manutenção, **não urgente**. Ao fazer, manter o princípio: o wrapper é UX/roteamento; RLS + EFs continuam sendo a barreira real.
+Foi **deixado de fora de propósito** do tema que criou o hub (decisão D5 do [`analises/roadmap-modulos.yaml`](./analises/roadmap-modulos.yaml)): misturar uma refatoração de autorização com uma feature de navegação transformaria uma coisa em duas. Ao fazer, manter o princípio: o wrapper é UX/roteamento; RLS + EFs continuam sendo a barreira real.
+
+> **Correção do que estava escrito aqui (achado em 2026-07-25, ao mapear os guards para o contrato do módulo):** este item afirmava que "os guards atuais continuam corretos". **Um não está.** `Colaboradores.tsx` **só checa login** — não tem a checagem de papel que as outras 14 páginas têm, então qualquer conta autenticada (inclusive `user` puro ou colaborador) alcança `/colaboradores` pela URL. Não é vazamento — desde a 2D a RLS só devolve a própria linha a quem não é admin/coordenador, então a lista chega vazia —, mas é justamente o tipo de omissão silenciosa que um wrapper único elimina por construção. Isso **eleva a prioridade** do item de "manutenção" para "há uma inconsistência real a corrigir". Inventário de guards por rota no contrato do módulo: [`estrutura/modulos/aplicacao-provas/00-modulo.md`](./estrutura/modulos/aplicacao-provas/00-modulo.md).
+
+---
+
+## Refazer a página de treinamento do zero
+
+**Status:** pendente — a página antiga foi **excluída** em 2026-07-25
+**Área:** Aplicação de Provas (ver [`estrutura/modulos/aplicacao-provas/00-modulo.md`](./estrutura/modulos/aplicacao-provas/00-modulo.md))
+
+A rota `/treinamento` e o `src/pages/Treinamento.tsx` (1547 linhas) foram removidos: o conteúdo estava envelhecido demais para valer um remendo, e um manual errado é pior que manual nenhum — ele *parece* autoridade. A decisão foi excluir agora e reescrever depois, do zero.
+
+**O que era:** manual do usuário embutido no app, explicando o sistema tela por tela em JSX estático — texto corrido mais mockups desenhados à mão (cards de exemplo com dados literais no código). Não importava hook nenhum e não consultava o banco.
+
+**Por que envelheceu sem ninguém ver:** descrevendo o sistema *por fora*, ela nunca quebrava build, teste ou lint ao ficar errada. O único detector era memória humana — e a página **não tinha link nenhum na UI** (estava em `prefixosRota` mas nunca nos `navLinks`), então só se chegava nela digitando a URL. Invisível para o usuário e para quem mantinha.
+
+**O que a versão nova precisa resolver, além do conteúdo:**
+1. **Um caminho até ela.** Sem entrada na navegação, a página não cumpre função — e some do radar de quem mantém.
+2. **Uma âncora contra o drift.** A causa raiz é o texto não ter vínculo nenhum com o código que descreve. Vale considerar conteúdo fora do JSX (MDX/markdown versionado), capturas reais em vez de mockups à mão, ou pelo menos uma checagem no fechamento de tema. Se a solução for só "lembrar de atualizar", ela vai apodrecer de novo pelo mesmo motivo.
+3. **A marca certa.** O título da antiga dizia *"Sistema de Cadastro de Colaboradores do DCIT"*, divergindo do FEVRE usado no resto da UI.
+
+**Ponta solta:** `framer-motion` (`^12.27.0`, em `package.json`) era usado **só** por essa página e agora é dependência órfã. Manter, se a página nova for usar animação; remover, se não — decisão para o momento da reescrita.
+
+O conteúdo antigo continua recuperável no histórico do git (última versão em `cd86219`; a exclusão é de 2026-07-25).
 
 ---
 
 ## Refatorar diálogo "Nova Ocorrência" para modelo wizard
 
 **Status:** pendente
-**Área:** Ocorrências (ver [`estrutura/ocorrencias.md`](./estrutura/ocorrencias.md))
+**Área:** Ocorrências (ver [`estrutura/modulos/aplicacao-provas/ocorrencias.md`](./estrutura/modulos/aplicacao-provas/ocorrencias.md))
 
 Refatorar o diálogo de Nova Ocorrência (`src/pages/OcorrenciasProva.tsx`) para um fluxo em wizard (passos), em vez do formulário único atual.
 
@@ -29,7 +53,7 @@ Junto com a refatoração, **corrigir a funcionalidade de "Faltou"**: quando uma
 ## Sanear as contas do Auth (3 dívidas abertas pelo backfill)
 
 **Status:** pendente — aberto em 2026-07-14, ao vincular os colaboradores que já eram usuários
-**Área:** Auth e Permissões (ver [`estrutura/auth-e-permissoes.md`](./estrutura/auth-e-permissoes.md))
+**Área:** Auth e Permissões (ver [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md))
 
 Ao escrever o backfill do `seed.pos.sql`, a varredura das 15 contas do `auth.users` revelou três problemas. **Nenhum bloqueia a etapa 2**, mas todos ficam piores quando a recuperação de senha por e-mail passar a valer.
 
@@ -44,7 +68,7 @@ Ao escrever o backfill do `seed.pos.sql`, a varredura das 15 contas do `auth.use
 ## Enxugar os grants de tabela de `anon`/`authenticated` (drift do dashboard Lovable)
 
 **Status:** pendente — aberto em 2026-07-15, ao endurecer a RLS de `colaboradores`
-**Área:** Auth e Permissões (ver [`estrutura/auth-e-permissoes.md`](./estrutura/auth-e-permissoes.md))
+**Área:** Auth e Permissões (ver [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md))
 
 Ao fazer a RLS de verdade em `colaboradores` apareceu que **`anon` tem `GRANT SELECT/INSERT/UPDATE/DELETE/TRUNCATE`** na tabela (e `authenticated` idem) — o padrão "tudo para todo mundo" que o dashboard do Lovable aplicou, provavelmente **em todas as tabelas de `public`**. Hoje só a **RLS** impede o estrago: `anon` não tem policy, então SELECT/INSERT/UPDATE/DELETE caem em *default deny*. **Mas `TRUNCATE` não passa por RLS** — um `GRANT TRUNCATE ... TO anon` é, no papel, poder de esvaziar a tabela. O que salva na prática é o PostgREST **não expor** TRUNCATE pela API; ainda assim é privilégio a mais, contra o princípio do menor privilégio.
 
@@ -55,7 +79,7 @@ O trabalho: varrer `information_schema.role_table_grants` por `grantee IN ('anon
 ## Troca de e-mail de conta confirmada (estado C) — sem caminho no app
 
 **Status:** pendente — aberto em 2026-07-16, ao fechar as Etapas 1 e 2 da edição de `colab_email`
-**Área:** Auth e Permissões (ver [`estrutura/auth-e-permissoes.md`](./estrutura/auth-e-permissoes.md))
+**Área:** Auth e Permissões (ver [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md))
 
 As três etapas da edição de `colab_email` sensível à identidade **estão feitas** (trava de UI + a EF `corrigir-email-acesso`, que renomeia a conta pendente do estado B). **Sobra o estado C:** quem tem login **confirmado** não consegue trocar o próprio e-mail pelo app — e a coordenação também não, de propósito (dar essa alavanca à coordenação reabriria o sequestro). Hoje a única saída é o dashboard do Auth, na mão.
 
@@ -68,7 +92,7 @@ Faltam as duas pontas: **(1) o caminho principal** — `supabase.auth.updateUser
 ## Sanear as chaves PIX e preencher `tipo_chave_pix`
 
 **Status:** pendente — aberto em 2026-07-14, quando as colunas ganharam unicidade
-**Área:** Colaboradores (ver [`estrutura/colaboradores.md`](./estrutura/colaboradores.md))
+**Área:** Colaboradores (ver [`estrutura/modulos/aplicacao-provas/colaboradores.md`](./estrutura/modulos/aplicacao-provas/colaboradores.md))
 
 Duas pontas soltas deixadas de propósito pela migration `20260714163506_*`:
 
@@ -78,7 +102,7 @@ Duas pontas soltas deixadas de propósito pela migration `20260714163506_*`:
 
 Enquanto (2) não estiver resolvido, não é possível criar o `CHECK` que amarra "tem chave ⇒ tem tipo".
 
-**Atenção:** qualquer correção em massa aqui é **operação de dados** e esbarra na regra do seed — migration não alcança dado que entra pelo dump (ver [`estrutura/desenvolvimento-local.md`](./estrutura/desenvolvimento-local.md)).
+**Atenção:** qualquer correção em massa aqui é **operação de dados** e esbarra na regra do seed — migration não alcança dado que entra pelo dump (ver [`estrutura/transversais/desenvolvimento-local.md`](./estrutura/transversais/desenvolvimento-local.md)).
 
 ---
 
@@ -98,7 +122,7 @@ Falta apenas, no dia: a **ref do projeto novo** no Supabase.
 ## Migrar hospedagem/deploy para fora do Lovable
 
 **Status:** pendente
-**Área:** Infraestrutura (ver [`estrutura/arquitetura-geral.md`](./estrutura/arquitetura-geral.md))
+**Área:** Infraestrutura (ver [`estrutura/transversais/arquitetura-geral.md`](./estrutura/transversais/arquitetura-geral.md))
 
 O Lovable já foi removido do **código** em 2026-07-11 (`lovable-tagger`, boilerplate, `.lovable/`), e o site do Lovable **não existe mais** — o projeto está temporariamente fora do ar (situação em 2026-07-12). Não há mais deploy ativo em lugar nenhum.
 
@@ -109,7 +133,7 @@ Publicar a v2 em infraestrutura própria (ex.: Vercel, Netlify, ou build estáti
 ## Verificar exposição da `send-email` no projeto Supabase antigo (v1)
 
 **Status:** pendente — **a verificar antes de considerar o assunto fechado**
-**Área:** Segurança / Infraestrutura (ver [`estrutura/integracoes-externas.md`](./estrutura/integracoes-externas.md))
+**Área:** Segurança / Infraestrutura (ver [`estrutura/transversais/integracoes-externas.md`](./estrutura/transversais/integracoes-externas.md))
 
 Em 2026-07-20 descobriu-se que a `send-email` **não checava quem a chamava**. O `verify_jwt` padrão exige um JWT, mas a **anon key é um JWT válido e é pública** — vai no bundle do frontend. Qualquer pessoa com essa chave podia mandar `{to, subject, html}` arbitrário **pelo servidor SMTP da FEVRE**: o e-mail sai com SPF/DKIM legítimos e serve de vetor de phishing contra os próprios colaboradores. **Corrigido no código** (a função passou a exigir `service_role`).
 
@@ -121,8 +145,8 @@ Em 2026-07-20 descobriu-se que a `send-email` **não checava quem a chamava**. O
 
 ## Porta única de acesso: "Estou sem minha senha" (CPF ou e-mail)
 
-**Status:** ✅ **CONCLUÍDO.** Implementado em 2026-07-20; UI validada em 2026-07-21 (blocos `C` e `E` da bateria, todos aprovados). A regra consolidada vive em [`estrutura/auth-e-permissoes.md`](./estrutura/auth-e-permissoes.md) ("Porta única"); este item fica como registro do desenho e das decisões.
-**Área:** UX / Autenticação (ver [`estrutura/auth-e-permissoes.md`](./estrutura/auth-e-permissoes.md))
+**Status:** ✅ **CONCLUÍDO.** Implementado em 2026-07-20; UI validada em 2026-07-21 (blocos `C` e `E` da bateria, todos aprovados). A regra consolidada vive em [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md) ("Porta única"); este item fica como registro do desenho e das decisões.
+**Área:** UX / Autenticação (ver [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md))
 
 > **Achado durante a implementação:** o cooldown precisou olhar **três** carimbos (`recovery_sent_at`, `confirmation_sent_at`, `invited_at`), não só o primeiro — `generateLink('invite')` deixa `recovery_sent_at` NULL, então a versão inicial deixava a chamada seguinte a um invite mandar um recovery que **invalidava o invite recém-enviado**. Detalhe em `auth-e-permissoes.md`.
 >
@@ -168,6 +192,6 @@ Os **254 sem e-mail no cadastro**: se a pessoa digitar o e-mail pessoal dela, n�
 3. `recuperar-senha`: o ramo de estado A por e-mail (acima).
 4. A dica "tente pelo CPF" antes do veredicto de inexistência.
 5. Rate limit: o endpoint passa a receber os dois tipos de input — conferir se o teto por IP da `reivindicar-acesso` (5/15 min) e o cooldown por conta da `recuperar-senha` (2 min) seguem cobrindo o caminho fundido.
-6. Docs: quando implementar, a regra consolidada vai para [`estrutura/auth-e-permissoes.md`](./estrutura/auth-e-permissoes.md), e a bateria em [`../docs/teste-frontend-auth-colaborador.md`](../docs/teste-frontend-auth-colaborador.md) ganha os casos (bloco C e E se fundem na prática).
+6. Docs: quando implementar, a regra consolidada vai para [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md), e a bateria em [`../docs/teste-frontend-auth-colaborador.md`](../docs/teste-frontend-auth-colaborador.md) ganha os casos (bloco C e E se fundem na prática).
 
 **Não precisa de roadmap:** não há etapas com dependência entre si, nem migration, nem política de segurança nova — é uma mudança coerente única. O que precisava de registro era a assimetria e o furo acima, que é o que este item guarda.

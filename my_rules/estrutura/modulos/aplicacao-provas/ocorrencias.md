@@ -1,0 +1,27 @@
+# Ocorrências
+
+> Documento de área do módulo **Aplicação de Provas** — comece pelo contrato em [`00-modulo.md`](./00-modulo.md). Depende do modelo de alocação descrito em [`alocacao-e-funcoes.md`](./alocacao-e-funcoes.md).
+
+## Entidade `ocorrencias_colaborador`
+
+`useOcorrencias.tsx` (página `OcorrenciasProva.tsx`, rota `/ocorrencias-prova/:provaId`): registra um incidente ligado a um `colaborador_id`, dentro de uma `prova_id`/`prova_unidade_id`, com `descricao`, `tipo_ocorrencia`, `data_ocorrencia`, e um flag `substituido` + `substituto_id` (FK para outro colaborador que o substituiu).
+
+## Regra não óbvia: quem aparece no combobox de "Nova Ocorrência"
+
+O combobox de seleção de colaborador em `OcorrenciasProva.tsx` só lista **colaboradores com vínculo em `colaboradores_prova` para alguma unidade da prova atual** (habilitados) ou de outra unidade da mesma prova (mostrados desabilitados, com a sigla da unidade). Um colaborador sem nenhuma alocação em `colaboradores_prova` — para essa prova ou qualquer outra — simplesmente não aparece na lista, nem habilitado nem desabilitado. Isso não é um bug: é decorrência direta de a ocorrência precisar de um `colaborador_id` que faça sentido no contexto da prova. Se alguém reportar "colaborador X não aparece para registrar ocorrência", a causa raiz mais provável é falta de alocação em `colaboradores_prova`, não um problema na query de ocorrências em si.
+
+## Encerramento por unidade — e por que não há reabertura
+
+`prova_unidades` tem os campos `ocorrencias_encerradas`, `ocorrencias_encerradas_at`, `ocorrencias_encerradas_by`. A RPC `encerrar_ocorrencias_unidade(p_prova_unidade_id, p_user_id)` (migration `20260707114551_*`):
+- Verifica permissão manualmente: `superadmin`, `admin`, o `created_by` da prova, ou um coordenador vinculado àquela prova (`is_coordenador_prova`) — qualquer outro perfil recebe erro `P0002`.
+- Marca a unidade como encerrada.
+
+⚠️ **O encerramento é irreversível pelo app — verificado em 2026-07-25.** `ocorrencias_encerradas = TRUE` é escrito em **um único lugar** em todas as migrations (a RPC acima) e **nada devolve o campo a `FALSE`**. Em particular, **`reabrir_prova_unidade` não toca nesses campos**: ela reverte apenas `unidade_finalizada`, `unidade_finalizada_at` e `unidade_finalizada_by`. São dois eixos independentes — reabrir a unidade **não** reabre as ocorrências dela.
+
+Consequência prática: encerrar ocorrências por engano só se desfaz com `UPDATE` manual no banco. Se algum dia isso precisar de caminho no app, o simétrico terá de ser criado do zero, com autorização própria — note que `reabrir_prova_unidade` é mais restrita que a finalização: só `superadmin` **ou** quem finalizou.
+
+**A UI barra na origem, sim.** `OcorrenciasProva.tsx:99` filtra as unidades selecionáveis com `!pu.ocorrencias_encerradas` — uma unidade encerrada some do seletor, então não há por onde registrar ocorrência nela. Mas a barreira é **client-side**: a criação não revalida o flag, então uma chamada direta ao PostgREST ainda inseriria.
+
+## Exportação
+
+A página gera PDF (jsPDF + `jspdf-autotable`) da lista de ocorrências, no mesmo padrão client-side usado em [`documentos-e-relatorios.md`](./documentos-e-relatorios.md).

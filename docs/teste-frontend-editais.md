@@ -2,7 +2,7 @@
 
 Roteiro de teste manual da UI cobrindo o tema **Editais como entidade** (etapas 1–7, 2026-07-24). Rode de cima a baixo. Cada bloco indica **o que valida**. Os blocos `A`–`E` se concluem; a seção **`F` (conferência perpétua)** guarda o que reconferir a cada mexida no domínio de provas/editais.
 
-Desenho em [`../my_rules/analises/roadmap-editais.yaml`](../my_rules/analises/roadmap-editais.yaml); modelo em [`../my_rules/estrutura/provas-e-unidades.md`](../my_rules/estrutura/provas-e-unidades.md).
+Desenho em [`../my_rules/analises/roadmap-editais.yaml`](../my_rules/analises/roadmap-editais.yaml); modelo em [`../my_rules/estrutura/modulos/aplicacao-provas/provas-e-unidades.md`](../my_rules/estrutura/modulos/aplicacao-provas/provas-e-unidades.md).
 
 ## Antes de começar
 

@@ -62,7 +62,7 @@ Tipos em uso:
 | `chore` | build, dependências, configuração, tooling |
 | `db` | migration nova (ver a seção de migrations abaixo) |
 
-O escopo, quando existir, é o domínio — os mesmos nomes de [`estrutura/`](./estrutura/): `ocorrencias`, `colaboradores`, `provas`, `alocacao`, `auth`, `documentos`.
+O escopo, quando existir, é o **módulo** ou o **domínio** — os mesmos nomes de [`estrutura/`](./estrutura/). Módulos: `editais`, e as áreas de Aplicação de Provas (`colaboradores`, `provas`, `alocacao`, `ocorrencias`, `documentos`). Transversais: `auth`, `arquitetura`, `local`.
 
 Exemplos reais do que vem por aí:
 
@@ -89,7 +89,7 @@ Isso vale inclusive para desfazer algo: para remover uma tabela criada por uma m
 
 Precedente no repo: `20260711230647_drop_colaboradores_backup_20260701.sql` removeu uma tabela sem tocar na migration que a criou.
 
-Uma ressalva que este projeto já pagou caro: **as migrations não reproduzem fielmente a produção** — o schema de prod foi construído pelo dashboard do Lovable, então existe drift (ver `estrutura/desenvolvimento-local.md`). "Funciona em produção" é evidência *fraca* de que as migrations estão corretas.
+Uma ressalva que este projeto já pagou caro: **as migrations não reproduzem fielmente a produção** — o schema de prod foi construído pelo dashboard do Lovable, então existe drift (ver `estrutura/transversais/desenvolvimento-local.md`). "Funciona em produção" é evidência *fraca* de que as migrations estão corretas.
 
 ## O que nunca é versionado
 

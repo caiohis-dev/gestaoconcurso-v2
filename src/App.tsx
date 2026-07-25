@@ -27,7 +27,6 @@ import DocumentosImpressao from "./pages/DocumentosImpressao";
 import PainelDadosColaboradores from "./pages/PainelDadosColaboradores";
 import Dashboard from "./pages/Dashboard";
 import GerenciarUsuarios from "./pages/GerenciarUsuarios";
-import Treinamento from "./pages/Treinamento";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -66,7 +65,6 @@ const App = () => (
               <Route path="/documentos-impressao/:provaId" element={<DocumentosImpressao />} />
               <Route path="/painel-dados-colaboradores/:provaId" element={<PainelDadosColaboradores />} />
               <Route path="/gerenciar-usuarios" element={<GerenciarUsuarios />} />
-              <Route path="/treinamento" element={<Treinamento />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

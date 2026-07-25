@@ -1,6 +1,6 @@
 # Documentos, Painel e Dashboard
 
-> Ver [`00-indice.md`](./00-indice.md). Depende de uma prova finalizada — ver ciclo de vida em [`provas-e-unidades.md`](./provas-e-unidades.md) — e dos dados de alocação/pagamento em [`alocacao-e-funcoes.md`](./alocacao-e-funcoes.md).
+> Documento de área do módulo **Aplicação de Provas** — comece pelo contrato em [`00-modulo.md`](./00-modulo.md). Depende de uma prova finalizada — ver ciclo de vida em [`provas-e-unidades.md`](./provas-e-unidades.md) — e dos dados de alocação/pagamento em [`alocacao-e-funcoes.md`](./alocacao-e-funcoes.md).
 
 ## `/documentos-impressao/:provaId` (`DocumentosImpressao.tsx`)
 
@@ -8,13 +8,25 @@
 - Gera PDFs 100% client-side com jsPDF + `jspdf-autotable`, em landscape, com logo carregado como base64 (`fevreLogo` convertido via `FileReader` no mount) e cabeçalho customizável **por prova** (`prova_cabecalho_linha1/2`, com fallback para o texto padrão da fundação). O nome exibido no centro do cabeçalho é o do **edital** (via join `prova.editais.nome`).
   - **Importante (desde 2026-07-24):** as duas linhas de cabeçalho lidas pelo PDF são as **da prova**, não as do edital. O edital só fornece o valor inicial (sugestão) ao cadastrar a prova; editar o cabeçalho do edital depois **não** altera os PDFs de provas já existentes. Ver [`provas-e-unidades.md`](./provas-e-unidades.md) (editais como modelo).
 - **Recibo de pagamento** (`gerarReciboPagamento`): busca `colaboradores_prova` da unidade (com `valor_pagamento` já "congelado" na alocação — ver [`alocacao-e-funcoes.md`](./alocacao-e-funcoes.md)) e complementa com `valores_funcao_prova` como mapa auxiliar; busca separadamente o nome do "Coordenador Geral" daquela unidade para exibir no documento; agrupa colaboradores por função (ordenado alfabeticamente) para montar as tabelas.
-- Também existem exportações para "coordenadores" e "cargos" (`isExportingCoordenadores`, `isExportingCargos` em `GerenciarProva.tsx`) — variações do mesmo padrão de exportação, não detalhadas aqui em profundidade; ao alterar o layout de um PDF, provavelmente as três exportações (recibo, coordenadores, cargos) merecem ser conferidas juntas por reaproveitarem padrões visuais parecidos.
+## As três exportações do `GerenciarProva.tsx` — e a que não é PDF
+
+Além dos documentos da página acima, `GerenciarProva.tsx` tem três exportações próprias, cada uma com seu flag de loading. **Elas não são três variações do mesmo padrão** — a terceira é de outra natureza:
+
+| Função | Flag | Formato | Fonte |
+|---|---|---|---|
+| `exportColaboradores` (l. 208) | `isExporting` | PDF | `colaboradores_prova` da prova |
+| `exportCoordenadores` (l. 313) | `isExportingCoordenadores` | PDF | `coordenadores_prova` da prova |
+| **`exportCargosCSV`** (l. 371) | `isExportingCargos` | **CSV** | `colaboradores_prova` + `valores_funcao_prova`, agregados por função |
+
+`exportCargosCSV` monta um mapa `funcao_id → { nome, count, valor }` **partindo de `valores_funcao_prova`** e contando as alocações em cima — ou seja, uma função sem valor cadastrado na prova não entra no mapa e **não aparece no CSV**, mesmo tendo gente alocada. É consequência direta de a semeadura do mapa vir dos valores, não das alocações.
+
+Ao mexer em layout de PDF, `exportColaboradores` e `exportCoordenadores` andam juntas (compartilham padrões visuais); `exportCargosCSV` é independente e não é afetada.
 
 ## `/painel-dados-colaboradores/:provaId` (`PainelDadosColaboradores.tsx`)
 
 Painel read-only dos colaboradores alocados numa prova (nome, e-mail, unidade, último acesso), com busca e ordenação por nome / último acesso. Restrito a `isAdmin`. Faz fetch manual (`useState`/`useEffect`), não React Query.
 
-> **Envio de e-mail em massa aposentado na 2D (2026-07-15).** A página tinha um botão "Solicitar Atualização de Dados" que mandava e-mail em lote (`buildEmailHtml` + `send-email`) aos colaboradores com campos pendentes ou sem primeiro acesso. Esse e-mail embutia `colab_codigo_acesso` (morto) e apontava para o login antigo `fevre.online/auth`; na 2D optou-se por **remover a feature inteira** (botão, `buildEmailHtml`, `getCamposFaltantes`, o dialog e a leitura de `email_atualizacao_log`), não reescrevê-la. A tabela `email_atualizacao_log` **fica** (histórico de 232 envios), apenas deixou de ser alimentada. Ver [`../analises/roadmap-auth-colaborador.md`](../analises/concluidos/roadmap-auth-colaborador.md).
+> **Envio de e-mail em massa aposentado na 2D (2026-07-15).** A página tinha um botão "Solicitar Atualização de Dados" que mandava e-mail em lote (`buildEmailHtml` + `send-email`) aos colaboradores com campos pendentes ou sem primeiro acesso. Esse e-mail embutia `colab_codigo_acesso` (morto) e apontava para o login antigo `fevre.online/auth`; na 2D optou-se por **remover a feature inteira** (botão, `buildEmailHtml`, `getCamposFaltantes`, o dialog e a leitura de `email_atualizacao_log`), não reescrevê-la. A tabela `email_atualizacao_log` **fica** (histórico de 232 envios), apenas deixou de ser alimentada. Ver [`../analises/roadmap-auth-colaborador.md`](../../../analises/concluidos/roadmap-auth-colaborador.md).
 
 ## `/dashboard` (`Dashboard.tsx`)
 

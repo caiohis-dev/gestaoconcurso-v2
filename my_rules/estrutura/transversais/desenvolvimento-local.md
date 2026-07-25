@@ -1,6 +1,6 @@
 # Ambiente de Desenvolvimento Local (Supabase via Docker)
 
-> Ver [`00-indice.md`](./00-indice.md). Complementa [`arquitetura-geral.md`](./arquitetura-geral.md) (não há backend próprio — tudo aqui é sobre rodar o próprio Supabase localmente) e [`alocacao-e-funcoes.md`](./alocacao-e-funcoes.md) (o gotcha do seed de funções).
+> Ver [`00-indice.md`](../00-indice.md). Complementa [`arquitetura-geral.md`](./arquitetura-geral.md) (não há backend próprio — tudo aqui é sobre rodar o próprio Supabase localmente) e [`alocacao-e-funcoes.md`](../modulos/aplicacao-provas/alocacao-e-funcoes.md) (o gotcha do seed de funções).
 
 ## Pré-requisitos (não incluídos neste repo)
 
@@ -26,7 +26,7 @@
 3. Login (interativo, via browser — não tem script no `package.json` por não fazer sentido automatizar): `npx supabase login`.
 4. `npm run supabase:link` (opcional, só necessário para sincronizar com o remoto via `db pull`/`db diff`; **não é necessário só para rodar migrations locais**, que já estão todas versionadas em `supabase/migrations/`).
 5. `npm run supabase:start` — primeira execução baixa as imagens Docker (pode demorar) e ao final imprime `API URL`, `anon key`, `service_role key`, `Studio URL`, etc.
-6. `npm run supabase:reset` — aplica as ~67 migrations existentes + `supabase/seed.sql` + `supabase/seed.local.sql` numa base zerada. O `seed.local.sql` **não vem no repositório** (é o dump de produção, com PII — ver seção própria abaixo): se ele não existir na sua máquina, este passo falha, e você precisa removê-lo de `sql_paths` no `config.toml` ou gerar um dump novo (ver seção própria abaixo).
+6. `npm run supabase:reset` — aplica as 81 migrations existentes + `supabase/seed.sql` + `supabase/seed.local.sql` numa base zerada. O `seed.local.sql` **não vem no repositório** (é o dump de produção, com PII — ver seção própria abaixo): se ele não existir na sua máquina, este passo falha, e você precisa removê-lo de `sql_paths` no `config.toml` ou gerar um dump novo (ver seção própria abaixo).
 7. Copiar a `anon key` impressa no passo 5 (ou via `npm run supabase:status`) para `VITE_SUPABASE_PUBLISHABLE_KEY` em `.env.local` (arquivo já criado na raiz, gitignored). O Vite carrega `.env.local` com prioridade sobre `.env` automaticamente — nenhuma outra mudança de config é necessária para alternar entre local e produção; basta esse arquivo existir ou não.
 8. `npm run dev` — a partir daqui o frontend fala com o Supabase local (Postgres real em `127.0.0.1:54322`, Studio em `127.0.0.1:54323`, e-mails de teste em `127.0.0.1:54324`).
 9. Para desenvolver Edge Functions localmente: copiar `supabase/functions/.env.example` para `supabase/functions/.env`, preencher credenciais de teste (não as de produção), e rodar `npm run supabase:functions:serve` em paralelo ao stack principal.
@@ -35,9 +35,9 @@
 
 Histórico, porque explica a forma da solução: as migrations originais só tinham um `UPDATE ... WHERE id IN (...)` marcando 7 UUIDs de `funcoes_colaboradores` como "básicos do sistema" (`cargo_editavel = false`) — nunca um `INSERT`. Esses 7 registros (Coordenador Geral, Auxiliar de Coordenação, Coordenador de Pagamento, Enfermeiro, Equipe de Apoio, Fiscal, Motorista) foram criados à mão no banco remoto, pelo dashboard, fora do fluxo de migrations.
 
-Dois desses UUIDs estão **hardcoded no frontend** (`FUNCOES_COORDENACAO` em `src/hooks/useCoordenadoresProva.tsx`, ver [`alocacao-e-funcoes.md`](./alocacao-e-funcoes.md)). Sem esses registros, o fluxo de elegibilidade/concessão de acesso de coordenador fica silenciosamente quebrado (lista de elegíveis sempre vazia, sem erro).
+Dois desses UUIDs estão **hardcoded no frontend** (`FUNCOES_COORDENACAO` em `src/hooks/useCoordenadoresProva.tsx`, ver [`alocacao-e-funcoes.md`](../modulos/aplicacao-provas/alocacao-e-funcoes.md)). Sem esses registros, o fluxo de elegibilidade/concessão de acesso de coordenador fica silenciosamente quebrado (lista de elegíveis sempre vazia, sem erro).
 
-Eles moraram no `seed.sql` até 2026-07-12, quando viraram a migration **`20260712134220_seed_funcoes_basicas_sistema.sql`** (`INSERT ... ON CONFLICT (id) DO NOTHING`, com os CBOs reais de produção). O motivo da mudança é a regra central de [`../banco-producao.md`](../banco-producao.md): **seed não roda em `supabase db push`** — só migration chega em produção. Enquanto viviam no seed, o banco de produção da v2 nasceria sem eles.
+Eles moraram no `seed.sql` até 2026-07-12, quando viraram a migration **`20260712134220_seed_funcoes_basicas_sistema.sql`** (`INSERT ... ON CONFLICT (id) DO NOTHING`, com os CBOs reais de produção). O motivo da mudança é a regra central de [`../banco-producao.md`](../../banco-producao.md): **seed não roda em `supabase db push`** — só migration chega em produção. Enquanto viviam no seed, o banco de produção da v2 nasceria sem eles.
 
 A lição generalizável: **dado de referência do qual o código depende é migration, não seed.** Seed é só dado de exemplo de dev.
 
@@ -49,13 +49,13 @@ O `seed.sql` versionado não popula `colaboradores`, `provas`, `unidades_prova` 
 
 `[db.seed]` no `config.toml` carrega, além do `seed.sql`, um segundo arquivo: `supabase/seed.local.sql`. Ele é o dump completo da produção, gerado uma única vez em 2026-07-12 pela Edge Function `export-seed`, e existe para permitir desenvolver contra dados reais — 771 colaboradores, 2 provas, alocações, metas, ocorrências.
 
-A `export-seed` **não existe mais** no projeto: era um canal de exfiltração da base inteira e foi aposentada assim que cumpriu o papel. O código dela está guardado em [`../historico/export-seed/`](../historico/export-seed/), com as instruções de como ressuscitá-la caso um dump novo seja necessário.
+A `export-seed` **não existe mais** no projeto: era um canal de exfiltração da base inteira e foi aposentada assim que cumpriu o papel. O código dela está guardado em [`../historico/export-seed/`](../../historico/export-seed/), com as instruções de como ressuscitá-la caso um dump novo seja necessário.
 
 **Ele é `.gitignore`d e deve continuar assim.** Contém CPF, PIS, endereço, conta bancária e chave PIX de colaboradores reais, além dos hashes de senha de `auth.users`. Commitá-lo põe a base inteira no histórico do git, de onde não sai. O `.gitignore` cobre tanto `supabase/seed.local.sql` quanto o padrão `seed_*.sql` (nome com que a `export-seed` entrega o arquivo por e-mail).
 
 Consequências práticas:
 
-- **O arquivo não vem do repositório.** Num clone novo, `supabase db reset` **falha** enquanto `seed.local.sql` não existir. Ou remova o caminho de `sql_paths` no `config.toml` para rodar só com o `seed.sql` versionado, ou gere um dump novo redeployando a `export-seed` a partir de [`../historico/`](../historico/) (e removendo-a de novo em seguida).
+- **O arquivo não vem do repositório.** Num clone novo, `supabase db reset` **falha** enquanto `seed.local.sql` não existir. Ou remova o caminho de `sql_paths` no `config.toml` para rodar só com o `seed.sql` versionado, ou gere um dump novo redeployando a `export-seed` a partir de [`../historico/`](../../historico/) (e removendo-a de novo em seguida).
 - **A ordem em `sql_paths` importa**: `seed.sql` antes de `seed.local.sql`, e `seed.pos.sql` **depois** dos dois (ver seção própria abaixo).
 - O dump preserva os **UUIDs e os hashes de senha de produção**, então os logins reais funcionam em dev local. Isso é útil e perigoso na mesma medida — trate o banco local como se fosse produção.
 - Todo `INSERT` do dump tem `ON CONFLICT DO NOTHING`, e o arquivo é envelopado em `SET session_replication_role = replica` para desligar triggers durante a carga (senão `on_auth_user_created` duplicaria `profiles`/`user_roles`).
@@ -63,9 +63,9 @@ Consequências práticas:
 
 ### As correções manuais que vivem dentro do dump
 
-**Por que no dump e não numa migration:** `[db.seed]` roda **depois** das migrations no `db reset`, e **não roda em `db push`**. Uma migration de limpeza de dados rodaria contra a tabela ainda vazia (no-op) e o seed, logo em seguida, reintroduziria o problema. Para dados que *entram pelo dump*, a correção precisa morar *no dump* — que é o que alimenta tanto o dev local quanto a carga inicial do banco de produção da v2 (ver [`../banco-producao.md`](../banco-producao.md)).
+**Por que no dump e não numa migration:** `[db.seed]` roda **depois** das migrations no `db reset`, e **não roda em `db push`**. Uma migration de limpeza de dados rodaria contra a tabela ainda vazia (no-op) e o seed, logo em seguida, reintroduziria o problema. Para dados que *entram pelo dump*, a correção precisa morar *no dump* — que é o que alimenta tanto o dev local quanto a carga inicial do banco de produção da v2 (ver [`../banco-producao.md`](../../banco-producao.md)).
 
-**1. E-mails duplicados zerados (2026-07-14).** Nas **6 linhas** de `colaboradores` que compartilhavam **3 e-mails duplicados** (`suelenbertoldo9@gmail.com`, `yann_vr9@hotmail.com`, `teste@example.com` — dois colaboradores cada), o `colab_email` foi **zerado nos dois lados de cada par**. O motivo (um e-mail = um usuário no Supabase Auth; escolher um dos pares seria arbitrário) está em [`../analises/roadmap-auth-colaborador.md`](../analises/concluidos/roadmap-auth-colaborador.md). Alterada **só** a coluna `colab_email` das 6 linhas; a `colab_chave_pix` foi preservada (a SOLANGE BERTOLDO RAIMUNDO usa o mesmo e-mail como chave PIX, dado bancário) e as 3 linhas de `email_atualizacao_log` também.
+**1. E-mails duplicados zerados (2026-07-14).** Nas **6 linhas** de `colaboradores` que compartilhavam **3 e-mails duplicados** (`suelenbertoldo9@gmail.com`, `yann_vr9@hotmail.com`, `teste@example.com` — dois colaboradores cada), o `colab_email` foi **zerado nos dois lados de cada par**. O motivo (um e-mail = um usuário no Supabase Auth; escolher um dos pares seria arbitrário) está em [`../analises/roadmap-auth-colaborador.md`](../../analises/concluidos/roadmap-auth-colaborador.md). Alterada **só** a coluna `colab_email` das 6 linhas; a `colab_chave_pix` foi preservada (a SOLANGE BERTOLDO RAIMUNDO usa o mesmo e-mail como chave PIX, dado bancário) e as 3 linhas de `email_atualizacao_log` também.
 
 **2. Coluna `colab_codigo_acesso` removida dos INSERTs (2026-07-15).** A migration `20260715131321_*` **dropa** a coluna `colab_codigo_acesso` (2D). Mas o dump insere `colaboradores` com lista de colunas **explícita** que incluía `colab_codigo_acesso` — então, no `db reset`, as migrations dropam a coluna e a carga do dump quebra com `column "colab_codigo_acesso" does not exist`. A coluna (e seu valor) foi **removida das 771 linhas de INSERT** do `seed.local.sql`, via script com tokenizer que respeita aspas (2 linhas tinham `\n` embutido no endereço). Nenhum outro dado mudou; o `email_atualizacao_log` e as demais tabelas ficaram intactos. **Qualquer dump novo precisa passar pela mesma remoção** — ou ser gerado de uma base que já não tem a coluna.
 
@@ -87,9 +87,9 @@ A divisão que ficou combinada:
 
 Tudo no `seed.pos.sql` precisa ser **idempotente** (roda a cada `db reset`, e roda de novo se alguém o executar à mão) e **seguro contra base vazia** (num clone sem o dump, ele casa zero linhas e não quebra).
 
-**Em produção ele não roda sozinho:** `db push` não executa seed nenhum. Lá ele é um **passo manual do bootstrap**, logo depois da carga do dump — ver [`../banco-producao.md`](../banco-producao.md).
+**Em produção ele não roda sozinho:** `db push` não executa seed nenhum. Lá ele é um **passo manual do bootstrap**, logo depois da carga do dump — ver [`../banco-producao.md`](../../banco-producao.md).
 
-Hoje ele contém uma coisa só: o **backfill dos 12 colaboradores que já eram usuários** do Auth (2 admins + 10 coordenadores), que preenche `colaboradores.user_id` e concede o papel `colaborador`. O porquê está em [`../analises/roadmap-auth-colaborador.md`](../analises/concluidos/roadmap-auth-colaborador.md).
+Hoje ele contém uma coisa só: o **backfill dos 12 colaboradores que já eram usuários** do Auth (2 admins + 10 coordenadores), que preenche `colaboradores.user_id` e concede o papel `colaborador`. O porquê está em [`../analises/roadmap-auth-colaborador.md`](../../analises/concluidos/roadmap-auth-colaborador.md).
 
 ## Gotcha importante: GRANTs não vinham das migrations (corrigido em 2026-07-12)
 

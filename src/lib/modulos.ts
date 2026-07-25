@@ -85,7 +85,6 @@ const aplicacaoProvas: Modulo = {
     '/painel-dados-colaboradores',
     '/cadastro',
     '/cadastro-lote',
-    '/treinamento',
   ],
   navLinks: [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, showFor: ['admin', 'superadmin'] },

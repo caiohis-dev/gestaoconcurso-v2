@@ -31,7 +31,7 @@ npm run supabase:reset    # aplica migrations + supabase/seed.sql numa base zera
 npm run supabase:status   # mostra URLs e chaves
 ```
 
-Passo a passo detalhado, incluindo gotchas importantes (como o seed obrigatório de `funcoes_colaboradores`), em [`my_rules/estrutura/desenvolvimento-local.md`](./my_rules/estrutura/desenvolvimento-local.md).
+Passo a passo detalhado, incluindo gotchas importantes (como o seed obrigatório de `funcoes_colaboradores`), em [`my_rules/estrutura/transversais/desenvolvimento-local.md`](./my_rules/estrutura/transversais/desenvolvimento-local.md).
 
 ## Banco de dados
 

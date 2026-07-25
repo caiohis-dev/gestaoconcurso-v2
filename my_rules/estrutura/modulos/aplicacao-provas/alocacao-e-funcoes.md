@@ -1,6 +1,6 @@
 # Funções, Valores e Alocação de Colaboradores
 
-> Ver [`00-indice.md`](./00-indice.md). Pressupõe o modelo de `provas`/`prova_unidades` descrito em [`provas-e-unidades.md`](./provas-e-unidades.md), e conecta com a concessão de acesso de coordenador em [`auth-e-permissoes.md`](./auth-e-permissoes.md).
+> Documento de área do módulo **Aplicação de Provas** — comece pelo contrato em [`00-modulo.md`](./00-modulo.md). Pressupõe o modelo de `provas`/`prova_unidades` descrito em [`provas-e-unidades.md`](./provas-e-unidades.md), e conecta com a concessão de acesso de coordenador em [`auth-e-permissoes.md`](../../transversais/auth-e-permissoes.md).
 
 ## `funcoes_colaboradores` — catálogo de funções/cargos
 
@@ -42,6 +42,6 @@ Regras de negócio observadas:
 
 ## Acesso de coordenador (`coordenadores_prova`)
 
-`useCoordenadoresProva.tsx` só considera "elegível" para virar coordenador um `colaboradores_prova` cuja `funcao_id` esteja em `FUNCOES_COORDENACAO` (acima). A concessão de acesso em si (inserir em `coordenadores_prova` + role `coordenador` em `user_roles`) tem dois caminhos possíveis no código com precondições diferentes — detalhado em [`auth-e-permissoes.md`](./auth-e-permissoes.md), não duplicado aqui.
+`useCoordenadoresProva.tsx` só considera "elegível" para virar coordenador um `colaboradores_prova` cuja `funcao_id` esteja em `FUNCOES_COORDENACAO` (acima). A concessão de acesso em si (inserir em `coordenadores_prova` + role `coordenador` em `user_roles`) tem dois caminhos possíveis no código com precondições diferentes — detalhado em [`auth-e-permissoes.md`](../../transversais/auth-e-permissoes.md), não duplicado aqui.
 
 Remover o acesso de um coordenador (`deleteMutation`) também remove a role `coordenador` de `user_roles` **se** essa era a última prova em que o usuário tinha acesso de coordenador (checagem de `otherAssignments` antes de remover a role).
