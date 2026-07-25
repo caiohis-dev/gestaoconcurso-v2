@@ -1,0 +1,332 @@
+# Roadmap — Fortalecimento de validações e mitigação de bypass no Supabase (DB Constraints)
+# Criado a partir da análise de riscos de 2026-07-24. NADA implementado — este arquivo é o desenho.
+# Convenção do projeto: análise concluída vai para analises/concluidos/; enquanto
+# o trabalho estiver vivo, este arquivo fica na raiz de analises/.
+#
+# REVISADO EM 2026-07-25. A revisão não mudou o objetivo — mudou três coisas que, do
+# jeito que estavam escritas, levariam quem executasse a violar regras do próprio
+# projeto ou a prometer o impossível. Ver a seção `revisao_2026_07_25`.
+
+roadmap:
+  titulo: "Espelhamento das regras de negócio (Zod) como Check Constraints no banco de dados"
+  criado: "2026-07-24"
+  revisado: "2026-07-25"
+  status: "desenho FECHADO e revisado — aguardando início do trabalho."
+  branch:
+    nome: feat/db-constraints
+    base: dev
+    lembrete: "mergear quando todas as tabelas estiverem alinhadas com os Zod schemas"
+
+  contexto: |
+    A aplicação possui validações ricas no frontend usando Zod e react-hook-form (ex: limites
+    numéricos, strings não-vazias). Contudo, um acesso direto à API do Supabase burla essa
+    camada, dependendo apenas do PostgreSQL. Apesar das boas proteções existentes (NOT NULL,
+    UNIQUE, triggers e regex simples no banco), existem lacunas clássicas. Exemplo real: o
+    frontend exige `unid_andares` entre 1 e 99 (Zod), mas o banco é apenas `SMALLINT`,
+    aceitando `-5` ou `0`. O texto `unid_nome` tem `VARCHAR(30)`, mas aceita string vazia
+    (`""`), o que o Zod `min(1)` impediria.
+    Precisamos fechar esse "gap" transferindo regras essenciais de negócio para o banco
+    através de `CHECK constraints`.
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # O QUE A REVISÃO DE 2026-07-25 MUDOU
+  # ───────────────────────────────────────────────────────────────────────────
+  revisao_2026_07_25:
+    - achado: "A mitigação de risco mandava fazer UPDATE de dados dentro da migration"
+      gravidade: "alta — contraria uma regra estabelecida do projeto"
+      o_que_dizia: |
+        A seção de riscos instruía: "Devemos primeiro fazer um UPDATE corretivo nos dados
+        antes de criar a constraint (ex: UPDATE unidades_prova SET unid_andares = 1 WHERE
+        unid_andares <= 0)" — com o UPDATE junto do ALTER TABLE.
+      por_que_esta_errado: |
+        Neste projeto **dado não vai em migration**. A divisão é de três vias:
+          - schema (DDL) .................. migration
+          - dado como REGRA GENÉRICA ...... supabase/seed.pos.sql (versionado, idempotente)
+          - dado como CIRURGIA DE LINHA ... o dump (seed.local.sql)
+        Migration não alcança dado que entra pelo dump — ver
+        estrutura/transversais/desenvolvimento-local.md. Um UPDATE corretivo dentro da
+        migration roda no reset local e some no ambiente onde os dados vieram do dump: a
+        constraint passaria em um lugar e falharia no outro.
+      correcao: "virou a decisão D4, e a etapa 2 ganhou o passo explícito de saneamento separado."
+
+    - achado: "A etapa 4 mandava linkar e dar push em produção"
+      gravidade: "alta — contraria a política de banco de produção"
+      o_que_dizia: |
+        "Mesclar para dev e subir para produção. Push da migration. (...) fazer um
+        'supabase db diff --linked' antes para avaliar impacto em dados reais."
+      por_que_esta_errado: |
+        Três motivos, em ordem de importância:
+          1. O banco de produção da v2 **ainda não existe** — o bootstrap está deliberadamente
+             adiado até a primeira subida (banco-producao.md). Não há o que "diffar".
+          2. O repo fica **deslinkado por padrão**. Link só nos minutos conscientes de uma
+             subida; é o link que arma a arma.
+          3. Migrations **se acumulam em `dev`** e sobem **em lote**, na release tagueada, no
+             mesmo evento em que `dev` é mesclada em `main`. Nunca por tema.
+        Além disso, comando `supabase` solto é o caminho do acidente: o projeto expõe scripts
+        com prefixo `prod:` justamente para isso.
+      correcao: "a etapa 4 foi reescrita: termina em merge para `dev`, e a subida é herdada pelo processo de release."
+
+    - achado: "Nem toda regra do Zod cabe num CHECK — o desenho supunha que sim"
+      gravidade: "média — levaria a prometer no banco algo que o banco não faz"
+      o_que_dizia: "D2 tratava todo `.min()/.max()` do Zod como convertível em CHECK."
+      por_que_esta_errado: |
+        `SalaProvaDialog` tem `sala_andar` com máximo **dinâmico**:
+            sala_andar: z.coerce.number().int().min(1).max(maxAndares)
+        onde `maxAndares` vem de `unidades_prova.unid_andares` da unidade daquela sala. Isso é
+        regra **entre tabelas**, e `CHECK` não pode referenciar outra tabela (só a própria
+        linha). Tentar escrever isso como CHECK ou não compila, ou — pior — vira um CHECK com
+        subquery via função, que o Postgres aceita mas **não reavalia** quando a outra tabela
+        muda: a constraint passa a mentir silenciosamente.
+      correcao: "virou a decisão D5, que classifica as regras em três baldes antes de escrever SQL."
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # POR QUE FAZER ISTO AGORA (janela de custo)
+  # ───────────────────────────────────────────────────────────────────────────
+  janela: |
+    Este é o momento mais barato que este trabalho vai ter, e a janela fecha sozinha.
+
+    O banco de produção da v2 **ainda não existe**. Toda constraint escrita agora entra na
+    cadeia de migrations e nasce junto com o banco no dia do bootstrap, sem custo nenhum.
+    Depois que a v2 estiver no ar, a mesma constraint vira migração sobre dados vivos — com
+    risco de ALTER TABLE falhando em produção e exigindo saneamento antes.
+
+    Atenção ao que isso NÃO significa: a carga do bootstrap inclui `seed.local.sql`, que é o
+    dump com os dados reais da v1. Dado legado ruim **vem junto**. A diferença é que hoje ele
+    é sondável e corrigível com `db reset`, e depois seria incidente de produção.
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # EVIDÊNCIA COLETADA (2026-07-25) — o risco principal não se materializou
+  # ───────────────────────────────────────────────────────────────────────────
+  sondagem_dados:
+    quando: "2026-07-25, contra o banco local (cópia dos dados reais de produção v1)"
+    resultado: "ZERO violações em tudo que foi amostrado"
+    medicoes:
+      - "unid_andares fora de 1..99 ......... 0  (de 11 unidades)"
+      - "unid_nome vazio ou só espaço ....... 0"
+      - "sala_capacidade <= 0 ............... 0  (de 42 salas)"
+      - "provas com hora_final <= início .... 0"
+      - "provas com n_candidatos <= 0 ....... 0"
+      - "colab_cpf fora de ^[0-9]{11}$ ...... 0  (de 771 colaboradores)"
+    conclusao: |
+      O risco que este roadmap mais temia ("dados legados quebram ao adicionar o constraint")
+      não aparece nas colunas de maior suspeita. As tabelas são pequenas. O trabalho é
+      **escrever as constraints**, não limpar dado.
+    ressalva: |
+      A sondagem é amostral, não exaustiva — cobre as regras já conhecidas, não as 30+ colunas
+      restantes. A etapa 2 mantém o passo de conferência POR COLUNA antes de cada ALTER. Se
+      aparecer violação, o conserto vai para seed.pos.sql ou para o dump (D4), NUNCA para a
+      migration.
+
+  principios:
+    - "Segurança por profundidade. Se falhar no frontend, tem que bater no muro do banco."
+    - "O banco é a fonte da verdade da regra de negócio estrutural (formatos, faixas numéricas)."
+    - "Nenhuma quebra de API. Apenas rejeitar requisições de bypass, mantendo o frontend intacto."
+    - "Constraint que mente é pior que constraint ausente: ela cria confiança que não se sustenta."
+
+  decisoes:
+    - id: D1
+      titulo: "Limites de texto (min lengths e strings vazias) devem ser garantidos no DB"
+      decidido: "sim"
+      racional: |
+        O PostgreSQL considera string vazia `""` como um valor válido para `NOT NULL`. Para
+        garantir que campos obrigatórios tenham texto de fato, aplicaremos
+        `CHECK (length(trim(nome_coluna)) > 0)`.
+      consequencia: "Evita cadastros fantasmas gerados por chamadas diretas de API."
+
+    - id: D2
+      titulo: "Limites numéricos (mínimos e máximos) refletidos em CHECK"
+      decidido: "sim, com a ressalva da D5"
+      racional: |
+        Zod schemas como `.min(1).max(99)` precisam virar `CHECK (coluna >= 1 AND coluna <= 99)`.
+        Isso protege tabelas críticas (capacidade de salas, andares de unidade) contra números
+        bizarros ou maliciosos inseridos fora da UI.
+      ressalva: "Só vale para limites CONSTANTES. Limite que depende de outra tabela cai na D5."
+
+    - id: D3
+      titulo: "Espelhar Regras de Enum de Domínio Fechado se aplicável"
+      decidido: "sim"
+      racional: |
+        Se o Zod espera `"A" | "B" | "C"` num texto, o banco deve ter uma `CHECK` restritiva (ou
+        um ENUM real, se já não for) para impedir injeção de categorias inexistentes.
+
+    - id: D4
+      titulo: "Saneamento de dado legado NÃO entra na migration"
+      decidido: "sim — regra do projeto, não preferência deste roadmap"
+      racional: |
+        Migration é DDL. Dado segue a divisão de três vias do projeto:
+          - regra genérica e idempotente (ex.: "todo unid_andares <= 0 vira 1") → seed.pos.sql
+          - cirurgia em linhas específicas ......................................→ o dump
+        Um UPDATE dentro da migration roda no `db reset` e **não existe** onde os dados vieram
+        pelo dump — a constraint passaria num ambiente e falharia no outro, e o diagnóstico
+        seria caríssimo.
+      consequencia: |
+        A ordem de trabalho por coluna é sempre: (1) medir violações; (2) se houver, sanear no
+        lugar certo e validar; (3) só então adicionar a constraint. Nunca (3) antes de (2).
+      ver: "estrutura/transversais/desenvolvimento-local.md"
+
+    - id: D5
+      titulo: "Classificar cada regra antes de escrevê-la: nem tudo é CHECK"
+      decidido: "sim"
+      racional: |
+        Três baldes, e o balde decide a ferramenta:
+
+        a) REGRA DE LINHA (a esmagadora maioria) → CHECK.
+           Depende só de colunas da própria linha. `unid_andares BETWEEN 1 AND 99`,
+           `length(trim(unid_nome)) > 0`, `sala_capacidade > 0`, `prova_hora_final >
+           prova_hora_inicio`. É o alvo deste roadmap.
+
+        b) REGRA ENTRE TABELAS → CHECK NÃO SERVE.
+           Caso conhecido: `sala_andar <= unidades_prova.unid_andares` da unidade da sala
+           (no Zod é o `maxAndares` dinâmico do SalaProvaDialog). CHECK não enxerga outra
+           tabela. As saídas são trigger `BEFORE INSERT OR UPDATE`, ou aceitar que fica só no
+           frontend. **Decidir caso a caso, e registrar a decisão** — o perigo aqui é escrever
+           um CHECK com função que consulta outra tabela: o Postgres aceita, mas não reavalia
+           quando a outra tabela muda, e a constraint passa a mentir.
+
+        c) REGRA QUE O BANCO NÃO DEVE TER OPINIÃO → deixar no frontend.
+           Limite que é conveniência de formulário, não regra de negócio. `max(50)` em
+           "quantidade de salas a criar de uma vez" é limite de UI (evitar clique catastrófico),
+           não invariante do domínio — não pertence ao banco.
+      consequencia: "A etapa 1 passa a produzir uma tabela com uma COLUNA A MAIS: o balde."
+
+  # ───────────────────────────────────────────────────────────────────────────
+  etapas:
+
+    - id: 1
+      titulo: "Mapeamento: Zod vs SQL"
+      objetivo: "Levantar a diferença exata de regras entre os formulários e as tabelas."
+      status: "PARCIALMENTE CUMPRIDA pela suíte de testes de 2026-07-25 — ver `materia_prima`."
+      materia_prima: |
+        Os 9 schemas Zod já estão exportados e cobertos por teste, e os testes **já afirmam as
+        lacunas** — inclusive as marcadas com `⚠️` no nome, que documentam o que o schema NÃO
+        valida. Não releia os componentes do zero; comece por:
+          - src/components/ColaboradorDialog.test.ts  (4 lacunas marcadas ⚠️: CPF aceita 11
+            caracteres não numéricos; sem dígitos verificadores; telefone sem contagem de
+            dígitos; chave PIX sem formato nem tipo)
+          - src/components/ProvaDialog.test.ts        (horários: "aceita qualquer string — não
+            há validação de formato nem de ordem")
+          - src/components/UnidadeProvaDialog.tsx     (unid_nome 1..30, unid_sigla 1..10,
+            unid_andares 1..99)
+          - src/components/SalaProvaDialog.tsx        (capacidade positiva, número positivo,
+            descrição <= 50, e o `sala_andar` dinâmico da D5-b)
+          - src/components/EditalDialog.test.ts, FuncaoColaboradorDialog.test.ts
+      acoes:
+        - acao: "Montar a tabela de mapeamento, uma linha por coluna"
+          detalhe: |
+            Colunas da tabela: tabela | coluna | regra Zod | constraint SQL hoje | BALDE (D5) |
+            proposta | violações medidas.
+            O balde é obrigatório e vem ANTES da proposta — ele decide se há proposta.
+        - acao: "Comparar com as constraints atuais no banco"
+          detalhe: |
+            Consultar pg_constraint / information_schema no banco local, não a leitura das
+            migrations: o schema tem drift histórico (prod v1 foi construída pelo dashboard do
+            Lovable), então a migration não é fonte confiável do estado atual.
+        - acao: "Decidir quais limites são REGRA DE NEGÓCIO e quais são chute de formulário"
+          detalhe: |
+            Este é o único ponto do roadmap que exige decisão humana, e é o mais fácil de
+            atropelar. `unid_andares <= 99` é limite real de prédio ou número redondo que
+            alguém digitou? Subir a régua do banco para um valor que a operação um dia precise
+            ultrapassar cria um chamado no dia da prova. Na dúvida, prefira a faixa MAIS LARGA
+            que ainda barra o absurdo: `> 0` é quase sempre defensável; `<= 99` é uma aposta.
+      saida: "A tabela de mapeamento, revisada com o usuário ANTES de qualquer ALTER TABLE."
+
+    - id: 2
+      titulo: "Geração da migration corretiva"
+      objetivo: "Criar a migration que adiciona as constraints."
+      acoes:
+        - acao: "Para cada coluna do balde (a): MEDIR violações antes de escrever o ALTER"
+          detalhe: |
+            SELECT count(*) com a negação da regra, no banco local. Zero = siga. Diferente de
+            zero = pare e vá para o passo de saneamento (D4) ANTES de adicionar a constraint.
+        - acao: "Sanear, se necessário, no lugar certo (D4)"
+          detalhe: |
+            Regra genérica e idempotente → supabase/seed.pos.sql.
+            Cirurgia em linhas específicas → o dump.
+            NUNCA dentro da migration.
+        - acao: "Executar 'supabase migration new fortificar_constraints_db'"
+          detalhe: "Cria o script vazio. Nome descritivo; se ficar grande, quebrar em mais de uma."
+        - acao: "Escrever os ALTER TABLE ... ADD CONSTRAINT"
+          detalhe: |
+            Nomear toda constraint explicitamente (chk_<tabela>_<regra>) — nome gerado pelo
+            Postgres é impossível de referenciar depois. Exemplo:
+            ALTER TABLE public.unidades_prova
+              ADD CONSTRAINT chk_unid_andares CHECK (unid_andares >= 1 AND unid_andares <= 99),
+              ADD CONSTRAINT chk_unid_nome_not_empty CHECK (length(trim(unid_nome)) > 0);
+            ALTER TABLE public.sala_prova
+              ADD CONSTRAINT chk_sala_capacidade CHECK (sala_capacidade > 0);
+        - acao: "Para o balde (b), se decidido implementar: trigger, não CHECK"
+          detalhe: "E deixar comentário no SQL explicando por que não é CHECK (senão alguém 'simplifica')."
+      verificacao:
+        - "`supabase db reset` — o teste de verdade: reaplica as 70+ migrations E recarrega os
+           dados reais do dump. Se os dados legados ferirem alguma constraint, é AQUI que aparece."
+        - "`npm test` e `npx tsc --noEmit -p tsconfig.app.json` — não devem mudar (o frontend fica intacto)."
+
+    - id: 3
+      titulo: "Provar que as regras blindaram o banco (teste de bypass)"
+      objetivo: "Demonstrar que a constraint barra o que a UI já barrava."
+      acoes:
+        - acao: "Escrever a verificação como SQL repetível, não como clique no Studio"
+          detalhe: |
+            Um arquivo de INSERTs que DEVEM falhar, rodado com psql contra o banco local, é
+            repetível e revisável — um teste manual no Studio não sobrevive à próxima pessoa.
+            Cada caso: um INSERT/UPDATE violando a regra, esperando erro 23514 (check_violation).
+            Guardar em docs/ como bateria, no padrão das outras baterias do projeto.
+        - acao: "Conferir o caminho HTTP em pelo menos um caso"
+          detalhe: |
+            Um POST direto ao PostgREST com a anon key autenticada, para confirmar que o erro
+            chega como 400/409 e não como 500 — é o que o usuário final veria se tropeçasse.
+      nao_e_escopo: |
+        Estas constraints NÃO são testáveis pelo Vitest: a suíte roda contra um mock do
+        Supabase, sem Postgres. Não tente cobrir isto com teste de unidade — o resultado seria
+        um teste que afirma o mock, não o banco.
+
+    - id: 4
+      titulo: "Fechamento do tema"
+      objetivo: "Entregar em `dev` — a subida a produção NÃO é deste roadmap."
+      acoes:
+        - acao: "Atualizar a documentação de estrutura antes de fechar"
+          detalhe: |
+            As constraints novas são contrato do módulo: registrar em
+            estrutura/modulos/aplicacao-provas/ (nas features afetadas) e, se a regra for
+            transversal, no doc transversal certo. Doc desatualizada é o defeito que este
+            projeto trata como bloqueante.
+        - acao: "Mergear feat/db-constraints em dev"
+          detalhe: "Fim do tema. Mover este arquivo para analises/concluidos/."
+        - acao: "PARAR aqui."
+          detalhe: |
+            A migration sobe a produção junto com as outras, EM LOTE, na próxima release
+            tagueada — pelo roteiro de banco-producao.md, com os scripts `prod:*` e com
+            `prod:unlink` no fim. Não linkar, não dar push, não rodar `supabase` solto.
+            Enquanto a v2 não subiu pela primeira vez, o destino desta migration é o bootstrap.
+      lembrete_de_sincronia: |
+        Documentar na prática de PR: mudança de limite num Zod passa a exigir migration
+        correspondente. Sem isso, as duas camadas divergem de novo — e a divergência é
+        silenciosa até alguém tropeçar nela em produção.
+
+  riscos:
+    - risco: "Dados legados quebram ao adicionar a constraint"
+      probabilidade: "baixa nas colunas conhecidas — sondagem de 2026-07-25 achou 0 violações"
+      mitigacao: |
+        Medir por coluna antes de cada ALTER (etapa 2). Se houver violação, sanear em
+        seed.pos.sql ou no dump — NUNCA na migration (D4). O `db reset` é o detector: ele
+        recarrega os dados reais.
+
+    - risco: "Zod e SQL ficarem dessincronizados no futuro"
+      probabilidade: "alta — é o modo de falha natural de ter a regra em dois lugares"
+      mitigacao: |
+        Registrar a exigência na prática de PR (etapa 4). Reconhecer que isto é mitigação
+        fraca: depende de memória humana, que é exatamente o que falhou antes neste repo.
+        Se o problema reincidir, a solução real é gerar uma das camadas a partir da outra.
+
+    - risco: "Constraint apertada demais vira chamado no dia da prova"
+      probabilidade: "média — e o dano é operacional, não técnico"
+      mitigacao: |
+        É o ponto da etapa 1: separar regra de negócio de chute de formulário. Preferir a faixa
+        mais larga que ainda barra o absurdo. Constraint que impede uma operação legítima é
+        pior que a lacuna que ela fecha, porque falha no pior momento possível.
+
+    - risco: "Alguém tenta expressar regra entre tabelas como CHECK"
+      probabilidade: "média — o caso do sala_andar está lá, convidando"
+      mitigacao: |
+        D5-b. E se um CHECK com subquery/função aparecer numa revisão, tratar como defeito:
+        o Postgres aceita, mas não reavalia quando a outra tabela muda.
