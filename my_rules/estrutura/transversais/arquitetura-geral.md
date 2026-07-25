@@ -104,7 +104,18 @@ O desenho fechado e as 5 decisões (D1–D5) estão em [`roadmap-modulos.yaml`](
 
 **A documentação segue o mesmo recorte.** Cada módulo tem contrato próprio, e é ele — não este arquivo — a porta de entrada para trabalhar no módulo: [`aplicacao-provas/00-modulo.md`](../modulos/aplicacao-provas/00-modulo.md) e [`editais/00-modulo.md`](../modulos/editais/00-modulo.md). Módulo novo em `modulos.ts` = pasta nova em [`../modulos/`](../modulos/); a regra está em [`../00-indice.md`](../00-indice.md), seção "Como manter".
 
-## 7. Pontos de atenção / higiene do repositório
+## 7. Convenção de acessibilidade dos diálogos
+
+**Todo `<DialogContent>` precisa de um `<DialogDescription>`.** Vale para as três variantes do Radix em uso: `Dialog`, `AlertDialog` e `Sheet`. Sem ele, o Radix emite `Missing 'Description' or 'aria-describedby' for {DialogContent}` e o leitor de tela anuncia **só o título** — a pessoa abre um formulário sem receber contexto nenhum do que ele faz.
+
+São **28 diálogos em 20 arquivos**; em 2026-07-25, seis não tinham descrição e ganharam uma. Um teste de invariante (`src/components/dialogos-acessibilidade.test.ts`) varre o fonte e falha apontando arquivo e linha se um diálogo novo nascer sem descrição. É teste **estático**, não de render, porque a maioria dos diálogos não tem teste de UI e montar as props de todos custaria mais do que o problema.
+
+Duas orientações ao escrever a descrição:
+
+- **Diga algo verdadeiro e útil, não encha linguiça.** "Preencha os campos" não informa nada. As boas apontam a regra que a pessoa não adivinha — por exemplo, o `ValoresFuncaoProvaDialog` avisa que o valor é congelado na alocação, e o `ProvaDialog` avisa que trocar o edital de uma prova existente não sobrescreve os campos dela.
+- **Se já existe um subtítulo no header, promova-o em vez de duplicar.** Era o caso do `MetaColaboradoresDialog`, que tinha um `<p>` solto com o nome da unidade: virou `DialogDescription` sem mudar um pixel, porque o componente já aplica `text-sm text-muted-foreground`.
+
+## 8. Pontos de atenção / higiene do repositório
 
 - **`docs/features/cadastro-lote-sanitizacao.md`** é documentação específica e detalhada do fluxo de importação em lote — parece atualizada, referenciada em [`colaboradores.md`](../modulos/aplicacao-provas/colaboradores.md).
 - **`public/auth_users_export.csv`** existe no repo mas contém só o cabeçalho (sem linhas de dados) — não é vazamento de dados reais no momento, mas vale perguntar por que um artefato de export está versionado em `public/` (fica publicamente acessível se servido como estático).

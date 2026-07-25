@@ -5,6 +5,7 @@ import * as z from "zod";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -89,6 +90,11 @@ export function EditalDialog({
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{isEditing ? "Editar Edital" : "Novo Edital"}</DialogTitle>
+          <DialogDescription>
+            {isEditing
+              ? "Atualize os dados do edital. Só o nome é obrigatório."
+              : "Cadastre o edital que servirá de base para criar provas. Só o nome é obrigatório."}
+          </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
