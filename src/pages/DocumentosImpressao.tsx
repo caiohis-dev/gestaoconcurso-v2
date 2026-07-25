@@ -438,7 +438,7 @@ export default function DocumentosImpressao() {
               </div>
             </div>
             <p className="text-sm text-muted-foreground mt-3">
-              As informações acima podem ser alteradas no cadastro do Edital.
+              As linhas do cabeçalho são as da própria prova (herdadas do edital ao cadastrá-la, e ajustáveis no cadastro da prova); o nome é o do Edital.
             </p>
           </CardContent>
         </Card>
