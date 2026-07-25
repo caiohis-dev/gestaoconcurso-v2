@@ -20,6 +20,8 @@ O combobox de seleção de colaborador em `OcorrenciasProva.tsx` só lista **col
 
 Consequência prática: encerrar ocorrências por engano só se desfaz com `UPDATE` manual no banco. Se algum dia isso precisar de caminho no app, o simétrico terá de ser criado do zero, com autorização própria — note que `reabrir_prova_unidade` é mais restrita que a finalização: só `superadmin` **ou** quem finalizou.
 
+✅ **A irreversibilidade é decisão, não pendência** (confirmada pelo usuário em 2026-07-25). E a UI **já é honesta sobre ela**: o `PasswordConfirmDialog` de "Encerrar Registro de Ocorrências" (`OcorrenciasProva.tsx:908-919`) diz, em negrito, que a unidade "**não poderá ser reaberta**", e ainda exige a senha para confirmar. Não há trabalho aberto aqui — só não introduza reabertura sem revisitar a decisão.
+
 **A UI barra na origem, sim.** `OcorrenciasProva.tsx:99` filtra as unidades selecionáveis com `!pu.ocorrencias_encerradas` — uma unidade encerrada some do seletor, então não há por onde registrar ocorrência nela. Mas a barreira é **client-side**: a criação não revalida o flag, então uma chamada direta ao PostgREST ainda inseriria.
 
 ## Exportação

@@ -31,6 +31,9 @@ export function useProvaLock({ provaId, userId, userName, enabled = true }: UseP
 
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasLockRef = useRef(false);
+  // Token de acesso espelhado em ref porque o handler de saída da página é síncrono:
+  // não dá para esperar um `getSession()` enquanto a aba está sendo fechada.
+  const accessTokenRef = useRef<string | null>(null);
 
   const acquireLock = useCallback(async () => {
     if (!provaId || !userId || !userName || !enabled) {
@@ -162,26 +165,72 @@ export function useProvaLock({ provaId, userId, userName, enabled = true }: UseP
     };
   }, [releaseLock]);
 
-  // Handle beforeunload event
+  // Mantém o token de acesso disponível de forma síncrona para o handler de saída.
   useEffect(() => {
-    const handleBeforeUnload = () => {
-      if (hasLockRef.current && provaId && userId) {
-        // Use sendBeacon for reliable cleanup on page unload
-        const payload = JSON.stringify({
-          p_prova_id: provaId,
-          p_user_id: userId,
-        });
-        
-        navigator.sendBeacon?.(
-          `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/release_prova_lock`,
-          new Blob([payload], { type: 'application/json' })
-        );
-      }
+    supabase.auth.getSession().then(
+      ({ data }) => {
+        accessTokenRef.current = data.session?.access_token ?? null;
+      },
+      () => {
+        accessTokenRef.current = null;
+      },
+    );
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      accessTokenRef.current = session?.access_token ?? null;
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Libera o lock quando a pessoa sai da página.
+  //
+  // Por que `pagehide` e não `beforeunload`: a versão anterior usava
+  // `navigator.sendBeacon`, que **não permite definir header nenhum** — a requisição
+  // saía sem `apikey` e sem `Authorization`, que o PostgREST exige, então nunca
+  // liberava nada. Quem devolvia a prova era o timeout de 10 minutos. `fetch` com
+  // `keepalive: true` dá a mesma sobrevivência ao unload E aceita headers.
+  //
+  // `pagehide` cobre tudo que o `beforeunload` cobre e mais: navegador mobile mandando
+  // a aba para segundo plano, e navegação que entra no bfcache. Daí ele ser o único.
+  useEffect(() => {
+    const releaseOnHide = () => {
+      if (!hasLockRef.current || !provaId || !userId) return;
+
+      const token = accessTokenRef.current;
+      if (!token) return;
+
+      hasLockRef.current = false;
+
+      fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/release_prova_lock`, {
+        method: 'POST',
+        keepalive: true,
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ p_prova_id: provaId, p_user_id: userId }),
+      }).catch(() => {
+        // A aba está indo embora; não há a quem reportar. O timeout de 10 min cobre.
+      });
     };
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [provaId, userId]);
+    // Volta do bfcache: a página foi restaurada, mas o lock já foi liberado acima.
+    // Sem readquirir, a tela seguiria editável com o servidor achando que ninguém
+    // tem a prova — e o heartbeat NÃO conserta isso, porque `update_prova_lock_activity`
+    // é um UPDATE que não recria a linha apagada.
+    const reacquireOnRestore = (event: PageTransitionEvent) => {
+      if (event.persisted) acquireLock();
+    };
+
+    window.addEventListener('pagehide', releaseOnHide);
+    window.addEventListener('pageshow', reacquireOnRestore);
+    return () => {
+      window.removeEventListener('pagehide', releaseOnHide);
+      window.removeEventListener('pageshow', reacquireOnRestore);
+    };
+  }, [provaId, userId, acquireLock]);
 
   return state;
 }

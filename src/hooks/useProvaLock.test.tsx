@@ -211,4 +211,96 @@ describe("useProvaLock", () => {
       expect(chamadasDe("release_prova_lock")).toHaveLength(0);
     });
   });
+
+  describe("saída da página (pagehide)", () => {
+    /**
+     * O caminho do unload NÃO passa pelo cliente do Supabase: é `fetch` cru com
+     * `keepalive`, porque uma promise comum morre junto com a aba. Daí as asserções
+     * serem sobre `fetch`, e não sobre `supabaseMock.rpc`.
+     *
+     * REGRESSÃO: até 2026-07-25 isto era `navigator.sendBeacon`, que **não permite
+     * header nenhum** — a requisição saía sem `apikey`/`Authorization` e o PostgREST
+     * recusava. O lock só era devolvido pelo timeout de 10 minutos.
+     */
+    const RELEASE_URL = "http://localhost:54321/rest/v1/rpc/release_prova_lock";
+
+    const montarComSessao = async () => {
+      supabaseMock.auth.getSession.mockResolvedValueOnce({
+        data: { session: { access_token: "token-abc" } },
+        error: null,
+      } as never);
+
+      const view = renderHook(() => useProvaLock(PARAMS));
+      await waitFor(() => expect(view.result.current.hasAccess).toBe(true));
+      return view;
+    };
+
+    it("libera o lock com credenciais quando a aba é fechada", async () => {
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null));
+      await montarComSessao();
+
+      window.dispatchEvent(new Event("pagehide"));
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(RELEASE_URL);
+      expect(init).toMatchObject({
+        method: "POST",
+        keepalive: true,
+        headers: {
+          apikey: "test-anon-key",
+          Authorization: "Bearer token-abc",
+        },
+      });
+      expect(JSON.parse(init?.body as string)).toEqual({
+        p_prova_id: "prova-1",
+        p_user_id: "u1",
+      });
+
+      fetchMock.mockRestore();
+    });
+
+    it("não libera duas vezes se o evento repetir", async () => {
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null));
+      await montarComSessao();
+
+      window.dispatchEvent(new Event("pagehide"));
+      window.dispatchEvent(new Event("pagehide"));
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      fetchMock.mockRestore();
+    });
+
+    it("não tenta liberar sem lock nem sem sessão", async () => {
+      // Sem sessão: `getSession` do mock devolve session null por padrão.
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null));
+      const { result } = renderHook(() => useProvaLock(PARAMS));
+      await waitFor(() => expect(result.current.hasAccess).toBe(true));
+
+      window.dispatchEvent(new Event("pagehide"));
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      fetchMock.mockRestore();
+    });
+
+    it("readquire o lock ao voltar do bfcache", async () => {
+      // `update_prova_lock_activity` é um UPDATE: não recria a linha apagada pelo
+      // release. Sem readquirir, a tela voltaria editável com o servidor achando
+      // que a prova está livre.
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null));
+      await montarComSessao();
+
+      window.dispatchEvent(new Event("pagehide"));
+      const antes = chamadasDe("acquire_prova_lock").length;
+
+      const restore = new Event("pageshow") as Event & { persisted?: boolean };
+      restore.persisted = true;
+      window.dispatchEvent(restore);
+
+      await waitFor(() =>
+        expect(chamadasDe("acquire_prova_lock").length).toBe(antes + 1),
+      );
+      fetchMock.mockRestore();
+    });
+  });
 });

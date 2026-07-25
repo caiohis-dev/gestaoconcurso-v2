@@ -43,6 +43,16 @@ Lock otimista por prova para evitar duas pessoas editando a mesma prova ao mesmo
 - Suportado pela tabela `prova_edit_locks`. Timeout confirmado direto na RPC `acquire_prova_lock` (`supabase/migrations/20260122123358_19ffec24-*.sql`): `v_lock_timeout INTERVAL := '10 minutes'`.
 - **Quando não há lock a adquirir** (falta `provaId`/`userId`/`userName`, ou `enabled: false`), o efeito de mount **resolve `isLoading` para `false` no `else`** em vez de chamar a RPC. Isso é contrato, não detalhe: quem consome o hook renderiza spinner enquanto `isLoading`, e sem esse `else` o estado inicial (`isLoading: true`) nunca seria resolvido. A guarda equivalente que existe *dentro* de `acquireLock` **é inalcançável pelo mount** — a condição do efeito já barra a chamada —, então não a tome por suficiente. Corrigido em 2026-07-25, depois de travar a tela de alocação num spinner sem erro nem saída; há teste de regressão para os quatro casos.
 
-⚠️ **A liberação no fechamento da aba não funciona como está.** O handler de `beforeunload` (`useProvaLock.tsx:159-177`) tenta liberar o lock com `navigator.sendBeacon` apontando para `${VITE_SUPABASE_URL}/rest/v1/rpc/release_prova_lock`. **O `sendBeacon` não permite definir header nenhum** — logo a requisição sai sem `apikey` e sem `Authorization`, que o PostgREST exige. Quem devolve a prova na prática é o **timeout de 10 minutos**. *(Conclusão de leitura do código, não testada em runtime.)* Ao refatorar, não presuma que a limpeza no unload funciona hoje; se quiser que funcione, o caminho é uma rota que aceite auth no corpo (ou um `fetch` com `keepalive`, que aceita headers).
+### Sair da página devolve o lock (corrigido em 2026-07-25)
+
+**A armadilha que existia:** o handler de `beforeunload` liberava o lock com `navigator.sendBeacon`, e o **`sendBeacon` não permite definir header nenhum** — a requisição saía sem `apikey` e sem `Authorization`, que o PostgREST exige. Nunca liberava nada; quem devolvia a prova era o timeout de 10 minutos. O código *parecia* correto, e é por isso que vale o registro: **não volte para `sendBeacon`** em nenhuma limpeza de unload que precise de auth.
+
+O desenho atual tem três peças que se sustentam mutuamente:
+
+1. **`fetch` com `keepalive: true`**, no lugar do beacon — sobrevive ao unload **e** aceita headers.
+2. **Evento `pagehide`**, no lugar de `beforeunload` — cobre tudo que ele cobria, mais o mobile mandando a aba para segundo plano e a navegação que entra no bfcache. Um `hasLockRef.current = false` no início do handler impede envio duplo.
+3. **`pageshow` com `event.persisted` readquire o lock.** Esta é a peça não óbvia: voltar do bfcache restaura uma tela que *acha* que tem o lock, mas o servidor já não tem a linha. **O heartbeat não conserta** — `update_prova_lock_activity` é um `UPDATE`, e não recria linha apagada. Sem readquirir, dois navegadores editariam a mesma prova achando cada um que é o dono.
+
+O token de acesso é espelhado num `accessTokenRef` (alimentado por `getSession` + `onAuthStateChange`) porque o handler de saída é **síncrono**: não dá para esperar um `getSession()` enquanto a aba fecha.
 
 **Detalhe de tipagem:** as três RPCs de lock são chamadas com cast `(supabase.rpc as any)` porque **não constam do `types.ts` gerado**. Regenerar os tipos não é o conserto óbvio — vale checar antes se elas existem no banco de produção ou se são mais um caso do drift schema-vs-migrations.
