@@ -17,6 +17,7 @@ import PerfilColaborador from "./pages/PerfilColaborador";
 import UnidadesProva from "./pages/UnidadesProva";
 import SalasProva from "./pages/SalasProva";
 import Provas from "./pages/Provas";
+import Editais from "./pages/Editais";
 import GerenciarProva from "./pages/GerenciarProva";
 import GerenciarSalasDistribuidas from "./pages/GerenciarSalasDistribuidas";
 import GerenciarColaboradoresProva from "./pages/GerenciarColaboradoresProva";
@@ -56,6 +57,7 @@ const App = () => (
               <Route path="/unidades-prova" element={<UnidadesProva />} />
               <Route path="/salas-prova/:unidadeId" element={<SalasProva />} />
               <Route path="/provas" element={<Provas />} />
+              <Route path="/editais" element={<Editais />} />
               <Route path="/gerenciar-prova/:provaId" element={<GerenciarProva />} />
               <Route path="/gerenciar-salas-distribuidas/:provaId/:unidadeId" element={<GerenciarSalasDistribuidas />} />
               <Route path="/gerenciar-colaboradores-prova/:provaUnidadeId" element={<GerenciarColaboradoresProva />} />

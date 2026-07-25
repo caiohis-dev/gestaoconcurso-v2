@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   Contact,
   FileText,
+  ScrollText,
   Building2,
   type LucideIcon,
 } from 'lucide-react';
@@ -73,6 +74,7 @@ const aplicacaoProvas: Modulo = {
     '/dashboard',
     '/colaboradores',
     '/provas',
+    '/editais',
     '/unidades-prova',
     '/salas-prova',
     '/gerenciar-prova',
@@ -90,6 +92,7 @@ const aplicacaoProvas: Modulo = {
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, showFor: ['admin', 'superadmin'] },
     { href: '/colaboradores', label: 'Colaboradores', icon: Contact },
     { href: '/provas', label: 'Provas', icon: FileText, showFor: ['admin', 'superadmin', 'coordenador'] },
+    { href: '/editais', label: 'Editais', icon: ScrollText, showFor: ['admin', 'superadmin'] },
     { href: '/unidades-prova', label: 'Unidades de Prova', icon: Building2, showFor: ['admin', 'superadmin'] },
   ],
 };
