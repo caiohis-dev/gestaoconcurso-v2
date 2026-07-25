@@ -13,7 +13,7 @@ Este item é o marco: quem retomar os testes começa por aqui. **Leia `testes.md
 
 ### Onde paramos (2026-07-25)
 
-**285 testes em 20 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
+**309 testes em 23 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
 
 Coberto:
 
@@ -22,19 +22,22 @@ Coberto:
 | Registro de módulos | `lib/modulos.test.ts` — inclui invariantes sobre `MODULOS` inteiro |
 | Schemas Zod (9) | `ColaboradorDialog`, `EditalDialog`, `FuncaoColaboradorDialog`, `ProvaDialog`, `SalaProvaDialog`, `UnidadeProvaDialog`, `pages/Auth`, `pages/GerenciarUsuarios` |
 | Auth | `useAuth.test.tsx` — hierarquia, `colaborador` paralelo, `rolesLoaded`, `signOut` |
-| Hooks de dados (8) | `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useEditais`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useValoresFuncaoProva` (+ `useAuth`) |
+| Hooks de dados (10) | `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useEditais`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useValoresFuncaoProva`, `useOcorrencias`, `useCoordenadorUnidades` (+ `useAuth`) |
 | UI de diálogo (2) | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx` |
+| Acessibilidade | `components/dialogos-acessibilidade.test.ts` — invariante estática sobre os 28 diálogos |
 | A própria infra | `src/test/supabase-mock.test.ts` — o mock tem teste próprio |
 
 ### O que falta, em ordem de valor
 
-**1. Hooks sem cobertura — são 12, não 8.**
+**1. Hooks sem cobertura — faltam 10.**
 
-> ⚠️ **Correção de um número que estava errado.** `testes.md` e o `00-modulo.md` listavam **8** hooks descobertos. O inventário real de 2026-07-25 dá **12**: a lista antiga esquecia `useBancos`, `useCoordenadorUnidades`, `useOcorrencias` e `useUnidadeCapacidade`.
+> ⚠️ **Correção de um número que já esteve errado.** `testes.md` e o `00-modulo.md` listavam **8**; o inventário real de 2026-07-25 deu **12**, porque a lista antiga esquecia `useBancos`, `useCoordenadorUnidades`, `useOcorrencias` e `useUnidadeCapacidade`.
 
-Faltam: `useProvas`, `useProvaUnidades`, `useUnidadesProva`, `useSalasProva`, `useSalasDistribuidas`, `useUnidadeCapacidade`, `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useCoordenadorUnidades`, `useOcorrencias`, `useUsers`, `useBancos`.
+**Feitos em 2026-07-25** (eram os dois prioritários): `useOcorrencias` e `useCoordenadorUnidades` — e a aposta se pagou, porque a dupla rendeu o defeito do recorte por unidade registrado como item próprio acima.
 
-Prioridade dentro do grupo: **`useOcorrencias` e `useCoordenadorUnidades` primeiro** — o primeiro porque ocorrências têm regra irreversível (encerramento) e efeito que hoje *não* acontece (o "Faltou", ver item próprio abaixo); o segundo porque é o que decide o que um coordenador enxerga, e errar ali é vazamento de escopo. `useBancos` é provavelmente lista estática — último.
+Faltam: `useProvas`, `useProvaUnidades`, `useUnidadesProva`, `useSalasProva`, `useSalasDistribuidas`, `useUnidadeCapacidade`, `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers`, `useBancos`.
+
+Prioridade no que resta: **`useProvas` e `useProvaUnidades`** — são a espinha do módulo e o que mais hook depende. `useBancos` é provavelmente lista estática — último.
 
 **2. UI de diálogo — 2 de 12 cobertos.** Sem nenhum teste: `CoordenadoresProvaDialog`, `CorrigirEmailAcessoDialog`, `MetaColaboradoresDialog`, `PasswordConfirmDialog`, `SalaExtraDialog`, `ValoresFuncaoProvaDialog`. Com teste de schema mas sem teste de interação: `ColaboradorDialog`, `FuncaoColaboradorDialog`, `SalaProvaDialog`, `UnidadeProvaDialog`.
 
@@ -55,6 +58,29 @@ Prioridade dentro do grupo: **`useOcorrencias` e `useCoordenadorUnidades` primei
 ### A automação ficou para o fim, por decisão
 
 **O usuário decidiu em 2026-07-25 deixar o CI para o final.** Não é esquecimento — está registrado no item próprio abaixo ("Rodar a suíte de testes automaticamente"), que segue válido e continua sendo o de maior alavancagem da lista. A consequência de a decisão valer: **nada roda a suíte sozinho**, então cada tema fechado depende de alguém lembrar. Escrever mais teste rende menos até o CI existir — o que é justamente o argumento para não perseguir 100% de cobertura antes dele.
+
+---
+
+## `useOcorrencias`: lista vazia de unidades não restringe nada
+
+**Status:** pendente — **achado por teste automatizado** em 2026-07-25
+**Área:** Ocorrências (ver [`estrutura/modulos/aplicacao-provas/ocorrencias.md`](./estrutura/modulos/aplicacao-provas/ocorrencias.md))
+
+O filtro por unidade em `useOcorrencias` é aplicado assim:
+
+```js
+if (provaUnidadeIds && provaUnidadeIds.length > 0) q = q.in("prova_unidade_id", provaUnidadeIds);
+```
+
+Uma lista **vazia** significa "nenhuma unidade permitida", mas cai no **mesmo ramo** do `undefined` que o admin usa para dizer "sem restrição": nenhum filtro é aplicado e a consulta devolve **todas as ocorrências da prova**.
+
+**Por que não é teórico.** Em `OcorrenciasProva.tsx:105` o segundo argumento vem de `scopedUnidadeIds`, derivado de `useCoordenadorUnidades` — que devolve `[]` **enquanto carrega** (`query.data ?? []`, e a query ainda nem resolveu). Ou seja: em **todo carregamento da página por um coordenador** existe uma janela em que a consulta roda sem filtro, e a tela mostra ocorrências de unidades que não são dele. Quando os ids chegam, o `queryKey` muda e o React Query refaz a consulta — a janela fecha sozinha, mas não antes de renderizar.
+
+**A RLS não segura isso.** A policy de `ocorrencias_colaborador` é `is_coordenador_prova(auth.uid(), prova_id)`, que autoriza **por prova**, não por unidade (confirmado no banco em 2026-07-25). O recorte por unidade existe **só no cliente** — então este `if` é a única barreira, e ela abre justamente quando deveria fechar ao máximo.
+
+**Conserto sugerido:** distinguir os dois casos, que hoje colidem. `undefined` = admin, sem restrição; `[]` = nada permitido → aplicar `.in("prova_unidade_id", [])`, que devolve zero linhas. Alternativa complementar: não disparar a consulta enquanto o escopo do coordenador não tiver resolvido (o `enabled` passaria a considerar isso), o que também evita a consulta ampla e o refetch.
+
+**Ao corrigir:** o teste `⚠️ DEFEITO` em `src/hooks/useOcorrencias.test.tsx` afirma hoje o comportamento **errado** de propósito. Ele vai quebrar quando o conserto entrar — é o sinal de que deve ser reescrito para o comportamento correto.
 
 ---
 

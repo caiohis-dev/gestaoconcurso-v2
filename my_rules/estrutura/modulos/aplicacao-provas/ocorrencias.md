@@ -24,6 +24,15 @@ Consequência prática: encerrar ocorrências por engano só se desfaz com `UPDA
 
 **A UI barra na origem, sim.** `OcorrenciasProva.tsx:99` filtra as unidades selecionáveis com `!pu.ocorrencias_encerradas` — uma unidade encerrada some do seletor, então não há por onde registrar ocorrência nela. Mas a barreira é **client-side**: a criação não revalida o flag, então uma chamada direta ao PostgREST ainda inseriria.
 
+## ⚠️ O recorte por unidade é client-side — e a RLS não o reforça
+
+Regra que precisa sobreviver a qualquer refatoração daqui: a policy de `ocorrencias_colaborador` é **`is_coordenador_prova(auth.uid(), prova_id)`** — autoriza **por prova, não por unidade** (verificado no banco em 2026-07-25). Um coordenador de uma prova pode ler, pela API, **todas** as ocorrências dela, inclusive de unidades que não coordena.
+
+Logo, o recorte por unidade existe **só no cliente**, no `provaUnidadeIds` de `useOcorrencias`. Duas consequências:
+
+1. **Não trate esse filtro como segurança.** Ele é UX. Se o recorte por unidade precisar virar garantia, tem de descer para a policy (ou para uma RPC), e isso é trabalho de banco, não de front.
+2. **Hoje ele tem um furo aberto:** lista **vazia** de unidades não filtra nada, e `useCoordenadorUnidades` devolve `[]` enquanto carrega — então toda abertura da página por um coordenador tem uma janela sem filtro. Detalhe e conserto no [`backlog.md`](../../../backlog.md); há teste marcando o defeito em `useOcorrencias.test.tsx`.
+
 ## Exportação
 
 A página gera PDF (jsPDF + `jspdf-autotable`) da lista de ocorrências, no mesmo padrão client-side usado em [`documentos-e-relatorios.md`](./documentos-e-relatorios.md).
