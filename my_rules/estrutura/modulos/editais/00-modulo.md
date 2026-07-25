@@ -14,7 +14,7 @@
 | **`navLinks`** | um só: Editais → `/editais` (`showFor: ['admin','superadmin']`) |
 | **Ícone** | `ScrollText` (lucide) |
 
-Módulo criado em 2026-07-24 pelo tema "Editais como entidade" ([`../../../analises/roadmap-editais.yaml`](../../../analises/roadmap-editais.yaml)). Nasceu como link no header de *Aplicação de Provas* e **virou módulo próprio no mesmo tema**, por ajuste pedido no smoke — o card fica no hub, ao lado de Aplicação de Provas.
+Módulo criado em 2026-07-24 pelo tema "Editais como entidade" ([`../../../analises/concluidos/roadmap-editais.yaml`](../../../analises/concluidos/roadmap-editais.yaml)). Nasceu como link no header de *Aplicação de Provas* e **virou módulo próprio no mesmo tema**, por ajuste pedido no smoke — o card fica no hub, ao lado de Aplicação de Provas.
 
 ## O que o módulo é
 

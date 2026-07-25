@@ -1,14 +1,30 @@
 # Roadmap — Editais como entidade (extrair o edital da prova)
-# Criado em 2026-07-24. NADA aqui foi implementado — este arquivo é o desenho.
-# Convenção do projeto: enquanto o trabalho estiver vivo, fica na raiz de analises/;
-# concluído, vai para analises/concluidos/.
+# Criado em 2026-07-24, CONCLUÍDO e mergeado no mesmo dia. Arquivado em concluidos/
+# em 2026-07-25. Este arquivo é o registro do desenho e das decisões, não um plano vivo.
+# O estado final do que foi construído vive na documentação de estrutura, não aqui.
 
 roadmap:
   titulo: "Editais como entidade — a prova deixa de ter um edital em texto livre e passa a referenciar um Edital cadastrado"
   criado: "2026-07-24"
-  status: "IMPLEMENTADO em 2026-07-24 na branch feat/editais (etapas 1–7). D1–D7 todas confirmadas pelo usuário. Falta só o smoke manual e o merge --no-ff em dev."
+  status: >
+    CONCLUÍDO. Etapas 1-7 implementadas na feat/editais e mergeadas em dev em
+    2026-07-24 (merge 6909091, --no-ff; branch apagada). D1-D7 todas confirmadas
+    pelo usuário; smoke manual validado. Ajuste pedido no smoke e já aplicado:
+    Editais virou MÓDULO próprio (card no hub), saindo do header de Aplicação de
+    Provas. Ponto de restauração pré-execução: tag checkpoint-editais-design.
+  divida_deixada_em_aberto: >
+    A coluna provas.prova_edital (CHAR(30)) NÃO foi dropada: o backfill do
+    seed.pos.sql lê dela para reconstruir os editais a cada db reset do dump do
+    v1. Segue sendo escrita como cópia denormalizada, truncada em 30 caracteres.
+    Pelo mesmo motivo (ordem migration -> seed), provas.edital_id é NULLABLE no
+    banco e obrigatório só no app. Detalhe em estrutura/modulos/editais/00-modulo.md.
+  onde_esta_agora: >
+    O contrato do módulo: estrutura/modulos/editais/00-modulo.md.
+    O lado da prova (FK, herança de UI, ciclo de vida):
+    estrutura/modulos/aplicacao-provas/provas-e-unidades.md.
+    Bateria manual: docs/teste-frontend-editais.md.
   branch:
-    nome: feat/editais
+    nome: feat/editais          # já mergeada e apagada
     base: dev            # regra do projeto: tema sai de dev e volta para dev
     lembrete: "mergear --no-ff quando o tema fechar, e apagar a branch — não deixar acumular commits sem um 'acabou' explícito"
 

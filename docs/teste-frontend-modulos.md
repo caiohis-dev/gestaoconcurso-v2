@@ -2,7 +2,7 @@
 
 Roteiro de teste manual da UI cobrindo o tema **tela de entrada por módulos** (etapas 1–6, 2026-07-24). Rode de cima a baixo. Cada bloco indica **o que valida**. Os blocos `A`–`E` se concluem; a seção **`F` (conferência perpétua)** não — ela guarda o que precisa ser reconferido a cada mexida no roteamento/header, e seus checkboxes ficam abertos de propósito.
 
-O desenho e as decisões (D1–D5) estão em [`../my_rules/analises/roadmap-modulos.yaml`](../my_rules/analises/roadmap-modulos.yaml); o mecanismo em [`../my_rules/estrutura/transversais/arquitetura-geral.md`](../my_rules/estrutura/transversais/arquitetura-geral.md) §6 e a matriz papel × módulo em [`../my_rules/estrutura/transversais/auth-e-permissoes.md`](../my_rules/estrutura/transversais/auth-e-permissoes.md).
+O desenho e as decisões (D1–D5) estão em [`../my_rules/analises/concluidos/roadmap-modulos.yaml`](../my_rules/analises/concluidos/roadmap-modulos.yaml); o mecanismo em [`../my_rules/estrutura/transversais/arquitetura-geral.md`](../my_rules/estrutura/transversais/arquitetura-geral.md) §6 e a matriz papel × módulo em [`../my_rules/estrutura/transversais/auth-e-permissoes.md`](../my_rules/estrutura/transversais/auth-e-permissoes.md).
 
 ## Antes de começar
 

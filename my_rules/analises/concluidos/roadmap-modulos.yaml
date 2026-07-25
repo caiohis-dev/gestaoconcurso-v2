@@ -1,14 +1,24 @@
 # Roadmap — Tela de entrada por módulos ("hub")
-# Criado em 2026-07-21. Nada aqui foi implementado — este arquivo é o desenho.
-# Convenção do projeto: análise concluída vai para analises/concluidos/; enquanto
-# o trabalho estiver vivo, este arquivo fica na raiz de analises/.
+# Criado em 2026-07-21, CONCLUÍDO e mergeado em 2026-07-24. Arquivado em concluidos/
+# em 2026-07-25. Este arquivo é o registro do desenho e das decisões, não um plano vivo.
+# O estado final do que foi construído vive na documentação de estrutura, não aqui.
 
 roadmap:
   titulo: "Tela de entrada por módulos — preparação do terreno para os próximos módulos"
   criado: "2026-07-21"
-  status: "desenho FECHADO — D1..D5 confirmadas pelo usuário em 2026-07-21; nenhuma decisão pendente. NADA implementado."
+  status: >
+    CONCLUÍDO. Desenho fechado em 2026-07-21 (D1..D5 confirmadas pelo usuário);
+    etapas 1-6 implementadas na feat/modulos e mergeadas em dev em 2026-07-24
+    (merge 5314e36, --no-ff; branch apagada). Smoke manual validado pelo usuário.
+    Saldo deliberado: os guards de página seguem espalhados — a centralização num
+    RequireModulo (decisão D5) foi deixada de fora de propósito e está no backlog.
+  onde_esta_agora: >
+    O mecanismo de módulos: estrutura/transversais/arquitetura-geral.md, seção 6.
+    A matriz papel x módulo: estrutura/transversais/auth-e-permissoes.md.
+    Os contratos de cada módulo: estrutura/modulos/<id>/00-modulo.md.
+    A fonte de verdade em código: src/lib/modulos.ts.
   branch:
-    nome: feat/modulos
+    nome: feat/modulos          # já mergeada e apagada
     base: dev            # regra do projeto: tema sai de dev e volta para dev (versionamento.md)
     lembrete: "mergear quando o tema fechar — a feat/auth-colaborador acumulou 41 commits em 7 dias por não ter um 'acabou' explícito"
 

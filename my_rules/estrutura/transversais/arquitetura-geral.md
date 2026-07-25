@@ -100,7 +100,7 @@ Desde 2026-07-24 a raiz `/` não abre mais uma lista, e sim um **hub** (`src/pag
 - **Config geral não é módulo** (decisão de desenho): "Usuários" e "Meu Cadastro" ficam no header sempre, fora dos cards; o dropdown do avatar leva a "Alterar Cadastro".
 - **Colaborador puro nunca vê o hub** — cai direto em `/perfil-colaborador` (o guard do `Inicio.tsx` e o pós-login do `Auth.tsx` cuidam disso). Ver a matriz papel × módulo em [`auth-e-permissoes.md`](./auth-e-permissoes.md).
 
-O desenho fechado e as 5 decisões (D1–D5) estão em [`roadmap-modulos.yaml`](../../analises/roadmap-modulos.yaml).
+O desenho fechado e as 5 decisões (D1–D5) estão em [`roadmap-modulos.yaml`](../../analises/concluidos/roadmap-modulos.yaml).
 
 **A documentação segue o mesmo recorte.** Cada módulo tem contrato próprio, e é ele — não este arquivo — a porta de entrada para trabalhar no módulo: [`aplicacao-provas/00-modulo.md`](../modulos/aplicacao-provas/00-modulo.md) e [`editais/00-modulo.md`](../modulos/editais/00-modulo.md). Módulo novo em `modulos.ts` = pasta nova em [`../modulos/`](../modulos/); a regra está em [`../00-indice.md`](../00-indice.md), seção "Como manter".
 
