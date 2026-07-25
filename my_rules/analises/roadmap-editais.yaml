@@ -6,7 +6,7 @@
 roadmap:
   titulo: "Editais como entidade — a prova deixa de ter um edital em texto livre e passa a referenciar um Edital cadastrado"
   criado: "2026-07-24"
-  status: "desenho FECHADO nas decisões do usuário (D1–D4, 2026-07-24); D5–D7 são propostas do desenho, a confirmar. NADA implementado."
+  status: "IMPLEMENTADO em 2026-07-24 na branch feat/editais (etapas 1–7). D1–D7 todas confirmadas pelo usuário. Falta só o smoke manual e o merge --no-ff em dev."
   branch:
     nome: feat/editais
     base: dev            # regra do projeto: tema sai de dev e volta para dev
@@ -85,17 +85,21 @@ roadmap:
         alimenta a sugestão inicial no cadastro da prova.
 
     - id: D4
-      titulo: "CRUD de Editais numa página nova /editais, item do módulo Aplicação de Provas"
-      decidido: "sim — CONFIRMADO pelo usuário em 2026-07-24"
+      titulo: "CRUD de Editais numa página nova /editais; Editais é MÓDULO próprio (card no hub)"
+      decidido: "sim — CONFIRMADO pelo usuário em 2026-07-24 (revisado no mesmo dia)"
       racional: |
         Segue o padrão de rotas/registro que o tema anterior (hub por módulos) montou:
-        /editais é uma rota nova, com uma entrada em src/lib/modulos.ts (navLinks +
-        prefixosRota do módulo aplicacao-provas). O form de Prova troca o campo de texto
-        livre por um SELETOR de edital existente.
+        /editais é uma rota nova, com uma entrada em src/lib/modulos.ts. O form de Prova
+        troca o campo de texto livre por um SELETOR de edital existente.
+        REVISÃO (2026-07-24): a primeira versão pôs Editais como link no header do módulo
+        Aplicação de Provas. O usuário pediu para tirá-lo de lá e transformá-lo num MÓDULO
+        próprio — um card no Início, no mesmo modelo do card Aplicação de Provas. Motivo:
+        o edital é a base sobre a qual as provas existem, uma área de trabalho à parte, não
+        um sub-item da aplicação. Só admin/superadmin veem o card (papeis do módulo).
 
     - id: D5
       titulo: "edital_id é NULLABLE no banco, mas OBRIGATÓRIO no app"
-      decidido: "PROPOSTA do desenho — a confirmar"
+      decidido: "sim — CONFIRMADO pelo usuário em 2026-07-24"
       racional: |
         O CHAR(30) era NOT NULL, então o instinto é edital_id NOT NULL. Mas a ordem do
         `db reset` impede: migrations rodam ANTES do seed.pos.sql, e é o seed.pos que faz
@@ -109,12 +113,12 @@ roadmap:
 
     - id: D6
       titulo: "Apagar um edital com provas é BLOQUEADO (ON DELETE RESTRICT)"
-      decidido: "PROPOSTA do desenho — a confirmar"
+      decidido: "sim — CONFIRMADO pelo usuário em 2026-07-24"
       racional: "Apagar um edital não pode sumir com provas em silêncio. RESTRICT obriga a lidar com as provas antes. (CASCADE seria destrutivo demais para uma entidade-modelo.)"
 
     - id: D7
       titulo: "nome do edital vira TEXT único (case-insensitive), aposentando o CHAR(30)"
-      decidido: "PROPOSTA do desenho — a confirmar"
+      decidido: "sim — CONFIRMADO pelo usuário em 2026-07-24"
       racional: |
         CHAR(30) faz padding com espaços — é a origem dos ~15 `.trim()` espalhados. Numa
         tabela própria, `nome` vira TEXT com índice único funcional sobre lower(trim(...))
@@ -178,9 +182,9 @@ roadmap:
         - acao: "src/pages/Editais.tsx (lista) + src/components/EditalDialog.tsx (form: nome, n_candidatos, linha1, linha2)"
           detalhe: "Guard de admin no padrão das páginas de gestão (barrado → navigate('/'), que hoje é o hub)."
         - acao: "App.tsx: <Route path='/editais' element={<Editais/>} />"
-        - acao: "src/lib/modulos.ts: adicionar /editais aos prefixosRota e um item em navLinks do módulo aplicacao-provas (showFor admin/superadmin)"
-          detalhe: "Aproveita a fonte de verdade criada no tema do hub — o header já lê dela."
-      verificacao: ["tsc+build limpos; /editais aparece no header para admin; guard barra não-admin"]
+        - acao: "src/lib/modulos.ts: Editais como MÓDULO próprio em MODULOS (id 'editais', papeis admin/superadmin, rotaEntrada→/editais, prefixosRota ['/editais'])"
+          detalhe: "Revisão da D4 (2026-07-24): Editais é um card no hub, não um link no header de aplicacao-provas. Aproveita a fonte de verdade do tema do hub — o Início e o header leem dela."
+      verificacao: ["tsc+build limpos; card Editais aparece no hub para admin (não para coordenador); guard barra não-admin em /editais"]
 
     - id: 4
       titulo: "ProvaDialog — seletor de edital + herança de sugestão"
@@ -245,7 +249,7 @@ roadmap:
         - acao: "Atualizar my_rules/estrutura/documentos-e-relatorios.md"
           detalhe: "Cabeçalho: edital fornece o default; a prova é a fonte que o PDF lê."
         - acao: "Atualizar my_rules/estrutura/arquitetura-geral.md"
-          detalhe: "Tabela de rotas (+/editais) e a §6 dos módulos (novo item navLinks do módulo aplicacao-provas)."
+          detalhe: "Tabela de rotas (+/editais) e a §6 dos módulos (Editais é o segundo módulo do hub)."
         - acao: "Fechar: merge --no-ff feat/editais → dev, push (com ok), apagar a branch"
       verificacao: ["bateria rodada; docs de estrutura acompanham o domínio tocado"]
 

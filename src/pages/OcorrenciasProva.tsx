@@ -354,7 +354,7 @@ export default function OcorrenciasProva() {
       const marginLeft = 15;
       const marginRight = 15;
 
-      const edital = prova.prova_edital?.trim() || "PROVA";
+      const edital = prova.editais?.nome || "PROVA";
       const dataProva = formatDateBR(prova.prova_data) || "";
 
       const addHeader = () => {
@@ -447,7 +447,7 @@ export default function OcorrenciasProva() {
           <div className="flex-1">
             <h1 className="text-2xl font-bold text-foreground">Ocorrências da Prova</h1>
             <p className="text-muted-foreground">
-              {prova.prova_edital?.trim()} - {formatDateBRWithFallback(prova.prova_data)}
+              {prova.editais?.nome} - {formatDateBRWithFallback(prova.prova_data)}
             </p>
           </div>
           <Button

@@ -118,7 +118,7 @@ export function ProvaCard({ prova, onDelete, allowedProvaUnidadeIds }: ProvaCard
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="text-lg font-semibold leading-tight">
-            {prova.prova_edital?.trim()}
+            {prova.editais?.nome}
           </CardTitle>
           <div className="flex items-center gap-1 shrink-0">
             <Button variant="ghost" size="icon" className="h-8 w-8" asChild>

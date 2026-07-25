@@ -4,7 +4,9 @@
 
 ## Entidades e relação entre elas
 
-- **`provas`** (`useProvas.tsx`) — uma prova/concurso vinculada a um edital (`prova_edital`), com data, horários, número de candidatos, cabeçalho customizável para documentos (`prova_cabecalho_linha1/2`), e um flag de ciclo de vida `prova_finalizada` (+ `finalizada_at`).
+- **`editais`** (`useEditais.tsx`, desde 2026-07-24) — o edital do concurso, gerenciado em `/editais` (só admin). Campos: `nome` (único, case-insensitive, via índice funcional `lower(btrim(nome))`), `n_candidatos`, `cabecalho_linha1/2` (com os defaults FEVRE). **É um MODELO:** ao cadastrar uma prova sob um edital, esses três campos são oferecidos como **sugestão editável** — a fonte de verdade operacional continua na prova (ver abaixo).
+- **`provas`** (`useProvas.tsx`) — uma prova pertence a um edital via **`edital_id`** (FK, **1 edital → N provas**, `ON DELETE RESTRICT`). Tem data, horários, e os SEUS próprios `prova_n_candidatos` e `prova_cabecalho_linha1/2` (herdados do edital como sugestão na criação, mas editáveis e independentes depois), além do flag de ciclo de vida `prova_finalizada` (+ `finalizada_at`). O **nome do edital** exibido/usado vem do join (`prova.editais.nome`), não de uma coluna da prova.
+  - **Dívida de transição:** a coluna antiga `prova_edital` (CHAR(30)) ainda existe e é escrita como cópia denormalizada pelo `ProvaDialog` (só para satisfazer seu `NOT NULL`). Não foi dropada porque o backfill em `seed.pos.sql` lê dela para reconstruir os editais a cada `db reset` do dump do v1. `edital_id` é `NULLABLE` no banco (a ordem migration→seed impede `NOT NULL`) e **obrigatório no app** (o form exige escolher um edital). Migration `20260724170000_*`.
 - **`unidades_prova`** (`useUnidadesProva.tsx`) — cadastro de locais físicos (escolas, universidades): nome, sigla, número de andares. É um **catálogo reutilizável entre provas**, não específico de uma prova.
 - **`sala_prova`** (`useSalasProva.tsx`) — salas cadastradas por unidade, também um **template reutilizável**: número (`sala_numero` = andar×100 + sequência, ex. 101 = andar 1, sala 1), capacidade, andar, ar-condicionado. Criação em lote (`createMultiple`) calcula a próxima sequência disponível no andar automaticamente.
 - **`prova_unidades`** (`useProvaUnidades.tsx`) — associação prova↔unidade. **Ao vincular uma unidade a uma prova, todas as salas daquela unidade em `sala_prova` são copiadas para `salas_prova_distribuidas`** (ver abaixo). Também carrega os flags de encerramento de ocorrências (`ocorrencias_encerradas*`, ver [`ocorrencias.md`](./ocorrencias.md)).
@@ -20,7 +22,8 @@ Remover uma unidade de uma prova (`removeUnidadeMutation`) deleta em cascata as 
 
 ## Ciclo de vida de uma prova
 
-1. Criada em `/provas` (`useProvas.create`).
+0. **Pré-requisito:** o edital existe em `/editais` (`useEditais.create`). Sem edital cadastrado não se cria prova.
+1. Criada em `/provas` (`useProvas.create`), sob um edital escolhido no seletor.
 2. Unidades vinculadas em `/gerenciar-prova/:provaId` (copia salas para o snapshot, como descrito acima).
 3. Salas ajustadas/fiscais atribuídos em `/gerenciar-salas-distribuidas/:provaId/:unidadeId`.
 4. Colaboradores alocados (ver [`alocacao-e-funcoes.md`](./alocacao-e-funcoes.md)) e ocorrências registradas durante a aplicação (ver [`ocorrencias.md`](./ocorrencias.md)).

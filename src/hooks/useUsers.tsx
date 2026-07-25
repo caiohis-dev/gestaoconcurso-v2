@@ -63,7 +63,9 @@ export function useUsers() {
           user_id,
           prova_id,
           provas:prova_id (
-            prova_edital
+            editais:edital_id (
+              nome
+            )
           )
         `);
 
@@ -76,7 +78,7 @@ export function useUsers() {
         if (!provasByUser[cp.user_id]) {
           provasByUser[cp.user_id] = [];
         }
-        const provaEdital = (cp.provas as any)?.prova_edital;
+        const provaEdital = (cp.provas as any)?.editais?.nome;
         if (provaEdital && !provasByUser[cp.user_id].includes(provaEdital)) {
           provasByUser[cp.user_id].push(provaEdital);
         }

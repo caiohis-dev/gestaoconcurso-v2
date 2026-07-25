@@ -292,7 +292,7 @@ export default function GerenciarUsuarios() {
                         ) : (
                           availableProvas.map((prova) => (
                             <SelectItem key={prova.id} value={prova.id}>
-                              {prova.prova_edital}
+                              {prova.editais?.nome}
                               {prova.prova_data && ` - ${format(new Date(prova.prova_data), "dd/MM/yyyy")}`}
                             </SelectItem>
                           ))
@@ -462,7 +462,7 @@ export default function GerenciarUsuarios() {
                     ) : (
                       availableProvas.map((prova) => (
                         <SelectItem key={prova.id} value={prova.id}>
-                          {prova.prova_edital}
+                          {prova.editais?.nome}
                           {prova.prova_data && ` - ${format(new Date(prova.prova_data), "dd/MM/yyyy")}`}
                         </SelectItem>
                       ))

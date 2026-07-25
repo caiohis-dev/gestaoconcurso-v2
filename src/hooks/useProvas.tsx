@@ -2,9 +2,20 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
+// O nome do edital vem do join com `editais` (edital_id). `prova_edital` (CHAR30) ainda
+// existe no banco e é escrito como cópia denormalizada durante a transição, até ser
+// dropado num passo posterior; os consumidores devem ler `editais?.nome`.
+export interface EditalDaProva {
+  nome: string;
+  n_candidatos: number | null;
+  cabecalho_linha1: string | null;
+  cabecalho_linha2: string | null;
+}
+
 export interface Prova {
   id: string;
   prova_edital: string;
+  edital_id: string | null;
   prova_data: string | null;
   prova_hora_inicio: string | null;
   prova_hora_final: string | null;
@@ -16,12 +27,16 @@ export interface Prova {
   created_by: string | null;
   prova_cabecalho_linha1: string | null;
   prova_cabecalho_linha2: string | null;
+  editais?: EditalDaProva | null;
   profiles?: {
     full_name: string | null;
   } | null;
 }
 
 export interface ProvaInsert {
+  edital_id: string;
+  // Cópia denormalizada do nome do edital, só para satisfazer o NOT NULL de
+  // prova_edital enquanto a coluna não é dropada. Fonte de verdade é edital_id.
   prova_edital: string;
   prova_data?: string | null;
   prova_hora_inicio?: string | null;
@@ -32,6 +47,7 @@ export interface ProvaInsert {
 }
 
 export interface ProvaUpdate {
+  edital_id?: string;
   prova_edital?: string;
   prova_data?: string | null;
   prova_hora_inicio?: string | null;
@@ -50,7 +66,7 @@ export function useProvas() {
     queryFn: async () => {
       const { data: provasData, error } = await supabase
         .from("provas")
-        .select("*")
+        .select("*, editais(nome, n_candidatos, cabecalho_linha1, cabecalho_linha2)")
         .order("prova_data", { ascending: false, nullsFirst: false });
 
       if (error) throw error;

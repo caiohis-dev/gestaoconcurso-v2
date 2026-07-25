@@ -9,7 +9,7 @@
 | [`arquitetura-geral.md`](./arquitetura-geral.md) | Visão geral, stack, arquitetura macro (SPA + Supabase, sem backend próprio), estrutura de pastas, mapa de rotas, higiene do repositório |
 | [`auth-e-permissoes.md`](./auth-e-permissoes.md) | Login único no Supabase Auth (`useAuth`), o papel `colaborador` e `isColaborador`, roles, RLS/RPC, `colab_email` como âncora de identidade |
 | [`colaboradores.md`](./colaboradores.md) | Cadastro de colaboradores (individual, público, lote), perfil, distinção colaborador vs. usuário admin |
-| [`provas-e-unidades.md`](./provas-e-unidades.md) | Ciclo de vida de uma prova, unidades/salas (template vs. distribuídas), lock de edição concorrente |
+| [`provas-e-unidades.md`](./provas-e-unidades.md) | Editais (entidade-modelo) e provas, ciclo de vida de uma prova, unidades/salas (template vs. distribuídas), lock de edição concorrente |
 | [`alocacao-e-funcoes.md`](./alocacao-e-funcoes.md) | Funções/cargos, valores de pagamento, metas por unidade, alocação colaborador↔prova, acesso de coordenador |
 | [`ocorrencias.md`](./ocorrencias.md) | Registro de ocorrências durante a prova, encerramento/reabertura |
 | [`documentos-e-relatorios.md`](./documentos-e-relatorios.md) | Geração de PDF (listas/recibos), painel de dados de colaboradores, dashboard |

@@ -155,7 +155,7 @@ export default function Provas() {
           if (!open) setProvaToDelete(null);
         }}
         title="Excluir prova"
-        description={`Tem certeza que deseja excluir a prova "${provaToDelete?.prova_edital?.trim() ?? ""}"? Esta ação não pode ser desfeita.`}
+        description={`Tem certeza que deseja excluir a prova "${provaToDelete?.editais?.nome ?? ""}"? Esta ação não pode ser desfeita.`}
         confirmText={isDeleting ? "Excluindo..." : "Excluir"}
         confirmVariant="destructive"
         onConfirm={async () => {

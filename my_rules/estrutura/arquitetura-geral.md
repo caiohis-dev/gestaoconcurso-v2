@@ -75,6 +75,7 @@ Toda lógica de negócio sensível ou que exige elevação de privilégio vive e
 | `/perfil`, `/perfil-colaborador` | Perfil admin vs. colaborador | [`colaboradores.md`](./colaboradores.md), [`auth-e-permissoes.md`](./auth-e-permissoes.md) |
 | `/unidades-prova`, `/salas-prova/:unidadeId` | Cadastro de unidades e salas (template) | [`provas-e-unidades.md`](./provas-e-unidades.md) |
 | `/provas`, `/gerenciar-prova/:provaId` | CRUD de provas | [`provas-e-unidades.md`](./provas-e-unidades.md) |
+| `/editais` | CRUD de editais (só admin); a prova referencia um edital | [`provas-e-unidades.md`](./provas-e-unidades.md) |
 | `/gerenciar-salas-distribuidas/:provaId/:unidadeId` | Distribuição de salas por prova/unidade | [`provas-e-unidades.md`](./provas-e-unidades.md) |
 | `/gerenciar-colaboradores-prova/:provaUnidadeId` | Alocação de colaboradores por função | [`alocacao-e-funcoes.md`](./alocacao-e-funcoes.md) |
 | `/ocorrencias-prova/:provaId` | Registro de ocorrências | [`ocorrencias.md`](./ocorrencias.md) |
@@ -88,7 +89,7 @@ Navegação visível no header (`Layout.tsx`) é filtrada por role **e por módu
 
 ## 6. Módulos e a tela de entrada (hub)
 
-Desde 2026-07-24 a raiz `/` não abre mais uma lista, e sim um **hub** (`src/pages/Inicio.tsx`) que mostra a cada gestor os **módulos** a que ele tem acesso. Hoje só existe **um** módulo — *Aplicação de Provas* (todas as rotas de gestão da tabela acima) — mas a estrutura já está pronta para os próximos: o valor está no **mecanismo**, não na lista.
+Desde 2026-07-24 a raiz `/` não abre mais uma lista, e sim um **hub** (`src/pages/Inicio.tsx`) que mostra a cada gestor os **módulos** a que ele tem acesso. Hoje existem **dois** módulos: *Aplicação de Provas* (todas as rotas de gestão da tabela acima) e *Editais* (`/editais`, só admin/superadmin). A estrutura está pronta para os próximos: o valor está no **mecanismo**, não na lista.
 
 **A fonte de verdade é `src/lib/modulos.ts`.** Um módulo é uma entrada no array `MODULOS`, com: `id`, `nome`, `descricao`, `icone`, os `papeis` de gestão que o acessam, `rotaEntrada(ctx)` (para onde o card leva, por papel), `prefixosRota` (as rotas que pertencem ao módulo) e `navLinks` (os links que o header mostra dentro dele). **Módulo novo = 1 entrada aqui** — nunca duplicar a lista de rotas de um módulo em outro arquivo. Quem lê desse registro: o hub (`modulosDoUsuario`), o header (`moduloDaRota` + `navLinks`) e, no futuro, os guards.
 

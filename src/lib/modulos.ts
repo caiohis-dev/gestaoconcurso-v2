@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   Contact,
   FileText,
+  ScrollText,
   Building2,
   type LucideIcon,
 } from 'lucide-react';
@@ -19,7 +20,7 @@ import {
  */
 
 // Cresce com o sistema. Hoje só existe um módulo.
-export type ModuloId = 'aplicacao-provas';
+export type ModuloId = 'aplicacao-provas' | 'editais';
 
 // Papéis de GESTÃO que podem receber um módulo. A dimensão 'colaborador' fica de fora:
 // o colaborador puro nunca vê o hub (segue direto para /perfil-colaborador), e config
@@ -94,7 +95,22 @@ const aplicacaoProvas: Modulo = {
   ],
 };
 
-export const MODULOS: Modulo[] = [aplicacaoProvas];
+// Editais é um módulo à parte (só admin): a base sobre a qual as provas são criadas.
+// Aparece como card próprio no hub, não como link dentro de Aplicação de Provas.
+const editais: Modulo = {
+  id: 'editais',
+  nome: 'Editais',
+  descricao: 'Cadastro dos editais dos concursos — a base sobre a qual as provas são criadas.',
+  icone: ScrollText,
+  papeis: ['superadmin', 'admin'],
+  rotaEntrada: () => '/editais',
+  prefixosRota: ['/editais'],
+  navLinks: [
+    { href: '/editais', label: 'Editais', icon: ScrollText, showFor: ['admin', 'superadmin'] },
+  ],
+};
+
+export const MODULOS: Modulo[] = [aplicacaoProvas, editais];
 
 // Papéis de gestão que o usuário efetivamente tem. superadmin ⊇ admin, então um
 // módulo restrito a ['admin'] continua visível para o superadmin.

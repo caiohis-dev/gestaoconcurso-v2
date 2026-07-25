@@ -781,7 +781,7 @@ export default function Treinamento() {
                       <ul className="space-y-3 text-base text-foreground">
                         <motion.li className="flex items-start gap-3 bg-card p-3 rounded-lg" variants={staggerItem} whileHover={{ x: 5 }}>
                           <Plus className="h-5 w-5 mt-0.5 text-primary flex-shrink-0" />
-                          <span><strong>Nova Prova:</strong> Cadastrar uma nova prova informando edital, data, horários, número de candidatos e textos do cabeçalho.</span>
+                          <span><strong>Nova Prova:</strong> Cadastrar uma nova prova escolhendo um edital já cadastrado (que sugere número de candidatos e cabeçalho), e informando data e horários.</span>
                         </motion.li>
                         <motion.li className="flex items-start gap-3 bg-card p-3 rounded-lg" variants={staggerItem} whileHover={{ x: 5 }}>
                           <Settings className="h-5 w-5 mt-0.5 text-secondary flex-shrink-0" />
