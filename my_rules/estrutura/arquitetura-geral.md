@@ -67,7 +67,8 @@ Toda lógica de negócio sensível ou que exige elevação de privilégio vive e
 
 | Rota | Página | Domínio (ver documento) |
 |---|---|---|
-| `/` | `Index` | [`colaboradores.md`](./colaboradores.md) — listagem |
+| `/` | `Inicio` | A **tela de entrada por módulos** (hub) — ver §6 |
+| `/colaboradores` | `Colaboradores` | [`colaboradores.md`](./colaboradores.md) — listagem (era `/` até 2026-07-24) |
 | `/dashboard` | `Dashboard` | [`documentos-e-relatorios.md`](./documentos-e-relatorios.md) |
 | `/auth` | Porta única de login (Supabase Auth, e-mail/senha) + o link **"Estou sem minha senha"**, que aceita CPF ou e-mail e resolve invite/recovery no servidor (EF própria desde 2026-07-20 — não é mais o reset nativo). `/auth-admin` redireciona para cá; `/redefinir-senha` é o destino do link | [`auth-e-permissoes.md`](./auth-e-permissoes.md) |
 | `/cadastro`, `/cadastro-publico`, `/cadastro-lote` | Cadastro de colaborador | [`colaboradores.md`](./colaboradores.md) |
@@ -83,9 +84,25 @@ Toda lógica de negócio sensível ou que exige elevação de privilégio vive e
 | `/gerenciar-usuarios` | Gestão de usuários/roles (superadmin) | [`auth-e-permissoes.md`](./auth-e-permissoes.md) |
 | `/treinamento` | Página de treinamento/onboarding | — |
 
-Navegação visível no header (`Layout.tsx`) é filtrada por role, mas isso é só ocultação de UI — **não substitui checagem de permissão no backend** (feita via RLS/RPC).
+Navegação visível no header (`Layout.tsx`) é filtrada por role **e por módulo atual** (ver §6), mas isso é só ocultação de UI — **não substitui checagem de permissão no backend** (feita via RLS/RPC).
 
-## 6. Pontos de atenção / higiene do repositório
+## 6. Módulos e a tela de entrada (hub)
+
+Desde 2026-07-24 a raiz `/` não abre mais uma lista, e sim um **hub** (`src/pages/Inicio.tsx`) que mostra a cada gestor os **módulos** a que ele tem acesso. Hoje só existe **um** módulo — *Aplicação de Provas* (todas as rotas de gestão da tabela acima) — mas a estrutura já está pronta para os próximos: o valor está no **mecanismo**, não na lista.
+
+**A fonte de verdade é `src/lib/modulos.ts`.** Um módulo é uma entrada no array `MODULOS`, com: `id`, `nome`, `descricao`, `icone`, os `papeis` de gestão que o acessam, `rotaEntrada(ctx)` (para onde o card leva, por papel), `prefixosRota` (as rotas que pertencem ao módulo) e `navLinks` (os links que o header mostra dentro dele). **Módulo novo = 1 entrada aqui** — nunca duplicar a lista de rotas de um módulo em outro arquivo. Quem lê desse registro: o hub (`modulosDoUsuario`), o header (`moduloDaRota` + `navLinks`) e, no futuro, os guards.
+
+**Como a raiz virou hub sem reescrever guards.** Os ~11 `navigate("/")` / `<Navigate to="/">` espalhados pelas páginas de gestão sempre significaram "acesso negado → lugar seguro". Com o hub na raiz, esse destino passou a ser "a tela com o que você PODE acessar" — semântica correta **sem editar nenhum deles**. A única migração de rota foi a lista de colaboradores: `/` → `/colaboradores`.
+
+**Regras que não são óbvias:**
+- **É UX, não autorização.** O hub e o filtro de `navLinks` *escondem* módulos; não *barram* ninguém. Quem barra continua sendo RLS + as checagens das Edge Functions + os guards de página. Esconder um card não protege nada por si só.
+- **`moduloDaRota` casa por igualdade-ou-prefixo-com-`/`**, nunca `startsWith` cru — senão `/cadastro` capturaria `/cadastro-publico` (rota pública, fora de qualquer módulo). Rotas públicas e de config geral (`/perfil`, `/perfil-colaborador`, `/gerenciar-usuarios`) **não** entram em `prefixosRota`.
+- **Config geral não é módulo** (decisão de desenho): "Usuários" e "Meu Cadastro" ficam no header sempre, fora dos cards; o dropdown do avatar leva a "Alterar Cadastro".
+- **Colaborador puro nunca vê o hub** — cai direto em `/perfil-colaborador` (o guard do `Inicio.tsx` e o pós-login do `Auth.tsx` cuidam disso). Ver a matriz papel × módulo em [`auth-e-permissoes.md`](./auth-e-permissoes.md).
+
+O desenho fechado e as 5 decisões (D1–D5) estão em [`../analises/roadmap-modulos.yaml`](../analises/roadmap-modulos.yaml).
+
+## 7. Pontos de atenção / higiene do repositório
 
 - **`docs/features/cadastro-lote-sanitizacao.md`** é documentação específica e detalhada do fluxo de importação em lote — parece atualizada, referenciada em [`colaboradores.md`](./colaboradores.md).
 - **`public/auth_users_export.csv`** existe no repo mas contém só o cabeçalho (sem linhas de dados) — não é vazamento de dados reais no momento, mas vale perguntar por que um artefato de export está versionado em `public/` (fica publicamente acessível se servido como estático).

@@ -14,10 +14,10 @@ Roteiro de teste manual da UI cobrindo a refatoração do acesso do colaborador 
 ## A. Login e roteamento (porta única — 2A)
 
 - [ ] **A1** — Acessar `/auth`: uma porta só, login e-mail/senha do Supabase Auth.
-- [ ] **A2** — Login como **admin** → vai para `/dashboard`.
-- [ ] **A3** — Login como **coordenador** → vai para `/`.
-- [ ] **A4** — Login como **colaborador puro** → vai para `/perfil-colaborador`.
-- [ ] **A5** — Login como **gestor+colaborador** → cai na gestão e enxerga o menu **"Meu Cadastro"**.
+- [ ] **A2** — Login como **admin** → vai para `/` (o **hub** por módulos, desde 2026-07-24; era `/dashboard`). Ver [`teste-frontend-modulos.md`](./teste-frontend-modulos.md).
+- [ ] **A3** — Login como **coordenador** → vai para `/` (o hub).
+- [ ] **A4** — Login como **colaborador puro** → vai para `/perfil-colaborador` (segue **fora** do hub).
+- [ ] **A5** — Login como **gestor+colaborador** → cai no **hub** e enxerga o menu **"Meu Cadastro"**.
 - [ ] **A6** — Acessar `/auth-admin` → redireciona para `/auth`.
 - [ ] **A7** — Senha errada → barrado, sem vazar se o e-mail existe.
 
