@@ -191,6 +191,41 @@ export function setFunctionResult<T>(nome: string, resultado: QueryResult<T>): v
   resultadosPorFunction.set(nome, resultado as QueryResult);
 }
 
+/** Todos os builders devolvidos por `from(<tabela>)`, na ordem das chamadas. */
+export function buildersDaTabela(tabela: string): QueryBuilderMock[] {
+  return supabaseMock.from.mock.calls
+    .map((chamada, i) => ({ tabela: chamada[0], i }))
+    .filter((c) => c.tabela === tabela)
+    .map(({ i }) => supabaseMock.from.mock.results[i].value as QueryBuilderMock);
+}
+
+/**
+ * O builder em que o método indicado foi efetivamente chamado — o jeito robusto de
+ * pegar "o builder da mutation".
+ *
+ * Por que não basta `buildersDaTabela(t).at(-1)`: ao concluir, a mutation invalida a
+ * query e o React Query REFAZ a listagem, que chama `from` de novo na mesma tabela.
+ * O último builder passa a ser o do refetch, não o da mutation — e a asserção falha
+ * comparando com o filtro da listagem. Procurar por quem chamou `insert`/`update`/
+ * `delete`/`upsert` é indiferente a essa ordem.
+ */
+export function builderQueChamou(
+  tabela: string,
+  metodo: "insert" | "update" | "delete" | "upsert" | "select",
+): QueryBuilderMock {
+  const encontrado = buildersDaTabela(tabela).find((b) => {
+    const fn = b[metodo] as Mock | undefined;
+    return !!fn && fn.mock.calls.length > 0;
+  });
+  if (!encontrado) {
+    throw new Error(
+      `Nenhum builder de "${tabela}" chamou "${metodo}". Tabelas usadas: ` +
+        `${supabaseMock.from.mock.calls.map((c) => c[0]).join(", ") || "(nenhuma)"}`,
+    );
+  }
+  return encontrado;
+}
+
 /**
  * Limpa resultados configurados e o histórico de chamadas. Chame no `beforeEach`
  * — `restoreMocks` do vitest.config zera os spies, mas não estes Maps.

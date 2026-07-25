@@ -7,6 +7,8 @@ import {
   resetSupabaseMock,
   erroPostgrest,
   CODIGOS_POSTGREST,
+  buildersDaTabela,
+  builderQueChamou,
 } from "@/test/supabase-mock";
 
 /**
@@ -130,6 +132,27 @@ describe("mock do client do Supabase", () => {
 
     expect(supabaseMock.from).toHaveBeenCalledWith("editais");
     expect(builder.eq).toHaveBeenCalledWith("id", "e1");
+  });
+
+  describe("builderQueChamou", () => {
+    it("acha o builder da mutation mesmo com um refetch depois", async () => {
+      // Reproduz o padrão real: a mutation faz insert e, ao concluir, a query é
+      // invalidada e refaz o select — então o ÚLTIMO builder é o do refetch.
+      setTableResult("editais", { data: [], error: null });
+
+      await supabaseMock.from("editais").select("*"); //   listagem inicial
+      await supabaseMock.from("editais").insert({ nome: "x" }); // a mutation
+      await supabaseMock.from("editais").select("*"); //   refetch
+
+      const mutacao = builderQueChamou("editais", "insert");
+      expect(mutacao.insert).toHaveBeenCalledWith({ nome: "x" });
+      // O ingênuo `.at(-1)` pegaria o refetch, que nunca chamou insert.
+      expect(buildersDaTabela("editais")).toHaveLength(3);
+    });
+
+    it("lança mensagem útil quando ninguém chamou o método", () => {
+      expect(() => builderQueChamou("editais", "delete")).toThrow(/Nenhum builder/);
+    });
   });
 
   it("resetSupabaseMock limpa resultados e histórico entre testes", async () => {
