@@ -68,3 +68,34 @@ SELECT c.user_id, 'colaborador'::app_role
 FROM colaboradores c
 WHERE c.user_id IS NOT NULL
 ON CONFLICT (user_id, role) DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- Backfill do tema "Editais como entidade" (roadmap-editais.yaml, etapa 1).
+--
+-- A migration criou a tabela `editais` e `provas.edital_id` (nullable). Aqui vem o
+-- DADO: para cada prova_edital distinto, cria um edital (copiando os campos-modelo de
+-- uma prova daquele edital) e liga as provas via edital_id.
+--
+-- Idempotente (ON CONFLICT no índice único de nome; o UPDATE só toca edital_id ainda
+-- NULL) e seguro contra base vazia (sem provas, ambos são no-op). Em produção é passo
+-- MANUAL do bootstrap; nos ambientes de hoje, o v2 nasce vazio e as provas já entram
+-- com edital_id — este backfill serve o db reset local (cópia do v1) e é no-op no v2.
+-- ---------------------------------------------------------------------------
+
+INSERT INTO editais (nome, n_candidatos, cabecalho_linha1, cabecalho_linha2)
+SELECT DISTINCT ON (lower(btrim(p.prova_edital)))
+       btrim(p.prova_edital),
+       p.prova_n_candidatos,
+       p.prova_cabecalho_linha1,
+       p.prova_cabecalho_linha2
+FROM provas p
+WHERE p.prova_edital IS NOT NULL AND btrim(p.prova_edital) <> ''
+ORDER BY lower(btrim(p.prova_edital)), p.created_at NULLS LAST, p.id
+ON CONFLICT (lower(btrim(nome))) DO NOTHING;
+
+UPDATE provas p
+SET edital_id = e.id
+FROM editais e
+WHERE p.edital_id IS NULL
+  AND p.prova_edital IS NOT NULL
+  AND lower(btrim(p.prova_edital)) = lower(btrim(e.nome));
