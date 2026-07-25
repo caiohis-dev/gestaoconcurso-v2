@@ -137,7 +137,7 @@ Ver [`../../transversais/testes.md`](../../transversais/testes.md) para infra e 
 
 | Coberto | Sem cobertura |
 |---|---|
-| `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades` | `useSalasDistribuidas`, `useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade`, `useFuncoesColaboradores`, `useFuncoesAssociadas` |
+| `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas` | `useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade`, `useFuncoesColaboradores`, `useFuncoesAssociadas` |
 | Schemas Zod: `ColaboradorDialog`, `UnidadeProvaDialog`, `SalaProvaDialog`, `FuncaoColaboradorDialog`, `ProvaDialog` | UI dos diálogos, exceto `ProvaDialog` |
 
 Não há mais teste marcado `⚠️ DEFEITO` neste módulo: os dois de `useProvaLock` que afirmavam o `isLoading` preso viraram teste de regressão quando o bug foi corrigido, em 2026-07-25.
@@ -158,7 +158,11 @@ Fora do módulo, em `src/components/`: `Layout`, `NavLink`, `PasswordConfirmDial
 
 ## Pontos frágeis conhecidos (leia antes de refatorar)
 
-1. **UUIDs de coordenação hardcoded** em `useCoordenadoresProva.tsx` (`FUNCOES_COORDENACAO`). Recriar essas linhas de `funcoes_colaboradores` quebra a elegibilidade de coordenador **em silêncio**. Detalhe em [`alocacao-e-funcoes.md`](./alocacao-e-funcoes.md).
+1. **Papel identificado por dado editável — em dois lugares, de dois jeitos.** É a mesma fragilidade com duas caras, e as duas falham **em silêncio**:
+   - **Por UUID:** `useCoordenadoresProva.tsx` traz `FUNCOES_COORDENACAO` hardcoded. Recriar essas linhas de `funcoes_colaboradores` quebra a elegibilidade de coordenador. Detalhe em [`alocacao-e-funcoes.md`](./alocacao-e-funcoes.md).
+   - **Por NOME, via substring:** `useFiscaisSala` (em `useSalasDistribuidas.tsx`) decide quem é fiscal de sala com `nome.includes("fiscal") && nome.includes("sala")`, em minúsculas e no JS. Não há id nem flag no banco marcando isso. Logo: "Fiscal de Corredor" **não** entra, "fiscal volante de sala" entra, e **renomear a função no cadastro esvazia a lista sem erro nenhum**. Fixado por teste em `useSalasDistribuidas.test.tsx`.
+
+   Ao mexer no cadastro de funções, lembre-se de que **duas telas dependem do conteúdo daquelas linhas**, não só da existência delas.
 2. **Template vs. snapshot de sala** — confundir `sala_prova` com `salas_prova_distribuidas` é o erro mais fácil deste módulo. Ver [`provas-e-unidades.md`](./provas-e-unidades.md).
 3. **`valor_pagamento` é congelado na alocação**, não lido ao vivo de `valores_funcao_prova`. Mudar o valor da função não corrige alocações existentes.
 4. **Encerrar ocorrências de uma unidade é irreversível pelo app** — nada devolve `ocorrencias_encerradas` a `FALSE`, nem o `reabrir_prova_unidade`. Ver [`ocorrencias.md`](./ocorrencias.md).

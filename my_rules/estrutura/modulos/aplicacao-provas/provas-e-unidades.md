@@ -32,6 +32,16 @@ Dois detalhes que parecem menores e não são:
 
 Se um dia isso precisar ser atômico, o caminho é uma RPC — não dá para resolver encadeando chamadas no cliente.
 
+### O snapshot em si: `useSalasDistribuidas`
+
+Três coisas fixadas por teste em `useSalasDistribuidas.test.tsx`:
+
+- **Salvar em lote também não é transacional.** `updateSalas` dispara **um `UPDATE` por sala**, em paralelo (`Promise.all`). Se um falhar, os outros já foram — o usuário vê "Erro ao salvar" e conclui que nada foi gravado, mas parte da edição está no banco. Mesma classe do problema acima, mesma saída (RPC).
+- **Sala sem `id` é ignorada em silêncio** (`if (!sala.id) return null`) — sem erro, sem aviso. Para sala nova o caminho é `addSala`; se um formulário passar a mandar linha nova pelo lote, ela some sem ninguém notar.
+- **`addSala` não carimba `created_by`**, ao contrário de `useProvas`, `useProvaUnidades` e `useOcorrencias`, que leem `auth.getUser()`. A sala extra nasce sem autoria. Não quebra nada hoje (a coluna é nullable), mas ninguém sabe quem a acrescentou à mão.
+
+E um contraste que vale conhecer: **`useSalasDistribuidasCapacidade` trata lista vazia de unidades como "nada a perguntar"** — o `enabled` exige `unidadeIds.length > 0` e a `queryFn` ainda devolve `{}` antes de montar consulta. É o **oposto** do que `useOcorrencias` faz com a mesma situação, onde lista vazia vira "sem restrição" e devolve a prova inteira (defeito no [`backlog.md`](../../../backlog.md)). Mesma entrada, decisões opostas no mesmo módulo: ao mexer em qualquer um dos dois, alinhe-os.
+
 ## Capacidade agregada
 
 `useUnidadeCapacidade.tsx` e `useSalasDistribuidasCapacidade` (em `useSalasDistribuidas.tsx`) calculam a soma de `sala_capacidade` por unidade a partir de `salas_prova_distribuidas` — ou seja, sempre a partir do snapshot da prova, não do template. Usado em `GerenciarProva.tsx` para mostrar quantos candidatos cabem por unidade.
