@@ -65,7 +65,7 @@ O mock tem **teste próprio** (`supabase-mock.test.ts`): é infraestrutura de qu
 
 **O `AuthProvider` fica de fora de propósito:** ele dispara chamadas ao Supabase no mount, e embuti-lo no helper faria todo teste depender de um efeito invisível. Quem precisa dele monta explicitamente, como faz `useAuth.test.tsx`.
 
-## ⚠️ As quatro armadilhas que já custaram tempo aqui
+## ⚠️ As cinco armadilhas que já custaram tempo aqui
 
 **1. A sequência é consumida pela listagem antes de chegar à mutation.** A query de listagem também chama `from(<tabela>)`, então ela come a primeira entrada e o hook recebe um objeto onde espera array (`coordenadores.map is not a function`). Espere a carga inicial e **só então** instale a sequência — `setTableResultSequence` zera o contador. E a **última entrada precisa ser um array**, porque o refetch disparado pela invalidação cai nela.
 
@@ -89,7 +89,7 @@ async function carregarEDepois(sequencia) {
 
 ## O que está coberto (2026-07-25)
 
-309 testes em 23 arquivos.
+329 testes em 25 arquivos.
 
 | Área | Arquivos |
 |---|---|
@@ -97,10 +97,10 @@ async function carregarEDepois(sequencia) {
 | Acessibilidade | `components/dialogos-acessibilidade.test.ts` — invariante **estática**: lê o fonte e exige `DialogDescription` em cada um dos 28 `DialogContent` |
 | Schemas Zod (9) | `*Dialog.test.ts`, `pages/Auth.test.ts`, `pages/GerenciarUsuarios.test.ts` |
 | Auth | `useAuth.test.tsx` — hierarquia, `colaborador` paralelo, `rolesLoaded`, `signOut` |
-| Hooks de dados | `useEditais`, `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useOcorrencias`, `useCoordenadorUnidades` |
+| Hooks de dados | `useEditais`, `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades` |
 | UI | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx` |
 
-**Sem cobertura ainda — 10 hooks** (a lista já esteve errada, dizendo 8; eram 12, e `useOcorrencias` e `useCoordenadorUnidades` saíram em 2026-07-25): `useProvas`, `useProvaUnidades`, `useUnidadesProva`, `useSalasProva`, `useSalasDistribuidas`, `useUnidadeCapacidade`, `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers`, `useBancos`. Mais **10 dos 12 diálogos**, **as 23 páginas** (zero cobertura — daí os guards de papel não terem rede) e **as 8 Edge Functions** (rodam em Deno, fora do alcance desta suíte).
+**Sem cobertura ainda — 8 hooks** (a lista já esteve errada, dizendo 8 quando eram 12): `useUnidadesProva`, `useSalasProva`, `useSalasDistribuidas`, `useUnidadeCapacidade`, `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers`, `useBancos`. Mais **10 dos 12 diálogos**, **as 23 páginas** (zero cobertura — daí os guards de papel não terem rede) e **as 8 Edge Functions** (rodam em Deno, fora do alcance desta suíte).
 
 O inventário completo, com ordem de prioridade e o que **não** se testa aqui, está no [`backlog.md`](../../backlog.md) → "Completar a suíte de testes (Vitest)".
 

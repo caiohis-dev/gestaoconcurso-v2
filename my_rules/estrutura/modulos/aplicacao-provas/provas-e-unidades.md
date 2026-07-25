@@ -17,6 +17,21 @@
 
 Remover uma unidade de uma prova (`removeUnidadeMutation`) deleta em cascata as `salas_prova_distribuidas` daquela unidade+prova antes de deletar o vínculo em `prova_unidades`.
 
+### ⚠️ As duas operações têm três passos e NÃO são transacionais
+
+Vale para `addUnidade` e `removeUnidade`: cada passo é uma requisição própria do supabase-js, sem transação em volta. **Um toast de erro não significa "nada aconteceu"** — significa que parou no meio. Fixado por teste em `useProvaUnidades.test.tsx`.
+
+**Adicionar** — (1) grava o vínculo → (2) lê as salas do template → (3) copia para o snapshot. Falhando no passo 3, a unidade fica **vinculada e sem sala nenhuma**. É recuperável pela própria UI: remover e adicionar de novo refaz a cópia.
+
+**Remover** — (1) lê o vínculo para descobrir a unidade → (2) apaga o snapshot → (3) apaga o vínculo. Falhando no passo 3, as salas **já foram apagadas** e a unidade continua vinculada, com zero salas. **Este é o pior dos dois**, porque o snapshot podia estar customizado (salas extras do `SalaExtraDialog`, capacidades ajustadas, fiscais atribuídos) e nada disso existe no template — recriar pelo template não devolve o que foi editado.
+
+Dois detalhes que parecem menores e não são:
+
+- O delete do snapshot filtra por **`prova_id` E `sala_fk_unidade`**. Sem o `prova_id`, apagaria as salas daquela unidade em **todas** as provas.
+- Se o passo 1 da remoção falhar, nada é apagado — falha fechada, e é o comportamento certo: sem saber a unidade, um delete só por `prova_id` varreria o snapshot inteiro da prova.
+
+Se um dia isso precisar ser atômico, o caminho é uma RPC — não dá para resolver encadeando chamadas no cliente.
+
 ## Capacidade agregada
 
 `useUnidadeCapacidade.tsx` e `useSalasDistribuidasCapacidade` (em `useSalasDistribuidas.tsx`) calculam a soma de `sala_capacidade` por unidade a partir de `salas_prova_distribuidas` — ou seja, sempre a partir do snapshot da prova, não do template. Usado em `GerenciarProva.tsx` para mostrar quantos candidatos cabem por unidade.

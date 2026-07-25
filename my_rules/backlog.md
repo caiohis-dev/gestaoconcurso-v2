@@ -13,7 +13,7 @@ Este item é o marco: quem retomar os testes começa por aqui. **Leia `testes.md
 
 ### Onde paramos (2026-07-25)
 
-**309 testes em 23 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
+**329 testes em 25 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
 
 Coberto:
 
@@ -22,22 +22,22 @@ Coberto:
 | Registro de módulos | `lib/modulos.test.ts` — inclui invariantes sobre `MODULOS` inteiro |
 | Schemas Zod (9) | `ColaboradorDialog`, `EditalDialog`, `FuncaoColaboradorDialog`, `ProvaDialog`, `SalaProvaDialog`, `UnidadeProvaDialog`, `pages/Auth`, `pages/GerenciarUsuarios` |
 | Auth | `useAuth.test.tsx` — hierarquia, `colaborador` paralelo, `rolesLoaded`, `signOut` |
-| Hooks de dados (10) | `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useEditais`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useValoresFuncaoProva`, `useOcorrencias`, `useCoordenadorUnidades` (+ `useAuth`) |
+| Hooks de dados (12) | `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useEditais`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useValoresFuncaoProva`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades` (+ `useAuth`) |
 | UI de diálogo (2) | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx` |
 | Acessibilidade | `components/dialogos-acessibilidade.test.ts` — invariante estática sobre os 28 diálogos |
 | A própria infra | `src/test/supabase-mock.test.ts` — o mock tem teste próprio |
 
 ### O que falta, em ordem de valor
 
-**1. Hooks sem cobertura — faltam 10.**
+**1. Hooks sem cobertura — faltam 8.**
 
 > ⚠️ **Correção de um número que já esteve errado.** `testes.md` e o `00-modulo.md` listavam **8**; o inventário real de 2026-07-25 deu **12**, porque a lista antiga esquecia `useBancos`, `useCoordenadorUnidades`, `useOcorrencias` e `useUnidadeCapacidade`.
 
-**Feitos em 2026-07-25** (eram os dois prioritários): `useOcorrencias` e `useCoordenadorUnidades` — e a aposta se pagou, porque a dupla rendeu o defeito do recorte por unidade registrado como item próprio acima.
+**Feitos em 2026-07-25, os quatro prioritários:** `useOcorrencias`, `useCoordenadorUnidades`, `useProvas` e `useProvaUnidades`. A aposta se pagou: a primeira dupla rendeu o defeito do recorte por unidade (item acima), e a segunda fixou por escrito que `addUnidade`/`removeUnidade` **não são transacionais** (ver [`estrutura/modulos/aplicacao-provas/provas-e-unidades.md`](./estrutura/modulos/aplicacao-provas/provas-e-unidades.md)).
 
-Faltam: `useProvas`, `useProvaUnidades`, `useUnidadesProva`, `useSalasProva`, `useSalasDistribuidas`, `useUnidadeCapacidade`, `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers`, `useBancos`.
+Faltam: `useUnidadesProva`, `useSalasProva`, `useSalasDistribuidas`, `useUnidadeCapacidade`, `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers`, `useBancos`.
 
-Prioridade no que resta: **`useProvas` e `useProvaUnidades`** — são a espinha do módulo e o que mais hook depende. `useBancos` é provavelmente lista estática — último.
+Prioridade no que resta: **`useSalasDistribuidas`** — é o snapshot que a remoção de unidade apaga, e onde vivem fiscais e salas extras. `useBancos` é provavelmente lista estática — último.
 
 **2. UI de diálogo — 2 de 12 cobertos.** Sem nenhum teste: `CoordenadoresProvaDialog`, `CorrigirEmailAcessoDialog`, `MetaColaboradoresDialog`, `PasswordConfirmDialog`, `SalaExtraDialog`, `ValoresFuncaoProvaDialog`. Com teste de schema mas sem teste de interação: `ColaboradorDialog`, `FuncaoColaboradorDialog`, `SalaProvaDialog`, `UnidadeProvaDialog`.
 
