@@ -35,7 +35,14 @@ function criarWrapper({ queryClient, route = "/" }: WrapperOpts = {}) {
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
       <QueryClientProvider client={client}>
-        <MemoryRouter initialEntries={[route]}>{children}</MemoryRouter>
+        {/* As future flags só silenciam os avisos de migração para o v7; sem elas
+            cada teste polui o stderr com dois warnings e esconde ruído de verdade. */}
+        <MemoryRouter
+          initialEntries={[route]}
+          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        >
+          {children}
+        </MemoryRouter>
       </QueryClientProvider>
     );
   };

@@ -55,6 +55,13 @@ const resultadosPorTabela = new Map<string, QueryResult>();
 const resultadosPorRpc = new Map<string, QueryResult>();
 const resultadosPorFunction = new Map<string, QueryResult>();
 
+// Sequências: quando o MESMO `from(tabela)` é chamado várias vezes na mesma unidade
+// de trabalho com formatos diferentes. Caso real: useColaboradoresProva lê
+// `prova_unidades` primeiro com .single() (um objeto) e logo depois como lista.
+// Indexar só por tabela devolveria o mesmo resultado nas duas e quebraria a segunda.
+const sequenciasPorTabela = new Map<string, QueryResult[]>();
+const contadorPorTabela = new Map<string, number>();
+
 /**
  * Métodos do PostgrestFilterBuilder que devolvem o próprio builder (encadeáveis).
  * Não é a lista exaustiva do supabase-js — é a que este codebase usa, mais os
@@ -115,9 +122,19 @@ function criarQueryBuilder(obterResultado: () => QueryResult): QueryBuilderMock 
 }
 
 export const supabaseMock = {
-  from: vi.fn((tabela: string) =>
-    criarQueryBuilder(() => resultadosPorTabela.get(tabela) ?? RESULTADO_VAZIO),
-  ),
+  from: vi.fn((tabela: string) => {
+    const sequencia = sequenciasPorTabela.get(tabela);
+    if (!sequencia) {
+      return criarQueryBuilder(() => resultadosPorTabela.get(tabela) ?? RESULTADO_VAZIO);
+    }
+    // O índice é fixado na chamada de `from`, não no await: é o que dá a ordem.
+    // Esgotada a sequência, o último resultado passa a se repetir — assim um
+    // refetch do React Query não zera o cenário montado pelo teste.
+    const i = contadorPorTabela.get(tabela) ?? 0;
+    contadorPorTabela.set(tabela, i + 1);
+    const resultado = sequencia[Math.min(i, sequencia.length - 1)] ?? RESULTADO_VAZIO;
+    return criarQueryBuilder(() => resultado);
+  }),
 
   // Assinatura espelha a real: rpc(nome, params?). Vários hooks passam params.
   rpc: vi.fn((nome: string, _params?: Record<string, unknown>) =>
@@ -154,6 +171,16 @@ export function setTableResult<T>(tabela: string, resultado: QueryResult<T>): vo
   resultadosPorTabela.set(tabela, resultado as QueryResult);
 }
 
+/**
+ * Define resultados em ORDEM para chamadas sucessivas de `from(<tabela>)`. Use
+ * quando o código consulta a mesma tabela mais de uma vez com formatos diferentes.
+ * Depois de esgotada, a última entrada se repete.
+ */
+export function setTableResultSequence(tabela: string, resultados: QueryResult[]): void {
+  sequenciasPorTabela.set(tabela, resultados);
+  contadorPorTabela.set(tabela, 0);
+}
+
 /** Define o que `supabase.rpc(<nome>)` vai resolver. */
 export function setRpcResult<T>(nome: string, resultado: QueryResult<T>): void {
   resultadosPorRpc.set(nome, resultado as QueryResult);
@@ -172,6 +199,8 @@ export function resetSupabaseMock(): void {
   resultadosPorTabela.clear();
   resultadosPorRpc.clear();
   resultadosPorFunction.clear();
+  sequenciasPorTabela.clear();
+  contadorPorTabela.clear();
   supabaseMock.from.mockClear();
   supabaseMock.rpc.mockClear();
   supabaseMock.functions.invoke.mockClear();

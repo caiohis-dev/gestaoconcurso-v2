@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   supabaseMock,
   setTableResult,
+  setTableResultSequence,
   setRpcResult,
   resetSupabaseMock,
   erroPostgrest,
@@ -71,6 +72,43 @@ describe("mock do client do Supabase", () => {
     await expect(supabaseMock.from("tabela_qualquer").select("*")).resolves.toEqual({
       data: null,
       error: null,
+    });
+  });
+
+  describe("sequência por tabela", () => {
+    it("devolve resultados em ordem para chamadas sucessivas da mesma tabela", async () => {
+      // O caso que motivou o recurso: prova_unidades lida primeiro como objeto
+      // (.single()) e depois como lista, dentro do mesmo queryFn.
+      setTableResultSequence("prova_unidades", [
+        { data: { prova_id: "p1" }, error: null },
+        { data: [{ id: "pu1" }, { id: "pu2" }], error: null },
+      ]);
+
+      const primeira = await supabaseMock.from("prova_unidades").select("prova_id").single();
+      const segunda = await supabaseMock.from("prova_unidades").select("id").eq("prova_id", "p1");
+
+      expect(primeira.data).toEqual({ prova_id: "p1" });
+      expect(segunda.data).toEqual([{ id: "pu1" }, { id: "pu2" }]);
+    });
+
+    it("repete o último resultado depois de esgotada", async () => {
+      // Importante para o React Query: um refetch não pode zerar o cenário.
+      setTableResultSequence("provas", [{ data: [{ id: "a" }], error: null }]);
+
+      await supabaseMock.from("provas").select("*");
+      const terceira = await supabaseMock.from("provas").select("*");
+
+      expect(terceira.data).toEqual([{ id: "a" }]);
+    });
+
+    it("é resetada pelo resetSupabaseMock", async () => {
+      setTableResultSequence("provas", [{ data: [{ id: "a" }], error: null }]);
+      resetSupabaseMock();
+
+      await expect(supabaseMock.from("provas").select("*")).resolves.toEqual({
+        data: null,
+        error: null,
+      });
     });
   });
 
