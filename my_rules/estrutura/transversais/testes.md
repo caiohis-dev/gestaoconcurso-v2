@@ -103,4 +103,8 @@ async function carregarEDepois(sequencia) {
 
 Os testes miram **comportamento e contrato**, não cobertura de linhas — para sobreviverem a refatoração. E acabam servindo de documentação executável: ao contrário de um `.md`, este texto **quebra quando deixa de ser verdade**.
 
-Onde um teste afirma comportamento **errado** de propósito, ele leva `⚠️ DEFEITO` no nome e um comentário explicando. É o caso de `useProvaLock`: dois testes afirmam que `isLoading` fica preso, porque fica. Eles vão quebrar quando o bug for corrigido — e é esse o sinal de que devem ser reescritos.
+Onde um teste afirma comportamento **errado** de propósito, ele leva `⚠️ DEFEITO` no nome e um comentário explicando por quê. O teste vira então um alarme invertido: **ele quebra quando o bug é corrigido**, e é esse o sinal de que deve ser reescrito para o comportamento certo.
+
+O ciclo já se fechou uma vez, e vale como modelo: dois testes de `useProvaLock` afirmavam que `isLoading` ficava preso em `true`, porque ficava; ao consertar o hook em 2026-07-25 eles quebraram, como previsto, e foram reescritos como **teste de regressão** — mesma montagem, asserção invertida, e o comentário passou de "defeito conhecido" para "isto já quebrou uma vez, não deixe voltar". Preserve esse comentário: é ele que impede alguém de "simplificar" o `else` que resolve o estado.
+
+**Hoje não há nenhum teste marcado `⚠️ DEFEITO` na suíte.** Se for marcar um novo, abra o item correspondente no `backlog.md` na mesma unidade de trabalho — a marca sem o item vira defeito aceito por esquecimento.

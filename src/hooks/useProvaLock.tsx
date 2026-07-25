@@ -128,6 +128,13 @@ export function useProvaLock({ provaId, userId, userName, enabled = true }: UseP
   useEffect(() => {
     if (enabled && provaId && userId && userName) {
       acquireLock();
+    } else {
+      // Sem os parâmetros (ou desabilitado) não há lock a adquirir — mas o estado
+      // precisa sair de `isLoading`, senão quem renderiza spinner enquanto ele for
+      // true (GerenciarColaboradoresProva) fica preso sem erro nem saída. A guarda
+      // equivalente dentro de `acquireLock` não resolve isso: ela nunca é alcançada,
+      // porque a condição acima já impede a chamada.
+      setState(prev => (prev.isLoading ? { ...prev, isLoading: false } : prev));
     }
   }, [acquireLock, enabled, provaId, userId, userName]);
 

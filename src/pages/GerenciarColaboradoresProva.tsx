@@ -136,9 +136,19 @@ export default function GerenciarColaboradoresProva() {
       .select("full_name, email")
       .eq("id", user.id)
       .maybeSingle()
-      .then(({ data }) => {
-        setUserName(data?.full_name || data?.email || user.email || "Usuário");
-      });
+      .then(
+        ({ data }) => {
+          setUserName(data?.full_name || data?.email || user.email || "Usuário");
+        },
+        (err) => {
+          // `userName` alimenta o `enabled` do lock abaixo. Sem tratar a rejeição, o
+          // nome ficaria vazio para sempre e o lock nunca seria habilitado. (O
+          // rejeitado vai no 2º argumento do .then porque o builder do PostgREST é
+          // um thenable — não expõe .catch.)
+          console.error("Error fetching user name for lock:", err);
+          setUserName(user.email || "Usuário");
+        },
+      );
   }, [user]);
 
   // Lock de edição exclusiva para esta unidade

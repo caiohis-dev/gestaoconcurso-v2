@@ -104,38 +104,21 @@ describe("useProvaLock", () => {
       ["sem userId", { ...PARAMS, userId: undefined }],
       ["sem userName", { ...PARAMS, userName: undefined }],
       ["desabilitado", { ...PARAMS, enabled: false }],
-    ])("não tenta adquirir %s", async (_rotulo, params) => {
+    ])("não tenta adquirir, mas resolve isLoading %s", async (_rotulo, params) => {
+      // O `isLoading` faz parte do contrato: REGRESSÃO corrigida em 2026-07-25 —
+      // o estado nascia `isLoading: true` e só era resolvido DENTRO de
+      // `acquireLock`, que o efeito de mount não chama quando falta parâmetro.
+      // Ficava preso em true para sempre.
+      //
+      // Não era teórico: GerenciarColaboradoresProva.tsx renderiza tela de
+      // carregamento enquanto `unidadeLock.isLoading`, e o `enabled` de lá depende
+      // de um `userName` buscado de forma assíncrona. Enquanto ele não chegasse, a
+      // página ficava presa no spinner — sem erro, sem timeout e sem saída.
       const { result } = renderHook(() => useProvaLock(params));
-      await vi.advanceTimersByTimeAsync(50);
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
 
       expect(chamadasDe("acquire_prova_lock")).toHaveLength(0);
       expect(result.current.hasAccess).toBe(false);
-    });
-
-    it.each([
-      ["sem provaId", { ...PARAMS, provaId: undefined }],
-      ["desabilitado", { ...PARAMS, enabled: false }],
-    ])("⚠️ DEFEITO: isLoading fica preso em true %s", async (_rotulo, params) => {
-      // Comportamento REAL, não desejado — documentado aqui em vez de mascarado.
-      //
-      // `acquireLock` tem uma guarda que faria `isLoading: false` quando falta
-      // parâmetro, mas o useEffect do mount só a CHAMA se todos existirem:
-      //     if (enabled && provaId && userId && userName) acquireLock();
-      // Logo aquela guarda é código morto e o estado inicial (isLoading: true)
-      // nunca é resolvido.
-      //
-      // Alcançável em produção: GerenciarColaboradoresProva.tsx:413 renderiza
-      // tela de carregamento enquanto `unidadeLock.isLoading`, e o `enabled` de
-      // lá depende de `userName`, preenchido por um .then() SEM .catch. Se
-      // aquela consulta rejeitar, a página fica presa no spinner para sempre.
-      //
-      // Conserto (fora do escopo de testes): resolver o estado no próprio efeito
-      // quando a guarda barrar, ou remover a guarda interna de acquireLock e
-      // deixá-la ser chamada sempre.
-      const { result } = renderHook(() => useProvaLock(params));
-      await vi.advanceTimersByTimeAsync(1_000);
-
-      expect(result.current.isLoading).toBe(true);
     });
   });
 
