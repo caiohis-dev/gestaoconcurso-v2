@@ -6,7 +6,7 @@
 roadmap:
   titulo: "Editais como entidade — a prova deixa de ter um edital em texto livre e passa a referenciar um Edital cadastrado"
   criado: "2026-07-24"
-  status: "desenho FECHADO nas decisões do usuário (D1–D4, 2026-07-24); D5–D7 são propostas do desenho, a confirmar. NADA implementado."
+  status: "IMPLEMENTADO em 2026-07-24 na branch feat/editais (etapas 1–7). D1–D7 todas confirmadas pelo usuário. Falta só o smoke manual e o merge --no-ff em dev."
   branch:
     nome: feat/editais
     base: dev            # regra do projeto: tema sai de dev e volta para dev
@@ -95,7 +95,7 @@ roadmap:
 
     - id: D5
       titulo: "edital_id é NULLABLE no banco, mas OBRIGATÓRIO no app"
-      decidido: "PROPOSTA do desenho — a confirmar"
+      decidido: "sim — CONFIRMADO pelo usuário em 2026-07-24"
       racional: |
         O CHAR(30) era NOT NULL, então o instinto é edital_id NOT NULL. Mas a ordem do
         `db reset` impede: migrations rodam ANTES do seed.pos.sql, e é o seed.pos que faz
@@ -109,12 +109,12 @@ roadmap:
 
     - id: D6
       titulo: "Apagar um edital com provas é BLOQUEADO (ON DELETE RESTRICT)"
-      decidido: "PROPOSTA do desenho — a confirmar"
+      decidido: "sim — CONFIRMADO pelo usuário em 2026-07-24"
       racional: "Apagar um edital não pode sumir com provas em silêncio. RESTRICT obriga a lidar com as provas antes. (CASCADE seria destrutivo demais para uma entidade-modelo.)"
 
     - id: D7
       titulo: "nome do edital vira TEXT único (case-insensitive), aposentando o CHAR(30)"
-      decidido: "PROPOSTA do desenho — a confirmar"
+      decidido: "sim — CONFIRMADO pelo usuário em 2026-07-24"
       racional: |
         CHAR(30) faz padding com espaços — é a origem dos ~15 `.trim()` espalhados. Numa
         tabela própria, `nome` vira TEXT com índice único funcional sobre lower(trim(...))

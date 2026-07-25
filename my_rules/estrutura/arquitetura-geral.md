@@ -75,6 +75,7 @@ Toda lógica de negócio sensível ou que exige elevação de privilégio vive e
 | `/perfil`, `/perfil-colaborador` | Perfil admin vs. colaborador | [`colaboradores.md`](./colaboradores.md), [`auth-e-permissoes.md`](./auth-e-permissoes.md) |
 | `/unidades-prova`, `/salas-prova/:unidadeId` | Cadastro de unidades e salas (template) | [`provas-e-unidades.md`](./provas-e-unidades.md) |
 | `/provas`, `/gerenciar-prova/:provaId` | CRUD de provas | [`provas-e-unidades.md`](./provas-e-unidades.md) |
+| `/editais` | CRUD de editais (só admin); a prova referencia um edital | [`provas-e-unidades.md`](./provas-e-unidades.md) |
 | `/gerenciar-salas-distribuidas/:provaId/:unidadeId` | Distribuição de salas por prova/unidade | [`provas-e-unidades.md`](./provas-e-unidades.md) |
 | `/gerenciar-colaboradores-prova/:provaUnidadeId` | Alocação de colaboradores por função | [`alocacao-e-funcoes.md`](./alocacao-e-funcoes.md) |
 | `/ocorrencias-prova/:provaId` | Registro de ocorrências | [`ocorrencias.md`](./ocorrencias.md) |
