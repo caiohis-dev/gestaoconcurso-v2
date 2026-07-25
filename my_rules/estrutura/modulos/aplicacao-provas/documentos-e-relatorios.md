@@ -18,7 +18,7 @@ Além dos documentos da página acima, `GerenciarProva.tsx` tem três exportaç�
 | `exportCoordenadores` (l. 313) | `isExportingCoordenadores` | PDF | `coordenadores_prova` da prova |
 | **`exportCargosCSV`** (l. 371) | `isExportingCargos` | **CSV** | `colaboradores_prova` + `valores_funcao_prova`, agregados por função |
 
-`exportCargosCSV` monta um mapa `funcao_id → { nome, count, valor }` **partindo de `valores_funcao_prova`** e contando as alocações em cima — ou seja, uma função sem valor cadastrado na prova não entra no mapa e **não aparece no CSV**, mesmo tendo gente alocada. É consequência direta de a semeadura do mapa vir dos valores, não das alocações.
+`exportCargosCSV` monta um mapa `funcao_id → { nome, count, valor }` semeado por `valores_funcao_prova` e depois percorre as alocações. Uma função **com gente alocada mas sem valor cadastrado entra assim mesmo**, com `valor: 0` (`if (!map[c.funcao_id]) map[c.funcao_id] = { …, valor: 0 }`) — o relatório não esconde alocação por falta de valor. A linha só é omitida quando `count === 0 && valor === 0`, e se nada sobra a página avisa "Não há cargos alocados nesta prova" em vez de baixar arquivo vazio.
 
 Ao mexer em layout de PDF, `exportColaboradores` e `exportCoordenadores` andam juntas (compartilham padrões visuais); `exportCargosCSV` é independente e não é afetada.
 

@@ -33,6 +33,8 @@ O **edital** é o concurso: o documento sob o qual uma ou mais provas são aplic
 
 Não há Edge Function, RPC nem view neste módulo: é CRUD direto via PostgREST, contido pela RLS.
 
+**Cobertura de testes** (ver [`../../transversais/testes.md`](../../transversais/testes.md)): o módulo é o mais bem coberto do sistema. `useEditais.test.tsx` (14) cobre a listagem, as traduções de `23505`/`23503` e a invalidação dupla; `EditalDialog.test.ts` (8) o schema isolado; `EditalDialog.ui.test.tsx` (11) a interação. O lado da prova está em `ProvaDialog.ui.test.tsx` (10), que guarda a herança e o bloqueio sem edital.
+
 ## Modelo de dados
 
 ```

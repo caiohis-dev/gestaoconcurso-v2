@@ -27,13 +27,14 @@ O que atravessa módulos, ou é anterior a eles. Um doc de módulo **referencia*
 | [`transversais/auth-e-permissoes.md`](./transversais/auth-e-permissoes.md) | Login único no Supabase Auth (`useAuth`), papéis e `isColaborador`, a porta única "Estou sem minha senha", RLS/RPC, `colab_email` como âncora de identidade, matriz papel × módulo |
 | [`transversais/integracoes-externas.md`](./transversais/integracoes-externas.md) | E-mail transacional (tudo pela `send-email`), as 8 Edge Functions |
 | [`transversais/desenvolvimento-local.md`](./transversais/desenvolvimento-local.md) | Supabase local via Docker, scripts, a divisão `migrations` / `seed.pos.sql` / `seed.local.sql` |
+| [`transversais/testes.md`](./transversais/testes.md) | Vitest + RTL: como rodar, convenções, a infra de `src/test/` (mock do Supabase, helpers de render) e as armadilhas conhecidas |
 
 **Rotas fora de qualquer módulo** (config geral e público), cobertas pelos transversais: `/` (hub), `/auth`, `/redefinir-senha`, `/cadastro-publico`, `/perfil`, `/perfil-colaborador`, `/gerenciar-usuarios`.
 
 ## Como manter
 
 1. **Antes de mexer num módulo**, leia o `00-modulo.md` dele. Se não bastou, o doc tem um buraco — tape-o.
-2. **Depois de mexer**, atualize os docs daquele módulo *antes* de fechar o tema. Vale para feature nova e para refatoração.
+2. **Depois de mexer**, atualize os docs daquele módulo *antes* de fechar o tema. Vale para feature nova e para refatoração. Rode também `npm test`, `tsc --noEmit` e `npm run build` — ver [`transversais/testes.md`](./transversais/testes.md).
 3. **Módulo novo** em `src/lib/modulos.ts` = pasta nova em `modulos/` com seu `00-modulo.md` + linha na tabela acima.
 4. Mudança que não é de módulo nenhum vai para o transversal certo; se não couber em nenhum, provavelmente é transversal novo.
 5. Nunca reorganizar por rota ou por camada técnica.

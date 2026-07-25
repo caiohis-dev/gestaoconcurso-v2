@@ -51,23 +51,6 @@ O projeto ganhou uma suíte de regressão em 2026-07-25 (Vitest + React Testing 
 
 ---
 
-## Documentar a infraestrutura de testes em `estrutura/`
-
-**Status:** pendente — aberto em 2026-07-25
-**Área:** Documentação (ver [`estrutura/00-indice.md`](./estrutura/00-indice.md))
-
-A suíte existe, mas **`my_rules/estrutura/` não menciona Vitest, Testing Library nem `npm test`**. Isso contraria a regra central da pasta: o doc de um módulo tem que bastar para trabalhar nele. Hoje nenhum `00-modulo.md` diz que há testes, onde ficam, nem que existe infra pronta — então a próxima sessão tende a reescrever o mock do Supabase do zero por não saber que ele existe.
-
-**O trabalho:** um `transversais/testes.md` com o mapa de `src/test/` (mock do Supabase, `renderWithProviders`, `renderHookWithProviders`), as convenções (co-localização; `.test.ts` para contrato puro, `.ui.test.tsx` para interação) e — o mais valioso — as **armadilhas que já custaram tempo aqui**:
-
-1. **A sequência do mock é consumida pela query de listagem** antes de chegar à mutation, porque as duas chamam `from(<tabela>)`. Use `carregarEDepois`-style: espere a carga inicial e só então instale a sequência. E a **última entrada precisa ser um array**, porque o refetch da invalidação cai nela.
-2. **`buildersDaTabela(t).at(-1)` pega o refetch, não a mutation** — a mutation invalida a query e o React Query refaz a listagem. Use `builderQueChamou(tabela, metodo)`.
-3. **`act()` em qualquer chamada que atualize estado do provider** (caso do `signOut`), senão a suíte acumula avisos que escondem problema real depois.
-
-Mais uma linha em cada `00-modulo.md` apontando o que do módulo está coberto.
-
----
-
 ## Refazer a página de treinamento do zero
 
 **Status:** pendente — a página antiga foi **excluída** em 2026-07-25

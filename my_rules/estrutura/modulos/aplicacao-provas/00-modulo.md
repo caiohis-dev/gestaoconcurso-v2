@@ -104,6 +104,17 @@ Todas `SECURITY DEFINER`, chamadas via `supabase.rpc(...)`:
 
 Padrão dominante: React Query (`useQuery`/`useMutation` + `invalidateQueries`). **Exceção conhecida:** `PainelDadosColaboradores.tsx` e o `Dashboard.tsx` fazem fetch próprio — não assuma cache automático sem conferir o hook.
 
+## Cobertura de testes
+
+Ver [`../../transversais/testes.md`](../../transversais/testes.md) para infra e convenções.
+
+| Coberto | Sem cobertura |
+|---|---|
+| `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useProvaLock` | `useProvas`, `useProvaUnidades`, `useSalasDistribuidas`, `useUnidadesProva`, `useSalasProva`, `useFuncoesColaboradores`, `useFuncoesAssociadas` |
+| Schemas Zod: `ColaboradorDialog`, `UnidadeProvaDialog`, `SalaProvaDialog`, `FuncaoColaboradorDialog`, `ProvaDialog` | UI dos diálogos, exceto `ProvaDialog` |
+
+⚠️ Dois testes de `useProvaLock` estão marcados **`⚠️ DEFEITO`** e afirmam o comportamento **errado** de propósito (o `isLoading` preso — ponto 7 abaixo). Vão quebrar quando o bug for corrigido; é o sinal de que devem ser reescritos.
+
 ## Componentes de domínio
 
 `ColaboradorDialog`, `ColaboradoresList`, `ProvaDialog`, `ProvaCard`, `UnidadeProvaDialog`, `SalaProvaDialog`, `SalaExtraDialog`, `FuncaoColaboradorDialog`, `ValoresFuncaoProvaDialog`, `MetaColaboradoresDialog`, `CoordenadoresProvaDialog`.
@@ -125,12 +136,6 @@ Fora do módulo, em `src/components/`: `Layout`, `NavLink`, `PasswordConfirmDial
 3. **`valor_pagamento` é congelado na alocação**, não lido ao vivo de `valores_funcao_prova`. Mudar o valor da função não corrige alocações existentes.
 4. **Encerrar ocorrências de uma unidade é irreversível pelo app** — nada devolve `ocorrencias_encerradas` a `FALSE`, nem o `reabrir_prova_unidade`. Ver [`ocorrencias.md`](./ocorrencias.md).
 5. **A liberação do lock no `beforeunload` não funciona como está.** `useProvaLock` usa `navigator.sendBeacon` contra `/rest/v1/rpc/release_prova_lock`, e o `sendBeacon` **não permite definir header nenhum** — a requisição sai sem `apikey`/`Authorization`, que o PostgREST exige. Na prática quem devolve a prova é o **timeout de 10 minutos** da `acquire_prova_lock`. *(Conclusão de leitura do código — não testada em runtime.)* Ao mexer aqui, não presuma que a limpeza no unload funciona hoje.
-6. **`Treinamento.tsx` (1547 linhas) é manual do usuário escrito à mão dentro do app.** A rota `/treinamento` explica o sistema tela por tela, em JSX estático: texto corrido mais mockups desenhados à mão (o card de exemplo "Edital 001/2025 · 500 candidatos" é literal no código, não dado real). **Ela não importa hook nenhum e não consulta o banco** — descreve o sistema por fora.
+6. **A rota `/treinamento` não existe mais.** O manual do usuário embutido no app (`Treinamento.tsx`, 1547 linhas de JSX estático) foi **excluído em 2026-07-25**: o conteúdo estava envelhecido demais para valer remendo, e manual errado é pior que manual nenhum, porque parece autoridade. Será reescrito do zero — o item no [`backlog.md`](../../../backlog.md) registra o que a versão nova precisa resolver *além* do conteúdo. Se encontrar referência a `/treinamento` em migration, roadmap ou comentário, é história.
 
-   **Por que isso é frágil:** quando um fluxo descrito aqui muda, a página segue contando a versão antiga e **nada acusa** — não quebra build, não falha teste, não gera aviso de lint. No resto do código, mudar uma coluna estoura erro de tipo em cascata; aqui o erro é mudo, e o único detector é alguém lembrar que esta página existe.
-
-   **Já aconteceu uma vez:** o tema Editais teve de remendá-la à mão (commit `cd86219`, uma linha — *"Nova Prova" passa a descrever a escolha de um edital já cadastrado*). Antes disso, intocada desde o commit inicial.
-
-   **Estado em 2026-07-25: sem defeito conhecido.** Varredura não achou conteúdo obsoleto — ela não cobre login (por isso a refatoração de auth de 2026-07-14/15 legitimamente não a afetou) nem navegação/hub, e a linha do fluxo de prova foi corrigida. O risco é estrutural, não uma dívida em aberto.
-
-   **Regra prática:** feature que mude um fluxo *descrito aqui* deve incluir a revisão desta página no escopo do tema. Detalhe menor: o título interno diz *"Sistema de Cadastro de Colaboradores do DCIT"*, divergindo da marca FEVRE usada no resto da UI.
+7. **⚠️ `useProvaLock` deixa `isLoading` preso em `true`** quando falta parâmetro ou `enabled` é falso — a guarda que resolveria o estado vive *dentro* de `acquireLock`, mas o efeito de mount só a chama quando tudo já existe, então é código morto. **Trava a tela de alocação:** `GerenciarColaboradoresProva.tsx:413` renderiza carregamento enquanto `unidadeLock.isLoading`, e o `enabled` de lá depende de um `userName` vindo de `.then()` **sem `.catch`**. Achado por teste em 2026-07-25; conserto sugerido no [`backlog.md`](../../../backlog.md).
