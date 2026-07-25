@@ -1,4 +1,11 @@
-import { ClipboardList, type LucideIcon } from 'lucide-react';
+import {
+  ClipboardList,
+  LayoutDashboard,
+  Contact,
+  FileText,
+  Building2,
+  type LucideIcon,
+} from 'lucide-react';
 
 /**
  * Registro de módulos — a FONTE DE VERDADE do sistema multi-módulo.
@@ -27,6 +34,18 @@ export interface CtxAcesso {
   isCoordenador: boolean;
 }
 
+// Papéis que um link de navegação pode exigir. Inclui 'colaborador' porque o header
+// mistura links de módulo (só gestão) com config geral ('Meu Cadastro', do colaborador).
+export type PapelNav = 'superadmin' | 'admin' | 'coordenador' | 'colaborador';
+
+// Um item do header. Sem showFor = visível para todos que estão dentro do módulo.
+export interface NavLink {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  showFor?: PapelNav[];
+}
+
 export interface Modulo {
   id: ModuloId;
   nome: string;
@@ -39,6 +58,8 @@ export interface Modulo {
   // NÃO incluir rotas públicas (/cadastro-publico) nem config geral
   // (/perfil, /perfil-colaborador, /gerenciar-usuarios).
   prefixosRota: string[];
+  // Os links que o header mostra quando se está DENTRO deste módulo (etapa 4).
+  navLinks: NavLink[];
 }
 
 const aplicacaoProvas: Modulo = {
@@ -64,6 +85,12 @@ const aplicacaoProvas: Modulo = {
     '/cadastro',
     '/cadastro-lote',
     '/treinamento',
+  ],
+  navLinks: [
+    { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, showFor: ['admin', 'superadmin'] },
+    { href: '/colaboradores', label: 'Colaboradores', icon: Contact },
+    { href: '/provas', label: 'Provas', icon: FileText, showFor: ['admin', 'superadmin', 'coordenador'] },
+    { href: '/unidades-prova', label: 'Unidades de Prova', icon: Building2, showFor: ['admin', 'superadmin'] },
   ],
 };
 

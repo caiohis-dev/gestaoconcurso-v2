@@ -10,7 +10,8 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, User, Menu, Home, Building2, Settings, FileText, LayoutDashboard, Users, UserCircle } from "lucide-react";
+import { LogOut, User, Menu, Home, Settings, Users, UserCircle } from "lucide-react";
+import { moduloDaRota, type NavLink } from "@/lib/modulos";
 import fevreLogo from "@/assets/fevre-logo.png";
 
 interface LayoutProps {
@@ -20,17 +21,24 @@ interface LayoutProps {
 export default function Layout({ children }: LayoutProps) {
   const { user, role, signOut, isAdmin, isSuperAdmin, isCoordenador, isColaborador, isLoggingOut } = useAuth();
   const location = useLocation();
+  const moduloAtual = moduloDaRota(location.pathname);
 
-  const navLinks = [
-    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, showFor: ['admin', 'superadmin'] },
-    { href: "/colaboradores", label: "Colaboradores", icon: Home },
-    { href: "/provas", label: "Provas", icon: FileText, showFor: ['admin', 'superadmin', 'coordenador'] },
-    { href: "/unidades-prova", label: "Unidades de Prova", icon: Building2, showFor: ['admin', 'superadmin'] },
+  // Dentro de um módulo: "Início" (volta ao hub) + os links daquele módulo (vindos do
+  // registro — fonte de verdade única). No hub, moduloAtual é null e nada disso aparece.
+  const linksModulo: NavLink[] = moduloAtual
+    ? [{ href: "/", label: "Início", icon: Home }, ...moduloAtual.navLinks]
+    : [];
+
+  // Config geral: sempre visível, independe de módulo.
+  // "Meu Cadastro" é o caminho dos 12 que são gestor E colaborador até o próprio
+  // cadastro. Quem é só colaborador nunca vê o Layout — vai direto para
+  // /perfil-colaborador no login.
+  const linksConfig: NavLink[] = [
     { href: "/gerenciar-usuarios", label: "Usuários", icon: Users, showFor: ['superadmin'] },
-    // O caminho dos 12 que são gestor E colaborador até o próprio cadastro. Quem é só
-    // colaborador nunca vê o Layout — vai direto para /perfil-colaborador no login.
     { href: "/perfil-colaborador", label: "Meu Cadastro", icon: UserCircle, showFor: ['colaborador'] },
-  ].filter(link => {
+  ];
+
+  const navLinks = [...linksModulo, ...linksConfig].filter(link => {
     if (!link.showFor) return true;
     if (isSuperAdmin && link.showFor.includes('superadmin')) return true;
     if (isAdmin && link.showFor.includes('admin')) return true;
@@ -51,7 +59,7 @@ export default function Layout({ children }: LayoutProps) {
               <img src={fevreLogo} alt="FEVRE" className="h-10 w-auto" />
               <div className="hidden sm:block">
                 <h1 className="text-lg font-bold text-foreground leading-tight">FEVRE</h1>
-                <p className="text-xs text-muted-foreground">Sistema de Cadastro</p>
+                <p className="text-xs text-muted-foreground">{moduloAtual ? moduloAtual.nome : "Sistema de Cadastro"}</p>
               </div>
             </Link>
 
