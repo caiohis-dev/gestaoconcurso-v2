@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import type { FuncaoColaborador } from "@/hooks/useFuncoesColaboradores";
 
-const formSchema = z.object({
+export const formSchema = z.object({
   cargo_nome: z.string().min(1, "Nome é obrigatório").max(35, "Máximo 35 caracteres"),
   cargo_cbo: z.string().max(7, "Máximo 7 caracteres").optional(),
   cargo_descricao: z.string().max(1000, "Máximo 1000 caracteres").optional(),

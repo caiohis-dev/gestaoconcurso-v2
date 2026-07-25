@@ -26,7 +26,7 @@ import { useBancos, TIPO_CONTA_OPTIONS } from '@/hooks/useBancos';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { z } from 'zod';
 
-const colaboradorSchema = z.object({
+export const colaboradorSchema = z.object({
   colab_matricula: z.string().max(6, 'Máximo 6 caracteres').nullable().optional(),
   colab_nome_completo: z.string().min(1, 'Nome completo obrigatório').max(40, 'Máximo 40 caracteres'),
   colab_cpf: z.string().length(11, 'CPF deve ter 11 dígitos'),

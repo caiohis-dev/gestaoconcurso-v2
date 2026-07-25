@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { UnidadeProva, UnidadeProvaInsert, UnidadeProvaUpdate } from "@/hooks/useUnidadesProva";
 
-const formSchema = z.object({
+export const formSchema = z.object({
   unid_nome: z.string().min(1, "Nome é obrigatório").max(30, "Máximo 30 caracteres"),
   unid_sigla: z.string().min(1, "Sigla é obrigatória").max(10, "Máximo 10 caracteres"),
   unid_andares: z.coerce.number().min(1, "Mínimo 1 andar").max(99, "Máximo 99 andares"),

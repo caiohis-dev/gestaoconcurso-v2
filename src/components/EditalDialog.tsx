@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Edital, EditalInsert, EditalUpdate } from "@/hooks/useEditais";
 
-const formSchema = z.object({
+export const formSchema = z.object({
   nome: z.string().min(1, "Nome do edital é obrigatório"),
   n_candidatos: z.string().optional(),
   cabecalho_linha1: z.string().optional(),

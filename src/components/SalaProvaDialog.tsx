@@ -23,13 +23,13 @@ import {
 import { Loader2 } from "lucide-react";
 import { SalaProva } from "@/hooks/useSalasProva";
 
-const createFormSchema = (maxAndares: number) => z.object({
+export const createFormSchema = (maxAndares: number) => z.object({
   quantidade: z.coerce.number().int().min(1, "Mínimo 1 sala").max(50, "Máximo 50 salas"),
   sala_capacidade: z.coerce.number().int().positive("Capacidade deve ser positiva"),
   sala_andar: z.coerce.number().int().min(1, "Andar deve ser 1 ou maior").max(maxAndares, `Máximo ${maxAndares} andares`),
 });
 
-const editFormSchema = (maxAndares: number) => z.object({
+export const editFormSchema = (maxAndares: number) => z.object({
   sala_numero: z.coerce.number().int().positive("Número deve ser positivo"),
   sala_descricao: z.string().max(50, "Máximo 50 caracteres").optional().or(z.literal("")),
   sala_arcondicionado: z.boolean().default(false),

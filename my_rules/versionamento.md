@@ -60,6 +60,7 @@ Tipos em uso:
 | `refactor` | mudança de código sem alterar comportamento |
 | `docs` | só documentação (inclui `my_rules/`) |
 | `chore` | build, dependências, configuração, tooling |
+| `test` | testes automatizados (Vitest + React Testing Library) |
 | `db` | migration nova (ver a seção de migrations abaixo) |
 
 O escopo, quando existir, é o **módulo** ou o **domínio** — os mesmos nomes de [`estrutura/`](./estrutura/). Módulos: `editais`, e as áreas de Aplicação de Provas (`colaboradores`, `provas`, `alocacao`, `ocorrencias`, `documentos`). Transversais: `auth`, `arquitetura`, `local`.

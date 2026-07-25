@@ -11,7 +11,7 @@ import { CheckCircle2, X, ArrowLeft } from "lucide-react";
 import ReivindicarAcessoCard from "@/components/ReivindicarAcessoCard";
 import { z } from "zod";
 
-const loginSchema = z.object({
+export const loginSchema = z.object({
   email: z.string().email("E-mail inválido"),
   password: z.string().min(6, "Senha deve ter no mínimo 6 caracteres"),
 });

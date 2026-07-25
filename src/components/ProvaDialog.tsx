@@ -29,7 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Prova, ProvaInsert, ProvaUpdate } from "@/hooks/useProvas";
 import { useEditais } from "@/hooks/useEditais";
 
-const formSchema = z.object({
+export const formSchema = z.object({
   edital_id: z.string().min(1, "Selecione um edital"),
   prova_data: z.string().optional(),
   prova_hora_inicio: z.string().optional(),

@@ -40,7 +40,7 @@ import { ptBR } from "date-fns/locale";
 import { z } from "zod";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-const createUserSchema = z.object({
+export const createUserSchema = z.object({
   email: z.string().email("Email inválido"),
   password: z.string().min(6, "Senha deve ter no mínimo 6 caracteres"),
   fullName: z.string().min(2, "Nome deve ter no mínimo 2 caracteres"),
