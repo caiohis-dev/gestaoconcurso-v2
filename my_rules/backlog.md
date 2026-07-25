@@ -4,17 +4,6 @@ Lista de trabalho planejado, ainda não iniciado. Itens concluídos devem ser re
 
 ---
 
-## Editais como entidade (extrair o edital da prova)
-
-**Status:** pendente — **desenho fechado em 2026-07-24**, nada implementado. Roadmap completo em [`analises/roadmap-editais.yaml`](./analises/roadmap-editais.yaml).
-**Área:** Provas e Unidades (ver [`estrutura/provas-e-unidades.md`](./estrutura/provas-e-unidades.md)) / Documentos (ver [`estrutura/documentos-e-relatorios.md`](./estrutura/documentos-e-relatorios.md))
-
-Hoje o edital é a coluna `provas.prova_edital` (CHAR(30) de texto livre). Vira uma **tabela `editais`** (nome, nº candidatos, cabeçalho linha 1 e 2 — os 4 campos que o usuário pediu), com `provas.edital_id` (FK, **1 edital → N provas**). Os campos `prova_n_candidatos`/`prova_cabecalho_linha1/2` **ficam na prova** (cada uma tem os seus; a alocação e os PDFs seguem lendo da prova); o edital só alimenta uma **sugestão de UI** ao cadastrar uma prova nova. CRUD numa página nova **`/editais`**, item do módulo Aplicação de Provas.
-
-Achado que barateia: no banco os 4 campos só existem na definição de `provas` — nenhuma RPC/view/policy os lê. O grosso do trabalho é o front (~12 consumidores de `prova_edital`). Decisões ainda a confirmar (D5–D7 no roadmap): `edital_id` nullable-no-banco/obrigatório-no-app (ordem migration→seed), `ON DELETE RESTRICT`, e nome único em TEXT aposentando o CHAR(30).
-
----
-
 ## Centralizar os guards de página num `RequireModulo`
 
 **Status:** pendente — aberto em 2026-07-24, como saldo da D5 do tema "tela de entrada por módulos"

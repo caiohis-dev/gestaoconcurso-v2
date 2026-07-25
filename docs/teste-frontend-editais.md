@@ -18,7 +18,7 @@ Desenho em [`../my_rules/analises/roadmap-editais.yaml`](../my_rules/analises/ro
 - [ ] **A2** — Após um `db reset`, a lista já traz **2 editais** (backfill): "Edital 001/2026 SMA" (200 candidatos) e "Edital 002/2026 - SMA".
 - [ ] **A3** — **Novo Edital**: nome + nº candidatos + as 2 linhas de cabeçalho (já vêm com o default FEVRE) → salva e aparece na lista.
 - [ ] **A4** — **Editar** um edital → alterações persistem.
-- [ ] **A5** — **Nome duplicado** (mesmo texto, ou só mudando caixa/espaço) → barrado pelo índice único; toast de erro.
+- [ ] **A5** — **Nome duplicado** (mesmo texto, ou só mudando caixa/espaço) → barrado pelo índice único; toast **"Já existe um edital com esse nome."** (mensagem amigável, não o erro cru do Postgres).
 - [ ] **A6** — **Excluir** um edital SEM provas → sai da lista.
 - [ ] **A7** — **Excluir** um edital COM provas vinculadas → **bloqueado**, com a mensagem "Há provas vinculadas..." (não some nada — D6/ON DELETE RESTRICT).
 - [ ] **A8** — Como **coordenador**, o card Editais **não aparece** no hub; abrir `/editais` na barra → **barrado**, cai no hub (guard de admin).
