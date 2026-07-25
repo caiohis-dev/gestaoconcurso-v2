@@ -23,7 +23,7 @@ export default function Layout({ children }: LayoutProps) {
 
   const navLinks = [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, showFor: ['admin', 'superadmin'] },
-    { href: "/", label: "Colaboradores", icon: Home },
+    { href: "/colaboradores", label: "Colaboradores", icon: Home },
     { href: "/provas", label: "Provas", icon: FileText, showFor: ['admin', 'superadmin', 'coordenador'] },
     { href: "/unidades-prova", label: "Unidades de Prova", icon: Building2, showFor: ['admin', 'superadmin'] },
     { href: "/gerenciar-usuarios", label: "Usuários", icon: Users, showFor: ['superadmin'] },

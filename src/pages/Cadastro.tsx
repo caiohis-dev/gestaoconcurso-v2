@@ -19,7 +19,7 @@ export default function Cadastro() {
 
   useEffect(() => {
     if (!dialogOpen) {
-      navigate('/');
+      navigate('/colaboradores');
     }
   }, [dialogOpen, navigate]);
 
