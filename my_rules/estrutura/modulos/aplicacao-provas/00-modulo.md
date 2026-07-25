@@ -48,7 +48,7 @@ Todas em `prefixosRota`. **Cada página tem o seu guard, escrito à mão** — n
 | `/gerenciar-salas-distribuidas/:provaId/:unidadeId` | `GerenciarSalasDistribuidas.tsx` (435 l.) | `isAdmin` |
 | `/gerenciar-colaboradores-prova/:provaUnidadeId` | `GerenciarColaboradoresProva.tsx` (935 l.) | `isAdmin \|\| isCoordenador` |
 | `/ocorrencias-prova/:provaId` | `OcorrenciasProva.tsx` | `isAdminOrSuper \|\| isCoordenador` |
-| `/funcoes-colaboradores` | `FuncoesColaboradores.tsx` (236 l.) | ⚠️ **só login** (+ ações restritas na UI) — ver abaixo |
+| `/funcoes-colaboradores` | `FuncoesColaboradores.tsx` (236 l.) | `isAdmin` (desde 2026-07-25) |
 | `/documentos-impressao/:provaId` | `DocumentosImpressao.tsx` | `isAdmin` **+ `prova_finalizada`** |
 | `/painel-dados-colaboradores/:provaId` | `PainelDadosColaboradores.tsx` | `isAdmin` |
 
@@ -57,7 +57,9 @@ Todas em `prefixosRota`. **Cada página tem o seu guard, escrito à mão** — n
 - **Esperar `rolesLoaded`, não só `loading`.** `useAuth` só faz `setLoading(false)` depois de buscar os papéis, mas cada `applySession` posterior (refresh de token) reabre a janela em que o usuário já existe e os papéis ainda não. Decidir ali expulsaria coordenador para o hub. O idiom correto é o do `Inicio.tsx`: `if (loading || !rolesLoaded) return;`.
 - **Respeitar `isLoggingOut`.** Sem isso o logout dispara o bounce por papel antes do redirect do `signOut`.
 
-⚠️ **`/funcoes-colaboradores` continua só com login.** Ele é o **outro** caso da mesma omissão — `FuncoesColaboradores.tsx:47-51` só manda para `/auth`, e `isAdmin` apenas esconde as ações de escrita na UI. Um `user` puro ou colaborador que digite a URL vê a lista de funções em modo leitura. Não foi corrigido junto porque o papel certo é **decisão de produto, não de simetria**: o único link para a página é admin-only (em `Colaboradores.tsx`), o que sugere `isAdmin`, mas não está claro se o coordenador precisa consultar a lista. Enquanto não se decidir, este é o caso que sustenta o `RequireModulo` do [`backlog.md`](../../../backlog.md) — um wrapper único elimina a classe inteira por construção.
+✅ **`/funcoes-colaboradores` também ganhou o guard**, no mesmo dia e pelo mesmo motivo: era o **outro** caso da mesma omissão (só mandava para `/auth`; `isAdmin` apenas escondia as ações de escrita, então qualquer conta autenticada via a lista de funções em modo leitura). Ficou em `isAdmin` — que inclui superadmin —, decidido pelo usuário: o cadastro de funções é gestão, e o coordenador já vê os nomes das funções na tela de alocação.
+
+**Duas omissões idênticas em 15 páginas não é coincidência** — é o que guard escrito à mão produz, e o erro é silencioso: nada quebra, a página só fica aberta demais. É o argumento do `RequireModulo` no [`backlog.md`](../../../backlog.md), que elimina a classe inteira por construção.
 
 ## Tabelas que o módulo possui
 
@@ -140,7 +142,7 @@ Fora do módulo, em `src/components/`: `Layout`, `NavLink`, `PasswordConfirmDial
 2. **Template vs. snapshot de sala** — confundir `sala_prova` com `salas_prova_distribuidas` é o erro mais fácil deste módulo. Ver [`provas-e-unidades.md`](./provas-e-unidades.md).
 3. **`valor_pagamento` é congelado na alocação**, não lido ao vivo de `valores_funcao_prova`. Mudar o valor da função não corrige alocações existentes.
 4. **Encerrar ocorrências de uma unidade é irreversível pelo app** — nada devolve `ocorrencias_encerradas` a `FALSE`, nem o `reabrir_prova_unidade`. Ver [`ocorrencias.md`](./ocorrencias.md).
-5. **A liberação do lock no `beforeunload` não funciona como está.** `useProvaLock` usa `navigator.sendBeacon` contra `/rest/v1/rpc/release_prova_lock`, e o `sendBeacon` **não permite definir header nenhum** — a requisição sai sem `apikey`/`Authorization`, que o PostgREST exige. Na prática quem devolve a prova é o **timeout de 10 minutos** da `acquire_prova_lock`. *(Conclusão de leitura do código — não testada em runtime.)* Ao mexer aqui, não presuma que a limpeza no unload funciona hoje.
+5. **A liberação do lock ao sair da página passou a funcionar em 2026-07-25** — antes não funcionava, e a armadilha vale registro: era `navigator.sendBeacon`, que **não permite definir header nenhum**, então a requisição saía sem `apikey`/`Authorization` e o PostgREST recusava; quem devolvia a prova era o timeout de 10 min. Agora é `fetch` com `keepalive: true` (sobrevive ao unload **e** aceita headers), no evento **`pagehide`** — que cobre o `beforeunload` e mais: aba mandada para segundo plano no mobile, e navegação que entra no bfcache. **Não volte para `sendBeacon`**, e ao mexer no lock leia o ponto do bfcache em [`provas-e-unidades.md`](./provas-e-unidades.md).
 6. **A rota `/treinamento` não existe mais.** O manual do usuário embutido no app (`Treinamento.tsx`, 1547 linhas de JSX estático) foi **excluído em 2026-07-25**: o conteúdo estava envelhecido demais para valer remendo, e manual errado é pior que manual nenhum, porque parece autoridade. Será reescrito do zero — o item no [`backlog.md`](../../../backlog.md) registra o que a versão nova precisa resolver *além* do conteúdo. Se encontrar referência a `/treinamento` em migration, roadmap ou comentário, é história.
 7. **Guard de página é escrito à mão, um por arquivo** — e por isso já falhou por omissão duas vezes (ver a seção de rotas). Ao criar página nova no módulo, copie o par completo: bounce por login **e** por papel, esperando `rolesLoaded`. `/funcoes-colaboradores` ainda está sem o segundo.
 

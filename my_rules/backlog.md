@@ -15,10 +15,10 @@ Foi **deixado de fora de propósito** do tema que criou o hub (decisão D5 do [`
 
 > **Correção do que estava escrito aqui (2026-07-25):** este item afirmava que "os guards atuais continuam corretos". **Dois não estavam** — e a omissão é do mesmo tipo nos dois: o `useEffect` manda para `/auth` quem não está logado e **para por aí**, sem o `navigate("/")` por papel que as outras páginas têm.
 >
-> - `Colaboradores.tsx` — **corrigido em 2026-07-25** (`isAdmin || isCoordenador`, esperando `rolesLoaded`).
-> - `FuncoesColaboradores.tsx` — **ainda aberto.** `isAdmin` só esconde as ações de escrita; a lista de funções é visível a qualquer conta autenticada que digite `/funcoes-colaboradores`. Não foi corrigido junto porque **o papel certo é decisão de produto**: o único link para a página é admin-only, o que sugere `isAdmin`, mas não está decidido se o coordenador precisa consultar a lista. Escolher errado tira uma tela de quem usa.
+> - `Colaboradores.tsx` — **corrigido em 2026-07-25** (`isAdmin || isCoordenador`).
+> - `FuncoesColaboradores.tsx` — **corrigido em 2026-07-25** (`isAdmin`, decidido pelo usuário: cadastro de funções é gestão, e o coordenador já vê os nomes na tela de alocação).
 >
-> Nenhum dos dois é vazamento de dado (a RLS contém), mas **duas ocorrências da mesma omissão em 15 páginas é o argumento do item**, não uma coincidência: guard escrito à mão erra por esquecimento, e o erro é silencioso — nada quebra, a página só fica aberta demais. Isso **eleva a prioridade** de "manutenção" para "há inconsistência real a corrigir". Ao implementar o wrapper, decidir o papel de `/funcoes-colaboradores` faz parte do trabalho. Inventário de guards por rota: [`estrutura/modulos/aplicacao-provas/00-modulo.md`](./estrutura/modulos/aplicacao-provas/00-modulo.md).
+> Nenhum dos dois era vazamento de dado (a RLS contém), mas **duas ocorrências da mesma omissão em 15 páginas é o argumento do item**, não uma coincidência: guard escrito à mão erra por esquecimento, e o erro é silencioso — nada quebra, a página só fica aberta demais. Os dois consertos pontuais **não substituem o wrapper**; eles mostram por que ele é necessário. Inventário de guards por rota: [`estrutura/modulos/aplicacao-provas/00-modulo.md`](./estrutura/modulos/aplicacao-provas/00-modulo.md).
 >
 > **Dois detalhes que o wrapper precisa herdar** (achados ao consertar o `Colaboradores.tsx`): esperar **`rolesLoaded`**, não só `loading` — cada refresh de token reabre a janela em que o usuário existe e os papéis ainda não, e decidir ali expulsa coordenador; e respeitar **`isLoggingOut`**, senão o logout dispara o bounce por papel antes do redirect.
 

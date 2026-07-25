@@ -34,7 +34,7 @@ import {
 import { Loader2, Plus, Pencil, Trash2 } from "lucide-react";
 
 export default function FuncoesColaboradores() {
-  const { user, loading: authLoading, isAdmin } = useAuth();
+  const { user, loading: authLoading, rolesLoaded, isAdmin, isLoggingOut } = useAuth();
   const navigate = useNavigate();
   const { funcoes, isLoading, create, update, delete: deleteFuncao, isCreating, isUpdating, isDeleting } = useFuncoesColaboradores();
   const { isFuncaoAssociada, isLoading: isLoadingAssociacoes } = useFuncoesAssociadas();
@@ -45,12 +45,21 @@ export default function FuncoesColaboradores() {
   const [funcaoToDelete, setFuncaoToDelete] = useState<FuncaoColaborador | null>(null);
 
   useEffect(() => {
-    if (!authLoading && !user) {
-      navigate("/auth");
+    if (isLoggingOut) return;
+    // Esperar `rolesLoaded`, não só `authLoading`: cada refresh de token reabre a
+    // janela em que o usuário já existe e os papéis ainda não.
+    if (authLoading || !rolesLoaded) return;
+    if (!user) {
+      navigate("/auth", { replace: true });
+    } else if (!isAdmin) {
+      // `isAdmin` inclui superadmin (ver useAuth). Antes a página só checava login, e
+      // `isAdmin` apenas escondia as ações de escrita — qualquer conta autenticada via
+      // a lista de funções pela URL.
+      navigate("/", { replace: true });
     }
-  }, [user, authLoading, navigate]);
+  }, [user, authLoading, rolesLoaded, isAdmin, navigate, isLoggingOut]);
 
-  if (authLoading || isLoading || isLoadingAssociacoes) {
+  if (authLoading || !rolesLoaded || isLoading || isLoadingAssociacoes) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -58,7 +67,7 @@ export default function FuncoesColaboradores() {
     );
   }
 
-  if (!user) {
+  if (!user || !isAdmin) {
     return null;
   }
 
