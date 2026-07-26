@@ -103,7 +103,7 @@ async function carregarEDepois(sequencia) {
 
 ## O que está coberto (2026-07-26)
 
-513 testes em 30 arquivos.
+529 testes em 31 arquivos.
 
 | Área | Arquivos |
 |---|---|
@@ -112,10 +112,10 @@ async function carregarEDepois(sequencia) {
 | Schemas Zod (9) | `*Dialog.test.ts`, `pages/Auth.test.ts`, `pages/GerenciarUsuarios.test.ts` |
 | Auth | `useAuth.test.tsx` — hierarquia, `colaborador` paralelo, `rolesLoaded`, `signOut` |
 | Hooks de dados | `useEditais`, `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas` (+ `useSalasDistribuidasCapacidade` e `useFiscaisSala`), `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers` |
-| UI | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx` |
+| UI | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx`, **`PasswordConfirmDialog.ui.test.tsx`** (16 — a barreira das ações destrutivas) |
 | **Guards de página** | `pages/guards.test.tsx` — 137 testes: a matriz **19 páginas × 5 papéis**, mais a janela do `rolesLoaded` e o `isLoggingOut` |
 
-**Sem cobertura ainda — 4 hooks** (a lista já esteve errada, dizendo 8 quando eram 12): `useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade`, `useBancos`. Mais **10 dos 12 diálogos** e **as 8 Edge Functions** (rodam em Deno, fora do alcance desta suíte — a autorização de duas delas é verificada pela bateria manual [`../../../docs/bateria-create-admin-autorizacao.md`](../../../docs/bateria-create-admin-autorizacao.md)).
+**Sem cobertura ainda — 4 hooks** (a lista já esteve errada, dizendo 8 quando eram 12): `useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade`, `useBancos`. Mais **9 dos 12 diálogos** e **as 8 Edge Functions** (rodam em Deno, fora do alcance desta suíte — a autorização de duas delas é verificada pela bateria manual [`../../../docs/bateria-create-admin-autorizacao.md`](../../../docs/bateria-create-admin-autorizacao.md)).
 
 **Das páginas, o que está coberto é o guard, não o comportamento.** A bateria afirma quem entra e para onde o recusado é mandado; ela não exercita formulário, listagem nem ação de página nenhuma. As **4 páginas fora da matriz** são as que não têm guard a testar, todas públicas por natureza: `/auth`, `/cadastro-publico`, `/redefinir-senha` e `NotFound`.
 
@@ -140,4 +140,4 @@ O ciclo já se fechou uma vez, e vale como modelo: dois testes de `useProvaLock`
 
 **O ciclo já se fechou uma segunda vez, e vale como confirmação do método:** a marca do `/perfil` ("renderiza inteira para visitante deslogado") **quebrou ao ganhar o guard**, em 2026-07-26 — como previsto. Foi reescrita em duas regressões: uma afirma que o formulário **não escapa** no caminho para o `/auth` (a matriz só afirma o destino), a outra que o nome vem preenchido quando a sessão resolve depois do mount.
 
-Existe também a marca mais fraca **`⚠️ ATENÇÃO`**, para quando o comportamento **não é defeito**, mas morde quem depende dele. Não abre item de backlog; existe para quem for mexer ali não achar que pode simplificar aquilo. Dois casos: `useCoordenadorUnidades` (lista vazia indistinguível de "ainda carregando" sem olhar `isLoading`) e o bloco da **janela do `rolesLoaded`** em `guards.test.tsx` — 13 páginas decidem sem esperar os papéis, o que hoje não expulsa ninguém só porque o `role` anterior sobrevive ao refetch.
+Existe também a marca mais fraca **`⚠️ ATENÇÃO`**, para quando o comportamento **não é defeito**, mas morde quem depende dele. Não abre item de backlog; existe para quem for mexer ali não achar que pode simplificar aquilo. Três casos: `useCoordenadorUnidades` (lista vazia indistinguível de "ainda carregando" sem olhar `isLoading`); o bloco da **janela do `rolesLoaded`** em `guards.test.tsx` — 13 páginas decidem sem esperar os papéis, o que hoje não expulsa ninguém só porque o `role` anterior sobrevive ao refetch; e o `PasswordConfirmDialog`, que **só zera senha e erro pelo Cancelar/Esc**, não quando o pai fecha via prop `open` (nenhuma das 5 páginas faz isso hoje).

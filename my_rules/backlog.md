@@ -13,7 +13,7 @@ Este item é o marco: quem retomar os testes começa por aqui. **Leia `testes.md
 
 ### Onde paramos (2026-07-26)
 
-**513 testes em 30 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
+**529 testes em 31 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
 
 Coberto:
 
@@ -23,7 +23,7 @@ Coberto:
 | Schemas Zod (9) | `ColaboradorDialog`, `EditalDialog`, `FuncaoColaboradorDialog`, `ProvaDialog`, `SalaProvaDialog`, `UnidadeProvaDialog`, `pages/Auth`, `pages/GerenciarUsuarios` |
 | Auth | `useAuth.test.tsx` — hierarquia, `colaborador` paralelo, `rolesLoaded`, `signOut` |
 | Hooks de dados (18) | `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useEditais`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useValoresFuncaoProva`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas` + os dois vizinhos do mesmo arquivo (`useSalasDistribuidasCapacidade`, `useFiscaisSala`), `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers` (+ `useAuth`) |
-| UI de diálogo (2) | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx` |
+| UI de diálogo (3) | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx`, `PasswordConfirmDialog.ui.test.tsx` |
 | Acessibilidade | `components/dialogos-acessibilidade.test.ts` — invariante estática sobre os 28 diálogos |
 | **Guards de página** | `pages/guards.test.tsx` — **137 testes**: matriz 19 páginas × 5 papéis, a janela do `rolesLoaded` e o `isLoggingOut` |
 | A própria infra | `src/test/supabase-mock.test.ts` — o mock tem teste próprio |
@@ -40,9 +40,11 @@ Faltam: `useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade`, `useBancos`
 
 Os quatro que sobram são de baixo risco — CRUD parecido com o já coberto, e `useBancos` deve ser lista estática. **O valor agora está na camada 2 (diálogos) e na 3 (páginas/guards)**, não em terminar esta.
 
-**2. UI de diálogo — 2 de 12 cobertos.** Sem nenhum teste: `CoordenadoresProvaDialog`, `CorrigirEmailAcessoDialog`, `MetaColaboradoresDialog`, `PasswordConfirmDialog`, `SalaExtraDialog`, `ValoresFuncaoProvaDialog`. Com teste de schema mas sem teste de interação: `ColaboradorDialog`, `FuncaoColaboradorDialog`, `SalaProvaDialog`, `UnidadeProvaDialog`.
+**2. UI de diálogo — 3 de 12 cobertos.** Sem nenhum teste: `CoordenadoresProvaDialog`, `CorrigirEmailAcessoDialog`, `MetaColaboradoresDialog`, `SalaExtraDialog`, `ValoresFuncaoProvaDialog`. Com teste de schema mas sem teste de interação: `ColaboradorDialog`, `FuncaoColaboradorDialog`, `SalaProvaDialog`, `UnidadeProvaDialog`.
 
-`PasswordConfirmDialog` merece atenção especial: é a barreira de confirmação de ações destrutivas (encerrar ocorrências, excluir prova). É o diálogo em que uma regressão silenciosa custa mais caro.
+✅ **`PasswordConfirmDialog` foi o primeiro, em 2026-07-26** — era o que mais importava: a barreira de confirmação das ações destrutivas (excluir edital e prova, finalizar/reabrir, encerrar ocorrências), com 7 usos em 5 páginas. 16 testes fixam o contrato numa frase: **`onConfirm` só roda depois de a senha ser aceita pelo servidor**, e erro em qualquer etapa **não fecha o diálogo** — porque fechar sem executar pareceria sucesso. Falsificado: neutralizar a checagem de `signInError` derruba o teste da senha incorreta.
+
+**A próxima de maior valor é `CoordenadoresProvaDialog`** — é o caminho que a decisão do item do `addCoordenadorAccess` (acima) quer tornar exclusivo para conceder acesso de coordenador. Cobri-lo antes daquela refatoração dá a mesma rede que a bateria de guards deu ao `RequireModulo`.
 
 **3. Páginas: os guards estão cobertos desde 2026-07-26; o comportamento, não.** A aposta do `it.each` sobre a tabela rota × papel se pagou: `pages/guards.test.tsx` cobre **19 páginas × 5 papéis** e é agora a especificação do `RequireModulo` (item abaixo), que deixou de ser arriscado. A bateria foi **falsificada de propósito** antes de ser aceita — quebrar o guard do `Editais` fez cair exatamente os casos "recusa colaborador" e "recusa coordenador", que é a falha que passou meses invisível.
 
