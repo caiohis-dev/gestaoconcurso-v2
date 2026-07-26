@@ -96,6 +96,13 @@ export function useUsers() {
           role,
         });
         if (error) throw error;
+      } else if (role === "coordenador") {
+        // Uma transação só. Antes eram dois DELETEs soltos, e falhar no segundo deixava
+        // o papel removido da tela com o ACESSO REAL de pé — `is_coordenador_prova`
+        // consulta apenas `coordenadores_prova` e nunca olha `user_roles`.
+        // Ver a migration 20260726160000.
+        const { error } = await supabase.rpc("revogar_coordenador", { p_user_id: userId });
+        if (error) throw error;
       } else {
         const { error } = await supabase
           .from("user_roles")
@@ -103,15 +110,6 @@ export function useUsers() {
           .eq("user_id", userId)
           .eq("role", role);
         if (error) throw error;
-
-        // Se removendo coordenador, remover também os acessos às provas
-        if (role === "coordenador") {
-          const { error: coordError } = await supabase
-            .from("coordenadores_prova")
-            .delete()
-            .eq("user_id", userId);
-          if (coordError) throw coordError;
-        }
       }
     },
     onSuccess: (_, variables) => {

@@ -6,6 +6,8 @@ import {
   setTableResultSequence,
   resetSupabaseMock,
   buildersDaTabela,
+  builderQueChamou,
+  setRpcResult,
   erroPostgrest,
 } from "@/test/supabase-mock";
 import { renderHookWithProviders } from "@/test/utils";
@@ -168,12 +170,20 @@ describe("useUsers", () => {
       ]);
     });
 
-    it("revogar 'coordenador' também apaga os vínculos de prova", async () => {
+    it("revogar 'coordenador' vai pela RPC transacional, não por dois DELETEs", async () => {
+      // REGRESSÃO. Até 2026-07-26 eram dois DELETEs soltos — `user_roles` primeiro,
+      // `coordenadores_prova` depois — e falhar no segundo deixava o PIOR estado: papel
+      // removido da tela, acesso real de pé. Não era cosmético, porque
+      // `is_coordenador_prova(uid, prova_id)` — usada na policy de
+      // `ocorrencias_colaborador` e nas RPCs `finalizar_prova_unidade` e
+      // `encerrar_ocorrencias_unidade` — consulta **só `coordenadores_prova`** e nunca
+      // olha o papel. A pessoa sumia da lista de coordenadores e seguia entrando.
+      //
+      // Agora é uma transação só (migration 20260726160000): o corpo da função roda
+      // dentro de uma transação, então falhar em qualquer DELETE desfaz o outro.
       const { result } = await carregar();
-      setTableResultSequence("user_roles", [
-        { data: null, error: null },
-        { data: [], error: null },
-      ]);
+      setRpcResult("revogar_coordenador", { data: null, error: null });
+      setTableResult("user_roles", { data: [], error: null });
 
       result.current.updateRole.mutate({ userId: "u1", role: "coordenador", action: "remove" });
 
@@ -183,28 +193,17 @@ describe("useUsers", () => {
         ),
       );
 
-      expect(chamadasDe("coordenadores_prova", "delete")).toHaveLength(1);
-      expect(chamadasDe("coordenadores_prova", "eq")[0]).toEqual(["user_id", "u1"]);
+      expect(supabaseMock.rpc).toHaveBeenCalledWith("revogar_coordenador", { p_user_id: "u1" });
+      // O ponto da correção: o cliente não apaga mais nada por conta própria.
+      expect(() => builderQueChamou("coordenadores_prova", "delete")).toThrow();
+      expect(() => builderQueChamou("user_roles", "delete")).toThrow();
     });
 
-    it("⚠️ ATENÇÃO: revogar coordenador são DOIS passos — falhar no 2º mantém o acesso real", async () => {
-      // Ordem: (1) apaga a linha de `user_roles`, (2) apaga `coordenadores_prova`.
-      // Se o passo 2 falhar, o papel JÁ FOI removido e os vínculos ficam.
-      //
-      // Por que isso não é cosmético: `is_coordenador_prova(uid, prova_id)` — usada na
-      // policy de `ocorrencias_colaborador` e nas RPCs `finalizar_prova_unidade` e
-      // `encerrar_ocorrencias_unidade` — consulta **só `coordenadores_prova`**, e NÃO
-      // olha o papel. Então a pessoa continua passando na RLS daquelas provas mesmo
-      // aparecendo, na tela, como alguém sem o papel de coordenador.
-      //
-      // O toast de erro aparece, mas descreve o contrário do que aconteceu: parte da
-      // revogação foi aplicada, e justamente a parte que NÃO controla o acesso real.
+    it("falha na revogação não deixa estado parcial — nada é apagado pelo cliente", async () => {
+      // Com a RPC, um erro significa que NADA foi aplicado. Antes, o mesmo toast de erro
+      // convivia com o papel já removido.
       const { result } = await carregar();
-      setTableResultSequence("user_roles", [
-        { data: null, error: null }, // papel removido com sucesso
-        { data: [], error: null },
-      ]);
-      setTableResult("coordenadores_prova", {
+      setRpcResult("revogar_coordenador", {
         data: null,
         error: erroPostgrest("42501", "sem permissão"),
       });
@@ -219,8 +218,29 @@ describe("useUsers", () => {
           }),
         ),
       );
+      expect(() => builderQueChamou("user_roles", "delete")).toThrow();
+    });
 
-      // O delete do papel saiu assim mesmo — é o que fixa a parcialidade.
+    it("revogar OUTRO papel continua sendo DELETE direto, sem a RPC", async () => {
+      // A RPC é específica do coordenador, porque só ele tem o vínculo em cascata.
+      // Admin e user seguem no caminho simples — que já é atômico, é um DELETE só.
+      const { result } = await carregar();
+      setTableResultSequence("user_roles", [
+        { data: null, error: null },
+        { data: [], error: null },
+      ]);
+
+      result.current.updateRole.mutate({ userId: "u1", role: "admin", action: "remove" });
+
+      await waitFor(() =>
+        expect(toastMock).toHaveBeenCalledWith(
+          expect.objectContaining({ title: "Permissão atualizada" }),
+        ),
+      );
+      expect(supabaseMock.rpc).not.toHaveBeenCalledWith(
+        "revogar_coordenador",
+        expect.anything(),
+      );
       expect(chamadasDe("user_roles", "delete")).toHaveLength(1);
     });
   });

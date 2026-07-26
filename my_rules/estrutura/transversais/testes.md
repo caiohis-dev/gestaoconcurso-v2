@@ -109,7 +109,7 @@ async function carregarEDepois(sequencia) {
 
 ## O que está coberto (2026-07-26)
 
-683 testes em 44 arquivos.
+684 testes em 44 arquivos.
 
 | Área | Arquivos |
 |---|---|
@@ -154,5 +154,6 @@ O ciclo já se fechou uma vez, e vale como modelo: dois testes de `useProvaLock`
 | `ValoresFuncaoProvaDialog` (aceita valor negativo) | CHECK no banco + recusa no cliente | regressão: recusa e **preserva o preenchimento**, e o zero segue aceito |
 | `ValoresFuncaoProvaDialog` (excluir sem confirmar) | entrou `AlertDialog` | quatro regressões: abre, nomeia a função, confirma, cancela |
 | `CorrigirEmailAcessoDialog` (descartava a mensagem do servidor) | extraído o helper `mensagemDeErroDaFuncao` | duas regressões, uma na consulta e outra na correção |
+| `useUsers` (revogar coordenador em dois passos) | virou a RPC transacional `revogar_coordenador` | três regressões: vai pela RPC, falha não deixa estado parcial, e outros papéis seguem no DELETE direto |
 
 Existe também a marca mais fraca **`⚠️ ATENÇÃO`**, para quando o comportamento **não é defeito**, mas morde quem depende dele. Não abre item de backlog; existe para quem for mexer ali não achar que pode simplificar aquilo. Cinco casos: `useCoordenadorUnidades` (lista vazia indistinguível de "ainda carregando" sem olhar `isLoading`); o bloco da **janela do `rolesLoaded`** em `guards.test.tsx` — 13 páginas decidem sem esperar os papéis, o que hoje não expulsa ninguém só porque o `role` anterior sobrevive ao refetch; o `PasswordConfirmDialog`, que **só zera senha e erro pelo Cancelar/Esc**, não quando o pai fecha via prop `open` (nenhuma das 5 páginas faz isso hoje); e o `MetaColaboradoresDialog`, em que **meta de função que perdeu o valor fica órfã** — o upsert nunca apaga, então a linha continua no banco sem aparecer na tela; e o `useSalasProva`, cujo esquema `andar × 100 + sequência` comporta **99 salas por andar** e invade o andar seguinte em silêncio ao estourar.

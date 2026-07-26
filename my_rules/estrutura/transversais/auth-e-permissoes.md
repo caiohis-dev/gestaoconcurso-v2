@@ -172,7 +172,11 @@ Existem **dois caminhos diferentes** no código para dar acesso de coordenador a
 
 Remover o papel de coordenador (`updateRole` com `action: "remove"`) também remove em cascata todos os registros de `coordenadores_prova` daquele usuário.
 
-⚠️ **Mas isso são dois passos SEM transação, e a ordem é a pior possível:** `updateRole` apaga `user_roles` **e só depois** `coordenadores_prova`. Como `is_coordenador_prova` consulta **apenas** `coordenadores_prova` — nunca `user_roles` —, falhar no segundo passo **tira o papel da tela e mantém o acesso real pela RLS**. A saída correta é RPC.
+✅ **Isso eram dois passos SEM transação até 2026-07-26, e na pior ordem:** `updateRole` apagava `user_roles` **e só depois** `coordenadores_prova`. Como `is_coordenador_prova` consulta **apenas** `coordenadores_prova` — nunca `user_roles` —, falhar no segundo passo **tirava o papel da tela e mantinha o acesso real pela RLS**: a pessoa sumia da lista de coordenadores e seguia entrando nas provas dela.
+
+Agora é uma transação só, pela RPC **`revogar_coordenador(p_user_id)`** (migration `20260726160000`). O corpo de uma função roda dentro de uma transação, então falhar em qualquer um dos DELETEs desfaz o outro. A autorização é `has_role(auth.uid(), 'admin')` — a mesma exigência das policies que ela substitui, nem mais nem menos —, e a função é cirúrgica: apaga o papel `coordenador` e os vínculos, preservando os outros papéis da pessoa.
+
+> **Só o coordenador passa pela RPC.** Revogar `admin` ou `user` segue sendo um `DELETE` direto, que já é atômico por ser uma operação só. RPC ali seria cerimônia sem ganho.
 
 ✅ **O superadmin voltou a poder conceder acesso de coordenador (corrigido em 2026-07-26).** A EF `create-coordenador` autorizava o chamador com `SELECT` em `user_roles` filtrando `role = 'admin'` — match literal. Superadmin não tem linha `admin` (a `create-admin` insere só o papel escolhido), então levava **403 "Only admins can create coordinators"** justamente no caminho canônico da concessão. Era a **terceira ocorrência** da classe que a migration `20260725195530_superadmin_implica_admin_em_has_role.sql` existe para resolver. As duas checagens passaram a usar `has_role`:
 

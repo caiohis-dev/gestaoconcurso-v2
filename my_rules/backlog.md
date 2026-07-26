@@ -13,7 +13,7 @@ Este item é o marco: quem retomar os testes começa por aqui. **Leia `testes.md
 
 ### Onde paramos (2026-07-26)
 
-**683 testes em 44 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
+**684 testes em 44 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
 
 Coberto:
 

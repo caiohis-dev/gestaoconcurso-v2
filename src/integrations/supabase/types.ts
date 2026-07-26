@@ -1023,6 +1023,7 @@ export type Database = {
         Args: { p_prova_id: string; p_user_id: string }
         Returns: boolean
       }
+      revogar_coordenador: { Args: { p_user_id: string }; Returns: undefined }
       update_meu_colaborador: {
         Args: {
           p_bairro: string
