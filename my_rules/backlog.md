@@ -95,38 +95,14 @@ Como documentado em [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/
 1. Pelo `CoordenadoresProvaDialog` (dentro da gestão da prova), que exige uma alocação real em `colaboradores_prova` com função de coordenação.
 2. Pela tela `/gerenciar-usuarios` via `useUsers.addCoordenadorAccess`, que é o caminho "de emergência" que fabrica a linha sintética quando não há alocação.
 
+> ✅ **Um pré-requisito desta decisão foi resolvido em 2026-07-26.** A EF `create-coordenador` recusava o **superadmin** com 403, porque autorizava o chamador por `SELECT` literal em `user_roles` — ou seja, tornar esse diálogo o caminho exclusivo teria trancado a concessão justamente para o superadmin. As duas checagens (a da EF e a barreira de e-mail do diálogo) passaram a usar `has_role`. Ver [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md).
+>
+> ⚠️ **Atenção ao executar:** a fabricação da alocação falsa existe em **DOIS** lugares. Além do `useUsers.addCoordenadorAccess`, a EF `create-admin` tem a **própria cópia** da lógica (`createCoordenadorAccess`, com o mesmo `.limit(1)` pegando qualquer colaborador), usada pelo formulário de criação de usuário — e roda com `service_role`, fora da RLS. Fechar só o cliente deixa a máquina de poluir instalada.
+
 **Ação necessária:**
 - Remover da UI de `/gerenciar-usuarios` a opção de conceder/selecionar o papel de `coordenador`.
 - A concessão de acesso de coordenador passará a ser **exclusiva** do fluxo de alocação da prova (`CoordenadoresProvaDialog`).
 - Com isso, o hook `useUsers.addCoordenadorAccess` (e o workaround da alocação falsa em `colaboradores_prova`) deverá ser excluído do código.
-
----
-
-## Papel checado por SELECT literal em `user_roles` bloqueia o superadmin na concessão de coordenador
-
-**Status:** pendente — **achado ao escrever teste** do `CoordenadoresProvaDialog` em 2026-07-26
-**Área:** Autenticação (ver [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md)) / Alocação e Funções
-
-**Terceira ocorrência da mesma classe** (as duas primeiras foram `send-email` e `create-admin`): papel conferido por `SELECT` em `user_roles` com igualdade, em vez de `has_role`. A migration [`20260725195530_superadmin_implica_admin_em_has_role.sql`](../supabase/migrations/20260725195530_superadmin_implica_admin_em_has_role.sql) existe **precisamente** porque `user_roles` não carrega a implicação `superadmin ⊇ admin` — quem a resolve é o `has_role`. E `create-admin` já foi corrigida para usar a RPC, com o comentário explícito no código.
-
-São **dois lugares**, o mesmo erro, gravidades diferentes:
-
-**1. 🔴 A Edge Function `create-coordenador` RECUSA o superadmin** (`index.ts:51-64`):
-
-```ts
-.from("user_roles").select("role").eq("user_id", user.id).eq("role", "admin").single()
-// roleError || !roleData  →  403 "Only admins can create coordinators"
-```
-
-Um superadmin **não tem linha `admin`** em `user_roles` — `create-admin` insere só o papel escolhido. Então ele leva **403** e **não consegue conceder acesso de coordenador**. Isto viola a regra do usuário de que superadmin não bate em muro, e é funcional: quebra o fluxo hoje, não em teoria.
-
-> **Consequência direta para a decisão do `addCoordenadorAccess`** (item acima): aquela decisão quer tornar o `CoordenadoresProvaDialog` o caminho **exclusivo** de concessão. Enquanto este 403 existir, tornar exclusivo um caminho que o superadmin não consegue usar **tranca a concessão para ele**. Consertar isto é pré-requisito daquele tema, não item paralelo.
-
-**2. 🟡 A barreira de e-mail de admin no diálogo não pega superadmin** (`CoordenadoresProvaDialog.tsx:122-127`). A intenção é recusar e-mail que já pertence a um administrador; com `.eq("role","admin")`, o e-mail de um superadmin passa reto. A EF então **reaproveita a conta existente** (`create-coordenador/index.ts:85-87`) e acrescenta o papel `coordenador` mais uma linha em `coordenadores_prova` à conta do superadmin.
-
-Não é escalada de privilégio (superadmin já pode mais), e o `resolveRoleGestao` mantém o `role` como `superadmin`, então a UI dele não muda. O dano é **poluição de dado** e a barreira falhando em silêncio no caso que ela mesma diz proibir. Tem teste marcado `⚠️ DEFEITO`.
-
-**Conserto dos dois:** trocar o SELECT por `supabase.rpc("has_role", { _user_id, _role: "admin" })`, que já resolve a hierarquia. O da EF é o urgente.
 
 ---
 

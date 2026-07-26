@@ -47,16 +47,29 @@ serve(async (req) => {
       );
     }
 
-    // Check if user is admin
-    const { data: roleData, error: roleError } = await supabaseAdmin
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id)
-      .eq("role", "admin")
-      .single();
+    // Exige admin — e via `has_role` (RPC), NÃO por SELECT em `user_roles`.
+    //
+    // Por que isto foi trocado em 2026-07-26: a checagem anterior era
+    // `.eq("role", "admin")`, match literal na tabela. Um superadmin não tem linha
+    // `admin` em `user_roles` (a `create-admin` insere só o papel escolhido), então
+    // levava 403 e NÃO CONSEGUIA conceder acesso de coordenador — sendo que este é o
+    // caminho canônico da concessão. A hierarquia (superadmin ⇒ admin) vive dentro do
+    // `has_role` desde a migration 20260725195530, e consultar a tabela direto contorna
+    // a regra. Mesma classe de falha já corrigida na `send-email` e na `create-admin`.
+    const { data: ehAdmin, error: roleError } = await supabaseAdmin.rpc("has_role", {
+      _user_id: user.id,
+      _role: "admin",
+    });
 
-    if (roleError || !roleData) {
+    if (roleError) {
       console.error("Role check error:", roleError);
+      return new Response(
+        JSON.stringify({ error: "Falha ao verificar permissão" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!ehAdmin) {
       return new Response(
         JSON.stringify({ error: "Only admins can create coordinators" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }

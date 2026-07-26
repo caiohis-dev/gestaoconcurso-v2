@@ -174,7 +174,14 @@ Remover o papel de coordenador (`updateRole` com `action: "remove"`) também rem
 
 ⚠️ **Mas isso são dois passos SEM transação, e a ordem é a pior possível:** `updateRole` apaga `user_roles` **e só depois** `coordenadores_prova`. Como `is_coordenador_prova` consulta **apenas** `coordenadores_prova` — nunca `user_roles` —, falhar no segundo passo **tira o papel da tela e mantém o acesso real pela RLS**. A saída correta é RPC.
 
-🔴 **O superadmin não consegue conceder acesso de coordenador.** A EF `create-coordenador` (`index.ts:51-64`) autoriza o chamador com `SELECT` em `user_roles` filtrando `role = 'admin'` — match literal. Superadmin não tem linha `admin` (a `create-admin` insere só o papel escolhido), então leva **403 "Only admins can create coordinators"**. É a **terceira ocorrência** da classe que a migration `20260725195530_superadmin_implica_admin_em_has_role.sql` existe para resolver: quem sabe da hierarquia é o `has_role`, não um SELECT. A mesma falha, mais branda, está na barreira de e-mail de admin do `CoordenadoresProvaDialog`. Item no [`backlog.md`](../../backlog.md) — e é **pré-requisito** de tornar esse diálogo o caminho exclusivo de concessão.
+✅ **O superadmin voltou a poder conceder acesso de coordenador (corrigido em 2026-07-26).** A EF `create-coordenador` autorizava o chamador com `SELECT` em `user_roles` filtrando `role = 'admin'` — match literal. Superadmin não tem linha `admin` (a `create-admin` insere só o papel escolhido), então levava **403 "Only admins can create coordinators"** justamente no caminho canônico da concessão. Era a **terceira ocorrência** da classe que a migration `20260725195530_superadmin_implica_admin_em_has_role.sql` existe para resolver. As duas checagens passaram a usar `has_role`:
+
+| Onde | Papel exigido |
+|---|---|
+| EF `create-coordenador` — autorização do chamador | `has_role(user.id, 'admin')` |
+| `CoordenadoresProvaDialog` — barreira do e-mail já cadastrado | `has_role(profile.id, 'admin')` |
+
+**A regra, para não voltar:** papel para **autorizar** sai do `has_role`. `SELECT` literal em `user_roles` só se presta a duas coisas — apagar uma linha específica, ou checar se ela já existe antes de inserir (idempotência). Uma varredura em 2026-07-26 confirmou que os `.eq("role", …)` restantes no repo são todos desses dois tipos.
 
 🧪 O diálogo tem bateria de interação desde 2026-07-26 (`CoordenadoresProvaDialog.ui.test.tsx`, 23 testes): a barreira do e-mail, o body da EF, os dois formatos de erro dela e o fluxo de remoção.
 

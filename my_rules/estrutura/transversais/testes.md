@@ -137,8 +137,13 @@ O ciclo já se fechou uma vez, e vale como modelo: dois testes de `useProvaLock`
 |---|---|
 | `useOcorrencias` | lista **vazia** de unidades não restringe nada e devolve a prova inteira |
 | `guards.test.tsx` → matriz do `Dashboard` | colaborador puro fica em tela branca em vez de ir ao hub |
-| `CoordenadoresProvaDialog.ui.test.tsx` | a barreira do e-mail de admin **não pega superadmin** — o SELECT é `.eq("role","admin")`, match literal |
 
-**O ciclo já se fechou uma segunda vez, e vale como confirmação do método:** a marca do `/perfil` ("renderiza inteira para visitante deslogado") **quebrou ao ganhar o guard**, em 2026-07-26 — como previsto. Foi reescrita em duas regressões: uma afirma que o formulário **não escapa** no caminho para o `/auth` (a matriz só afirma o destino), a outra que o nome vem preenchido quando a sessão resolve depois do mount.
+**O ciclo se fechou três vezes em 2026-07-26, e é a confirmação do método** — a marca serve para *ser derrubada*:
+
+| Marca | Como caiu | No que virou |
+|---|---|---|
+| `useProvaLock` (`isLoading` preso) | consertado o hook | teste de regressão com a asserção invertida |
+| `/perfil` (renderiza para deslogado) | entrou o guard | duas regressões: o formulário **não escapa** no caminho para o `/auth`, e o nome vem preenchido quando a sessão resolve depois do mount |
+| `CoordenadoresProvaDialog` (barreira não pega superadmin) | os dois SELECT literais viraram `has_role` | regressão que afirma **a quem se pergunta** (`has_role`), não como se filtra a tabela |
 
 Existe também a marca mais fraca **`⚠️ ATENÇÃO`**, para quando o comportamento **não é defeito**, mas morde quem depende dele. Não abre item de backlog; existe para quem for mexer ali não achar que pode simplificar aquilo. Três casos: `useCoordenadorUnidades` (lista vazia indistinguível de "ainda carregando" sem olhar `isLoading`); o bloco da **janela do `rolesLoaded`** em `guards.test.tsx` — 13 páginas decidem sem esperar os papéis, o que hoje não expulsa ninguém só porque o `role` anterior sobrevive ao refetch; e o `PasswordConfirmDialog`, que **só zera senha e erro pelo Cancelar/Esc**, não quando o pai fecha via prop `open` (nenhuma das 5 páginas faz isso hoje).

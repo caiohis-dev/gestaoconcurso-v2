@@ -119,14 +119,16 @@ export function CoordenadoresProvaDialog({
         .single();
 
       if (profileByEmail) {
-        const { data: isAdminRole } = await supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", profileByEmail.id)
-          .eq("role", "admin")
-          .single();
+        // Via `has_role` (RPC), não por SELECT em `user_roles`: até 2026-07-26 isto era
+        // `.eq("role", "admin")`, e o e-mail de um SUPERADMIN passava reto pela barreira
+        // — ele não tem linha `admin` na tabela. A hierarquia (superadmin ⇒ admin) vive
+        // dentro do `has_role` desde a migration 20260725195530.
+        const { data: ehAdmin } = await supabase.rpc("has_role", {
+          _user_id: profileByEmail.id,
+          _role: "admin",
+        });
 
-        if (isAdminRole) {
+        if (ehAdmin) {
           toast({
             title: "Email já cadastrado como Administrador",
             description: "Este email já pertence a um Administrador do sistema e não pode ser utilizado para criar acesso de Coordenador.",

@@ -7,6 +7,7 @@ import { renderWithProviders } from "@/test/utils";
 import {
   resetSupabaseMock,
   setTableResult,
+  setRpcResult,
   setFunctionResult,
   supabaseMock,
 } from "@/test/supabase-mock";
@@ -106,7 +107,7 @@ describe("CoordenadoresProvaDialog (interação)", () => {
     onOpenChange = vi.fn();
     // Nenhum profile com esse e-mail: o caminho normal, em que a barreira não dispara.
     setTableResult("profiles", { data: null, error: null });
-    setTableResult("user_roles", { data: null, error: null });
+    setRpcResult("has_role", { data: false, error: null });
     setFunctionResult("create-coordenador", { data: { success: true }, error: null });
     comHook();
   });
@@ -231,7 +232,7 @@ describe("CoordenadoresProvaDialog (interação)", () => {
     it("recusa e-mail que já é de admin, sem chamar a Edge Function", async () => {
       // Dar acesso de coordenador ao e-mail de um admin rebaixaria uma conta de gestão.
       setTableResult("profiles", { data: { id: "admin-9" }, error: null });
-      setTableResult("user_roles", { data: { role: "admin" }, error: null });
+      setRpcResult("has_role", { data: true, error: null });
       await preencherEEnviar();
 
       await waitFor(() =>
@@ -242,28 +243,27 @@ describe("CoordenadoresProvaDialog (interação)", () => {
       expect(supabaseMock.functions.invoke).not.toHaveBeenCalled();
     });
 
-    it("⚠️ DEFEITO: a barreira NÃO pega superadmin", async () => {
-      // A consulta é `.eq("role", "admin")` — match LITERAL, sem hierarquia. Um
-      // superadmin não tem linha 'admin' em user_roles (o `isAdmin` do useAuth é que
-      // deriva a hierarquia no cliente; o banco resolve em `has_role`). Resultado: o
-      // e-mail de um superadmin passa reto pela barreira e a EF é chamada.
-      //
-      // É a mesma armadilha já documentada no módulo de Editais: papel checado por
-      // igualdade em user_roles ignora que superadmin ⊇ admin. Item no backlog.
+    it("pergunta ao has_role, não à tabela — é o que faz a barreira pegar superadmin", async () => {
+      // REGRESSÃO. Até 2026-07-26 isto era `.eq("role", "admin")`, match literal, e o
+      // e-mail de um superadmin passava reto: ele não tem linha 'admin' em user_roles.
+      // A hierarquia (superadmin ⇒ admin) mora dentro do `has_role`, então perguntar a
+      // ele é o que fecha o caso — não melhorar o filtro da tabela.
       setTableResult("profiles", { data: { id: "super-9" }, error: null });
-      // Filtrando por role=admin, um superadmin não retorna nada:
-      setTableResult("user_roles", { data: null, error: null });
+      setRpcResult("has_role", { data: true, error: null });
       await preencherEEnviar();
 
-      await waitFor(() => expect(supabaseMock.functions.invoke).toHaveBeenCalled());
-      expect(toastMock).not.toHaveBeenCalledWith(
-        expect.objectContaining({ title: "Email já cadastrado como Administrador" }),
+      await waitFor(() =>
+        expect(supabaseMock.rpc).toHaveBeenCalledWith("has_role", {
+          _user_id: "super-9",
+          _role: "admin",
+        }),
       );
+      expect(supabaseMock.functions.invoke).not.toHaveBeenCalled();
     });
 
     it("e-mail de conta que existe mas não é admin segue em frente", async () => {
       setTableResult("profiles", { data: { id: "user-9" }, error: null });
-      setTableResult("user_roles", { data: null, error: null });
+      setRpcResult("has_role", { data: false, error: null });
       await preencherEEnviar();
 
       await waitFor(() => expect(supabaseMock.functions.invoke).toHaveBeenCalled());
