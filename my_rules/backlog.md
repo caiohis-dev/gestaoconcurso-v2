@@ -77,7 +77,7 @@ O que **existe** hoje é verificação manual da autorização de duas delas, em
 **Status:** pendente — **achado ao escrever teste** em 2026-07-25 (decisão de resolução em 2026-07-26)
 **Área:** Alocação e Funções (ver [`estrutura/modulos/aplicacao-provas/alocacao-e-funcoes.md`](./estrutura/modulos/aplicacao-provas/alocacao-e-funcoes.md)) / Autenticação (ver [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md))
 
-`coordenadores_prova` exige um `colaborador_prova_id`. Quando a unidade da prova ainda não tem **nenhuma** alocação, `useUsers.addCoordenadorAccess` não recusa: pega **qualquer colaborador** (`.limit(1)`, sem ordenação — o que o banco devolver primeiro) e **cria uma linha em `colaboradores_prova`** só para preencher a FK.
+`coordenadores_prova.colaborador_prova_id` é **`NOT NULL`** (conferido no banco em 2026-07-26). Quando a unidade da prova ainda não tem **nenhuma** alocação, `useUsers.addCoordenadorAccess` não recusa: pega **qualquer colaborador** (`.limit(1)`, sem ordenação — o que o banco devolver primeiro) e **cria uma linha em `colaboradores_prova`** só para preencher a FK.
 
 **Por que isso é poluição de dado, e não um detalhe técnico:** `colaboradores_prova` é a tabela de **alocação real** — a que diz quem trabalha na prova, e de onde saem os relatórios e a base de pagamento. A linha fabricada faz um colaborador aparecer alocado numa unidade para a qual ninguém o escalou, **sem função e sem valor**. Ninguém que olhe a tela de alocação consegue distinguir essa linha de uma real.
 
@@ -95,10 +95,23 @@ Como documentado em [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/
 >
 > ⚠️ **Atenção ao executar:** a fabricação da alocação falsa existe em **DOIS** lugares. Além do `useUsers.addCoordenadorAccess`, a EF `create-admin` tem a **própria cópia** da lógica (`createCoordenadorAccess`, com o mesmo `.limit(1)` pegando qualquer colaborador), usada pelo formulário de criação de usuário — e roda com `service_role`, fora da RLS. Fechar só o cliente deixa a máquina de poluir instalada.
 
-**Ação necessária:**
-- Remover da UI de `/gerenciar-usuarios` a opção de conceder/selecionar o papel de `coordenador`.
-- A concessão de acesso de coordenador passará a ser **exclusiva** do fluxo de alocação da prova (`CoordenadoresProvaDialog`).
-- Com isso, o hook `useUsers.addCoordenadorAccess` (e o workaround da alocação falsa em `colaboradores_prova`) deverá ser excluído do código.
+### Ação necessária — checklist completo (revisto em 2026-07-26)
+
+> A versão anterior desta lista tinha três itens e **fechava só o lado do cliente**. O aviso sobre a EF vivia num bloco separado, fora do checklist — quem seguisse a lista deixaria a máquina de poluir ligada. Agora está tudo aqui, na ordem.
+
+1. **Remover da UI de `/gerenciar-usuarios`** a opção de conceder o papel de `coordenador` — o Switch e o diálogo de escolher prova.
+2. **Apagar `useUsers.addCoordenadorAccess`** e o workaround da alocação falsa.
+3. **Apagar a cópia da EF:** `createCoordenadorAccess` em `supabase/functions/create-admin/index.ts`, mais o ramo `selectedRole === "coordenador"` que a chama e a exigência de `provaId`. **Sem isto o item não está fechado** — a EF roda com `service_role`, fora da RLS, e segue chamável.
+4. **Ajustar `createUserSchema`** (`GerenciarUsuarios.tsx`): tirar `coordenador` do enum e o refinamento que exige `provaId`. ⚠️ **Quebra os 15 testes** de `pages/GerenciarUsuarios.test.ts` — de propósito; reescrevê-los é parte do trabalho.
+5. **Conferir o que sobra:** `userCoordenadorProvas` (só exibe as provas de cada coordenador) pode ficar; `updateRole` com `action: "remove"` **deve** ficar — é a revogação, que desde 2026-07-26 passa pela RPC transacional `revogar_coordenador`.
+
+### ⚠️ Duas decisões que ainda NÃO foram tomadas
+
+Elas não bloqueiam o começo, mas bloqueiam o fim — e é melhor decidi-las antes de mexer na UI:
+
+**(a) O que acontece com o Switch de coordenador na tabela?** Hoje ele é simétrico: liga (concede) e desliga (revoga). Tirando a concessão, ele fica **assimétrico** — só desliga. As saídas são: virar um indicador somente-leitura com um botão "revogar" à parte, ou sumir da tabela e deixar a revogação só pelo fluxo da prova. **Assimetria silenciosa é a pior das três**, porque o controle parece que liga e não liga.
+
+**(b) Criar um coordenador passa a ter 3 passos.** Hoje é um: criar a conta já com o papel e a prova. Depois: criar a conta → alocar a pessoa na prova com função de coordenação → conceder no `CoordenadoresProvaDialog`. É mais correto (não inventa alocação), mas é mais trabalho no dia da prova — vale confirmar que o fluxo novo é aceitável antes de fechar a porta antiga.
 
 ---
 
