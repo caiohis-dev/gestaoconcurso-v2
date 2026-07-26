@@ -116,7 +116,7 @@ async function carregarEDepois(sequencia) {
 | Área | Arquivos |
 |---|---|
 | Registro de módulos | `lib/modulos.test.ts` — inclui invariantes que rodam sobre `MODULOS` inteiro |
-| Acessibilidade | `components/dialogos-acessibilidade.test.ts` — invariante **estática**: lê o fonte e exige `DialogDescription` em cada um dos 28 `DialogContent` |
+| Acessibilidade | `components/dialogos-acessibilidade.test.ts` — invariante **estática**: lê o fonte e exige `DialogDescription` em cada um dos 31 `DialogContent` (contando as variantes AlertDialog/Sheet) |
 | Schemas Zod (9) | `*Dialog.test.ts`, `pages/Auth.test.ts`, `pages/GerenciarUsuarios.test.ts` |
 | Auth | `useAuth.test.tsx` — hierarquia, `colaborador` paralelo, `rolesLoaded`, `signOut` |
 | Hooks de dados | `useEditais`, `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas` (+ `useSalasDistribuidasCapacidade` e `useFiscaisSala`), `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers`, `useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade`, `useBancos` — **a camada está fechada** |
@@ -133,7 +133,7 @@ O inventário completo, com ordem de prioridade e o que **não** se testa aqui, 
 
 Os testes miram **comportamento e contrato**, não cobertura de linhas — para sobreviverem a refatoração. E acabam servindo de documentação executável: ao contrário de um `.md`, este texto **quebra quando deixa de ser verdade**.
 
-**Invariante estática é um tipo válido de teste aqui.** Quando a regra vale para *todos* os arquivos de uma categoria e renderizar cada um custaria mais que o problema, ler o fonte e afirmar a regra cobre tudo de uma vez — é o que faz o `dialogos-acessibilidade.test.ts` com os 28 diálogos. Dois cuidados ao escrever uma dessas: inclua uma asserção de que **a varredura achou arquivos** (senão o teste passa por vacuidade quando o caminho quebra), e **prove que ela falha** removendo a propriedade de propósito uma vez, antes de confiar nela.
+**Invariante estática é um tipo válido de teste aqui.** Quando a regra vale para *todos* os arquivos de uma categoria e renderizar cada um custaria mais que o problema, ler o fonte e afirmar a regra cobre tudo de uma vez — é o que faz o `dialogos-acessibilidade.test.ts` com os 31 diálogos. Dois cuidados ao escrever uma dessas: inclua uma asserção de que **a varredura achou arquivos** (senão o teste passa por vacuidade quando o caminho quebra), e **prove que ela falha** removendo a propriedade de propósito uma vez, antes de confiar nela.
 
 Onde um teste afirma comportamento **errado** de propósito, ele leva `⚠️ DEFEITO` no nome e um comentário explicando por quê. O teste vira então um alarme invertido: **ele quebra quando o bug é corrigido**, e é esse o sinal de que deve ser reescrito para o comportamento certo.
 

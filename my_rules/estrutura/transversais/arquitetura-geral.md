@@ -8,7 +8,7 @@ Sistema web para gerenciar a **logística operacional de provas de concursos pú
 
 O nome/marca exibida na UI é **FEVRE** (`src/components/Layout.tsx`), embora o diretório do projeto e os metadados internos usem "gestaoconcurso".
 
-O projeto foi originalmente gerado pelo **Lovable** (plataforma low-code), mas em 2026-07-11 passou a ser mantido diretamente por nós: o `lovable-tagger` foi removido do `vite.config.ts`/`package.json`, o `.lovable/` e o README boilerplate saíram. Resquícios de scaffold ainda podem aparecer (nomes genéricos, comentários de "arquivo gerado") — trate como cruft, não como convenção a preservar. **Pendência:** a hospedagem/deploy ainda passa pelo Lovable (`Share → Publish`); migrar isso é um trabalho separado, ainda não feito.
+O projeto foi originalmente gerado pelo **Lovable** (plataforma low-code), mas em 2026-07-11 passou a ser mantido diretamente por nós: o `lovable-tagger` foi removido do `vite.config.ts`/`package.json`, o `.lovable/` e o README boilerplate saíram. Resquícios de scaffold ainda podem aparecer (nomes genéricos, comentários de "arquivo gerado") — trate como cruft, não como convenção a preservar. **Pendência:** não há deploy ativo em lugar nenhum — o site do Lovable deixou de existir e o projeto está fora do ar desde 2026-07-12. Publicar a v2 em infraestrutura própria é item do [`backlog.md`](../../backlog.md), e depende do bootstrap do banco novo.
 
 ## 2. Stack tecnológico
 
@@ -19,7 +19,7 @@ O projeto foi originalmente gerado pelo **Lovable** (plataforma low-code), mas e
 | Roteamento | React Router DOM 6 (rotas declaradas em `src/App.tsx`) |
 | Estilo | Tailwind CSS + `tailwindcss-animate`, tokens HSL em `src/index.css` |
 | Componentes | shadcn/ui (`src/components/ui/*`, configurado via `components.json`) |
-| Estado servidor | TanStack React Query 5 — usado de forma consistente na maioria dos hooks de entidade (`useQuery`/`useMutation` + `invalidateQueries`); alguns hooks mais antigos/específicos de página (ex.: `PainelDadosColaboradores.tsx`) fazem fetch manual com `useState`/`useEffect` em vez de React Query — não assuma cache automático sem checar o hook específico |
+| Estado servidor | TanStack React Query 5 — usado de forma consistente na maioria dos hooks de entidade (`useQuery`/`useMutation` + `invalidateQueries`); algumas páginas fazem fetch manual com `useState`/`useEffect` em vez de React Query — `PainelDadosColaboradores.tsx`, `Dashboard.tsx` e `GerenciarColaboradoresProva.tsx` (esta última com dois efeitos que chamam `supabase...then()` cru, item aberto no backlog). **Não assuma cache automático sem checar o hook específico** |
 | Formulários | React Hook Form + Zod |
 | PDF | jsPDF + jspdf-autotable (geração 100% client-side, ver [`documentos-e-relatorios.md`](../modulos/aplicacao-provas/documentos-e-relatorios.md)) |
 | Planilhas | xlsx (SheetJS) — usado em `CadastroLote.tsx` para importação em massa |
@@ -34,10 +34,10 @@ TypeScript está configurado com tipagem **frouxa** (`tsconfig.app.json`): `stri
 
 Toda lógica de negócio sensível ou que exige elevação de privilégio vive em dois lugares fora do frontend:
 
-1. **Funções de banco (`SECURITY DEFINER`)** em `supabase/migrations/*.sql` — 31 das 81 migrations definem funções com `SECURITY DEFINER`, chamadas do frontend via `supabase.rpc(...)`. Fazem validação de permissão manualmente dentro do PL/pgSQL (ex.: `has_role`, `is_coordenador_prova`) antes de agir, já que RLS sozinho não cobriria os casos (ex.: autenticação de colaborador não usa Supabase Auth — ver [`auth-e-permissoes.md`](./auth-e-permissoes.md)).
+1. **Funções de banco (`SECURITY DEFINER`)** em `supabase/migrations/*.sql` — **37 das 85** migrations definem funções com `SECURITY DEFINER`, chamadas do frontend via `supabase.rpc(...)`. Fazem validação de permissão manualmente dentro do PL/pgSQL (ex.: `has_role`, `is_coordenador_prova`) antes de agir, já que RLS sozinho não cobriria todos os casos. ⚠️ **Este parágrafo dizia que "autenticação de colaborador não usa Supabase Auth" — falso desde a subetapa 2A (2026-07-14)**, que unificou tudo num login só; corrigido na auditoria de 2026-07-26. Ver [`auth-e-permissoes.md`](./auth-e-permissoes.md).
 2. **Edge Functions (Deno)** em `supabase/functions/*` — usadas para operações administrativas que exigem a service role key. Detalhadas em [`integracoes-externas.md`](./integracoes-externas.md).
 
-18 das 81 migrations habilitam RLS explicitamente em tabelas (`ENABLE ROW LEVEL SECURITY`). Não existe servidor Node/Express próprio — o "backend" é inteiramente Supabase (BaaS) + Edge Functions.
+**20 das 85** migrations habilitam RLS explicitamente em tabelas (`ENABLE ROW LEVEL SECURITY`). Não existe servidor Node/Express próprio — o "backend" é inteiramente Supabase (BaaS) + Edge Functions.
 
 **Padrão a seguir ao adicionar features novas:** prefira RPC `SECURITY DEFINER` com checagem manual de permissão em vez de abrir uma tabela via policy permissiva — é o padrão dominante no schema atual.
 
@@ -57,7 +57,7 @@ Toda lógica de negócio sensível ou que exige elevação de privilégio vive e
 ├── supabase/
 │   ├── config.toml               # project_id + config de verify_jwt por function
 │   ├── functions/                 # Edge Functions (Deno), uma pasta por função + _shared/ (templates de e-mail)
-│   └── migrations/                # 81 migrations SQL — fonte da verdade do schema
+│   └── migrations/                # 85 migrations SQL — fonte da verdade do schema
 ├── public/                        # Estáticos (logo, favicon); ver nota sobre auth_users_export.csv abaixo
 ├── my_rules/estrutura/            # Esta documentação (transversais/ + modulos/)
 └── docs/                          # Documentação pontual de features específicas
@@ -90,12 +90,12 @@ Navegação visível no header (`Layout.tsx`) é filtrada por role **e por módu
 
 Desde 2026-07-24 a raiz `/` não abre mais uma lista, e sim um **hub** (`src/pages/Inicio.tsx`) que mostra a cada gestor os **módulos** a que ele tem acesso. Hoje existem **dois** módulos: *Aplicação de Provas* (todas as rotas de gestão da tabela acima) e *Editais* (`/editais`, só admin/superadmin). A estrutura está pronta para os próximos: o valor está no **mecanismo**, não na lista.
 
-**A fonte de verdade é `src/lib/modulos.ts`.** Um módulo é uma entrada no array `MODULOS`, com: `id`, `nome`, `descricao`, `icone`, os `papeis` de gestão que o acessam, `rotaEntrada(ctx)` (para onde o card leva, por papel), `prefixosRota` (as rotas que pertencem ao módulo) e `navLinks` (os links que o header mostra dentro dele). **Módulo novo = 1 entrada aqui** — nunca duplicar a lista de rotas de um módulo em outro arquivo. Quem lê desse registro: o hub (`modulosDoUsuario`), o header (`moduloDaRota` + `navLinks`) e, no futuro, os guards.
+**A fonte de verdade é `src/lib/modulos.ts`.** Um módulo é uma entrada no array `MODULOS`, com: `id`, `nome`, `descricao`, `icone`, os `papeis` de gestão que o acessam, `rotaEntrada(ctx)` (para onde o card leva, por papel), `prefixosRota` (as rotas que pertencem ao módulo) e `navLinks` (os links que o header mostra dentro dele). **Módulo novo = 1 entrada aqui** — nunca duplicar a lista de rotas de um módulo em outro arquivo. Quem lê desse registro: o hub (`modulosDoUsuario`) e o header (`moduloDaRota` + `navLinks`). ⚠️ **Os guards NÃO leem daqui, e isso é decisão**: o registro conhece papel por MÓDULO, e as rotas são mais finas — `aplicacao-provas` admite coordenador, mas sete rotas dele são só admin. Ler os papéis daqui afrouxaria o acesso. Ver `RequireAcesso` em [`auth-e-permissoes.md`](./auth-e-permissoes.md).
 
-**Como a raiz virou hub sem reescrever guards.** Os ~11 `navigate("/")` / `<Navigate to="/">` espalhados pelas páginas de gestão sempre significaram "acesso negado → lugar seguro". Com o hub na raiz, esse destino passou a ser "a tela com o que você PODE acessar" — semântica correta **sem editar nenhum deles**. A única migração de rota foi a lista de colaboradores: `/` → `/colaboradores`.
+**Como a raiz virou hub sem reescrever guards.** Os `navigate("/")` espalhados pelas páginas sempre significaram "acesso negado → lugar seguro", e com o hub na raiz esse destino passou a ser "a tela com o que você PODE acessar" — semântica correta sem editar nenhum. A única migração de rota foi `/` → `/colaboradores`. **Desde 2026-07-26 aquele destino é único**, no `RequireAcesso`.
 
 **Regras que não são óbvias:**
-- **É UX, não autorização.** O hub e o filtro de `navLinks` *escondem* módulos; não *barram* ninguém. Quem barra continua sendo RLS + as checagens das Edge Functions + os guards de página. Esconder um card não protege nada por si só.
+- **É UX, não autorização.** O hub e o filtro de `navLinks` *escondem* módulos; não *barram* ninguém. Quem barra continua sendo RLS + as checagens das Edge Functions + o `RequireAcesso` das rotas. Esconder um card não protege nada por si só.
 - **`moduloDaRota` casa por igualdade-ou-prefixo-com-`/`**, nunca `startsWith` cru — senão `/cadastro` capturaria `/cadastro-publico` (rota pública, fora de qualquer módulo). Rotas públicas e de config geral (`/perfil`, `/perfil-colaborador`, `/gerenciar-usuarios`) **não** entram em `prefixosRota`.
 - **Config geral não é módulo** (decisão de desenho): "Usuários" e "Meu Cadastro" ficam no header sempre, fora dos cards; o dropdown do avatar leva a "Alterar Cadastro".
 - **Colaborador puro nunca vê o hub** — cai direto em `/perfil-colaborador` (o guard do `Inicio.tsx` e o pós-login do `Auth.tsx` cuidam disso). Ver a matriz papel × módulo em [`auth-e-permissoes.md`](./auth-e-permissoes.md).
@@ -108,7 +108,7 @@ O desenho fechado e as 5 decisões (D1–D5) estão em [`roadmap-modulos.yaml`](
 
 **Todo `<DialogContent>` precisa de um `<DialogDescription>`.** Vale para as três variantes do Radix em uso: `Dialog`, `AlertDialog` e `Sheet`. Sem ele, o Radix emite `Missing 'Description' or 'aria-describedby' for {DialogContent}` e o leitor de tela anuncia **só o título** — a pessoa abre um formulário sem receber contexto nenhum do que ele faz.
 
-São **28 diálogos em 20 arquivos**; em 2026-07-25, seis não tinham descrição e ganharam uma. Um teste de invariante (`src/components/dialogos-acessibilidade.test.ts`) varre o fonte e falha apontando arquivo e linha se um diálogo novo nascer sem descrição. É teste **estático**, não de render, porque a maioria dos diálogos não tem teste de UI e montar as props de todos custaria mais do que o problema.
+São **31 diálogos em 22 arquivos** (contagem de 2026-07-26; eram 28 em 20 quando a invariante nasceu). Em 2026-07-25, seis não tinham descrição e ganharam uma. Um teste de invariante (`src/components/dialogos-acessibilidade.test.ts`) varre o fonte e falha apontando arquivo e linha se um diálogo novo nascer sem descrição. É teste **estático**, não de render, porque a maioria dos diálogos não tem teste de UI e montar as props de todos custaria mais do que o problema.
 
 Duas orientações ao escrever a descrição:
 

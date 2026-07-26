@@ -1,5 +1,7 @@
 # Índice — Documentação de Estrutura do Sistema
 
+> **Última auditoria contra o código: 2026-07-26.** Todos os docs desta pasta foram conferidos linha a linha contra o código e o banco local. O que estava desatualizado foi corrigido no próprio arquivo, com a data. Ver o resumo no commit `docs(estrutura): auditoria completa`.
+>
 > **Regra que organiza esta pasta:** cada **módulo** do sistema é uma parte isolada e tem documentação própria em [`modulos/`](./modulos/). O doc de um módulo deve bastar para **implementar ou refatorar aquele módulo sem reler o codebase**. Se você precisou varrer o código para entender algo do módulo, isso é um defeito do doc — corrija-o na mesma unidade de trabalho.
 >
 > Escrito a partir de leitura direta do código-fonte. Ainda assim, são snapshots: confirme no código antes de agir sobre algo que só está documentado aqui.

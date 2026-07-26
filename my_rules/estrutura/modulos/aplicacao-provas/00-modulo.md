@@ -41,14 +41,14 @@ Todas em `prefixosRota`. **Desde 2026-07-26 a autorização é do `RequireAcesso
 | `/colaboradores` | `Colaboradores.tsx` (era `/` até 2026-07-24) | `["admin", "coordenador"]` |
 | `/cadastro` | `Cadastro.tsx` | `["admin", "coordenador"]` |
 | `/cadastro-lote` | `CadastroLote.tsx` | `["admin", "coordenador"]` |
-| `/provas` | `Provas.tsx` (171 l.) | `["admin", "coordenador"]` |
+| `/provas` | `Provas.tsx` (~160 l.) | `["admin", "coordenador"]` |
 | `/gerenciar-prova/:provaId` | `GerenciarProva.tsx` | `["admin", "coordenador"]` |
-| `/unidades-prova` | `UnidadesProva.tsx` (199 l.) | `["admin"]` |
-| `/salas-prova/:unidadeId` | `SalasProva.tsx` (260 l.) | `["admin"]` |
-| `/gerenciar-salas-distribuidas/:provaId/:unidadeId` | `GerenciarSalasDistribuidas.tsx` (435 l.) | `["admin"]` |
-| `/gerenciar-colaboradores-prova/:provaUnidadeId` | `GerenciarColaboradoresProva.tsx` (935 l.) | `["admin", "coordenador"]` |
+| `/unidades-prova` | `UnidadesProva.tsx` (~185 l.) | `["admin"]` |
+| `/salas-prova/:unidadeId` | `SalasProva.tsx` (~245 l.) | `["admin"]` |
+| `/gerenciar-salas-distribuidas/:provaId/:unidadeId` | `GerenciarSalasDistribuidas.tsx` (~425 l.) | `["admin"]` |
+| `/gerenciar-colaboradores-prova/:provaUnidadeId` | `GerenciarColaboradoresProva.tsx` (~935 l.) | `["admin", "coordenador"]` |
 | `/ocorrencias-prova/:provaId` | `OcorrenciasProva.tsx` | `["admin", "coordenador"]` |
-| `/funcoes-colaboradores` | `FuncoesColaboradores.tsx` (236 l.) | `["admin"]` |
+| `/funcoes-colaboradores` | `FuncoesColaboradores.tsx` (~230 l.) | `["admin"]` |
 | `/documentos-impressao/:provaId` | `DocumentosImpressao.tsx` | `["admin"]` **+ `prova_finalizada`** |
 | `/painel-dados-colaboradores/:provaId` | `PainelDadosColaboradores.tsx` | `["admin"]` |
 

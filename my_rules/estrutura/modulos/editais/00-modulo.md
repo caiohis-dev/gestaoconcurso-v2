@@ -26,8 +26,8 @@ O **edital** é o concurso: o documento sob o qual uma ou mais provas são aplic
 
 | Arquivo | Papel |
 |---|---|
-| `src/pages/Editais.tsx` (162 l.) | A página. Guard `if (!isAdmin)`. Grid de `Card`s, um por edital, com ações editar/excluir e `AlertDialog` de confirmação de exclusão |
-| `src/components/EditalDialog.tsx` (174 l.) | Form de criação/edição (react-hook-form + Zod). Serve aos dois modos, distinguidos por `edital` ser passado ou não |
+| `src/pages/Editais.tsx` (~150 l.) | A página. **Não guarda a si mesma** desde 2026-07-26 — o papel é declarado na rota (`RequireAcesso papeis={["admin"]}`). Grid de `Card`s, um por edital, com ações editar/excluir e `AlertDialog` de confirmação de exclusão |
+| `src/components/EditalDialog.tsx` (~180 l.) | Form de criação/edição (react-hook-form + Zod). Serve aos dois modos, distinguidos por `edital` ser passado ou não |
 | `src/hooks/useEditais.tsx` (144 l.) | React Query: `editais`, `create`, `update`, `delete` + os `isXxx` de pending. Interfaces `Edital`, `EditalInsert`, `EditalUpdate` |
 | `supabase/migrations/20260724170000_create_editais_and_prova_edital_fk.sql` | Todo o schema do módulo — tabela, índice único, RLS, trigger, e a FK em `provas` |
 
@@ -61,7 +61,9 @@ editais
 
 Espelha exatamente a política de `provas`: leitura ampla (a prova precisa exibir o nome do edital para coordenadores), escrita só de admin.
 
-⚠️ **Armadilha real: `has_role` é match literal, sem hierarquia.** O guard da página é `isAdmin`, que no `useAuth` **inclui superadmin** (`role === 'admin' || role === 'superadmin'`). A RLS, não. Um superadmin que **não tenha também uma linha `admin`** em `user_roles` passa pelo guard, vê os botões, e leva erro de permissão do banco ao salvar. É a mesma discrepância já documentada na EF `corrigir-email-acesso` — ver [`../../transversais/auth-e-permissoes.md`](../../transversais/auth-e-permissoes.md).
+✅ **Isto já foi armadilha, e deixou de ser em 2026-07-25.** Este parágrafo afirmava que `has_role` era match literal sem hierarquia, e que um superadmin sem linha `admin` passaria pelo guard da página mas levaria erro do banco ao salvar. **Era verdade até 25/07**; a migration `20260725195530_superadmin_implica_admin_em_has_role.sql` pôs a implicação `superadmin ⇒ admin` dentro do `has_role`, então RLS e UI voltaram a concordar. Corrigido na auditoria de 2026-07-26.
+
+⚠️ **O que continua valendo é a regra que aquilo ensinou:** papel para **autorizar** sai do `has_role`, nunca de `SELECT` literal em `user_roles` — a hierarquia mora lá dentro. A mesma falha ainda apareceu depois na EF `create-coordenador` (terceira ocorrência, corrigida em 2026-07-26). Ver [`../../transversais/auth-e-permissoes.md`](../../transversais/auth-e-permissoes.md).
 
 A tabela herda os `GRANT`s do `ALTER DEFAULT PRIVILEGES` da migration `20260712010000` — sem eles o PostgREST nem chegaria a avaliar a RLS (ver [`../../transversais/desenvolvimento-local.md`](../../transversais/desenvolvimento-local.md)).
 

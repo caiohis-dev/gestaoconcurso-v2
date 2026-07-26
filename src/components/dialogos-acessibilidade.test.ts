@@ -11,9 +11,9 @@ import { join } from "node:path";
  * e o leitor de tela anuncia **só o título** — a pessoa abre um formulário e não
  * recebe nenhum contexto sobre o que ele faz.
  *
- * POR QUE UM TESTE ESTÁTICO, E NÃO DE RENDER: são 28 diálogos em 20 arquivos, e a
+ * POR QUE UM TESTE ESTÁTICO, E NÃO DE RENDER: são 31 diálogos em 22 arquivos, e a
  * maioria não tem teste de UI. Renderizar todos custaria caro e exigiria montar as
- * props de cada um. Ler o fonte cobre os 28 de uma vez e falha na hora em que um
+ * props de cada um. Ler o fonte cobre os 31 de uma vez e falha na hora em que um
  * diálogo novo nasce sem descrição — que é exatamente o modo de regressão real:
  * ninguém percebe, porque nada quebra na tela.
  *
