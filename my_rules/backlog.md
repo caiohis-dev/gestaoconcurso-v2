@@ -13,7 +13,7 @@ Este item é o marco: quem retomar os testes começa por aqui. **Leia `testes.md
 
 ### Onde paramos (2026-07-26)
 
-**641 testes em 40 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
+**683 testes em 44 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
 
 Coberto:
 
@@ -23,7 +23,7 @@ Coberto:
 | Schemas Zod (9) | `ColaboradorDialog`, `EditalDialog`, `FuncaoColaboradorDialog`, `ProvaDialog`, `SalaProvaDialog`, `UnidadeProvaDialog`, `pages/Auth`, `pages/GerenciarUsuarios` |
 | Auth | `useAuth.test.tsx` — hierarquia, `colaborador` paralelo, `rolesLoaded`, `signOut` |
 | Hooks de dados (**todos**) | `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useEditais`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useValoresFuncaoProva`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas` + os dois vizinhos do mesmo arquivo (`useSalasDistribuidasCapacidade`, `useFiscaisSala`), `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers` (+ `useAuth`) |
-| UI de diálogo (7) | `EditalDialog`, `ProvaDialog`, `PasswordConfirmDialog`, `CoordenadoresProvaDialog`, `ValoresFuncaoProvaDialog`, `MetaColaboradoresDialog`, `CorrigirEmailAcessoDialog` (todos `.ui.test.tsx`) |
+| UI de diálogo (11 de 12) | `EditalDialog`, `ProvaDialog`, `PasswordConfirmDialog`, `CoordenadoresProvaDialog`, `ValoresFuncaoProvaDialog`, `MetaColaboradoresDialog`, `CorrigirEmailAcessoDialog` (todos `.ui.test.tsx`) |
 | Acessibilidade | `components/dialogos-acessibilidade.test.ts` — invariante estática sobre os 28 diálogos |
 | **Guards de página** | `pages/guards.test.tsx` — **137 testes**: matriz 19 páginas × 5 papéis, a janela do `rolesLoaded` e o `isLoggingOut` |
 | A própria infra | `src/test/supabase-mock.test.ts` — o mock tem teste próprio |
@@ -36,7 +36,7 @@ Os **20 hooks de dados** têm teste (`use-mobile` e `use-toast` são utilitário
 
 Os quatro últimos (`useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade`, `useBancos`) eram tidos como baixo risco, e em três dos quatro isso se confirmou. **A exceção foi o `useSalasProva`**, que esconde numeração de sala numa mutation: `número = andar × 100 + sequência`, calculada no cliente a partir das salas existentes, sem `SEQUENCE` no banco. O teste fixa que ela continua do **maior número daquele andar** (buraco de sala excluída não é reaproveitado, o que confundiria lista já impressa) e registra `⚠️ ATENÇÃO` no teto de **99 salas por andar** — ao estourar, a numeração invade o andar seguinte em silêncio.
 
-**2. UI de diálogo — 7 de 12 cobertos.** Sem nenhum teste: `SalaExtraDialog`. Com teste de schema mas sem teste de interação: `ColaboradorDialog`, `FuncaoColaboradorDialog`, `SalaProvaDialog`, `UnidadeProvaDialog`.
+**2. UI de diálogo — 11 de 12 cobertos.** Falta só o **`ColaboradorDialog`** (777 l., o maior componente do repo), que tem os 33 testes de schema mas nenhum de interação — é a etapa 5 do plano, e pede unidade de trabalho própria.
 
 ✅ **`PasswordConfirmDialog` foi o primeiro, em 2026-07-26** — era o que mais importava: a barreira de confirmação das ações destrutivas (excluir edital e prova, finalizar/reabrir, encerrar ocorrências), com 7 usos em 5 páginas. 16 testes fixam o contrato numa frase: **`onConfirm` só roda depois de a senha ser aceita pelo servidor**, e erro em qualquer etapa **não fecha o diálogo** — porque fechar sem executar pareceria sucesso. Falsificado: neutralizar a checagem de `signInError` derruba o teste da senha incorreta.
 
@@ -48,7 +48,13 @@ Efeito colateral registrado: o `setFunctionResult` do mock passou a aceitar erro
 
 ✅ **`CorrigirEmailAcessoDialog` saiu em 2026-07-26** (16 testes) — a máquina de três estados da correção de `colab_email`, com foco na recusa do estado C (conta já confirmada: trocar seria trocar o login de alguém). Rendeu mais um achado — a mensagem de erro do servidor era descartada —, **corrigido no mesmo dia** com o helper `lib/edge-function-error.ts`.
 
-**As próximas, em ordem:** os 4 hooks restantes para fechar aquela camada, depois interação nos que já têm schema, e o `ColaboradorDialog` (777 l.) por último, como unidade de trabalho própria.
+✅ **Os quatro restantes saíram em 2026-07-26** (42 testes): `UnidadeProvaDialog`, `FuncaoColaboradorDialog`, `SalaProvaDialog` e `SalaExtraDialog`. Três coisas que só apareceram ao escrever:
+
+- **O teto de andar da sala só existe no cliente.** `sala_andar <= unid_andares` é regra entre tabelas, deixada de fora dos CHECKs de propósito (um `CHECK` com função consultando outra tabela **não é reavaliado** quando ela muda). O `SalaProvaDialog` monta o schema a partir de `maxAndares` — é a única barreira, e agora tem teste.
+- **`cargo_editavel === false` trava o nome da função**, e isso protege as duas funções de coordenação, identificadas por UUID fixo em `FUNCOES_COORDENACAO`.
+- **A validação nativa do input precede o Zod** em formulário com submit — virou a armadilha 7 em `testes.md`.
+
+**Falta a etapa 5:** o `ColaboradorDialog`.
 
 **3. Páginas: os guards estão cobertos desde 2026-07-26; o comportamento, não.** A aposta do `it.each` sobre a tabela rota × papel se pagou: `pages/guards.test.tsx` cobre **19 páginas × 5 papéis** e é agora a especificação do `RequireModulo` (item abaixo), que deixou de ser arriscado. A bateria foi **falsificada de propósito** antes de ser aceita — quebrar o guard do `Editais` fez cair exatamente os casos "recusa colaborador" e "recusa coordenador", que é a falha que passou meses invisível.
 

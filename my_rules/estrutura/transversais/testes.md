@@ -75,7 +75,7 @@ O mock tem **teste próprio** (`supabase-mock.test.ts`): é infraestrutura de qu
 
 **3. Toda tabela e RPC do app devolvem lista vazia.** O default do mock é `{ data: null }`, e várias páginas chamam `.some()`/`.map()` sem coalescer — o teste mediria o TypeError, não a autorização.
 
-## ⚠️ As seis armadilhas que já custaram tempo aqui
+## ⚠️ As sete armadilhas que já custaram tempo aqui
 
 **1. A sequência é consumida pela listagem antes de chegar à mutation.** A query de listagem também chama `from(<tabela>)`, então ela come a primeira entrada e o hook recebe um objeto onde espera array (`coordenadores.map is not a function`). Espere a carga inicial e **só então** instale a sequência — `setTableResultSequence` zera o contador. E a **última entrada precisa ser um array**, porque o refetch disparado pela invalidação cai nela.
 
@@ -99,11 +99,17 @@ async function carregarEDepois(sequencia) {
 
 **6. Timeout nunca é resposta — espera positiva, sempre.** Ao medir o guard das páginas, a primeira versão esperava 400ms pelo fim do spinner e tratava o estouro como "a página está esperando os papéis". Passou isolada e **falhou na suíte cheia**: sob carga, uma página lenta é indistinguível de uma que espera de propósito. A correção é inverter tudo em asserção do que **passa a valer** — `waitFor` até o router chegar no destino, ou até o spinner *aparecer* (que é a evidência positiva de "está esperando"). Com isso o timeout generoso sai de graça, porque o `waitFor` retorna no instante em que a condição vale e só cobra tempo quando o teste realmente vai falhar. A suíte inteira ficou **mais rápida** depois da troca (4,7s contra 6,8s).
 
+**7. Em formulário com `<form>` + botão submit, o `min`/`max` do input barra ANTES do Zod.** A validação nativa do navegador impede o evento de submit, e a mensagem em português do schema **nunca aparece** — o usuário vê o balão do navegador, no idioma dele. Aconteceu em três campos (`unid_andares`, `quantidade` e `sala_andar`) e custou dois testes escritos errado, que esperavam a mensagem do app.
+
+> Como testar cada caso: se o valor viola `min`/`max`, afirme `onSubmit` não chamado + `campo.validity.rangeUnderflow` (ou `rangeOverflow`) — é a prova de que foi o nativo. Se quiser exercitar a mensagem do Zod, use um caminho que o nativo deixa passar (campo **vazio**, por exemplo, quando não é `required`).
+>
+> ⚠️ **O inverso também é armadilha, e é pior:** diálogo cujo botão chama o handler no `onClick`, **sem `<form>`**, não tem validação nativa nenhuma — o `min="0"` ali é decorativo. Foi assim que o `ValoresFuncaoProvaDialog` aceitou valor de pagamento negativo até 2026-07-26.
+
 > Corolário para quem for medir "não aconteceu nada": só é seguro afirmar isso quando a página não tem query pendente que possa mudar a decisão depois. Caso contrário, o teste está medindo o meio do caminho.
 
 ## O que está coberto (2026-07-26)
 
-641 testes em 40 arquivos.
+683 testes em 44 arquivos.
 
 | Área | Arquivos |
 |---|---|
@@ -112,10 +118,10 @@ async function carregarEDepois(sequencia) {
 | Schemas Zod (9) | `*Dialog.test.ts`, `pages/Auth.test.ts`, `pages/GerenciarUsuarios.test.ts` |
 | Auth | `useAuth.test.tsx` — hierarquia, `colaborador` paralelo, `rolesLoaded`, `signOut` |
 | Hooks de dados | `useEditais`, `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas` (+ `useSalasDistribuidasCapacidade` e `useFiscaisSala`), `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers`, `useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade`, `useBancos` — **a camada está fechada** |
-| UI | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx`, **`PasswordConfirmDialog.ui.test.tsx`** (16 — a barreira das ações destrutivas), **`CoordenadoresProvaDialog.ui.test.tsx`** (23 — a concessão de acesso de coordenador), **`ValoresFuncaoProvaDialog`** + **`MetaColaboradoresDialog`** (20 + 13 — o caminho do dinheiro), **`CorrigirEmailAcessoDialog`** (16 — a âncora de identidade) |
+| UI | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx`, **`PasswordConfirmDialog.ui.test.tsx`** (16 — a barreira das ações destrutivas), **`CoordenadoresProvaDialog.ui.test.tsx`** (23 — a concessão de acesso de coordenador), **`ValoresFuncaoProvaDialog`** + **`MetaColaboradoresDialog`** (20 + 13 — o caminho do dinheiro), **`CorrigirEmailAcessoDialog`** (16 — a âncora de identidade), **`UnidadeProvaDialog`** · **`FuncaoColaboradorDialog`** · **`SalaProvaDialog`** · **`SalaExtraDialog`** (42 no total) |
 | **Guards de página** | `pages/guards.test.tsx` — 137 testes: a matriz **19 páginas × 5 papéis**, mais a janela do `rolesLoaded` e o `isLoggingOut` |
 
-**A camada de hooks fechou em 2026-07-26** — os 20 hooks de dados têm teste (`use-mobile` e `use-toast` são utilitários do shadcn, fora da conta). Falta **5 dos 12 diálogos** e **as 8 Edge Functions** (rodam em Deno, fora do alcance desta suíte — a autorização de duas delas é verificada pela bateria manual [`../../../docs/bateria-create-admin-autorizacao.md`](../../../docs/bateria-create-admin-autorizacao.md)).
+**A camada de hooks fechou em 2026-07-26** — os 20 hooks de dados têm teste (`use-mobile` e `use-toast` são utilitários do shadcn, fora da conta). Falta **1 dos 12 diálogos** (só o `ColaboradorDialog`, 777 l.) e **as 8 Edge Functions** (rodam em Deno, fora do alcance desta suíte — a autorização de duas delas é verificada pela bateria manual [`../../../docs/bateria-create-admin-autorizacao.md`](../../../docs/bateria-create-admin-autorizacao.md)).
 
 **Das páginas, o que está coberto é o guard, não o comportamento.** A bateria afirma quem entra e para onde o recusado é mandado; ela não exercita formulário, listagem nem ação de página nenhuma. As **4 páginas fora da matriz** são as que não têm guard a testar, todas públicas por natureza: `/auth`, `/cadastro-publico`, `/redefinir-senha` e `NotFound`.
 
