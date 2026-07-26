@@ -66,9 +66,27 @@ Verifica se uma função está referenciada em qualquer uma de três tabelas (`v
 
 `useMetaColaboradoresUnidade.tsx`: upsert com `onConflict: "prova_unidade_id,funcao_id"` — ou seja, uma meta é única por combinação unidade-da-prova + função (não por prova inteira). Usado para acompanhar se a quantidade alocada bate com a meta planejada.
 
+### ✅ Apagar o valor de uma função não deixa mais a meta órfã
+
+`upsertMetas` é upsert puro e **nunca apaga**. Como o `MetaColaboradoresDialog` só lista funções que têm valor nesta prova, apagar o valor fazia a função sumir do diálogo enquanto a linha em `meta_colaboradores_unidade` continuava no banco, com a quantidade que alguém digitou.
+
+**O dano não era abstrato:** `ProvaCard` lê a tabela direto e filtra `meta > 0`, então a meta órfã **continuava aparecendo no card da prova** como função faltando gente — e ninguém conseguia zerá-la, porque sem valor ela não aparecia mais no diálogo. Demanda fantasma: visível onde se lê, inalcançável onde se edita.
+
+A migration `20260726200000_impedir_remover_valor_com_meta.sql` criou o trigger **`check_valor_sem_meta`** (`BEFORE DELETE` em `valores_funcao_prova`), que recusa remover o valor enquanto houver **meta > 0** daquela função na prova.
+
+Três escolhas de desenho que precisam sobreviver a refatoração:
+
+1. **Trigger, não FK.** A meta é chaveada por `(prova_unidade_id, funcao_id)` e o valor por `(prova_id, funcao_id)`: a dependência cruza um nível (unidade → prova), e **nenhuma FK expressa isso**.
+2. **`quantidade_meta > 0`, não "existe linha".** O diálogo só faz upsert — não há como remover a linha pela tela, só zerá-la. Bloquear pela existência da linha criaria impasse; zerar é o gesto disponível, então é ele que destrava. Verificado com dado real: uma função com **8 linhas de meta, todas zero**, teve o valor removido normalmente.
+3. **`SECURITY DEFINER`.** Sem isso as consultas do trigger rodariam sob a RLS de quem chama, e um coordenador que enxerga só as próprias unidades não veria as metas das outras — a barreira ficaria porosa justamente para o usuário mais restrito.
+
+**Decisão do usuário (26/07):** bloquear, e **não** zerar as metas junto. Zerar seria um clique só, mas perderia em silêncio o número planejado. O atrito do bloqueio aparece só quando a exclusão é duvidosa: se ninguém planejou aquela função, as metas já são 0 e nada é bloqueado.
+
+⚠️ **`useValoresFuncaoProva.deleteValor` descartava a mensagem do banco** e mostrava "Erro ao remover valor" para tudo — a mesma classe já paga uma vez aqui (a mensagem da Edge Function jogada fora). Agora passa adiante via `mensagemErroRemocaoValor`. Sem isso o bloqueio seria pior que o bug: a pessoa levaria um genérico sem saber que o obstáculo é uma meta que ela nem enxerga.
+
 ## `colaboradores_prova` — a tabela de alocação real
 
-> 🧪 **O caminho do dinheiro tem bateria de interação desde 2026-07-26** — `ValoresFuncaoProvaDialog.ui.test.tsx` (20) e `MetaColaboradoresDialog.ui.test.tsx` (13). O acoplamento que elas fixam: **a meta só existe para função que já tem valor cadastrado nesta prova**. Dois consertos saíram dali no mesmo dia — o banco passou a recusar valor negativo (`chk_valor_pagamento_nao_negativo`, que o cliente agora barra antes com mensagem) e excluir um valor passou a **pedir confirmação**. Ficou aberto que apagar o valor deixa a **meta órfã** no banco, porque o upsert nunca apaga (item no [`backlog.md`](../../../backlog.md)).
+> 🧪 **O caminho do dinheiro tem bateria de interação desde 2026-07-26** — `ValoresFuncaoProvaDialog.ui.test.tsx` (20) e `MetaColaboradoresDialog.ui.test.tsx` (13). O acoplamento que elas fixam: **a meta só existe para função que já tem valor cadastrado nesta prova**. Dois consertos saíram dali no mesmo dia — o banco passou a recusar valor negativo (`chk_valor_pagamento_nao_negativo`, que o cliente agora barra antes com mensagem) e excluir um valor passou a **pedir confirmação**. ✅ **A meta órfã fechou em 2026-07-26** — ver a seção em `meta_colaboradores_unidade`, acima.
 
 `useColaboradoresProva.tsx`: liga `colaborador_id` + `prova_unidade_id` + `funcao_id`, com um **`valor_pagamento` próprio, copiado no momento da alocação** — não é um lookup ao vivo em `valores_funcao_prova`. Consequência prática: mudar o valor de uma função em `valores_funcao_prova` **não** atualiza retroativamente colaboradores já alocados; é preciso editar cada `colaboradores_prova` manualmente (ou reatribuir) se o valor mudou depois da alocação.
 

@@ -14,6 +14,22 @@ interface ValorFuncaoProva {
   };
 }
 
+/**
+ * O banco passou a recusar a remoção de um valor enquanto houver meta > 0 daquela função
+ * na prova (trigger `check_valor_sem_meta`, migration 20260726200000) — senão a meta fica
+ * órfã: some do diálogo, que só lista função com valor, mas segue contando no card da
+ * prova como gente faltando, sem que ninguém consiga zerá-la.
+ *
+ * ⚠️ Este `onError` DESCARTAVA a mensagem e mostrava "Erro ao remover valor" para tudo.
+ * É a mesma classe já paga uma vez neste repo (a mensagem da Edge Function jogada fora):
+ * o banco explica o que fazer, e o cliente substitui a explicação por um genérico. A
+ * regra que fica: mensagem vinda do banco/EF passa adiante; o texto próprio é fallback.
+ */
+export function mensagemErroRemocaoValor(error: { message?: string }): string {
+  const doBanco = error?.message?.trim();
+  return doBanco ? doBanco : "Erro ao remover valor";
+}
+
 export function useValoresFuncaoProva(provaId: string) {
   const queryClient = useQueryClient();
 
@@ -94,8 +110,8 @@ export function useValoresFuncaoProva(provaId: string) {
       queryClient.invalidateQueries({ queryKey: ["valores-funcao-prova", provaId] });
       toast.success("Valor removido com sucesso!");
     },
-    onError: () => {
-      toast.error("Erro ao remover valor");
+    onError: (error: Error) => {
+      toast.error(mensagemErroRemocaoValor(error));
     },
   });
 

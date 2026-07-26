@@ -24,7 +24,10 @@ const { toastMock } = vi.hoisted(() => ({
 }));
 vi.mock("sonner", () => ({ toast: toastMock }));
 
-import { useValoresFuncaoProva } from "@/hooks/useValoresFuncaoProva";
+import {
+  useValoresFuncaoProva,
+  mensagemErroRemocaoValor,
+} from "@/hooks/useValoresFuncaoProva";
 
 const PROVA_ID = "prova-1";
 const VALOR_EXISTENTE = {
@@ -178,7 +181,44 @@ describe("useValoresFuncaoProva", () => {
       const { result } = renderHookWithProviders(() => useValoresFuncaoProva(PROVA_ID));
       result.current.deleteValor("vfp-1");
 
-      await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith("Erro ao remover valor"));
+      await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith("violates foreign key"));
     });
+
+    it("mostra a recusa do trigger de meta, em vez de engolir num genérico", async () => {
+      setTableResult("valores_funcao_prova", {
+        data: null,
+        error: erroPostgrest("P0001", MSG_TRIGGER_META),
+      });
+
+      const { result } = renderHookWithProviders(() => useValoresFuncaoProva(PROVA_ID));
+      result.current.deleteValor("vfp-1");
+
+      // A mensagem diz O QUE FAZER ("zere as metas antes"). Trocá-la por "Erro ao remover
+      // valor" deixa a pessoa sem saída: a função sumiu do diálogo de metas, então ela
+      // não tem como adivinhar que o obstáculo é uma meta.
+      await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith(MSG_TRIGGER_META));
+      expect(toastMock.error).not.toHaveBeenCalledWith("Erro ao remover valor");
+    });
+  });
+});
+
+/**
+ * Mensagem REAL do trigger `check_valor_sem_meta`, capturada do banco local em
+ * 2026-07-26 (`BEGIN; DELETE …; ROLLBACK;` num valor cuja função tinha 7 metas > 0).
+ */
+const MSG_TRIGGER_META =
+  "Ainda há metas de colaboradores definidas para esta função nesta prova. Zere as metas antes de remover o valor.";
+
+describe("mensagemErroRemocaoValor", () => {
+  it("passa adiante a mensagem do banco", () => {
+    expect(mensagemErroRemocaoValor({ message: MSG_TRIGGER_META })).toBe(MSG_TRIGGER_META);
+  });
+
+  it("cai no genérico quando não veio mensagem nenhuma", () => {
+    expect(mensagemErroRemocaoValor({})).toBe("Erro ao remover valor");
+  });
+
+  it("cai no genérico quando a mensagem é só espaço em branco", () => {
+    expect(mensagemErroRemocaoValor({ message: "   " })).toBe("Erro ao remover valor");
   });
 });

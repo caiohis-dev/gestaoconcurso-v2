@@ -140,20 +140,21 @@ Dos **771** CPFs cadastrados, **16** não passam na validação de dígito verif
 - O cliente valida (`src/lib/cpf.ts`, usado por `ColaboradorDialog` e `CadastroLote`), mas **de propósito só quando o CPF é novo ou alterado**. Validar sempre travaria a edição desses cadastros, impedindo corrigir telefone ou e-mail deles no dia da prova. **É decisão registrada — não "conserte" isso achando que é esquecimento.**
 - **Um CHECK de DV no banco depende do saneamento acontecer primeiro**, senão a migration falha na carga. Enquanto os 16 existirem, esse CHECK não é possível — e a correção teria de morar no **dump**, não no `seed.pos.sql`, que roda depois das migrations.
 
-## Apagar o valor de uma função deixa a meta dela órfã no banco
+## ✅ CONCLUÍDO 2026-07-26 — a meta órfã deixou de ser possível
 
-**Status:** pendente — **achado ao escrever teste** do `MetaColaboradoresDialog` em 2026-07-26
 **Área:** Alocação e Funções (ver [`estrutura/modulos/aplicacao-provas/alocacao-e-funcoes.md`](./estrutura/modulos/aplicacao-provas/alocacao-e-funcoes.md))
 
-`upsertMetas` é upsert puro (`onConflict` em prova+função) e **nunca apaga**. Quando uma função perde o valor de pagamento, ela desaparece do `MetaColaboradoresDialog` — mas a linha em `meta_colaboradores_unidade` **continua no banco**, invisível na tela e nunca mais reenviada.
+Apagar o valor de pagamento de uma função fazia a linha de `meta_colaboradores_unidade` ficar órfã — invisível no diálogo (que só lista função com valor) e ainda **contando no card da prova** como gente faltando, sem que ninguém conseguisse zerá-la.
 
-Tem teste marcado `⚠️ ATENÇÃO`, não `DEFEITO`: não é falha do diálogo, que não tem como saber. O risco é para quem ler `meta_colaboradores_unidade` direto — relatório ou tela de alocação contando meta de função que não tem valor nesta prova.
+Migration `20260726200000`: trigger **`check_valor_sem_meta`** recusa remover o valor enquanto houver **meta > 0** daquela função na prova. É trigger e não FK porque a meta é por unidade e o valor é por prova — a dependência cruza um nível.
 
-**Cuidado ao consertar:** apagar meta órfã é **decisão de produto**, não limpeza óbvia — pode ser histórico legítimo de prova já realizada. Decidir antes de migrar.
+**Decisão do usuário:** bloquear, não zerar as metas junto. Zerar seria um clique só, mas perderia em silêncio o número planejado.
 
-> Os outros dois achados da mesma sessão **foram corrigidos em 2026-07-26**, e é por isso que este ficou menos alcançável: o valor negativo (`chk_valor_pagamento_nao_negativo` + recusa no cliente) e a exclusão sem confirmação (agora há `AlertDialog`). O gatilho mais curto para criar a órfã era justamente aquele clique sem confirmação.
+**A ressalva deste item — "apagar meta órfã é decisão de produto, pode ser histórico legítimo" — ficou sem objeto:** a medição mostrou **0 órfãs** em 186 metas. A dívida era inteiramente preventiva; não houve o que sanear e nenhuma decisão sobre histórico precisou ser tomada.
 
----
+**Verificado com `db reset` + DELETE real em transação:** valor cuja função tinha 7 metas > 0 → recusado com a mensagem; e o **controle positivo**, um valor cuja função tinha **8 linhas de meta, todas zero** → `DELETE 1`. É esse segundo caso que prova a semântica `> 0` — bloquear pela existência da linha criaria impasse, já que o diálogo não apaga linha, só zera.
+
+> **Corrigido junto, e é dívida de outra classe:** `deleteValor` descartava a mensagem do banco e mostrava "Erro ao remover valor" para qualquer falha. Segunda ocorrência do padrão (a primeira foi a mensagem da Edge Function). **A regra que fica: mensagem vinda do banco ou de EF passa adiante; texto próprio é fallback.**
 
 ## ✅ CONCLUÍDO 2026-07-26 — excluir função em uso passou a ser recusado pelo banco
 
