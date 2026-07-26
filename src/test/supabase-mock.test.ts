@@ -4,6 +4,7 @@ import {
   setTableResult,
   setTableResultSequence,
   setRpcResult,
+  setFunctionResult,
   resetSupabaseMock,
   erroPostgrest,
   CODIGOS_POSTGREST,
@@ -152,6 +153,36 @@ describe("mock do client do Supabase", () => {
 
     it("lança mensagem útil quando ninguém chamou o método", () => {
       expect(() => builderQueChamou("editais", "delete")).toThrow(/Nenhum builder/);
+    });
+  });
+
+  describe("Edge Functions", () => {
+    it("atende functions.invoke por nome", async () => {
+      setFunctionResult("create-coordenador", { data: { success: true }, error: null });
+
+      await expect(supabaseMock.functions.invoke("create-coordenador", {})).resolves.toEqual({
+        data: { success: true },
+        error: null,
+      });
+    });
+
+    it("aceita erro no formato do FunctionsHttpError, não só do PostgREST", async () => {
+      // Erro de EF é outra coisa: o supabase-js embrulha o corpo da resposta HTTP em
+      // `context.body` como STRING, e quem consome desserializa para achar a mensagem
+      // (é o que o CoordenadoresProvaDialog faz). O tipo do mock só cobria erro do
+      // PostgREST, então esse teste só compilava com cast — daí o `FunctionErrorLike`.
+      setFunctionResult("create-coordenador", {
+        data: null,
+        error: {
+          message: "Edge Function returned a non-2xx status code",
+          context: { body: JSON.stringify({ error: "CPF já vinculado" }) },
+        },
+      });
+
+      const { error } = await supabaseMock.functions.invoke("create-coordenador", {});
+      expect(JSON.parse((error as { context: { body: string } }).context.body)).toEqual({
+        error: "CPF já vinculado",
+      });
     });
   });
 

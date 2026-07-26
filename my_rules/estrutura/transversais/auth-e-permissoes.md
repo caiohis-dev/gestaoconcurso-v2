@@ -172,6 +172,12 @@ Existem **dois caminhos diferentes** no código para dar acesso de coordenador a
 
 Remover o papel de coordenador (`updateRole` com `action: "remove"`) também remove em cascata todos os registros de `coordenadores_prova` daquele usuário.
 
+⚠️ **Mas isso são dois passos SEM transação, e a ordem é a pior possível:** `updateRole` apaga `user_roles` **e só depois** `coordenadores_prova`. Como `is_coordenador_prova` consulta **apenas** `coordenadores_prova` — nunca `user_roles` —, falhar no segundo passo **tira o papel da tela e mantém o acesso real pela RLS**. A saída correta é RPC.
+
+🔴 **O superadmin não consegue conceder acesso de coordenador.** A EF `create-coordenador` (`index.ts:51-64`) autoriza o chamador com `SELECT` em `user_roles` filtrando `role = 'admin'` — match literal. Superadmin não tem linha `admin` (a `create-admin` insere só o papel escolhido), então leva **403 "Only admins can create coordinators"**. É a **terceira ocorrência** da classe que a migration `20260725195530_superadmin_implica_admin_em_has_role.sql` existe para resolver: quem sabe da hierarquia é o `has_role`, não um SELECT. A mesma falha, mais branda, está na barreira de e-mail de admin do `CoordenadoresProvaDialog`. Item no [`backlog.md`](../../backlog.md) — e é **pré-requisito** de tornar esse diálogo o caminho exclusivo de concessão.
+
+🧪 O diálogo tem bateria de interação desde 2026-07-26 (`CoordenadoresProvaDialog.ui.test.tsx`, 23 testes): a barreira do e-mail, o body da EF, os dois formatos de erro dela e o fluxo de remoção.
+
 ### RLS não é o único portão: sem `GRANT`, a policy nem é avaliada
 
 Toda tabela de `public` tem RLS ativa e policies — mas o Postgres checa o **privilégio de tabela antes** da RLS. Se `authenticated` não tiver `GRANT SELECT`, o PostgREST devolve `42501 permission denied` e a policy nunca roda. Foi exatamente isso que quebrou o login em dev local até 2026-07-12: os `GRANT`s existiam em produção (criados implicitamente pelo dashboard do Lovable) mas nunca tinham sido registrados em migration. A migration `20260712010000_grant_api_roles_table_privileges.sql` corrigiu isso e ajustou o `ALTER DEFAULT PRIVILEGES` para que tabelas futuras já nasçam certas. Detalhes em [`desenvolvimento-local.md`](./desenvolvimento-local.md).

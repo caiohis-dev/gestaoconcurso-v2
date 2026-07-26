@@ -33,6 +33,23 @@ export interface QueryResult<T = unknown> {
   error: PostgrestErrorLike | null;
 }
 
+/**
+ * Erro de Edge Function — NÃO é um erro do Postgrest, e a diferença importa no teste.
+ * O supabase-js devolve um `FunctionsHttpError`, que embrulha o corpo da resposta HTTP
+ * em `context.body` como **string**; quem consome precisa desserializar para achar a
+ * mensagem de verdade (é o que o `CoordenadoresProvaDialog` faz). Sem este tipo, um
+ * teste de erro de EF só compilava com cast.
+ */
+export interface FunctionErrorLike {
+  message: string;
+  context?: { body?: string };
+}
+
+export interface FunctionResult<T = unknown> {
+  data: T | null;
+  error: FunctionErrorLike | PostgrestErrorLike | null;
+}
+
 /** Códigos que os hooks deste projeto traduzem para mensagem em PT-BR. */
 export const CODIGOS_POSTGREST = {
   /** unique_violation — nome de edital repetido, CPF/e-mail/PIX duplicado. */
@@ -53,7 +70,7 @@ const RESULTADO_VAZIO: QueryResult = { data: null, error: null };
 // Resultado corrente por tabela e por RPC. Um Map por chave, resetado entre testes.
 const resultadosPorTabela = new Map<string, QueryResult>();
 const resultadosPorRpc = new Map<string, QueryResult>();
-const resultadosPorFunction = new Map<string, QueryResult>();
+const resultadosPorFunction = new Map<string, FunctionResult>();
 
 // Sequências: quando o MESMO `from(tabela)` é chamado várias vezes na mesma unidade
 // de trabalho com formatos diferentes. Caso real: useColaboradoresProva lê
@@ -187,8 +204,8 @@ export function setRpcResult<T>(nome: string, resultado: QueryResult<T>): void {
 }
 
 /** Define o que `supabase.functions.invoke(<nome>)` vai resolver. */
-export function setFunctionResult<T>(nome: string, resultado: QueryResult<T>): void {
-  resultadosPorFunction.set(nome, resultado as QueryResult);
+export function setFunctionResult<T>(nome: string, resultado: FunctionResult<T>): void {
+  resultadosPorFunction.set(nome, resultado as FunctionResult);
 }
 
 /** Todos os builders devolvidos por `from(<tabela>)`, na ordem das chamadas. */

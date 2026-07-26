@@ -13,7 +13,7 @@ Este item é o marco: quem retomar os testes começa por aqui. **Leia `testes.md
 
 ### Onde paramos (2026-07-26)
 
-**529 testes em 31 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
+**554 testes em 32 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
 
 Coberto:
 
@@ -23,7 +23,7 @@ Coberto:
 | Schemas Zod (9) | `ColaboradorDialog`, `EditalDialog`, `FuncaoColaboradorDialog`, `ProvaDialog`, `SalaProvaDialog`, `UnidadeProvaDialog`, `pages/Auth`, `pages/GerenciarUsuarios` |
 | Auth | `useAuth.test.tsx` — hierarquia, `colaborador` paralelo, `rolesLoaded`, `signOut` |
 | Hooks de dados (18) | `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useEditais`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useValoresFuncaoProva`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas` + os dois vizinhos do mesmo arquivo (`useSalasDistribuidasCapacidade`, `useFiscaisSala`), `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers` (+ `useAuth`) |
-| UI de diálogo (3) | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx`, `PasswordConfirmDialog.ui.test.tsx` |
+| UI de diálogo (4) | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx`, `PasswordConfirmDialog.ui.test.tsx`, `CoordenadoresProvaDialog.ui.test.tsx` |
 | Acessibilidade | `components/dialogos-acessibilidade.test.ts` — invariante estática sobre os 28 diálogos |
 | **Guards de página** | `pages/guards.test.tsx` — **137 testes**: matriz 19 páginas × 5 papéis, a janela do `rolesLoaded` e o `isLoggingOut` |
 | A própria infra | `src/test/supabase-mock.test.ts` — o mock tem teste próprio |
@@ -40,11 +40,15 @@ Faltam: `useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade`, `useBancos`
 
 Os quatro que sobram são de baixo risco — CRUD parecido com o já coberto, e `useBancos` deve ser lista estática. **O valor agora está na camada 2 (diálogos) e na 3 (páginas/guards)**, não em terminar esta.
 
-**2. UI de diálogo — 3 de 12 cobertos.** Sem nenhum teste: `CoordenadoresProvaDialog`, `CorrigirEmailAcessoDialog`, `MetaColaboradoresDialog`, `SalaExtraDialog`, `ValoresFuncaoProvaDialog`. Com teste de schema mas sem teste de interação: `ColaboradorDialog`, `FuncaoColaboradorDialog`, `SalaProvaDialog`, `UnidadeProvaDialog`.
+**2. UI de diálogo — 4 de 12 cobertos.** Sem nenhum teste: `CorrigirEmailAcessoDialog`, `MetaColaboradoresDialog`, `SalaExtraDialog`, `ValoresFuncaoProvaDialog`. Com teste de schema mas sem teste de interação: `ColaboradorDialog`, `FuncaoColaboradorDialog`, `SalaProvaDialog`, `UnidadeProvaDialog`.
 
 ✅ **`PasswordConfirmDialog` foi o primeiro, em 2026-07-26** — era o que mais importava: a barreira de confirmação das ações destrutivas (excluir edital e prova, finalizar/reabrir, encerrar ocorrências), com 7 usos em 5 páginas. 16 testes fixam o contrato numa frase: **`onConfirm` só roda depois de a senha ser aceita pelo servidor**, e erro em qualquer etapa **não fecha o diálogo** — porque fechar sem executar pareceria sucesso. Falsificado: neutralizar a checagem de `signInError` derruba o teste da senha incorreta.
 
-**A próxima de maior valor é `CoordenadoresProvaDialog`** — é o caminho que a decisão do item do `addCoordenadorAccess` (acima) quer tornar exclusivo para conceder acesso de coordenador. Cobri-lo antes daquela refatoração dá a mesma rede que a bateria de guards deu ao `RequireModulo`.
+✅ **`CoordenadoresProvaDialog` saiu em seguida, no mesmo dia** — 23 testes, escolhido porque é o caminho que a decisão do `addCoordenadorAccess` quer tornar exclusivo. A aposta se pagou como a dos hooks: **rendeu mais achado que cobertura**, inclusive o 403 que bloqueia o superadmin (item próprio abaixo) e que é pré-requisito daquela decisão. O hook fica mockado ali de propósito — a regra de elegibilidade vive no `useCoordenadoresProva`, que tem teste próprio.
+
+Efeito colateral registrado: o `setFunctionResult` do mock passou a aceitar erro no formato do `FunctionsHttpError` (`context.body` como string), que é diferente do erro do PostgREST. Antes só compilava com cast. O `supabase-mock.test.ts` ganhou dois testes por isso.
+
+**A próxima de maior valor é `MetaColaboradoresDialog`**, que define quantos colaboradores cada unidade precisa — número de que sai a alocação e, adiante, o pagamento.
 
 **3. Páginas: os guards estão cobertos desde 2026-07-26; o comportamento, não.** A aposta do `it.each` sobre a tabela rota × papel se pagou: `pages/guards.test.tsx` cobre **19 páginas × 5 papéis** e é agora a especificação do `RequireModulo` (item abaixo), que deixou de ser arriscado. A bateria foi **falsificada de propósito** antes de ser aceita — quebrar o guard do `Editais` fez cair exatamente os casos "recusa colaborador" e "recusa coordenador", que é a falha que passou meses invisível.
 
@@ -95,6 +99,34 @@ Como documentado em [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/
 - Remover da UI de `/gerenciar-usuarios` a opção de conceder/selecionar o papel de `coordenador`.
 - A concessão de acesso de coordenador passará a ser **exclusiva** do fluxo de alocação da prova (`CoordenadoresProvaDialog`).
 - Com isso, o hook `useUsers.addCoordenadorAccess` (e o workaround da alocação falsa em `colaboradores_prova`) deverá ser excluído do código.
+
+---
+
+## Papel checado por SELECT literal em `user_roles` bloqueia o superadmin na concessão de coordenador
+
+**Status:** pendente — **achado ao escrever teste** do `CoordenadoresProvaDialog` em 2026-07-26
+**Área:** Autenticação (ver [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md)) / Alocação e Funções
+
+**Terceira ocorrência da mesma classe** (as duas primeiras foram `send-email` e `create-admin`): papel conferido por `SELECT` em `user_roles` com igualdade, em vez de `has_role`. A migration [`20260725195530_superadmin_implica_admin_em_has_role.sql`](../supabase/migrations/20260725195530_superadmin_implica_admin_em_has_role.sql) existe **precisamente** porque `user_roles` não carrega a implicação `superadmin ⊇ admin` — quem a resolve é o `has_role`. E `create-admin` já foi corrigida para usar a RPC, com o comentário explícito no código.
+
+São **dois lugares**, o mesmo erro, gravidades diferentes:
+
+**1. 🔴 A Edge Function `create-coordenador` RECUSA o superadmin** (`index.ts:51-64`):
+
+```ts
+.from("user_roles").select("role").eq("user_id", user.id).eq("role", "admin").single()
+// roleError || !roleData  →  403 "Only admins can create coordinators"
+```
+
+Um superadmin **não tem linha `admin`** em `user_roles` — `create-admin` insere só o papel escolhido. Então ele leva **403** e **não consegue conceder acesso de coordenador**. Isto viola a regra do usuário de que superadmin não bate em muro, e é funcional: quebra o fluxo hoje, não em teoria.
+
+> **Consequência direta para a decisão do `addCoordenadorAccess`** (item acima): aquela decisão quer tornar o `CoordenadoresProvaDialog` o caminho **exclusivo** de concessão. Enquanto este 403 existir, tornar exclusivo um caminho que o superadmin não consegue usar **tranca a concessão para ele**. Consertar isto é pré-requisito daquele tema, não item paralelo.
+
+**2. 🟡 A barreira de e-mail de admin no diálogo não pega superadmin** (`CoordenadoresProvaDialog.tsx:122-127`). A intenção é recusar e-mail que já pertence a um administrador; com `.eq("role","admin")`, o e-mail de um superadmin passa reto. A EF então **reaproveita a conta existente** (`create-coordenador/index.ts:85-87`) e acrescenta o papel `coordenador` mais uma linha em `coordenadores_prova` à conta do superadmin.
+
+Não é escalada de privilégio (superadmin já pode mais), e o `resolveRoleGestao` mantém o `role` como `superadmin`, então a UI dele não muda. O dano é **poluição de dado** e a barreira falhando em silêncio no caso que ela mesma diz proibir. Tem teste marcado `⚠️ DEFEITO`.
+
+**Conserto dos dois:** trocar o SELECT por `supabase.rpc("has_role", { _user_id, _role: "admin" })`, que já resolve a hierarquia. O da EF é o urgente.
 
 ---
 
