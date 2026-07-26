@@ -131,114 +131,15 @@ export function useUsers() {
     },
   });
 
-  const addCoordenadorAccess = useMutation({
-    mutationFn: async ({ userId, provaId }: { userId: string; provaId: string }) => {
-      // Primeiro, verificar se o usuário já tem a role de coordenador
-      const { data: existingRole } = await supabase
-        .from("user_roles")
-        .select("id")
-        .eq("user_id", userId)
-        .eq("role", "coordenador")
-        .maybeSingle();
-
-      // Se não tem, adicionar a role
-      if (!existingRole) {
-        const { error: roleError } = await supabase.from("user_roles").insert({
-          user_id: userId,
-          role: "coordenador",
-        });
-        if (roleError) throw roleError;
-      }
-
-      // Verificar se já tem acesso a essa prova
-      const { data: existingAccess } = await supabase
-        .from("coordenadores_prova")
-        .select("id")
-        .eq("user_id", userId)
-        .eq("prova_id", provaId)
-        .maybeSingle();
-
-      if (existingAccess) {
-        throw new Error("Este usuário já tem acesso de coordenador nesta prova.");
-      }
-
-      // Buscar uma unidade da prova para vincular
-      const { data: provaUnidade, error: unidadeError } = await supabase
-        .from("prova_unidades")
-        .select("id")
-        .eq("prova_id", provaId)
-        .limit(1)
-        .maybeSingle();
-
-      if (unidadeError || !provaUnidade) {
-        throw new Error("Esta prova não possui unidades vinculadas. Adicione uma unidade primeiro.");
-      }
-
-      // Buscar um colaboradores_prova existente ou criar um
-      const { data: existingColabProva } = await supabase
-        .from("colaboradores_prova")
-        .select("id")
-        .eq("prova_unidade_id", provaUnidade.id)
-        .limit(1)
-        .maybeSingle();
-
-      let colaboradorProvaId = existingColabProva?.id;
-
-      if (!colaboradorProvaId) {
-        // Buscar qualquer colaborador para criar o vínculo
-        const { data: anyColab } = await supabase
-          .from("colaboradores")
-          .select("id")
-          .limit(1)
-          .maybeSingle();
-
-        if (!anyColab) {
-          throw new Error("Não há colaboradores cadastrados. Cadastre um colaborador primeiro.");
-        }
-
-        // Criar colaboradores_prova entry
-        const { data: newColabProva, error: colabProvaError } = await supabase
-          .from("colaboradores_prova")
-          .insert({
-            prova_unidade_id: provaUnidade.id,
-            colaborador_id: anyColab.id,
-          })
-          .select("id")
-          .single();
-
-        if (colabProvaError) throw colabProvaError;
-        colaboradorProvaId = newColabProva.id;
-      }
-
-      // Inserir no coordenadores_prova
-      const { error: coordError } = await supabase
-        .from("coordenadores_prova")
-        .insert({
-          user_id: userId,
-          prova_id: provaId,
-          colaborador_prova_id: colaboradorProvaId,
-        });
-
-      if (coordError) throw coordError;
-
-      return { success: true };
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
-      queryClient.invalidateQueries({ queryKey: ["user-coordenador-provas"] });
-      toast({
-        title: "Acesso de coordenador adicionado",
-        description: "O usuário agora tem acesso à prova selecionada.",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Erro ao adicionar acesso",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
+  // `addCoordenadorAccess` foi REMOVIDO em 2026-07-26, junto com a concessão de
+  // coordenador pela UI de /gerenciar-usuarios. Ele fabricava uma linha em
+  // `colaboradores_prova` — a tabela de alocação real, base do pagamento — pegando
+  // um colaborador arbitrário (`.limit(1)`) só para satisfazer a FK NOT NULL de
+  // `coordenadores_prova`. A concessão passou a ser exclusiva do
+  // CoordenadoresProvaDialog, que exige alocação de verdade com função de coordenação.
+  //
+  // ⚠️ A MESMA fabricação continua viva na Edge Function `create-admin`
+  // (`createCoordenadorAccess`), que roda com service_role. Item aberto no backlog.
 
   const createUser = useMutation({
     mutationFn: async ({ 
@@ -311,7 +212,6 @@ export function useUsers() {
     error,
     updateRole,
     createUser,
-    addCoordenadorAccess,
     userCoordenadorProvas,
   };
 }

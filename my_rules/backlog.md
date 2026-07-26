@@ -72,48 +72,34 @@ O que **existe** hoje é verificação manual da autorização de duas delas, em
 
 ---
 
-## `addCoordenadorAccess` fabrica uma alocação falsa para satisfazer uma FK
+## ⏭️ PRÓXIMA TAREFA — apagar a fabricação de alocação falsa que sobrou na EF `create-admin`
 
-**Status:** pendente — **achado ao escrever teste** em 2026-07-25 (decisão de resolução em 2026-07-26)
-**Área:** Alocação e Funções (ver [`estrutura/modulos/aplicacao-provas/alocacao-e-funcoes.md`](./estrutura/modulos/aplicacao-provas/alocacao-e-funcoes.md)) / Autenticação (ver [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md))
+**Status:** pendente — **metade feita em 2026-07-26**. A UI saiu; a Edge Function ficou.
+**Área:** Alocação e Funções / Autenticação
 
-`coordenadores_prova.colaborador_prova_id` é **`NOT NULL`** (conferido no banco em 2026-07-26). Quando a unidade da prova ainda não tem **nenhuma** alocação, `useUsers.addCoordenadorAccess` não recusa: pega **qualquer colaborador** (`.limit(1)`, sem ordenação — o que o banco devolver primeiro) e **cria uma linha em `colaboradores_prova`** só para preencher a FK.
+### O que já foi feito
 
-**Por que isso é poluição de dado, e não um detalhe técnico:** `colaboradores_prova` é a tabela de **alocação real** — a que diz quem trabalha na prova, e de onde saem os relatórios e a base de pagamento. A linha fabricada faz um colaborador aparecer alocado numa unidade para a qual ninguém o escalou, **sem função e sem valor**. Ninguém que olhe a tela de alocação consegue distinguir essa linha de uma real.
+A concessão de coordenador **saiu da UI de `/gerenciar-usuarios`** (commit do dia): o papel deixou o enum do `createUserSchema`, o campo "Prova do Coordenador" e o Switch da tabela sumiram, e `useUsers.addCoordenadorAccess` foi apagado. A coluna Coordenador virou **somente leitura** — mostra o papel e as provas, sem controle. Conceder e revogar são agora exclusivos do `CoordenadoresProvaDialog`, que exige alocação real.
 
-**A causa é de modelagem:** o acesso de coordenador está amarrado a uma alocação, quando são coisas independentes — coordenar uma prova não é trabalhar numa sala dela. O conserto honesto seria tornar `colaborador_prova_id` nullable, mas a solução arquitetural decidida é outra.
+**Revogação conferida antes de remover o Switch:** o `deleteMutation` do `useCoordenadoresProva` apaga o vínculo e, se era o último, remove o papel — ninguém fica com papel irrevogável.
 
-### Decisão de resolução: Excluir a concessão de coordenador pela UI de `/gerenciar-usuarios`
+### ⚠️ O que sobrou, e por que é urgente registrar
 
-**Decidido em 2026-07-26:** em vez de contornar a FK ou melhorar o chute de qual colaborador usar, **refatorar a rota `/gerenciar-usuarios` (acessível pelo botão "Usuários" na headerbar) para excluir a possibilidade de concessão de acesso a coordenador por ali**.
+A EF **`create-admin`** tem a **própria cópia** da fabricação (`createCoordenadorAccess`): mesmo `.limit(1)` pegando um colaborador arbitrário para criar uma linha em `colaboradores_prova` — a tabela de alocação real, base do pagamento — só para satisfazer a FK `NOT NULL` de `coordenadores_prova`.
 
-Como documentado em [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md), hoje existem duas formas de dar acesso de coordenador:
-1. Pelo `CoordenadoresProvaDialog` (dentro da gestão da prova), que exige uma alocação real em `colaboradores_prova` com função de coordenação.
-2. Pela tela `/gerenciar-usuarios` via `useUsers.addCoordenadorAccess`, que é o caminho "de emergência" que fabrica a linha sintética quando não há alocação.
+Ela roda com **`service_role`, fora da RLS**. Hoje está **inalcançável pela UI**, porque o formulário não oferece mais o papel — mas segue chamável por quem tenha token de superadmin.
 
-> ✅ **Um pré-requisito desta decisão foi resolvido em 2026-07-26.** A EF `create-coordenador` recusava o **superadmin** com 403, porque autorizava o chamador por `SELECT` literal em `user_roles` — ou seja, tornar esse diálogo o caminho exclusivo teria trancado a concessão justamente para o superadmin. As duas checagens (a da EF e a barreira de e-mail do diálogo) passaram a usar `has_role`. Ver [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md).
->
-> ⚠️ **Atenção ao executar:** a fabricação da alocação falsa existe em **DOIS** lugares. Além do `useUsers.addCoordenadorAccess`, a EF `create-admin` tem a **própria cópia** da lógica (`createCoordenadorAccess`, com o mesmo `.limit(1)` pegando qualquer colaborador), usada pelo formulário de criação de usuário — e roda com `service_role`, fora da RLS. Fechar só o cliente deixa a máquina de poluir instalada.
+> 🔴 **O defeito perdeu a testemunha.** O teste marcado `⚠️ DEFEITO` que o acusava vivia em `useUsers.test.tsx` e **saiu junto com o hook**. Era a última marca dessas no repo. A EF é Deno, fora do alcance do Vitest, então **nada acusa a regressão hoje** — só este item. Há um aviso no lugar do bloco removido, em `useUsers.test.tsx`.
 
-### Ação necessária — checklist completo (revisto em 2026-07-26)
+### A fazer
 
-> A versão anterior desta lista tinha três itens e **fechava só o lado do cliente**. O aviso sobre a EF vivia num bloco separado, fora do checklist — quem seguisse a lista deixaria a máquina de poluir ligada. Agora está tudo aqui, na ordem.
+1. **Apagar `createCoordenadorAccess`** de `supabase/functions/create-admin/index.ts`, mais o ramo `selectedRole === "coordenador"` que a chama e a exigência de `provaId` no corpo.
+2. **Conferir o contrato da EF:** `useUsers.createUser` não manda mais `provaId`; o parâmetro pode sair da assinatura.
+3. **Decidir se `coordenador` continua aceito** como `selectedRole` na EF. Conceder o papel *sem* vínculo de prova é inofensivo (`is_coordenador_prova` lê `coordenadores_prova`, não `user_roles`), mas cria papel que não faz nada — provavelmente melhor recusar, com mensagem apontando o fluxo da prova.
 
-1. **Remover da UI de `/gerenciar-usuarios`** a opção de conceder o papel de `coordenador` — o Switch e o diálogo de escolher prova.
-2. **Apagar `useUsers.addCoordenadorAccess`** e o workaround da alocação falsa.
-3. **Apagar a cópia da EF:** `createCoordenadorAccess` em `supabase/functions/create-admin/index.ts`, mais o ramo `selectedRole === "coordenador"` que a chama e a exigência de `provaId`. **Sem isto o item não está fechado** — a EF roda com `service_role`, fora da RLS, e segue chamável.
-4. **Ajustar `createUserSchema`** (`GerenciarUsuarios.tsx`): tirar `coordenador` do enum e o refinamento que exige `provaId`. ⚠️ **Quebra os 15 testes** de `pages/GerenciarUsuarios.test.ts` — de propósito; reescrevê-los é parte do trabalho.
-5. **Conferir o que sobra:** `userCoordenadorProvas` (só exibe as provas de cada coordenador) pode ficar; `updateRole` com `action: "remove"` **deve** ficar — é a revogação, que desde 2026-07-26 passa pela RPC transacional `revogar_coordenador`.
+### Decisão de fluxo que segue em aberto
 
-### ⚠️ Duas decisões que ainda NÃO foram tomadas
-
-Elas não bloqueiam o começo, mas bloqueiam o fim — e é melhor decidi-las antes de mexer na UI:
-
-**(a) O que acontece com o Switch de coordenador na tabela?** Hoje ele é simétrico: liga (concede) e desliga (revoga). Tirando a concessão, ele fica **assimétrico** — só desliga. As saídas são: virar um indicador somente-leitura com um botão "revogar" à parte, ou sumir da tabela e deixar a revogação só pelo fluxo da prova. **Assimetria silenciosa é a pior das três**, porque o controle parece que liga e não liga.
-
-**(b) Criar um coordenador passa a ter 3 passos.** Hoje é um: criar a conta já com o papel e a prova. Depois: criar a conta → alocar a pessoa na prova com função de coordenação → conceder no `CoordenadoresProvaDialog`. É mais correto (não inventa alocação), mas é mais trabalho no dia da prova — vale confirmar que o fluxo novo é aceitável antes de fechar a porta antiga.
-
----
+**Criar um coordenador passou de 1 para 3 passos:** criar a conta → alocar na prova com função de coordenação → conceder no diálogo. É mais correto (não inventa alocação), mas é mais trabalho no dia da prova. **Vale confirmar na operação** — se não for aceitável, o desenho precisa de outra saída, e a mais honesta seria tornar `coordenadores_prova.colaborador_prova_id` nullable, que era o conserto de modelagem descartado no começo.
 
 ## O cadastro público não valida o CPF antes de consultar o banco
 

@@ -245,94 +245,19 @@ describe("useUsers", () => {
     });
   });
 
-  describe("acesso de coordenador a uma prova", () => {
-    it("recusa quando o usuário já tem acesso àquela prova", async () => {
-      const { result } = await carregar();
-      setTableResultSequence("user_roles", [
-        { data: { id: "r1" }, error: null }, // já tem o papel
-        { data: [], error: null },
-      ]);
-      setTableResult("coordenadores_prova", { data: { id: "cp-1" }, error: null });
-
-      result.current.addCoordenadorAccess.mutate({ userId: "u1", provaId: "p1" });
-
-      await waitFor(() =>
-        expect(toastMock).toHaveBeenCalledWith(
-          expect.objectContaining({
-            description: "Este usuário já tem acesso de coordenador nesta prova.",
-          }),
-        ),
-      );
-    });
-
-    it("recusa quando a prova não tem unidade vinculada", async () => {
-      const { result } = await carregar();
-      setTableResultSequence("user_roles", [
-        { data: { id: "r1" }, error: null },
-        { data: [], error: null },
-      ]);
-      setTableResult("coordenadores_prova", { data: null, error: null });
-      setTableResult("prova_unidades", { data: null, error: null });
-
-      result.current.addCoordenadorAccess.mutate({ userId: "u1", provaId: "p1" });
-
-      await waitFor(() =>
-        expect(toastMock).toHaveBeenCalledWith(
-          expect.objectContaining({
-            description:
-              "Esta prova não possui unidades vinculadas. Adicione uma unidade primeiro.",
-          }),
-        ),
-      );
-    });
-
-    it("⚠️ DEFEITO: fabrica uma alocação FALSA com um colaborador arbitrário", async () => {
-      // Comportamento REAL, documentado aqui em vez de mascarado.
-      //
-      // `coordenadores_prova` exige um `colaborador_prova_id`. Quando a unidade da
-      // prova ainda não tem NENHUMA alocação, o hook não recusa: ele pega
-      // "qualquer colaborador" (`.limit(1)`, sem ordenação — o que o banco devolver
-      // primeiro) e **cria uma linha em `colaboradores_prova`** só para satisfazer a
-      // FK.
-      //
-      // `colaboradores_prova` é a tabela de ALOCAÇÃO REAL — a que diz quem trabalha na
-      // prova, e de onde saem relatórios e pagamento. Uma linha fabricada faz um
-      // colaborador aparecer alocado numa unidade para a qual ninguém o escalou, sem
-      // função e sem valor. Item aberto no backlog.
-      const { result } = await carregar();
-      setTableResultSequence("user_roles", [
-        { data: { id: "r1" }, error: null },
-        { data: [], error: null },
-      ]);
-      setTableResultSequence("coordenadores_prova", [
-        { data: null, error: null }, // ainda não tem acesso
-        { data: null, error: null }, // insert final
-        { data: [], error: null },
-      ]);
-      setTableResult("prova_unidades", { data: { id: "pu-1" }, error: null });
-      setTableResultSequence("colaboradores_prova", [
-        { data: null, error: null }, // nenhuma alocação existente
-        { data: { id: "cp-novo" }, error: null }, // a linha fabricada
-      ]);
-      setTableResult("colaboradores", { data: { id: "colab-qualquer" }, error: null });
-
-      result.current.addCoordenadorAccess.mutate({ userId: "u1", provaId: "p1" });
-
-      await waitFor(() =>
-        expect(toastMock).toHaveBeenCalledWith(
-          expect.objectContaining({ title: "Acesso de coordenador adicionado" }),
-        ),
-      );
-
-      const fabricada = chamadasDe("colaboradores_prova", "insert")[0][0];
-      expect(fabricada).toEqual({
-        prova_unidade_id: "pu-1",
-        colaborador_id: "colab-qualquer",
-      });
-      // Sem função e sem valor de pagamento: é um registro de alocação incompleto.
-      expect(fabricada).not.toHaveProperty("funcao_id");
-    });
-  });
+  /**
+   * O bloco "acesso de coordenador a uma prova" foi REMOVIDO em 2026-07-26, junto com
+   * `useUsers.addCoordenadorAccess`. Ele cobria a concessão pela UI de
+   * /gerenciar-usuarios, incluindo um teste marcado `⚠️ DEFEITO` que afirmava a
+   * fabricação de alocação falsa.
+   *
+   * ⚠️ ATENÇÃO — O DEFEITO NÃO FOI CORRIGIDO, PERDEU A TESTEMUNHA.
+   * A mesma fabricação (`.limit(1)` pegando um colaborador arbitrário para satisfazer
+   * a FK NOT NULL de `coordenadores_prova`) continua viva em
+   * `supabase/functions/create-admin/index.ts` → `createCoordenadorAccess`, que roda
+   * com service_role, fora da RLS. Aquilo é Deno e está fora do alcance desta suíte,
+   * então hoje NADA acusa a regressão. É o item seguinte do backlog.
+   */
 
   describe("criar usuário (Edge Function)", () => {
     afterEach(() => vi.restoreAllMocks());

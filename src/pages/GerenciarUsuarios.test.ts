@@ -23,50 +23,30 @@ describe("createUserSchema", () => {
     expect(createUserSchema.safeParse(valido).success).toBe(true);
   });
 
-  describe("o refine coordenador ⇒ prova", () => {
-    it("rejeita coordenador sem provaId", () => {
+  describe("coordenador NÃO é concedido por esta tela", () => {
+    // Mudança de 2026-07-26. Antes, o schema aceitava `coordenador` e EXIGIA um
+    // `provaId` — e conceder por aqui obrigava a fabricar uma alocação falsa em
+    // `colaboradores_prova` só para satisfazer a FK NOT NULL de `coordenadores_prova`.
+    // Coordenação depende de alocação real, então passou a ser concedida no
+    // CoordenadoresProvaDialog. Aqui se concede papel PURO.
+    it("recusa `coordenador` no papel", () => {
       const r = createUserSchema.safeParse({ ...valido, role: "coordenador" });
       expect(r.success).toBe(false);
-      expect(r.error?.issues[0].message).toBe("Selecione uma prova para o coordenador");
+      expect(r.error?.issues[0].message).toContain("Invalid enum value");
     });
 
-    it("aceita coordenador com provaId", () => {
-      const r = createUserSchema.safeParse({
-        ...valido,
-        role: "coordenador",
-        provaId: "prova-uuid-1",
-      });
-      expect(r.success).toBe(true);
-    });
-
-    it("rejeita coordenador com provaId vazio", () => {
-      // A checagem é `!data.provaId`, então "" é falsy e cai no refine — o que é o
-      // comportamento desejado (um <select> não escolhido devolve "").
+    it("não existe mais campo `provaId` — mandá-lo não torna coordenador válido", () => {
       expect(
-        createUserSchema.safeParse({ ...valido, role: "coordenador", provaId: "" }).success,
+        createUserSchema.safeParse({ ...valido, role: "coordenador", provaId: "p1" }).success,
       ).toBe(false);
-    });
-
-    it.each(["admin", "user", "superadmin"] as const)(
-      "não exige prova para o papel %s",
-      (role) => {
-        expect(createUserSchema.safeParse({ ...valido, role }).success).toBe(true);
-      },
-    );
-
-    it("ignora provaId sobrando em papel que não é coordenador", () => {
-      // Não é erro mandar prova para um admin; o refine só olha o caso coordenador.
-      expect(
-        createUserSchema.safeParse({ ...valido, role: "admin", provaId: "prova-1" }).success,
-      ).toBe(true);
     });
   });
 
   describe("papel", () => {
-    it("aceita exatamente os quatro papéis do enum app_role de gestão", () => {
-      for (const role of ["admin", "user", "coordenador", "superadmin"]) {
-        const payload = role === "coordenador" ? { ...valido, role, provaId: "p1" } : { ...valido, role };
-        expect(createUserSchema.safeParse(payload).success, role).toBe(true);
+    it("aceita os três papéis que esta tela concede", () => {
+      // `coordenador` saiu em 2026-07-26 — ver o describe acima.
+      for (const role of ["admin", "user", "superadmin"]) {
+        expect(createUserSchema.safeParse({ ...valido, role }).success, role).toBe(true);
       }
     });
 

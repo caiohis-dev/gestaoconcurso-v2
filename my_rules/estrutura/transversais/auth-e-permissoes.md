@@ -168,14 +168,21 @@ As páginas de gestão **não guardam mais a si mesmas**. A autorização de rot
 
 🧪 **A especificação é `src/pages/guards.test.tsx`** — 137 testes, matriz 19 páginas × 5 papéis. O harness compõe rota + wrapper como o `App.tsx` faz; se um teste dali quebrar numa refatoração de autorização, a decisão mudou de comportamento.
 
-### Duas formas distintas de conceder acesso de coordenador — atenção ao mexer aqui
+### Conceder acesso de coordenador — um caminho só, desde 2026-07-26
 
-Existem **dois caminhos diferentes** no código para dar acesso de coordenador a um usuário, com precondições distintas:
+**`useCoordenadoresProva.createMutation`**, no `CoordenadoresProvaDialog`, dentro da gestão da prova. Ele **exige alocação real**: um registro em `colaboradores_prova` para aquele colaborador, com função de coordenação (`FUNCOES_COORDENACAO`, ver [`alocacao-e-funcoes.md`](../modulos/aplicacao-provas/alocacao-e-funcoes.md)). Só vincula `user_id` ao `colaborador_prova_id` que já existe.
 
-1. **`useCoordenadoresProva.createMutation`** (usado em `CoordenadoresProvaDialog`, dentro do fluxo normal de gestão de uma prova) — exige que já exista um registro em `colaboradores_prova` para aquele colaborador com uma função de coordenação (`FUNCOES_COORDENACAO`, ver [`alocacao-e-funcoes.md`](../modulos/aplicacao-provas/alocacao-e-funcoes.md)) e apenas vincula `user_id` a esse `colaborador_prova_id` existente.
-2. **`useUsers.addCoordenadorAccess`** (usado em `/gerenciar-usuarios`) — caminho mais "de emergência": adiciona a role `coordenador` em `user_roles` e, se não existir um `colaboradores_prova` elegível, **cria um registro sintético** usando qualquer colaborador disponível (primeiro encontrado) e nenhuma função definida, só para satisfazer o vínculo. Isso é um workaround visível no código, não uma feature deliberada de "coordenador sem colaborador real" — se for mexer em concessão de acesso de coordenador, esse caminho alternativo é a explicação mais provável de um `coordenadores_prova` com dados estranhos/incompletos.
+**O segundo caminho foi removido.** `useUsers.addCoordenadorAccess`, em `/gerenciar-usuarios`, adicionava o papel e, **quando não havia alocação elegível, fabricava um registro sintético** — pegava qualquer colaborador (`.limit(1)`, sem ordenação) e criava uma linha em `colaboradores_prova` sem função e sem valor, só para satisfazer a FK `NOT NULL` de `coordenadores_prova`.
 
-Remover o papel de coordenador (`updateRole` com `action: "remove"`) também remove em cascata todos os registros de `coordenadores_prova` daquele usuário.
+**Por que aquilo era poluição, não atalho:** `colaboradores_prova` é a tabela de **alocação real** — de onde saem os relatórios e a base de pagamento. A linha fabricada punha um colaborador "trabalhando" numa unidade para a qual ninguém o escalou, e nada na tela de alocação a distinguia de uma real.
+
+**A regra que ficou:** nesta tela se concede **papel puro** (superadmin, admin). Coordenação depende de alocação, então se concede — e se revoga — na prova. A coluna Coordenador do `/gerenciar-usuarios` virou **somente leitura**: mostra o papel e as provas, sem controle.
+
+> ⚠️ **A fabricação NÃO acabou.** A EF `create-admin` tem a **própria cópia** (`createCoordenadorAccess`), com o mesmo `.limit(1)`, e roda com `service_role` — fora da RLS. Hoje ela está **inalcançável pela UI** (o formulário não oferece mais o papel), mas segue chamável por quem tiver um token de superadmin. **É a próxima tarefa do [`backlog.md`](../../backlog.md)**, e enquanto não sair não há teste automatizado acusando: a EF é Deno, fora do alcance da suíte.
+
+**Revogar** acontece no mesmo diálogo: o `deleteMutation` do `useCoordenadoresProva` apaga o vínculo e, **se era o último**, remove também o papel. A ordem é a segura — apaga o acesso antes do papel, então falhar no fim deixa papel sem acesso, que não concede nada (`is_coordenador_prova` lê só `coordenadores_prova`).
+
+A revogação em massa por `updateRole` (`action: "remove"`) continua existindo no hook, hoje sem chamador na UI, e passa pela RPC transacional `revogar_coordenador`.
 
 ✅ **Isso eram dois passos SEM transação até 2026-07-26, e na pior ordem:** `updateRole` apagava `user_roles` **e só depois** `coordenadores_prova`. Como `is_coordenador_prova` consulta **apenas** `coordenadores_prova` — nunca `user_roles` —, falhar no segundo passo **tirava o papel da tela e mantinha o acesso real pela RLS**: a pessoa sumia da lista de coordenadores e seguia entrando nas provas dela.
 

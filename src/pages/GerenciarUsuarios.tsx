@@ -44,16 +44,11 @@ export const createUserSchema = z.object({
   email: z.string().email("Email inválido"),
   password: z.string().min(6, "Senha deve ter no mínimo 6 caracteres"),
   fullName: z.string().min(2, "Nome deve ter no mínimo 2 caracteres"),
-  role: z.enum(["admin", "user", "coordenador", "superadmin"]),
-  provaId: z.string().optional(),
-}).refine((data) => {
-  if (data.role === "coordenador" && !data.provaId) {
-    return false;
-  }
-  return true;
-}, {
-  message: "Selecione uma prova para o coordenador",
-  path: ["provaId"],
+  // `coordenador` saiu daqui em 2026-07-26: coordenação depende de ALOCAÇÃO numa
+  // prova, e conceder por esta tela obrigava a fabricar uma alocação falsa só para
+  // satisfazer a FK de `coordenadores_prova`. O papel passa a ser concedido no
+  // CoordenadoresProvaDialog, dentro da gestão da prova. Aqui se concede papel PURO.
+  role: z.enum(["admin", "user", "superadmin"]),
 });
 
 const roleLabels: Record<AppRole, string> = {
@@ -73,20 +68,15 @@ const roleBadgeVariants: Record<AppRole, "default" | "secondary" | "outline"> = 
 export default function GerenciarUsuarios() {
   const { user, loading, isSuperAdmin } = useAuth();
   const navigate = useNavigate();
-  const { users, isLoading, updateRole, createUser, addCoordenadorAccess, userCoordenadorProvas } = useUsers();
-  const { provas, isLoading: isLoadingProvas } = useProvas();
+  const { users, isLoading, updateRole, createUser, userCoordenadorProvas } = useUsers();
 
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [coordenadorDialogOpen, setCoordenadorDialogOpen] = useState(false);
-  const [selectedUserForCoordenador, setSelectedUserForCoordenador] = useState<{ id: string; email: string } | null>(null);
-  const [selectedProvaId, setSelectedProvaId] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
   const [formData, setFormData] = useState({
     email: "",
     password: "",
     fullName: "",
     role: "user" as AppRole,
-    provaId: "",
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -115,47 +105,12 @@ export default function GerenciarUsuarios() {
     try {
       await createUser.mutateAsync(formData);
       setDialogOpen(false);
-      setFormData({ email: "", password: "", fullName: "", role: "user", provaId: "" });
+      setFormData({ email: "", password: "", fullName: "", role: "user" });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleCoordenadorToggle = async (userId: string, email: string, currentlyHas: boolean) => {
-    if (currentlyHas) {
-      // Remover papel de coordenador
-      await updateRole.mutateAsync({
-        userId,
-        role: "coordenador",
-        action: "remove",
-      });
-    } else {
-      // Abrir diálogo para selecionar a prova
-      setSelectedUserForCoordenador({ id: userId, email });
-      setSelectedProvaId("");
-      setCoordenadorDialogOpen(true);
-    }
-  };
-
-  const handleConfirmCoordenador = async () => {
-    if (!selectedUserForCoordenador || !selectedProvaId) return;
-    
-    setIsSubmitting(true);
-    try {
-      await addCoordenadorAccess.mutateAsync({
-        userId: selectedUserForCoordenador.id,
-        provaId: selectedProvaId,
-      });
-      setCoordenadorDialogOpen(false);
-      setSelectedUserForCoordenador(null);
-      setSelectedProvaId("");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Obter provas não finalizadas para seleção
-  const availableProvas = provas.filter(p => !p.prova_finalizada);
 
   const handleRoleToggle = async (userId: string, role: AppRole, currentlyHas: boolean) => {
     await updateRole.mutateAsync({
@@ -251,7 +206,7 @@ export default function GerenciarUsuarios() {
                   <Label htmlFor="role">Permissão Inicial</Label>
                   <Select
                     value={formData.role}
-                    onValueChange={(value: AppRole) => setFormData({ ...formData, role: value, provaId: "" })}
+                    onValueChange={(value: AppRole) => setFormData({ ...formData, role: value })}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -259,44 +214,10 @@ export default function GerenciarUsuarios() {
                     <SelectContent>
                       <SelectItem value="superadmin">Super Admin</SelectItem>
                       <SelectItem value="admin">Administrador</SelectItem>
-                      <SelectItem value="coordenador">Coordenador</SelectItem>
                       <SelectItem value="user">Usuário</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                {formData.role === "coordenador" && (
-                  <div className="space-y-2">
-                    <Label htmlFor="provaId">Prova do Coordenador *</Label>
-                    <Select
-                      value={formData.provaId}
-                      onValueChange={(value) => setFormData({ ...formData, provaId: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione a prova..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {isLoadingProvas ? (
-                          <SelectItem value="" disabled>Carregando...</SelectItem>
-                        ) : availableProvas.length === 0 ? (
-                          <SelectItem value="" disabled>Nenhuma prova disponível</SelectItem>
-                        ) : (
-                          availableProvas.map((prova) => (
-                            <SelectItem key={prova.id} value={prova.id}>
-                              {prova.editais?.nome}
-                              {prova.prova_data && ` - ${format(new Date(prova.prova_data), "dd/MM/yyyy")}`}
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
-                    {formErrors.provaId && (
-                      <p className="text-sm text-destructive">{formErrors.provaId}</p>
-                    )}
-                    <p className="text-xs text-muted-foreground">
-                      O coordenador terá acesso apenas a esta prova específica.
-                    </p>
-                  </div>
-                )}
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                     Cancelar
@@ -398,21 +319,31 @@ export default function GerenciarUsuarios() {
                           disabled={updateRole.isPending}
                         />
                       </TableCell>
+                      {/* Somente leitura desde 2026-07-26: superadmin e admin são papéis
+                          PUROS e se concedem aqui; coordenação depende de alocação numa
+                          prova, então é concedida e revogada no CoordenadoresProvaDialog.
+                          A informação fica — saber POR QUE alguém tem o papel é útil num
+                          painel de usuários —, o controle é que saiu. */}
                       <TableCell className="text-center">
-                        <div className="flex flex-col items-center gap-1">
-                          <Switch
-                            checked={u.roles.includes("coordenador")}
-                            onCheckedChange={() => handleCoordenadorToggle(u.id, u.email, u.roles.includes("coordenador"))}
-                            disabled={updateRole.isPending || addCoordenadorAccess.isPending}
-                          />
-                          {u.roles.includes("coordenador") && userCoordenadorProvas[u.id] && (
-                            <span className="text-xs text-muted-foreground max-w-[120px] truncate" title={userCoordenadorProvas[u.id]?.join(", ")}>
-                              {userCoordenadorProvas[u.id]?.length === 1 
-                                ? userCoordenadorProvas[u.id][0] 
-                                : `${userCoordenadorProvas[u.id]?.length} provas`}
-                            </span>
-                          )}
-                        </div>
+                        {u.roles.includes("coordenador") ? (
+                          <div className="flex flex-col items-center gap-1">
+                            <Badge variant="outline" className="border-primary text-primary">
+                              Sim
+                            </Badge>
+                            {userCoordenadorProvas[u.id] && (
+                              <span
+                                className="text-xs text-muted-foreground max-w-[120px] truncate"
+                                title={userCoordenadorProvas[u.id]?.join(", ")}
+                              >
+                                {userCoordenadorProvas[u.id]?.length === 1
+                                  ? userCoordenadorProvas[u.id][0]
+                                  : `${userCoordenadorProvas[u.id]?.length} provas`}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -421,66 +352,6 @@ export default function GerenciarUsuarios() {
             )}
           </CardContent>
         </Card>
-
-        {/* Dialog para selecionar prova do coordenador */}
-        <Dialog open={coordenadorDialogOpen} onOpenChange={setCoordenadorDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Adicionar Acesso de Coordenador</DialogTitle>
-              <DialogDescription>
-                Selecione a prova que o usuário <strong>{selectedUserForCoordenador?.email}</strong> terá acesso como coordenador.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <Alert>
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  O coordenador terá acesso apenas à prova selecionada e suas unidades vinculadas.
-                </AlertDescription>
-              </Alert>
-              <div className="space-y-2">
-                <Label>Prova</Label>
-                <Select value={selectedProvaId} onValueChange={setSelectedProvaId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione a prova..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {isLoadingProvas ? (
-                      <SelectItem value="" disabled>Carregando...</SelectItem>
-                    ) : availableProvas.length === 0 ? (
-                      <SelectItem value="" disabled>Nenhuma prova disponível</SelectItem>
-                    ) : (
-                      availableProvas.map((prova) => (
-                        <SelectItem key={prova.id} value={prova.id}>
-                          {prova.editais?.nome}
-                          {prova.prova_data && ` - ${format(new Date(prova.prova_data), "dd/MM/yyyy")}`}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setCoordenadorDialogOpen(false)}>
-                Cancelar
-              </Button>
-              <Button 
-                onClick={handleConfirmCoordenador} 
-                disabled={!selectedProvaId || isSubmitting || addCoordenadorAccess.isPending}
-              >
-                {isSubmitting || addCoordenadorAccess.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Adicionando...
-                  </>
-                ) : (
-                  "Confirmar"
-                )}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </div>
     </Layout>
   );
