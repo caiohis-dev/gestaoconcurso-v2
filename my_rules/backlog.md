@@ -13,7 +13,7 @@ Este item é o marco: quem retomar os testes começa por aqui. **Leia `testes.md
 
 ### Onde paramos (2026-07-26)
 
-**554 testes em 32 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
+**581 testes em 34 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
 
 Coberto:
 
@@ -23,7 +23,7 @@ Coberto:
 | Schemas Zod (9) | `ColaboradorDialog`, `EditalDialog`, `FuncaoColaboradorDialog`, `ProvaDialog`, `SalaProvaDialog`, `UnidadeProvaDialog`, `pages/Auth`, `pages/GerenciarUsuarios` |
 | Auth | `useAuth.test.tsx` — hierarquia, `colaborador` paralelo, `rolesLoaded`, `signOut` |
 | Hooks de dados (18) | `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useEditais`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useValoresFuncaoProva`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas` + os dois vizinhos do mesmo arquivo (`useSalasDistribuidasCapacidade`, `useFiscaisSala`), `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers` (+ `useAuth`) |
-| UI de diálogo (4) | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx`, `PasswordConfirmDialog.ui.test.tsx`, `CoordenadoresProvaDialog.ui.test.tsx` |
+| UI de diálogo (6) | `EditalDialog`, `ProvaDialog`, `PasswordConfirmDialog`, `CoordenadoresProvaDialog`, `ValoresFuncaoProvaDialog`, `MetaColaboradoresDialog` (todos `.ui.test.tsx`) |
 | Acessibilidade | `components/dialogos-acessibilidade.test.ts` — invariante estática sobre os 28 diálogos |
 | **Guards de página** | `pages/guards.test.tsx` — **137 testes**: matriz 19 páginas × 5 papéis, a janela do `rolesLoaded` e o `isLoggingOut` |
 | A própria infra | `src/test/supabase-mock.test.ts` — o mock tem teste próprio |
@@ -40,7 +40,7 @@ Faltam: `useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade`, `useBancos`
 
 Os quatro que sobram são de baixo risco — CRUD parecido com o já coberto, e `useBancos` deve ser lista estática. **O valor agora está na camada 2 (diálogos) e na 3 (páginas/guards)**, não em terminar esta.
 
-**2. UI de diálogo — 4 de 12 cobertos.** Sem nenhum teste: `CorrigirEmailAcessoDialog`, `MetaColaboradoresDialog`, `SalaExtraDialog`, `ValoresFuncaoProvaDialog`. Com teste de schema mas sem teste de interação: `ColaboradorDialog`, `FuncaoColaboradorDialog`, `SalaProvaDialog`, `UnidadeProvaDialog`.
+**2. UI de diálogo — 6 de 12 cobertos.** Sem nenhum teste: `CorrigirEmailAcessoDialog`, `SalaExtraDialog`. Com teste de schema mas sem teste de interação: `ColaboradorDialog`, `FuncaoColaboradorDialog`, `SalaProvaDialog`, `UnidadeProvaDialog`.
 
 ✅ **`PasswordConfirmDialog` foi o primeiro, em 2026-07-26** — era o que mais importava: a barreira de confirmação das ações destrutivas (excluir edital e prova, finalizar/reabrir, encerrar ocorrências), com 7 usos em 5 páginas. 16 testes fixam o contrato numa frase: **`onConfirm` só roda depois de a senha ser aceita pelo servidor**, e erro em qualquer etapa **não fecha o diálogo** — porque fechar sem executar pareceria sucesso. Falsificado: neutralizar a checagem de `signInError` derruba o teste da senha incorreta.
 
@@ -48,7 +48,9 @@ Os quatro que sobram são de baixo risco — CRUD parecido com o já coberto, e 
 
 Efeito colateral registrado: o `setFunctionResult` do mock passou a aceitar erro no formato do `FunctionsHttpError` (`context.body` como string), que é diferente do erro do PostgREST. Antes só compilava com cast. O `supabase-mock.test.ts` ganhou dois testes por isso.
 
-**A próxima de maior valor é `MetaColaboradoresDialog`**, que define quantos colaboradores cada unidade precisa — número de que sai a alocação e, adiante, o pagamento.
+✅ **`ValoresFuncaoProvaDialog` + `MetaColaboradoresDialog` saíram juntos** (14 + 13 testes), como uma unidade de trabalho só — e a razão é um acoplamento que o teste agora fixa: **a meta só existe para função que já tem valor cadastrado na prova**. São as duas metades da base de pagamento. Renderam três achados, no item "Valor de pagamento aceita negativo" abaixo.
+
+**As próximas, em ordem:** `CorrigirEmailAcessoDialog` (mexe no `colab_email`, a âncora de identidade), depois os 4 hooks restantes para fechar aquela camada, depois interação nos que já têm schema, e o `ColaboradorDialog` (777 l.) por último, como unidade de trabalho própria.
 
 **3. Páginas: os guards estão cobertos desde 2026-07-26; o comportamento, não.** A aposta do `it.each` sobre a tabela rota × papel se pagou: `pages/guards.test.tsx` cobre **19 páginas × 5 papéis** e é agora a especificação do `RequireModulo` (item abaixo), que deixou de ser arriscado. A bateria foi **falsificada de propósito** antes de ser aceita — quebrar o guard do `Editais` fez cair exatamente os casos "recusa colaborador" e "recusa coordenador", que é a falha que passou meses invisível.
 
@@ -103,6 +105,25 @@ Como documentado em [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/
 - Remover da UI de `/gerenciar-usuarios` a opção de conceder/selecionar o papel de `coordenador`.
 - A concessão de acesso de coordenador passará a ser **exclusiva** do fluxo de alocação da prova (`CoordenadoresProvaDialog`).
 - Com isso, o hook `useUsers.addCoordenadorAccess` (e o workaround da alocação falsa em `colaboradores_prova`) deverá ser excluído do código.
+
+---
+
+## Valor de pagamento aceita negativo, e excluí-lo não pede confirmação
+
+**Status:** pendente — **achado ao escrever teste** do `ValoresFuncaoProvaDialog` em 2026-07-26
+**Área:** Alocação e Funções (ver [`estrutura/modulos/aplicacao-provas/alocacao-e-funcoes.md`](./estrutura/modulos/aplicacao-provas/alocacao-e-funcoes.md))
+
+Três achados no caminho do dinheiro, do mais para o menos grave:
+
+**1. `valor_pagamento` negativo entra no banco.** O `min="0"` do input só vale para a validação nativa do navegador, que exige submit de `<form>` — e o diálogo não tem form: o clique chama `handleAdd` direto, `parseFloat("-150")` devolve `-150`, e **não existe CHECK** para `valor_pagamento` (o tema dos [17 CHECKs](./analises/concluidos/roadmap-db-constraints.yaml) cobriu formatos — CPF, e-mail, PIX —, não estes números). Tem teste marcado `⚠️ DEFEITO`.
+
+> Contraste que vale registrar, porque explica por que só um dos dois diálogos tem o furo: no `MetaColaboradoresDialog` o campo começa em `"0"`, então `"0-"` é intermediário inválido e o navegador descarta o sinal; no `ValoresFuncaoProvaDialog` o campo começa **vazio**, `"-"` sozinho é intermediário válido, e o negativo passa. O `handleChange` das metas ainda satura com `Math.max(0, …)` — o de valores não tem clamp nenhum.
+
+**Conserto:** CHECK `valor_pagamento >= 0` no banco (a barreira que falta) **e** clamp no cliente, para dar mensagem em vez de erro do PostgREST. Enquanto isso, `quantidade_meta` também não tem CHECK — só o clamp do cliente protege.
+
+**2. Excluir valor de pagamento não pede confirmação.** Um clique na lixeira e a linha de `valores_funcao_prova` vai embora. O repo tem `PasswordConfirmDialog` exatamente para ação destrutiva, e o usa em excluir prova e encerrar ocorrências — mas não aqui. Atenuante real: o valor é **congelado na alocação**, então apagar não altera pagamento já alocado.
+
+**3. Apagar o valor deixa a meta órfã.** `upsertMetas` é upsert puro (`onConflict` prova+função) e **nunca apaga**. Sem valor, a função desaparece do `MetaColaboradoresDialog`, mas a linha em `meta_colaboradores_unidade` **continua no banco** — invisível na tela e nunca mais reenviada. Encadeado com o item 2, é um clique sem confirmação que deixa dado pendurado. Tem teste marcado `⚠️ ATENÇÃO` (não é defeito do diálogo, que não tem como saber). Cuidado ao consertar: apagar meta órfã é decisão de produto, não limpeza óbvia — pode ser histórico legítimo.
 
 ---
 
