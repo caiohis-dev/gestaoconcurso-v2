@@ -19,6 +19,36 @@ function mensagemDuplicidade(error: Error): string | null {
   return 'Um dos dados informados já está cadastrado para outro colaborador.';
 }
 
+/**
+ * Traduz a recusa do banco ao excluir um colaborador com histórico (migration
+ * 20260726210000, que trocou CASCADE/SET NULL por RESTRICT nas FKs de participação).
+ *
+ * Nomeia o obstáculo porque as três situações são diferentes para quem está na tela:
+ * alocação tem saída (desalocar), ocorrência e substituição não têm — são registro de
+ * algo que aconteceu numa prova, e a decisão do usuário é que isso torne a exclusão
+ * impossível, não apenas difícil. Por isso a frase muda de "remova antes" para "não pode
+ * ser excluído": prometer uma saída que não existe é pior que recusar com clareza.
+ *
+ * ⚠️ `substituto_id` vem antes na ordem: o nome da constraint de substituto contém
+ * "ocorrencias_colaborador", então casar por essa tabela primeiro engoliria o caso.
+ */
+export function mensagemErroExclusaoColaborador(error: { message: string; code?: string }): string {
+  const comHistorico =
+    error.code === '23503' || /foreign key constraint|violates foreign key/i.test(error.message);
+  if (!comHistorico) return error.message;
+
+  if (/substituto_id_fkey/.test(error.message)) {
+    return 'Este colaborador consta como substituto em uma ocorrência de prova e, por isso, não pode ser excluído.';
+  }
+  if (/ocorrencias_colaborador/.test(error.message)) {
+    return 'Este colaborador tem histórico de ocorrência em prova e, por isso, não pode ser excluído.';
+  }
+  if (/colaboradores_prova/.test(error.message)) {
+    return 'Este colaborador está alocado em uma prova. Remova a alocação antes de excluí-lo.';
+  }
+  return 'Este colaborador tem histórico registrado e não pode ser excluído.';
+}
+
 export interface Colaborador {
   id: string;
   /** Conta do Auth que reivindicou este cadastro. Não-nulo = colab_email é a âncora do login. */
@@ -181,19 +211,16 @@ export function useColaboradores(options: UseColaboradoresOptions = {}) {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      // Check if collaborator is linked to any exam
-      const { data: provaLinks, error: checkError } = await supabase
-        .from('colaboradores_prova')
-        .select('id')
-        .eq('colaborador_id', id)
-        .limit(1);
-
-      if (checkError) throw checkError;
-
-      if (provaLinks && provaLinks.length > 0) {
-        throw new Error('COLABORADOR_VINCULADO_PROVA');
-      }
-
+      // O pré-check que existia aqui (SELECT em colaboradores_prova e throw) foi removido
+      // em 2026-07-26, junto com a migration que pôs RESTRICT nas FKs de participação.
+      //
+      // Ele protegia menos do que aparentava: checava alocação e NÃO checava ocorrência,
+      // então quem tinha histórico de ocorrência sem alocação era excluído POR ESTA TELA,
+      // levando o histórico junto. E, sendo "leio e então decido", era uma corrida — o
+      // vínculo podia nascer entre o SELECT e o DELETE.
+      //
+      // Agora quem recusa é o banco, e a mensagem dele nomeia o obstáculo com mais
+      // precisão do que o pré-check conseguia.
       const { error } = await supabase
         .from('colaboradores')
         .delete()
@@ -209,15 +236,9 @@ export function useColaboradores(options: UseColaboradoresOptions = {}) {
       });
     },
     onError: (error: Error) => {
-      let message = error.message;
-      
-      if (error.message === 'COLABORADOR_VINCULADO_PROVA') {
-        message = 'Não é possível excluir este colaborador pois ele está vinculado a uma prova.';
-      }
-      
       toast({
         title: 'Erro ao excluir',
-        description: message,
+        description: mensagemErroExclusaoColaborador(error),
         variant: 'destructive',
       });
     },

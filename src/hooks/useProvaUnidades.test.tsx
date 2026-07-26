@@ -8,6 +8,7 @@ import {
   buildersDaTabela,
   builderQueChamou,
   erroPostgrest,
+  setRpcResult,
 } from "@/test/supabase-mock";
 import { renderHookWithProviders } from "@/test/utils";
 
@@ -80,216 +81,106 @@ describe("useProvaUnidades", () => {
     });
   });
 
-  describe("adicionar unidade — copia o template para o snapshot", () => {
-    it("vincula a unidade e copia as salas do template", async () => {
-      setTableResultSequence("prova_unidades", [
-        { data: [], error: null }, // listagem no mount
-        { data: { id: "pu-1" }, error: null }, // insert do vínculo
-        { data: [], error: null }, // refetch depois da invalidação
-      ]);
-      setTableResult("sala_prova", { data: [salaTemplate(1), salaTemplate(2)], error: null });
+  /**
+   * ⚠️ Havia aqui 6 testes, dois deles marcados `⚠️ ATENÇÃO`, que fixavam a sequência de
+   * 3 passos soltos e AFIRMAVAM o estado corrompido: "o vínculo fica sem as salas se a
+   * cópia falhar" e "as salas são apagadas ANTES do vínculo". Eles caíram de propósito
+   * em 2026-07-26, quando as duas operações viraram RPC transacional (migration
+   * 20260726230000). Não eram testes errados — eram a testemunha de um defeito que agora
+   * não existe mais, e por isso viraram o oposto: garantem que a transação seja usada.
+   *
+   * A atomicidade em si NÃO é testável aqui — o mock não tem transação. Ela foi
+   * verificada contra o banco real, sabotando a cópia com um CHECK NOT VALID e
+   * confirmando que o vínculo não sobra (registrado no backlog e no doc do módulo).
+   * O que esta suíte guarda é que o cliente CHAMA a RPC em vez de encadear os passos.
+   */
+  describe("adicionar unidade — uma RPC, não três passos", () => {
+    it("chama a RPC com prova e unidade, e não toca nas tabelas direto", async () => {
+      setRpcResult("vincular_unidade_a_prova", { data: "pu-nova", error: null });
 
       const { result } = renderHookWithProviders(() => useProvaUnidades(PROVA));
       await waitFor(() => expect(result.current.isLoading).toBe(false));
+      supabaseMock.from.mockClear();
 
-      result.current.addUnidade(UNIDADE);
+      result.current.addUnidade("unid-1");
+
       await waitFor(() =>
-        expect(toastMock).toHaveBeenCalledWith(
-          expect.objectContaining({ title: "Unidade adicionada" }),
-        ),
+        expect(supabaseMock.rpc).toHaveBeenCalledWith("vincular_unidade_a_prova", {
+          p_prova_id: PROVA,
+          p_unidade_id: "unid-1",
+        }),
       );
-
-      // 1. o vínculo, com autoria lida do Auth
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const vinculo = (builderQueChamou("prova_unidades", "insert").insert as any).mock.calls[0][0];
-      expect(vinculo).toEqual({
-        prova_id: PROVA,
-        unidade_id: UNIDADE,
-        created_by: "user-teste-1",
-      });
-
-      // 2. as salas do template daquela unidade
-      expect(chamadasDe("sala_prova", "eq")[0]).toEqual(["sala_fk_unidade", UNIDADE]);
-
-      // 3. a cópia para o snapshot, em UM insert com as duas salas
-      const copia = (
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        builderQueChamou("salas_prova_distribuidas", "insert").insert as any
-      ).mock.calls[0][0];
-      expect(copia).toHaveLength(2);
-      expect(copia[0]).toEqual({
-        prova_id: PROVA,
-        sala_fk_unidade: UNIDADE,
-        sala_numero: 1,
-        sala_descricao: "Sala 1",
-        sala_capacidade: 30,
-        sala_andar: 1,
-        created_by: "user-teste-1",
-      });
-      // O `id` e o `created_at` do template NÃO são copiados: o snapshot tem vida
-      // própria e pode ser editado sem afetar a unidade.
-      expect(copia[0]).not.toHaveProperty("id");
+      // O ponto do conserto: nenhuma ESCRITA solta sobrou no cliente. A leitura de
+      // `prova_unidades` continua acontecendo — é o refetch da listagem depois da
+      // invalidação, e mirar em `from` puro acusaria isso como se fosse regressão.
+      const insercoes = buildersDaTabela("prova_unidades")
+        .concat(buildersDaTabela("salas_prova_distribuidas"))
+        .filter((b) => (b.insert as unknown as { mock: { calls: unknown[] } }).mock.calls.length > 0);
+      expect(insercoes).toHaveLength(0);
+      expect(supabaseMock.from.mock.calls.map((c) => c[0])).not.toContain("sala_prova");
     });
 
-    it("não tenta inserir snapshot quando a unidade não tem sala cadastrada", async () => {
-      setTableResultSequence("prova_unidades", [
-        { data: [], error: null },
-        { data: { id: "pu-1" }, error: null },
-        { data: [], error: null },
-      ]);
-      setTableResult("sala_prova", { data: [], error: null });
-
-      const { result } = renderHookWithProviders(() => useProvaUnidades(PROVA));
-      await waitFor(() => expect(result.current.isLoading).toBe(false));
-
-      result.current.addUnidade(UNIDADE);
-      await waitFor(() =>
-        expect(toastMock).toHaveBeenCalledWith(
-          expect.objectContaining({ title: "Unidade adicionada" }),
-        ),
-      );
-
-      // Um insert vazio seria erro do PostgREST, não no-op.
-      expect(buildersDaTabela("salas_prova_distribuidas")).toHaveLength(0);
-    });
-
-    it("⚠️ ATENÇÃO: a operação não é transacional — o vínculo fica sem as salas se a cópia falhar", async () => {
-      // Comportamento REAL, e é o que precisa estar escrito em algum lugar.
-      //
-      // São três requisições independentes. Se a terceira (a cópia das salas) falhar,
-      // a PRIMEIRA já foi gravada: a unidade aparece vinculada à prova, mas sem sala
-      // nenhuma. O toast de erro aparece, mas nada desfaz o vínculo.
-      //
-      // Não marcamos como DEFEITO porque o estado é recuperável pela UI (remover e
-      // adicionar a unidade de novo refaz a cópia) e uma transação de verdade exigiria
-      // uma RPC. Mas quem for refatorar precisa saber: o toast de erro NÃO significa
-      // "nada aconteceu".
-      setTableResultSequence("prova_unidades", [
-        { data: [], error: null },
-        { data: { id: "pu-1" }, error: null },
-        { data: [], error: null },
-      ]);
-      setTableResult("sala_prova", { data: [salaTemplate(1)], error: null });
-      setTableResult("salas_prova_distribuidas", {
+    it("avisa quando a RPC recusa", async () => {
+      setRpcResult("vincular_unidade_a_prova", {
         data: null,
-        error: erroPostgrest("23514", "violates check constraint"),
+        error: erroPostgrest("P0001", "Apenas administradores podem vincular unidades a uma prova."),
       });
 
       const { result } = renderHookWithProviders(() => useProvaUnidades(PROVA));
       await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-      result.current.addUnidade(UNIDADE);
+      result.current.addUnidade("unid-1");
+
       await waitFor(() =>
         expect(toastMock).toHaveBeenCalledWith(
-          expect.objectContaining({ title: "Erro ao adicionar unidade", variant: "destructive" }),
+          expect.objectContaining({ variant: "destructive" }),
         ),
       );
-
-      // A prova de que o vínculo ficou: o insert do passo 1 aconteceu e não houve
-      // nenhum delete para desfazê-lo.
-      expect(builderQueChamou("prova_unidades", "insert")).toBeTruthy();
-      expect(chamadasDe("prova_unidades", "delete")).toHaveLength(0);
-    });
-
-    it("para no primeiro passo quando o vínculo em si falha", async () => {
-      setTableResultSequence("prova_unidades", [
-        { data: [], error: null },
-        { data: null, error: erroPostgrest("23505", "já vinculada") },
-      ]);
-
-      const { result } = renderHookWithProviders(() => useProvaUnidades(PROVA));
-      await waitFor(() => expect(result.current.isLoading).toBe(false));
-
-      result.current.addUnidade(UNIDADE);
-      await waitFor(() =>
-        expect(toastMock).toHaveBeenCalledWith(
-          expect.objectContaining({ title: "Erro ao adicionar unidade" }),
-        ),
-      );
-
-      // Não chegou a ler o template nem a escrever snapshot.
-      expect(buildersDaTabela("sala_prova")).toHaveLength(0);
-      expect(buildersDaTabela("salas_prova_distribuidas")).toHaveLength(0);
     });
   });
 
-  describe("remover unidade — apaga o snapshot antes do vínculo", () => {
-    it("descobre a unidade pelo vínculo e apaga as salas daquela prova", async () => {
-      setTableResultSequence("prova_unidades", [
-        { data: [], error: null }, // listagem
-        { data: { unidade_id: UNIDADE }, error: null }, // leitura do vínculo
-        { data: null, error: null }, // delete do vínculo
-        { data: [], error: null }, // refetch
-      ]);
+  describe("remover unidade — uma RPC, não três passos", () => {
+    it("chama a RPC só com o id do vínculo", async () => {
+      setRpcResult("desvincular_unidade_da_prova", { data: null, error: null });
 
       const { result } = renderHookWithProviders(() => useProvaUnidades(PROVA));
       await waitFor(() => expect(result.current.isLoading).toBe(false));
+      supabaseMock.from.mockClear();
 
       result.current.removeUnidade("pu-1");
-      await waitFor(() =>
-        expect(toastMock).toHaveBeenCalledWith(
-          expect.objectContaining({ title: "Unidade removida" }),
-        ),
-      );
 
-      // O delete do snapshot é dobrado: prova E unidade. Sem o `prova_id`, apagaria
-      // as salas daquela unidade em TODAS as provas.
-      const eqDoDelete = chamadasDe("salas_prova_distribuidas", "eq");
-      expect(eqDoDelete).toEqual([
-        ["prova_id", PROVA],
-        ["sala_fk_unidade", UNIDADE],
-      ]);
+      await waitFor(() =>
+        expect(supabaseMock.rpc).toHaveBeenCalledWith("desvincular_unidade_da_prova", {
+          p_prova_unidade_id: "pu-1",
+        }),
+      );
+      // `prova_id` NÃO vai como parâmetro: a RPC o deriva da própria linha, para o
+      // cliente não conseguir mandar um que não corresponde ao vínculo e apagar salas
+      // distribuídas de outra prova.
+      const params = supabaseMock.rpc.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+      expect(params).not.toHaveProperty("p_prova_id");
+      const exclusoes = buildersDaTabela("salas_prova_distribuidas").filter(
+        (b) => (b.delete as unknown as { mock: { calls: unknown[] } }).mock.calls.length > 0,
+      );
+      expect(exclusoes).toHaveLength(0);
     });
 
-    it("⚠️ ATENÇÃO: as salas são apagadas ANTES do vínculo — falhar no fim perde o snapshot", async () => {
-      // A ordem dos três passos é: (1) ler o vínculo, (2) apagar as salas do snapshot,
-      // (3) apagar o vínculo. Se o passo 3 falhar, o 2 já aconteceu: a unidade
-      // continua vinculada à prova, agora com ZERO salas.
-      //
-      // Por que isso é pior que o caso da adição: o snapshot pode ter sido EDITADO —
-      // salas extras adicionadas à mão pelo SalaExtraDialog, capacidades ajustadas — e
-      // nada disso está no template. Reverter recriando pelo template não devolve o
-      // que foi customizado.
-      setTableResultSequence("prova_unidades", [
-        { data: [], error: null },
-        { data: { unidade_id: UNIDADE }, error: null },
-        { data: null, error: erroPostgrest("42501", "sem permissão") }, // delete do vínculo falha
-        { data: [], error: null },
-      ]);
+    it("avisa quando a RPC recusa", async () => {
+      setRpcResult("desvincular_unidade_da_prova", {
+        data: null,
+        error: erroPostgrest("P0001", "Vínculo de unidade não encontrado."),
+      });
 
       const { result } = renderHookWithProviders(() => useProvaUnidades(PROVA));
       await waitFor(() => expect(result.current.isLoading).toBe(false));
 
       result.current.removeUnidade("pu-1");
+
       await waitFor(() =>
         expect(toastMock).toHaveBeenCalledWith(
-          expect.objectContaining({ title: "Erro ao remover unidade", variant: "destructive" }),
+          expect.objectContaining({ variant: "destructive" }),
         ),
       );
-
-      // O delete das salas foi emitido mesmo assim — é isso que o teste fixa.
-      expect(chamadasDe("salas_prova_distribuidas", "delete")).toHaveLength(1);
-    });
-
-    it("não apaga sala nenhuma se não conseguir ler o vínculo", async () => {
-      // Falha fechada, e é o comportamento certo: sem saber a unidade, um delete
-      // filtrado só por `prova_id` varreria o snapshot inteiro da prova.
-      setTableResultSequence("prova_unidades", [
-        { data: [], error: null },
-        { data: null, error: erroPostgrest("PGRST116", "não encontrado") },
-      ]);
-
-      const { result } = renderHookWithProviders(() => useProvaUnidades(PROVA));
-      await waitFor(() => expect(result.current.isLoading).toBe(false));
-
-      result.current.removeUnidade("pu-1");
-      await waitFor(() =>
-        expect(toastMock).toHaveBeenCalledWith(
-          expect.objectContaining({ title: "Erro ao remover unidade" }),
-        ),
-      );
-
-      expect(buildersDaTabela("salas_prova_distribuidas")).toHaveLength(0);
     });
   });
 });

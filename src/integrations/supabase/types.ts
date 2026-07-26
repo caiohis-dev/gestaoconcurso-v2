@@ -943,6 +943,7 @@ export type Database = {
           user_name: string
         }[]
       }
+      desvincular_unidade_da_prova: { Args: { p_prova_unidade_id: string }; Returns: undefined }
       encerrar_ocorrencias_unidade: {
         Args: { p_prova_unidade_id: string; p_user_id: string }
         Returns: boolean
@@ -1024,6 +1025,10 @@ export type Database = {
         Returns: boolean
       }
       revogar_coordenador: { Args: { p_user_id: string }; Returns: undefined }
+      vincular_unidade_a_prova: {
+        Args: { p_prova_id: string; p_unidade_id: string }
+        Returns: string
+      }
       update_meu_colaborador: {
         Args: {
           p_bairro: string

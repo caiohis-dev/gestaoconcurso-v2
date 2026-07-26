@@ -25,7 +25,10 @@ const { authMock } = vi.hoisted(() => ({
 }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => authMock }));
 
-import { useColaboradores } from "@/hooks/useColaboradores";
+import {
+  useColaboradores,
+  mensagemErroExclusaoColaborador,
+} from "@/hooks/useColaboradores";
 
 const COLABORADOR = { id: "colab-1", colab_nome_completo: "Maria da Silva", colab_cpf: "12345678901" };
 
@@ -198,12 +201,43 @@ describe("useColaboradores", () => {
     });
   });
 
-  describe("delete — a trava de vínculo com prova", () => {
-    it("recusa e NÃO chama delete quando há alocação", async () => {
-      // Excluir a pessoa deixaria alocações órfãs e reescreveria histórico de
-      // pagamento. A checagem é prévia e client-side.
+  describe("delete — a trava passou do cliente para o banco", () => {
+    /**
+     * Havia aqui três testes do PRÉ-CHECK client-side (SELECT em colaboradores_prova e
+     * throw "COLABORADOR_VINCULADO_PROVA"), inclusive um garantindo o `.limit(1)`.
+     * Foram removidos em 2026-07-26 junto com o próprio pré-check: ele checava alocação
+     * e NÃO checava ocorrência, então quem tinha histórico de ocorrência sem alocação
+     * era excluído por esta tela levando o histórico junto — 18 das 19 ocorrências do
+     * banco estavam nessa situação. Quem recusa agora é o RESTRICT das FKs.
+     *
+     * Mensagens REAIS do Postgres, capturadas do banco local em 2026-07-26 após a
+     * migration 20260726210000.
+     */
+    async function excluirComErro(message: string, code = "23503") {
+      setTableResult("colaboradores", { data: null, error: { code, message } as never });
+      const { result } = renderHookWithProviders(() => useColaboradores());
+      result.current.delete("colab-1");
+      await waitFor(() =>
+        expect(toastMock).toHaveBeenCalledWith(
+          expect.objectContaining({ title: "Erro ao excluir" }),
+        ),
+      );
+      return toastMock.mock.calls.at(-1)?.[0] as { description: string };
+    }
+
+    const MSG = {
+      alocacao:
+        'update or delete on table "colaboradores" violates foreign key constraint "colaboradores_prova_colaborador_id_fkey" on table "colaboradores_prova"',
+      ocorrencia:
+        'update or delete on table "colaboradores" violates foreign key constraint "ocorrencias_colaborador_colaborador_id_fkey" on table "ocorrencias_colaborador"',
+      substituto:
+        'update or delete on table "colaboradores" violates foreign key constraint "ocorrencias_colaborador_substituto_id_fkey" on table "ocorrencias_colaborador"',
+    };
+
+    it("não consulta mais colaboradores_prova antes de excluir", async () => {
+      // O pré-check era "leio e então decido": o vínculo podia nascer entre o SELECT e o
+      // DELETE. Deixar de consultar é parte do conserto, não detalhe de performance.
       setTableResult("colaboradores", { data: [], error: null });
-      setTableResult("colaboradores_prova", { data: [{ id: "alocacao-1" }], error: null });
 
       const { result } = renderHookWithProviders(() => useColaboradores());
       await waitFor(() => expect(result.current.isLoading).toBe(false));
@@ -213,49 +247,53 @@ describe("useColaboradores", () => {
 
       await waitFor(() =>
         expect(toastMock).toHaveBeenCalledWith(
-          expect.objectContaining({
-            title: "Erro ao excluir",
-            description:
-              "Não é possível excluir este colaborador pois ele está vinculado a uma prova.",
-          }),
-        ),
-      );
-
-      const tabelas = supabaseMock.from.mock.calls.map((c) => c[0]);
-      expect(tabelas).toContain("colaboradores_prova");
-      expect(tabelas).not.toContain("colaboradores");
-    });
-
-    it("exclui quando não há vínculo", async () => {
-      setTableResult("colaboradores", { data: [], error: null });
-      setTableResult("colaboradores_prova", { data: [], error: null });
-
-      const { result } = renderHookWithProviders(() => useColaboradores());
-      await waitFor(() => expect(result.current.isLoading).toBe(false));
-
-      result.current.delete("colab-1");
-
-      await waitFor(() =>
-        expect(toastMock).toHaveBeenCalledWith(
           expect.objectContaining({ description: "Colaborador excluído com sucesso!" }),
         ),
       );
+      expect(supabaseMock.from.mock.calls.map((c) => c[0])).not.toContain("colaboradores_prova");
     });
 
-    it("limita a checagem de vínculo a 1 linha", async () => {
-      // Só interessa a existência; trazer todas as alocações seria desperdício.
-      setTableResult("colaboradores", { data: [], error: null });
-      setTableResult("colaboradores_prova", { data: [], error: null });
-
-      const { result } = renderHookWithProviders(() => useColaboradores());
-      await waitFor(() => expect(result.current.isLoading).toBe(false));
-
-      result.current.delete("colab-1");
-
-      await waitFor(() => expect(buildersDe("colaboradores_prova")).toHaveLength(1));
-      const b = buildersDe("colaboradores_prova")[0];
-      expect(b.eq).toHaveBeenCalledWith("colaborador_id", "colab-1");
-      expect(b.limit).toHaveBeenCalledWith(1);
+    it("traduz a recusa por alocação oferecendo a saída que existe", async () => {
+      const toast = await excluirComErro(MSG.alocacao);
+      expect(toast.description).toBe(
+        "Este colaborador está alocado em uma prova. Remova a alocação antes de excluí-lo.",
+      );
     });
+
+    it("traduz a recusa por ocorrência SEM prometer saída", async () => {
+      // Diferença deliberada: desalocar é possível, apagar ocorrência não. Dizer "remova
+      // antes" aqui mandaria a pessoa procurar um botão que não existe.
+      const toast = await excluirComErro(MSG.ocorrencia);
+      expect(toast.description).toContain("não pode ser excluído");
+      expect(toast.description).not.toContain("Remova");
+    });
+
+    it("distingue substituto de ocorrência titular", async () => {
+      // O nome da constraint de substituto contém "ocorrencias_colaborador"; casar por
+      // essa tabela primeiro engoliria este caso.
+      const toast = await excluirComErro(MSG.substituto);
+      expect(toast.description).toContain("substituto");
+    });
+
+    it("deixa passar erro que não é de vínculo", async () => {
+      const toast = await excluirComErro("permission denied", "42501");
+      expect(toast.description).toBe("permission denied");
+    });
+  });
+});
+
+describe("mensagemErroExclusaoColaborador", () => {
+  it("cai numa frase genérica se a FK for de uma tabela nova", () => {
+    const futura =
+      'update or delete on table "colaboradores" violates foreign key constraint "tabela_nova_colaborador_id_fkey" on table "tabela_nova"';
+    expect(mensagemErroExclusaoColaborador({ code: "23503", message: futura })).toBe(
+      "Este colaborador tem histórico registrado e não pode ser excluído.",
+    );
+  });
+
+  it("reconhece pelo texto quando o código não vem", () => {
+    const msg =
+      'update or delete on table "colaboradores" violates foreign key constraint "colaboradores_prova_colaborador_id_fkey" on table "colaboradores_prova"';
+    expect(mensagemErroExclusaoColaborador({ message: msg })).toContain("Remova a alocação");
   });
 });

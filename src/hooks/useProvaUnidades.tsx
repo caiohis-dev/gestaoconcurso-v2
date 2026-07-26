@@ -46,48 +46,16 @@ export function useProvaUnidades(provaId: string) {
 
   const addUnidadeMutation = useMutation({
     mutationFn: async (unidadeId: string) => {
-      const { data: userData } = await supabase.auth.getUser();
-
-      // 1. Inserir na prova_unidades
-      const { data, error } = await supabase
-        .from("prova_unidades")
-        .insert({
-          prova_id: provaId,
-          unidade_id: unidadeId,
-          created_by: userData.user?.id,
-        })
-        .select()
-        .single();
+      // Eram 3 passos soltos (insere vínculo, lê as salas, insere as cópias). Falhar no
+      // último deixava a unidade vinculada SEM SALA — estado que a tela não distingue de
+      // "unidade sem salas cadastradas", então o erro só aparecia ao distribuir fiscais.
+      // Virou RPC, cujo corpo roda em transação (migration 20260726230000).
+      const { data, error } = await supabase.rpc("vincular_unidade_a_prova", {
+        p_prova_id: provaId,
+        p_unidade_id: unidadeId,
+      });
 
       if (error) throw error;
-
-      // 2. Buscar salas da unidade
-      const { data: salas, error: salasError } = await supabase
-        .from("sala_prova")
-        .select("*")
-        .eq("sala_fk_unidade", unidadeId);
-
-      if (salasError) throw salasError;
-
-      // 3. Copiar salas para salas_prova_distribuidas
-      if (salas && salas.length > 0) {
-        const salasDistribuidas = salas.map((sala) => ({
-          prova_id: provaId,
-          sala_fk_unidade: sala.sala_fk_unidade,
-          sala_numero: sala.sala_numero,
-          sala_descricao: sala.sala_descricao,
-          sala_capacidade: sala.sala_capacidade,
-          sala_andar: sala.sala_andar,
-          created_by: userData.user?.id,
-        }));
-
-        const { error: insertError } = await supabase
-          .from("salas_prova_distribuidas")
-          .insert(salasDistribuidas);
-
-        if (insertError) throw insertError;
-      }
-
       return data;
     },
     onSuccess: () => {
@@ -110,29 +78,13 @@ export function useProvaUnidades(provaId: string) {
 
   const removeUnidadeMutation = useMutation({
     mutationFn: async (id: string) => {
-      // 1. Buscar dados do prova_unidade para pegar o unidade_id
-      const { data: provaUnidade, error: fetchError } = await supabase
-        .from("prova_unidades")
-        .select("unidade_id")
-        .eq("id", id)
-        .single();
-
-      if (fetchError) throw fetchError;
-
-      // 2. Deletar salas distribuídas da unidade para esta prova
-      const { error: deleteSalasError } = await supabase
-        .from("salas_prova_distribuidas")
-        .delete()
-        .eq("prova_id", provaId)
-        .eq("sala_fk_unidade", provaUnidade.unidade_id);
-
-      if (deleteSalasError) throw deleteSalasError;
-
-      // 3. Deletar o vínculo prova_unidades
-      const { error } = await supabase
-        .from("prova_unidades")
-        .delete()
-        .eq("id", id);
+      // Mesmo defeito na ordem inversa: lia o unidade_id, apagava as salas distribuídas
+      // e só então o vínculo. Falhar no último passo produzia o MESMO estado corrompido
+      // — vínculo vivo, zero salas. A RPC faz os dois DELETEs numa transação só, e
+      // deriva o prova_id da própria linha em vez de recebê-lo do cliente.
+      const { error } = await supabase.rpc("desvincular_unidade_da_prova", {
+        p_prova_unidade_id: id,
+      });
 
       if (error) throw error;
     },

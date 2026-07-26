@@ -39,28 +39,26 @@ Não repita esforço: isto está coberto e não precisa de barreira no cliente p
 | Revogação de coordenador é atômica | RPC `revogar_coordenador` |
 | Hierarquia de papéis (`superadmin ⇒ admin`) | dentro do `has_role` |
 
-## ⚠️ O que ainda mora SÓ no cliente
+## ✅ As três lacunas da auditoria foram fechadas no mesmo dia
 
-Três lacunas achadas na auditoria. Estão no [`../../backlog.md`](../../backlog.md) com medição; aqui fica a forma delas.
+Ficam aqui em resumo porque a **forma** de cada conserto é reutilizável; o detalhe está no [`../../backlog.md`](../../backlog.md).
 
-### 1. Excluir colaborador — a regra do cliente protege menos que ele pensa
+| Lacuna | Conserto | Forma |
+|---|---|---|
+| Excluir colaborador apagava alocação e ocorrências em cascata — e a **própria UI** permitia, porque checava alocação e não ocorrência | `RESTRICT` nas 3 FKs de participação (`20260726210000`) | FK, quando a dependência é direta |
+| Numeração de sala calculada no cliente, sem unicidade | índice único em `(unidade, numero)` e `(prova, unidade, numero)` (`20260726220000`) | UNIQUE **não conserta a corrida — torna-a visível** |
+| Vincular/desvincular unidade eram 3 passos soltos | RPCs `vincular_unidade_a_prova` / `desvincular_unidade_da_prova` (`20260726230000`) | RPC, quando são vários passos |
 
-`useColaboradores.deleteMutation` faz `SELECT` em `colaboradores_prova` e recusa se houver vínculo. No banco, **as FKs que apontam para `colaboradores` são CASCADE**: `colaboradores_prova`, `ocorrencias_colaborador` e `email_atualizacao_log`.
+Três lições que valem além dos itens:
 
-Duas consequências, e a segunda é pior:
+1. **A regra do cliente costuma proteger menos do que aparenta.** O pré-check de colaborador cobria alocação e ignorava ocorrência — 18 das 19 ocorrências do banco estavam a um clique de sumir *pela tela*, não por um caminho exótico. Ao auditar uma regra client-side, pergunte **o que ela NÃO cobre**, não só se ela existe.
+2. **Pré-check é para ser removido, não estendido.** "Leio e então decido" é uma corrida — o vínculo pode nascer entre o `SELECT` e o `DELETE`. Com a barreira no banco, o pré-check vira código a mais que dá a impressão de garantia.
+3. **Ao virar RPC, tire do cliente o que ele não precisa saber.** `desvincular_unidade_da_prova` deriva o `prova_id` da própria linha em vez de recebê-lo: um parâmetro a mais é uma chance de o cliente mandar um valor incoerente e apagar dado de outra prova.
 
-- Um `DELETE` direto pelo PostgREST **apaga alocações e ocorrências** sem erro.
-- O cliente **não checa ocorrências** — só alocação. Um colaborador com histórico de ocorrência mas sem alocação é excluível **pela própria tela**, levando o histórico junto. Medido em 26/07: **18 das 19 ocorrências** do banco pertencem a colaboradores nessa situação.
+### O que segue morando só no cliente, e é aceito
 
-### 2. Numeração de sala — calculada no cliente, sem unicidade no banco
-
-`useSalasProva.createMultipleMutation` lê o maior `sala_numero` do andar e insere `max + 1`. `sala_prova` **não tem índice único** em `(sala_fk_unidade, sala_numero)`. Duas sessões criando salas ao mesmo tempo produzem números repetidos, e nada acusa. Hoje há 0 duplicatas — é dívida preventiva.
-
-### 3. Vincular unidade a uma prova — três passos sem transação
-
-`useProvaUnidades` insere em `prova_unidades`, lê as salas da unidade e insere em `salas_prova_distribuidas`. Falhar no terceiro passo deixa a **unidade vinculada sem sala nenhuma**, estado que a tela não sabe distinguir de "unidade sem salas cadastradas". `salas_prova_distribuidas` é a única tabela do schema com **zero** unique, zero check e zero trigger.
-
-> Este é o segundo padrão da mesma família: **vários passos sem transação**. Já mordeu na revogação de coordenador (corrigida com RPC em 26/07). O conserto tem a mesma forma: uma função no banco, que roda em transação.
+- **A numeração sequencial de salas** continua sendo calculada no cliente. Movê-la para o banco (uma sequence por unidade+andar) foi considerado desproporcional; o UNIQUE já converte o pior caso em erro visível.
+- **`email_atualizacao_log` continua CASCADE** ao excluir colaborador — exceção consciente, documentada na migration `20260726210000`: é log de entrega, não histórico de participação, e bloquear ali criaria beco sem saída.
 
 ## ✅ A lista de verificação — use ao criar ou mexer numa regra
 

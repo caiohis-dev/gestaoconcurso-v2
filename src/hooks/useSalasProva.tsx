@@ -39,6 +39,34 @@ export interface SalaProvaUpdate {
   sala_andar?: number | null;
 }
 
+/**
+ * Traduz o 23505 do índice único criado em 2026-07-26 (`sala_prova_unidade_numero_key`).
+ *
+ * Dois caminhos chegam aqui, e a saída de cada um é diferente:
+ *
+ * - **Criação:** a numeração é calculada no cliente (lê o maior número do andar e insere
+ *   max+1), o que é uma corrida — duas sessões leem o mesmo max e gravam os mesmos
+ *   números. O índice não conserta a corrida, ele a torna VISÍVEL, e a saída é repetir a
+ *   ação: na segunda vez o max já mudou.
+ * - **Edição:** a pessoa digitou um número que já existe. Repetir não adianta; ela
+ *   precisa escolher outro.
+ *
+ * Sem esta tradução, os dois casos chegariam como texto cru do Postgres.
+ */
+export function mensagemErroSala(
+  error: { message: string; code?: string },
+  acao: 'criacao' | 'edicao',
+): string {
+  const numeroRepetido =
+    error.code === '23505' ||
+    /duplicate key|unique constraint|sala_prova_unidade_numero_key/i.test(error.message);
+  if (!numeroRepetido) return error.message;
+
+  return acao === 'criacao'
+    ? 'Já existe sala com esse número nesta unidade — provavelmente outra pessoa criou salas ao mesmo tempo. Nenhuma sala foi criada; tente novamente.'
+    : 'Já existe sala com esse número nesta unidade. Escolha outro número.';
+}
+
 export function useSalasProva(unidadeId: string) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -121,7 +149,7 @@ export function useSalasProva(unidadeId: string) {
     onError: (error: Error) => {
       toast({
         title: "Erro ao criar salas",
-        description: error.message,
+        description: mensagemErroSala(error, 'criacao'),
         variant: "destructive",
       });
     },
@@ -149,7 +177,7 @@ export function useSalasProva(unidadeId: string) {
     onError: (error: Error) => {
       toast({
         title: "Erro ao atualizar sala",
-        description: error.message,
+        description: mensagemErroSala(error, 'edicao'),
         variant: "destructive",
       });
     },

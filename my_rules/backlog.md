@@ -116,32 +116,47 @@ E as contagens de `colaboradores_prova` / `coordenadores_prova` **iguais antes e
 
 **Criar um coordenador passou de 1 para 3 passos:** criar a conta → alocar na prova com função de coordenação → conceder no diálogo. É mais correto (não inventa alocação), mas é mais trabalho no dia da prova. **Vale confirmar na operação** — se não for aceitável, a saída mais honesta é tornar `coordenadores_prova.colaborador_prova_id` **nullable**, que era o conserto de modelagem descartado no começo, e não voltar a fabricar linha.
 
-## Três regras que ainda moram só no cliente (auditoria do padrão, 26/07)
+## ✅ CONCLUÍDO 2026-07-26 — as três regras que moravam só no cliente foram para o banco
 
-**Status:** pendente — **achadas na auditoria de invariantes** de 2026-07-26, feita para atacar o padrão em vez de mais um item avulso
-**Área:** transversal (ver [`estrutura/transversais/invariantes.md`](./estrutura/transversais/invariantes.md), que traz o mapa, o porquê e a lista de verificação)
+**Área:** transversal (ver [`estrutura/transversais/invariantes.md`](./estrutura/transversais/invariantes.md), que traz o mapa e a lista de verificação)
 
-O padrão: **regra implementada só na camada que o usuário vê**. Gerou a cascata de funções, a meta órfã e a fabricação de alocação — todas fechadas em 26/07. A auditoria varreu o schema inteiro (19 tabelas) e os hooks atrás do que restou.
+A auditoria do padrão **"regra implementada só na camada que o usuário vê"** varreu as 19 tabelas e os hooks. As três lacunas achadas foram fechadas no mesmo dia, na ordem pedida.
 
-### 🔴 1. Excluir colaborador apaga ocorrências, e a própria tela permite
+### 1. Excluir colaborador com histórico — impossível (migration `20260726210000`)
 
-`useColaboradores.deleteMutation` recusa se houver vínculo em `colaboradores_prova` — mas as três FKs que apontam para `colaboradores` são **CASCADE** (`colaboradores_prova`, `ocorrencias_colaborador`, `email_atualizacao_log`).
+As FKs para `colaboradores` eram CASCADE. **O agravante não era o PostgREST, era a UI:** o cliente checava alocação e não checava ocorrência, então quem tinha histórico sem alocação era excluído pela tela levando o histórico junto — **18 das 19 ocorrências** do banco estavam nessa situação.
 
-O agravante não é o PostgREST: **é a UI.** O cliente checa alocação e **não checa ocorrência**, então um colaborador com histórico mas sem alocação é excluível pela tela, levando o histórico junto. **Medido: 18 das 19 ocorrências** do banco pertencem a colaboradores nessa exata situação.
+`colaboradores_prova`, `ocorrencias_colaborador.colaborador_id` e `ocorrencias_colaborador.substituto_id` viraram **RESTRICT**. O `substituto_id` entrou de propósito: ser citado como substituto é histórico, e deixá-lo em `SET NULL` reproduziria o mesmo defeito em miniatura.
 
-**Conserto na forma do que já foi feito:** `ON DELETE RESTRICT` em `ocorrencias_colaborador` e `colaboradores_prova`, com a mensagem traduzida nomeando o obstáculo. ⚠️ **Decisão de produto antes:** excluir colaborador com histórico deve ser impossível, ou deve existir uma saída (anonimizar? desativar?). Hoje a UI oferece exclusão como se fosse reversível.
+⚠️ **Exceção consciente:** `email_atualizacao_log` **continua CASCADE**. É log operacional de entrega, não histórico de participação, e bloquear por causa dele criaria beco sem saída — não há tela para limpá-lo, e `colaborador_id` é NOT NULL, então `SET NULL` não era opção. Custo medido: 4 colaboradores.
 
-### 🟠 2. Numeração de sala: calculada no cliente, sem unicidade no banco
+**O pré-check client-side foi removido**, não estendido: era "leio e então decido", uma corrida, e a mensagem do banco nomeia o obstáculo melhor do que ele conseguia. 553 dos 771 passaram a ser inexcluíveis.
 
-`useSalasProva.createMultipleMutation` lê o maior `sala_numero` do andar e insere `max + 1`. Não há índice único em `(sala_fk_unidade, sala_numero)` — duas sessões simultâneas geram números repetidos, sem erro. **0 duplicatas hoje**, é preventivo.
+### 2. Numeração de sala (migration `20260726220000`)
 
-**Conserto:** índice único no par, e o cliente traduzindo o `23505`. Um `UNIQUE` transforma a corrida em erro visível, que é o comportamento correto.
+Índice único em `sala_prova (sala_fk_unidade, sala_numero)` e em `salas_prova_distribuidas (prova_id, sala_fk_unidade, sala_numero)` — esta era a única tabela do schema com zero unique, zero check e zero trigger.
 
-### 🟡 3. Vincular unidade a uma prova: três passos sem transação
+**O índice não conserta a corrida, torna-a visível:** a numeração continua sendo calculada no cliente (lê o maior, insere max+1), mas duas sessões simultâneas agora colidem com 23505 em vez de criarem duas salas 203. O tradutor cobre os dois caminhos com saídas diferentes — na criação, repetir resolve; na edição, é preciso escolher outro número.
 
-`useProvaUnidades` insere em `prova_unidades`, lê as salas e insere em `salas_prova_distribuidas`. Falhar no terceiro passo deixa a **unidade vinculada sem sala nenhuma** — estado indistinguível, na tela, de "unidade sem salas cadastradas". `salas_prova_distribuidas` é a **única tabela do schema com zero unique, zero check e zero trigger**.
+### 3. Vincular/desvincular unidade (migration `20260726230000`)
 
-**Conserto:** RPC que faça os três passos numa transação, como a `revogar_coordenador`. É o segundo caso do padrão irmão — **vários passos sem transação**.
+Viraram as RPCs `vincular_unidade_a_prova` e `desvincular_unidade_da_prova`. **As duas operações tinham o defeito**, não só a de vincular: remover apagava as salas antes do vínculo, e falhar no fim deixava o mesmo estado corrompido — vínculo vivo, zero salas, indistinguível na tela de "unidade sem salas cadastradas".
+
+`prova_id` **não é parâmetro** do desvincular: sai da própria linha, para o cliente não poder mandar um que não corresponde ao vínculo e apagar salas de outra prova.
+
+### Como foram verificadas
+
+Todas contra o banco real, com `ROLLBACK`, e **todas com controle positivo** — provar que passou a recusar é metade:
+
+| Regra | Recusa | Controle positivo |
+|---|---|---|
+| Colaborador | alocação ✓, ocorrência ✓, substituto ✓ (caso construído, pois não existe isolado no dado) | sem histórico → `DELETE 1` |
+| Sala | mesmo número na mesma unidade ✓ | mesmo número em **outra** unidade → passa |
+| Unidade | — | 16 salas copiadas, e desvincular zera as duas tabelas |
+
+A **atomicidade** da RPC foi provada sabotando a cópia com um `CHECK ... NOT VALID` (que só vale para linhas novas) e confirmando que o vínculo não sobra. Foi essa a falha exata que produzia o estado corrompido.
+
+> **Seis testes caíram de propósito**, dois deles marcados `⚠️ ATENÇÃO` — eles *afirmavam* a não-atomicidade ("o vínculo fica sem as salas se a cópia falhar"). Eram a testemunha do defeito; viraram o oposto, garantindo que a RPC seja usada. A atomicidade em si não é testável no Vitest, porque o mock não tem transação.
 
 ---
 
