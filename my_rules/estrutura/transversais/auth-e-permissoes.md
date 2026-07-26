@@ -143,7 +143,7 @@ A tela de entrada por módulos (o mecanismo em [`arquitetura-geral.md`](./arquit
 
 **O combo `user` + `colaborador` existe, e `user` prevalece.** Uma pessoa pode ter os dois papéis; `resolveRoleGestao` devolve `'user'` (não `null`), então ela **não** é "colaborador puro": cai no **hub** (estado vazio, pois `user` não tem módulo), não no portal do colaborador. Ela ainda alcança o próprio cadastro pelo item "Meu Cadastro" do header (`showFor: ['colaborador']`, sempre visível). Foi decisão explícita (2026-07-24): a dimensão de gestão manda sobre a de colaborador na hora de escolher o destino.
 
-**Reforço — hub e `navLinks` são UX, não autorização.** Esconder um card ou um link não protege rota nenhuma; quem barra é RLS + as checagens das Edge Functions + os guards de página (cada página de gestão tem o seu, padrão `Dashboard.tsx`). Centralizar esses guards num `RequireModulo` lido do registro é melhoria pendente (backlog), deliberadamente fora do tema que criou o hub.
+**Reforço — hub e `navLinks` são UX, não autorização.** Esconder um card ou um link não protege rota nenhuma; quem barra é RLS + as checagens das Edge Functions + o **`RequireAcesso`** das rotas (ver a seção adiante). Desde 2026-07-26 os guards são um só, e os papéis são declarados rota a rota no `App.tsx` — **não** lidos deste registro, justamente porque ele é UX e conhece papel por módulo, que é mais grosso que a rota.
 
 ### Uma guarda só: `RequireAcesso` (desde 2026-07-26)
 

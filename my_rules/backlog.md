@@ -2,14 +2,16 @@
 
 Lista de trabalho planejado, ainda não iniciado. Itens concluídos devem ser removidos daqui (o histórico do que foi feito vive na documentação em [`estrutura/`](./estrutura/), não neste arquivo).
 
+> **Última auditoria contra o código: 2026-07-26.** Cada item foi conferido no código e no banco local; o que estava desatualizado está marcado no próprio item. Números que valem repetir, porque foram medidos e não estimados: **85 migrations**, **771 colaboradores** (565 com chave PIX, **0** com `tipo_chave_pix`), **`anon` ainda com `TRUNCATE` em 23 tabelas**, e as três FKs de `funcao_id` seguem `SET NULL`/`CASCADE`/`CASCADE`.
+
 ---
 
 ## Completar a suíte de testes (Vitest) — onde paramos e o que falta
 
 **Status:** parcial — a suíte existe e roda desde 2026-07-25; a cobertura está **incompleta por decisão**, não por esquecimento
-**Área:** Infraestrutura / transversal (ver [`estrutura/transversais/testes.md`](./estrutura/transversais/testes.md) para infra, convenções e as **6 armadilhas**)
+**Área:** Infraestrutura / transversal (ver [`estrutura/transversais/testes.md`](./estrutura/transversais/testes.md) para infra, convenções e as **7 armadilhas**)
 
-Este item é o marco: quem retomar os testes começa por aqui. **Leia `testes.md` antes de escrever teste novo** — as armadilhas ali custaram tempo real (a sequência do mock consumida pela listagem; `.at(-1)` pegando o refetch e não a mutation; `act()` no que atualiza provider; fake timers com `shouldAdvanceTime`; o caminho do `pagehide`, que não passa pelo mock do Supabase; e **timeout usado como resposta**, que passou isolado e falhou na suíte cheia).
+Este item é o marco: quem retomar os testes começa por aqui. **Leia `testes.md` antes de escrever teste novo** — as armadilhas ali custaram tempo real (a sequência do mock consumida pela listagem; `.at(-1)` pegando o refetch e não a mutation; `act()` no que atualiza provider; fake timers com `shouldAdvanceTime`; o caminho do `pagehide`, que não passa pelo mock do Supabase; **timeout usado como resposta**, que passou isolado e falhou na suíte cheia; e o `min`/`max` do input barrando **antes** do Zod em formulário com submit).
 
 ### Onde paramos (2026-07-26)
 
@@ -56,9 +58,9 @@ Efeito colateral registrado: o `setFunctionResult` do mock passou a aceitar erro
 
 **Falta a etapa 5:** o `ColaboradorDialog`.
 
-**3. Páginas: os guards estão cobertos desde 2026-07-26; o comportamento, não.** A aposta do `it.each` sobre a tabela rota × papel se pagou: `pages/guards.test.tsx` cobre **19 páginas × 5 papéis** e é agora a especificação do `RequireModulo` (item abaixo), que deixou de ser arriscado. A bateria foi **falsificada de propósito** antes de ser aceita — quebrar o guard do `Editais` fez cair exatamente os casos "recusa colaborador" e "recusa coordenador", que é a falha que passou meses invisível.
+**3. Páginas: os guards estão cobertos desde 2026-07-26; o comportamento, não.** A aposta do `it.each` sobre a tabela rota × papel se pagou: `pages/guards.test.tsx` cobre **19 páginas × 5 papéis** e é a especificação do `RequireAcesso` — que **foi feito em 2026-07-26** justamente porque ela existia. A bateria foi **falsificada de propósito** antes de ser aceita — quebrar o guard do `Editais` fez cair exatamente os casos "recusa colaborador" e "recusa coordenador", que é a falha que passou meses invisível.
 
-Rendeu dois achados, ambos detalhados no item do `RequireModulo`: **`/perfil` não tinha guard nenhum** (corrigido em 2026-07-26, e `/perfil` entrou na matriz — daí as 19 páginas) e **`/dashboard` prende o colaborador puro em tela branca** (aberto).
+Rendeu dois achados, **os dois já corrigidos**: `/perfil` não tinha guard nenhum (daí `/perfil` ter entrado na matriz, e as 19 páginas) e `/dashboard` prendia o colaborador puro em tela branca — este saiu de graça quando o `RequireAcesso` substituiu o proxy `role !== null`.
 
 **O que falta em páginas** é o comportamento: formulário, listagem, ação. Nenhuma página tem isso. As candidatas de maior valor são as que concentram ação destrutiva ou dinheiro — `GerenciarColaboradoresProva` (alocação, base de pagamento) e `OcorrenciasProva`.
 
@@ -227,7 +229,11 @@ O conteúdo antigo continua recuperável no histórico do git (última versão e
 
 Refatorar o diálogo de Nova Ocorrência (`src/pages/OcorrenciasProva.tsx`) para um fluxo em wizard (passos), em vez do formulário único atual.
 
-Junto com a refatoração, **corrigir a funcionalidade de "Faltou"**: quando uma ocorrência marca que o colaborador faltou, ele deve ser **retirado da unidade daquela prova** (ou seja, o vínculo correspondente em `colaboradores_prova` deve ser removido/desfeito para aquela prova+unidade). Hoje esse efeito não acontece.
+Junto com a refatoração, **corrigir a funcionalidade de "Faltou"**: quando uma ocorrência marca que o colaborador faltou, ele deve ser **retirado da unidade daquela prova** (o vínculo em `colaboradores_prova` some para aquela prova+unidade). Hoje esse efeito não acontece.
+
+> ⚠️ **Corrigido na auditoria de 2026-07-26 — não existe "Faltou" no modelo.** `tipo_ocorrencia` é **texto livre**: o campo é um `Input` cujo placeholder apenas sugere *"Ex: Atraso, Falta, Elogio"*. Não há enum, lista fechada nem flag. O que existe de estruturado é `substituido` (0/1) com `substituto_id`.
+>
+> Consequência para quem for implementar: **não há em que se apoiar**. O primeiro passo é tornar o tipo estruturado (select com valores fixos, ou coluna própria), senão a regra dependeria de casar string digitada à mão — que muda com a grafia de quem preenche.
 
 ---
 
@@ -305,7 +311,7 @@ Enquanto (2) não estiver resolvido, não é possível criar o `CHECK` que amarr
 
 O projeto novo no supabase.com já foi criado, mas o repo **não é linkado a ele** — e não deve ser, até o dia de colocar a v2 no ar (regra combinada em 2026-07-12: o repo fica deslinkado por padrão, e produção só é atualizada em versões estáveis).
 
-O schema já está pronto para subir quando for a hora: as 69 migrations reproduzem o banco local do zero, validado por `db reset` em 2026-07-12. O roteiro completo dos **9 passos** (link → `prod:push:dry` → `prod:push` → carga do `seed.local.sql` → **`seed.pos.sql`** → auth no dashboard → edge functions + secrets SMTP → `.env` do frontend → **unlink**) está em [`banco-producao.md`](./banco-producao.md).
+O schema já está pronto para subir quando for a hora: as **85** migrations reproduzem o banco local do zero (validado por `db reset` de novo em 2026-07-26; eram 69 quando este item foi escrito). O roteiro completo dos **9 passos** (link → `prod:push:dry` → `prod:push` → carga do `seed.local.sql` → **`seed.pos.sql`** → auth no dashboard → edge functions + secrets SMTP → `.env` do frontend → **unlink**) está em [`banco-producao.md`](./banco-producao.md).
 
 Falta apenas, no dia: a **ref do projeto novo** no Supabase.
 
@@ -332,58 +338,3 @@ Em 2026-07-20 descobriu-se que a `send-email` **não checava quem a chamava**. O
 **O que falta:** a correção vale para o código deste repo. **O projeto Supabase antigo (v1) pode ainda ter a versão vulnerável publicada** — e uma Edge Function fica acessível pela URL do projeto **independentemente de o frontend estar no ar** (hoje não está). Se o projeto v1 ainda existe, o endpoint provavelmente continua chamável com a anon key antiga.
 
 **A fazer:** confirmar se o projeto v1 ainda está ativo; se estiver, ou republicar a `send-email` corrigida nele, ou remover a function, ou derrubar o projeto. Enquanto isso não for verificado, considere as credenciais SMTP da Hostinger como **potencialmente já expostas a uso indevido** — vale checar o volume de envio na conta e, na dúvida, **trocar `SMTP_PASS`** (a senha está nos secrets das EFs e no `.env` local, então a troca é barata).
-
----
-
-## Porta única de acesso: "Estou sem minha senha" (CPF ou e-mail)
-
-**Status:** ✅ **CONCLUÍDO.** Implementado em 2026-07-20; UI validada em 2026-07-21 (blocos `C` e `E` da bateria, todos aprovados). A regra consolidada vive em [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md) ("Porta única"); este item fica como registro do desenho e das decisões.
-**Área:** UX / Autenticação (ver [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md))
-
-> **Achado durante a implementação:** o cooldown precisou olhar **três** carimbos (`recovery_sent_at`, `confirmation_sent_at`, `invited_at`), não só o primeiro — `generateLink('invite')` deixa `recovery_sent_at` NULL, então a versão inicial deixava a chamada seguinte a um invite mandar um recovery que **invalidava o invite recém-enviado**. Detalhe em `auth-e-permissoes.md`.
->
-> **Fica em aberto, por decisão:** os **254 sem e-mail** seguem dependendo do coordenador. E o CPF de quem **já tem conta** informa em vez de mandar o link — fechar isso esbarra no estado B (`colab_email` e e-mail da conta divergem, e mandar para a conta não ajudaria).
-
-### A proposta
-
-Na tela `/auth`, **substituir os dois links** — "Primeiro acesso (já sou cadastrado)" e "Esqueci minha senha" — por **um só: "Estou sem minha senha"**. Ele abre uma UI com **um campo**, rotulado "CPF ou e-mail", com **detecção automática** do que foi digitado (tem `@` → e-mail; só dígitos → CPF).
-
-**O botão "Novo Colaborador" permanece** (decisão do usuário). Ficam duas portas, mas a classificação que elas pedem passa a ser fácil — "sou novo" vs. "sou eu, sem senha" — em vez da atual, que é impossível.
-
-### Por que
-
-Hoje a tela pede que a pessoa se classifique segundo o estado do **banco** (`user_id` é nulo? `email_confirmed_at`?), informação a que ela não tem acesso nenhum. **O servidor sabe em que estado ela está; ela não sabe.** A porta única inverte isso: a pessoa diz quem é, e o servidor decide se o caso é criar conta (`invite`) ou redefinir senha (`recovery`).
-
-O rótulo novo também cobre os dois casos com uma frase verdadeira: "estou sem minha senha" vale para quem nunca teve e para quem esqueceu. "Primeiro acesso (já sou cadastrado)" exigia entender o que "cadastrado" significa no nosso jargão.
-
-### ⚠️ A decisão que precisa sobreviver: as respostas são ASSIMÉTRICAS de propósito
-
-Os dois caminhos fundidos têm **políticas opostas de privacidade, e isso não é acidente**:
-
-- **CPF** (`reivindicar-acesso`) **revela**: devolve `{existe, ja_vinculado, email_mascarado}`. Concessão consciente, já documentada como dívida contida, segurada por rate limit de 5/15 min por IP. O e-mail mascarado é o que diz à pessoa **qual caixa abrir** — para quem tem vários endereços, é a diferença entre entrar e desistir.
-- **E-mail** (`recuperar-senha`) **não revela nada**: resposta idêntica para conta existente, inexistente ou em cooldown.
-
-**Decisão: fundir a UI, NÃO as políticas.** Cada input vaza coisa diferente, com economia de ataque diferente — uma lista de e-mails se compra pronta e se testa em massa; CPF é outro jogo, e aquele risco já está aceito e contido. Mantendo cada política onde ela é ótima, a fusão **não cria dívida nova**: é reorganização de tela, não mudança de postura.
-
-**Isto é o item mais importante deste registro.** A mesma tela responder de dois jeitos **parece bug** para quem chega depois. Quem "consertar" a inconsistência uniformizando as respostas vai, dependendo do lado que escolher, **reabrir a enumeração por e-mail** ou **matar o e-mail mascarado** (e com ele o aviso "procure o coordenador" dos 254 sem e-mail). Não uniformize sem reler isto.
-
-### O furo que a implementação precisa fechar
-
-A `recuperar-senha` procura a conta em **`auth.users`**. Quem está em **estado A com e-mail no cadastro** (a maioria dos 759) **não tem conta** — então, se essa pessoa digitar o e-mail dela, a EF não acha nada, devolve a frase genérica e **não envia e-mail nenhum**. É o mesmo buraco negro de hoje, agora atrás de uma porta que promete resolvê-lo.
-
-**Correção necessária:** não achou conta no Auth → procurar em `colaboradores.colab_email` → se achar em estado A, mandar o **`invite`** em vez do `recovery`. É o mesmo raciocínio que o servidor já faz pelo CPF, aplicado ao e-mail. **Não custa privacidade:** a resposta continua genérica, então a EF fica mais útil sem ficar mais falante.
-
-### Beco novo que a proposta cria
-
-Os **254 sem e-mail no cadastro**: se a pessoa digitar o e-mail pessoal dela, não há match (o cadastro não tem e-mail nenhum) e ela recebe "não encontrado" — concluindo que **não está cadastrada**, o que é falso. Hoje isso não acontece porque a porta dela é obrigatoriamente o CPF. **A tela deve sugerir "tente pelo CPF" antes de dar qualquer veredicto de inexistência.**
-
-### Escopo
-
-1. Componente novo (campo único + detecção), reaproveitando o miolo do `ReivindicarAcessoCard`.
-2. `Auth.tsx`: dois links viram um; "Novo Colaborador" fica.
-3. `recuperar-senha`: o ramo de estado A por e-mail (acima).
-4. A dica "tente pelo CPF" antes do veredicto de inexistência.
-5. Rate limit: o endpoint passa a receber os dois tipos de input — conferir se o teto por IP da `reivindicar-acesso` (5/15 min) e o cooldown por conta da `recuperar-senha` (2 min) seguem cobrindo o caminho fundido.
-6. Docs: quando implementar, a regra consolidada vai para [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md), e a bateria em [`../docs/teste-frontend-auth-colaborador.md`](../docs/teste-frontend-auth-colaborador.md) ganha os casos (bloco C e E se fundem na prática).
-
-**Não precisa de roadmap:** não há etapas com dependência entre si, nem migration, nem política de segurança nova — é uma mudança coerente única. O que precisava de registro era a assimetria e o furo acima, que é o que este item guarda.
