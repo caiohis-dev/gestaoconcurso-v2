@@ -19,68 +19,56 @@ Este item é o marco: quem retomar os testes começa por aqui. **Leia `testes.md
 
 Coberto:
 
-| Camada | O que já tem |
+| Camada | Estado |
 |---|---|
-| Registro de módulos | `lib/modulos.test.ts` — inclui invariantes sobre `MODULOS` inteiro |
-| Schemas Zod (9) | `ColaboradorDialog`, `EditalDialog`, `FuncaoColaboradorDialog`, `ProvaDialog`, `SalaProvaDialog`, `UnidadeProvaDialog`, `pages/Auth`, `pages/GerenciarUsuarios` |
+| **Hooks de dados** | **20 de 20** (`use-mobile` e `use-toast` são utilitários shadcn, fora da conta) |
+| **UI de diálogo** | **12 de 12** — todos com `.ui.test.tsx` |
+| **Guards de página** | `pages/guards.test.tsx` — 137 testes: matriz **19 páginas × 5 papéis**, a janela do `rolesLoaded` e o `isLoggingOut` |
+| Schemas Zod | 9 schemas em 8 arquivos (o `SalaProvaDialog` tem dois: criação e edição) |
 | Auth | `useAuth.test.tsx` — hierarquia, `colaborador` paralelo, `rolesLoaded`, `signOut` |
-| Hooks de dados (**todos**) | `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useEditais`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useValoresFuncaoProva`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas` + os dois vizinhos do mesmo arquivo (`useSalasDistribuidasCapacidade`, `useFiscaisSala`), `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers` (+ `useAuth`) |
-| UI de diálogo (**12 de 12**) | `EditalDialog`, `ProvaDialog`, `PasswordConfirmDialog`, `CoordenadoresProvaDialog`, `ValoresFuncaoProvaDialog`, `MetaColaboradoresDialog`, `CorrigirEmailAcessoDialog` (todos `.ui.test.tsx`) |
-| Acessibilidade | `components/dialogos-acessibilidade.test.ts` — invariante estática sobre os 31 diálogos |
-| **Guards de página** | `pages/guards.test.tsx` — **137 testes**: matriz 19 páginas × 5 papéis, a janela do `rolesLoaded` e o `isLoggingOut` |
-| A própria infra | `src/test/supabase-mock.test.ts` — o mock tem teste próprio |
+| Registro de módulos | `lib/modulos.test.ts` — invariantes sobre `MODULOS` inteiro |
+| Acessibilidade | `dialogos-acessibilidade.test.ts` — invariante estática sobre os 31 diálogos |
+| A própria infra | `supabase-mock.test.ts` — o mock tem teste próprio; e `lib/edge-function-error.test.ts` |
 
-### O que falta, em ordem de valor
+> Os números acima vêm de **varredura**, não de memória: a lista de hooks já esteve errada duas vezes (dizia 8 quando eram 12).
 
-**1. ✅ Hooks — CAMADA FECHADA em 2026-07-26.**
+### O que FALTA
 
-Os **20 hooks de dados** têm teste (`use-mobile` e `use-toast` são utilitários do shadcn, fora da conta). A lista já esteve errada duas vezes — `testes.md` e o `00-modulo.md` diziam **8** quando eram **12** —, então o número acima vem de varredura, não de memória.
+**1. Comportamento de página — a maior lacuna.** A bateria de guards cobre **autorização**, não comportamento: nenhuma página tem teste de formulário, listagem ou ação. As candidatas de maior valor são as que concentram ação destrutiva ou dinheiro — `GerenciarColaboradoresProva` (alocação, base de pagamento) e `OcorrenciasProva`.
 
-Os quatro últimos (`useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade`, `useBancos`) eram tidos como baixo risco, e em três dos quatro isso se confirmou. **A exceção foi o `useSalasProva`**, que esconde numeração de sala numa mutation: `número = andar × 100 + sequência`, calculada no cliente a partir das salas existentes, sem `SEQUENCE` no banco. O teste fixa que ela continua do **maior número daquele andar** (buraco de sala excluída não é reaproveitado, o que confundiria lista já impressa) e registra `⚠️ ATENÇÃO` no teto de **99 salas por andar** — ao estourar, a numeração invade o andar seguinte em silêncio.
+**2. Edge Functions — tema próprio, não continuação desta suíte.** São 8 mais `_shared/`, rodam em Deno e estão fora do alcance do Vitest como está montado; exige decisão de ferramenta (Deno test) antes de qualquer código. É onde vive a lógica mais sensível: anti-enumeração, rate limit, cooldown.
 
-**2. ✅ UI de diálogo — TODOS os 12 cobertos**, desde 2026-07-26. O último foi o `ColaboradorDialog` (777 l., o maior componente do repo): 24 testes de interação sobre a âncora de identidade, o modo público e a normalização do payload. Rendeu dois achados próprios (CPF com `padStart` e o aviso `aria-hidden`), ambos com item abaixo.
+O que **existe** hoje é verificação manual da autorização de duas delas, em [`../docs/bateria-create-admin-autorizacao.md`](../docs/bateria-create-admin-autorizacao.md) (7 casos, 2026-07-25) — inclusive o script de forjar JWT local, que qualquer teste futuro de EF vai precisar, porque o dump traz hashes de produção e ninguém sabe as senhas.
 
-✅ **`PasswordConfirmDialog` foi o primeiro, em 2026-07-26** — era o que mais importava: a barreira de confirmação das ações destrutivas (excluir edital e prova, finalizar/reabrir, encerrar ocorrências), com 7 usos em 5 páginas. 16 testes fixam o contrato numa frase: **`onConfirm` só roda depois de a senha ser aceita pelo servidor**, e erro em qualquer etapa **não fecha o diálogo** — porque fechar sem executar pareceria sucesso. Falsificado: neutralizar a checagem de `signInError` derruba o teste da senha incorreta.
+**3. Anotado, não feito:** a matriz de guards usa 5 papéis e **não inclui `user` puro** (conta sem papel de gestão e sem `colaborador`). Seriam 19 combinações novas; vale se o `user` ganhar significado além de "vê o hub vazio".
 
-✅ **`CoordenadoresProvaDialog` saiu em seguida, no mesmo dia** — 23 testes, escolhido porque é o caminho que a decisão do `addCoordenadorAccess` quer tornar exclusivo. A aposta se pagou como a dos hooks: **rendeu mais achado que cobertura**, inclusive o 403 que bloqueia o superadmin (item próprio abaixo) e que é pré-requisito daquela decisão. O hook fica mockado ali de propósito — a regra de elegibilidade vive no `useCoordenadoresProva`, que tem teste próprio.
+**4. O que deliberadamente NÃO se testa aqui.** Constraints de banco: a suíte roda contra um **mock**, sem Postgres — um teste ali afirmaria o mock. A verificação correta é bateria SQL contra o banco local, feita em [`../docs/bateria-db-constraints.sql`](../docs/bateria-db-constraints.sql) (22 casos).
 
-Efeito colateral registrado: o `setFunctionResult` do mock passou a aceitar erro no formato do `FunctionsHttpError` (`context.body` como string), que é diferente do erro do PostgREST. Antes só compilava com cast. O `supabase-mock.test.ts` ganhou dois testes por isso.
+### O que as camadas fechadas renderam — e por que a ordem importou
 
-✅ **`ValoresFuncaoProvaDialog` + `MetaColaboradoresDialog` saíram juntos** (20 + 13 testes), como uma unidade de trabalho só — e a razão é um acoplamento que o teste agora fixa: **a meta só existe para função que já tem valor cadastrado na prova**. São as duas metades da base de pagamento. Renderam três achados: **dois já corrigidos no mesmo dia** (valor negativo e exclusão sem confirmação) e um aberto, no item "Apagar o valor de uma função deixa a meta dela órfã" abaixo.
+**Testar diálogo de autorização ou de dinheiro rendeu mais achado que cobertura.** Foi o padrão de todas as etapas, e é o critério para escolher a próxima coisa a cobrir. O saldo de 2026-07-26: o **403 que bloqueava o superadmin** na concessão de coordenador, **valor de pagamento negativo** sem barreira em camada nenhuma, exclusão de valor **sem confirmação**, a **mensagem de erro da EF descartada**, o **CPF sem dígito verificador**, o aviso do cadastro público **invisível para leitor de tela**, e o **recorte por unidade** das ocorrências.
 
-✅ **`CorrigirEmailAcessoDialog` saiu em 2026-07-26** (16 testes) — a máquina de três estados da correção de `colab_email`, com foco na recusa do estado C (conta já confirmada: trocar seria trocar o login de alguém). Rendeu mais um achado — a mensagem de erro do servidor era descartada —, **corrigido no mesmo dia** com o helper `lib/edge-function-error.ts`.
+**A bateria de guards virou a especificação do `RequireAcesso`** e é o que tornou a centralização segura: ficou verde do começo ao fim, inclusive depois de os guards saírem das páginas. Foi **falsificada antes de ser aceita** — quebrar o guard do `Editais` derrubou exatamente "recusa colaborador" e "recusa coordenador".
 
-✅ **Os quatro restantes saíram em 2026-07-26** (42 testes): `UnidadeProvaDialog`, `FuncaoColaboradorDialog`, `SalaProvaDialog` e `SalaExtraDialog`. Três coisas que só apareceram ao escrever:
+**Três coisas que só apareceram ao escrever, e que valem para quem continuar:**
 
-- **O teto de andar da sala só existe no cliente.** `sala_andar <= unid_andares` é regra entre tabelas, deixada de fora dos CHECKs de propósito (um `CHECK` com função consultando outra tabela **não é reavaliado** quando ela muda). O `SalaProvaDialog` monta o schema a partir de `maxAndares` — é a única barreira, e agora tem teste.
-- **`cargo_editavel === false` trava o nome da função**, e isso protege as duas funções de coordenação, identificadas por UUID fixo em `FUNCOES_COORDENACAO`.
-- **A validação nativa do input precede o Zod** em formulário com submit — virou a armadilha 7 em `testes.md`.
+- **`useSalasProva` esconde regra de negócio numa mutation:** `número = andar × 100 + sequência`, calculada no cliente. Continua do **maior número daquele andar** — buraco de sala excluída não é reaproveitado. `⚠️ ATENÇÃO` no teto de **99 salas por andar**.
+- **O teto de andar da sala só existe no cliente** — regra entre tabelas, deixada fora dos CHECKs de propósito. O `SalaProvaDialog` é a única barreira.
+- **`cargo_editavel === false` trava o nome da função**, protegendo as duas funções de coordenação identificadas por UUID fixo.
 
-**Falta a etapa 5:** o `ColaboradorDialog`.
-
-**3. Páginas: os guards estão cobertos desde 2026-07-26; o comportamento, não.** A aposta do `it.each` sobre a tabela rota × papel se pagou: `pages/guards.test.tsx` cobre **19 páginas × 5 papéis** e é a especificação do `RequireAcesso` — que **foi feito em 2026-07-26** justamente porque ela existia. A bateria foi **falsificada de propósito** antes de ser aceita — quebrar o guard do `Editais` fez cair exatamente os casos "recusa colaborador" e "recusa coordenador", que é a falha que passou meses invisível.
-
-Rendeu dois achados, **os dois já corrigidos**: `/perfil` não tinha guard nenhum (daí `/perfil` ter entrado na matriz, e as 19 páginas) e `/dashboard` prendia o colaborador puro em tela branca — este saiu de graça quando o `RequireAcesso` substituiu o proxy `role !== null`.
-
-**O que falta em páginas** é o comportamento: formulário, listagem, ação. Nenhuma página tem isso. As candidatas de maior valor são as que concentram ação destrutiva ou dinheiro — `GerenciarColaboradoresProva` (alocação, base de pagamento) e `OcorrenciasProva`.
-
-**Sugestão anotada, não feita:** a matriz usa 5 papéis e **não inclui `user` puro** (conta sem papel de gestão e sem `colaborador`). Seriam 19 combinações novas; vale se algum dia o `user` ganhar significado além de "vê o hub vazio".
-
-**4. Edge Functions: sem teste automatizado.** São 8 (`check-cpf-colaborador`, `corrigir-email-acesso`, `create-admin`, `create-coordenador`, `public-create-colaborador`, `recuperar-senha`, `reivindicar-acesso`, `send-email`) mais `_shared/`. Rodam em Deno, fora do alcance do Vitest como está montado — exigiria decisão de ferramenta (Deno test) antes de qualquer código. **Não é continuação natural da suíte atual; é tema próprio.** É onde vivem as políticas de anti-enumeração, rate limit e cooldown — a lógica mais sensível do sistema.
-
-O que **existe** hoje é verificação manual da **autorização** de duas delas, em [`../docs/bateria-create-admin-autorizacao.md`](../docs/bateria-create-admin-autorizacao.md) (7 casos, rodada em 2026-07-25) — inclusive o script de forjar JWT local, que qualquer teste futuro de EF vai precisar, porque o dump traz hashes de senha de produção e ninguém sabe as senhas.
-
-**5. O que deliberadamente NÃO se testa com Vitest.** As constraints de banco: a suíte roda contra um **mock** do Supabase, sem Postgres, então um teste ali afirmaria o mock, não o banco. A verificação correta é bateria SQL contra o banco local — feita, em [`../docs/bateria-db-constraints.sql`](../docs/bateria-db-constraints.sql) (22 casos). Histórico do tema em [`analises/concluidos/roadmap-db-constraints.yaml`](./analises/concluidos/roadmap-db-constraints.yaml).
+**Efeito colateral na infra:** o mock ganhou `FunctionErrorLike` (erro de EF não é erro do PostgREST) e o `supabase-mock.test.ts` ganhou dois testes por isso.
 
 ### Dívida de contexto que a suíte carrega
 
-- **Mudança de produção feita para viabilizar os testes:** os 9 schemas Zod passaram a ser `export`ados dos componentes (8 arquivos; só a palavra `export`). Custo aceito: +9 avisos de `react-refresh/only-export-components`.
-- **Baseline de lint do repo: 93 problemas (69 erros, 24 avisos)** por `npm run lint`. Se subir, é coisa nova. (Atenção: `npx eslint src` dá 90 — a diferença são arquivos fora de `src`.)
+- **Mudança de produção feita para viabilizar os testes:** os 9 schemas Zod passaram a ser `export`ados dos componentes (**8 arquivos**; só a palavra `export`). Custo aceito: os 8 entram nos avisos de `react-refresh/only-export-components` — que hoje somam **19 no repo**, a maioria pré-existente (`components/ui/*`, hooks e páginas que exportam constantes).
+- **Baseline de lint do repo: 93 problemas (69 erros, 24 avisos)** por `npm run lint` — conferido em 2026-07-26. Se subir, é coisa nova. (Atenção: `npx eslint src` dá **90**; a diferença são arquivos fora de `src`.)
 - **Enquanto não houver CI**, fechar tema inclui rodar à mão: `npm test`, `npx tsc --noEmit -p tsconfig.app.json` e `npm run build`.
 
 ### A automação ficou para o fim, por decisão
 
-**O usuário decidiu em 2026-07-25 deixar o CI para o final.** Não é esquecimento — está registrado no item próprio abaixo ("Rodar a suíte de testes automaticamente"), que segue válido e continua sendo o de maior alavancagem da lista. A consequência de a decisão valer: **nada roda a suíte sozinho**, então cada tema fechado depende de alguém lembrar. Escrever mais teste rende menos até o CI existir — o que é justamente o argumento para não perseguir 100% de cobertura antes dele.
+**O usuário decidiu em 2026-07-25 deixar o CI para o final.** Não é esquecimento — está registrado no item próprio abaixo ("Rodar a suíte de testes automaticamente"), que segue válido e continua sendo **o de maior alavancagem da lista**. A consequência de a decisão valer: **nada roda a suíte sozinho**, então cada tema fechado depende de alguém lembrar.
+
+⚠️ **O custo dessa decisão cresceu.** Em 25/07 eram 376 testes; hoje são **743**, e as três camadas fechadas (hooks, diálogos, guards) só protegem quem as executa. O argumento original — "escrever mais teste rende menos até o CI existir" — agora aponta com mais força para o CI do que para a próxima camada de cobertura.
 
 ---
 
