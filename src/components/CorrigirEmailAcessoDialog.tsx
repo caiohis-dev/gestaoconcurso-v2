@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { AlertTriangle, Loader2 } from 'lucide-react';
+import { mensagemDeErroDaFuncao } from '@/lib/edge-function-error';
 
 // Etapa 2 — ponto de entrada da reconciliação do estado B (conta de acesso pendente
 // criada no e-mail errado). Toda a lógica e a decisão de recusa vivem na Edge Function
@@ -60,7 +61,7 @@ export default function CorrigirEmailAcessoDialog({
         body: { acao: 'consultar', colaborador_id: colaboradorId },
       });
       if (error || data?.error) {
-        setErro(data?.error || 'Não foi possível consultar a conta de acesso.');
+        setErro(mensagemDeErroDaFuncao(error, data, 'Não foi possível consultar a conta de acesso.'));
       } else {
         setConsulta(data as Consulta);
         // O caso típico: colab_email já foi corrigido por alguém e a conta ficou no
@@ -82,7 +83,10 @@ export default function CorrigirEmailAcessoDialog({
     setIsSaving(false);
 
     if (error || data?.error) {
-      setErro(data?.error || 'Não foi possível corrigir o e-mail de acesso.');
+      // A EF recusa com 409/400 e o motivo no corpo — e as mensagens dela são escritas
+      // para o usuário final. Sem o helper, `data` vem `null` e a explicação era trocada
+      // pela genérica abaixo, deixando o admin sem saber o que corrigir.
+      setErro(mensagemDeErroDaFuncao(error, data, 'Não foi possível corrigir o e-mail de acesso.'));
       return;
     }
 

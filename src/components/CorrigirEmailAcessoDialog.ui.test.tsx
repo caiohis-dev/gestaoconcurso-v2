@@ -251,18 +251,15 @@ describe("CorrigirEmailAcessoDialog (interação)", () => {
       expect(campoEmail()).toHaveValue("novo@exemplo.com");
     });
 
-    it("⚠️ DEFEITO: a mensagem do servidor é DESCARTADA quando a EF responde não-2xx", async () => {
-      // A EF recusa com status 409/400 e o motivo no corpo (ver as recusas de estado A e
-      // C, e "Informe o e-mail correto."). Nesse caso o supabase-js devolve
-      // `{ data: null, error: FunctionsHttpError }`, com o corpo em `error.context.body`
-      // como STRING.
+    it("mostra a mensagem do servidor mesmo quando a EF responde não-2xx", async () => {
+      // REGRESSÃO. A EF recusa com 409/400 e o motivo no corpo (as recusas de estado A e
+      // C, "Informe o e-mail correto.", e-mail já em uso). Nesse caso o supabase-js
+      // devolve `{ data: null, error: FunctionsHttpError }` com o corpo em
+      // `error.context.body` como STRING.
       //
-      // O diálogo faz `setErro(data?.error || <genérica>)` — e `data` é null. Resultado:
-      // a explicação cuidadosa do servidor é trocada por "Não foi possível corrigir o
-      // e-mail de acesso.", e o usuário não fica sabendo o motivo.
-      //
-      // O CoordenadoresProvaDialog já resolve isto: desembrulha `context.body`. O
-      // conserto é copiar aquele tratamento. Item no backlog.
+      // Até 2026-07-26 o diálogo fazia `setErro(data?.error || <genérica>)`, e como
+      // `data` é null caía SEMPRE na genérica — o servidor explicava e o cliente jogava
+      // fora. Agora passa pelo `mensagemDeErroDaFuncao`, que tem teste próprio.
       const user = userEvent.setup();
       await abrirEConsultar("B");
       setFunctionResult("corrigir-email-acesso", {
@@ -279,12 +276,27 @@ describe("CorrigirEmailAcessoDialog (interação)", () => {
       await user.click(botaoCorrigir());
 
       expect(
-        await screen.findByText("Não foi possível corrigir o e-mail de acesso."),
+        await screen.findByText("Esta conta já foi confirmada e está em uso."),
       ).toBeInTheDocument();
+      // A genérica não pode aparecer junto, nem no lugar.
       expect(
-        screen.queryByText("Esta conta já foi confirmada e está em uso."),
+        screen.queryByText("Não foi possível corrigir o e-mail de acesso."),
       ).not.toBeInTheDocument();
       expect(onOpenChange).not.toHaveBeenCalled();
+    });
+
+    it("também desembrulha o motivo na CONSULTA, não só na correção", async () => {
+      // A consulta tem o mesmo padrão de erro e sofria do mesmo problema.
+      setFunctionResult("corrigir-email-acesso", {
+        data: null,
+        error: {
+          message: "Edge Function returned a non-2xx status code",
+          context: { body: JSON.stringify({ error: "Colaborador não encontrado." }) },
+        },
+      });
+      abrir();
+
+      expect(await screen.findByText("Colaborador não encontrado.")).toBeInTheDocument();
     });
   });
 

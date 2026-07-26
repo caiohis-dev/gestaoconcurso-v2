@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/table";
 import { Loader2, UserPlus, Trash2, Shield, Mail, Key } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { mensagemDeErroDaFuncao } from "@/lib/edge-function-error";
 
 interface CoordenadoresProvaDialogProps {
   open: boolean;
@@ -151,25 +152,12 @@ export function CoordenadoresProvaDialog({
         },
       });
 
-      // Handle edge function errors
+      // A EF recusa com status não-2xx e o motivo no corpo — que o `invoke` esconde em
+      // `error.context.body`. O desembrulho virou helper compartilhado em 2026-07-26.
       if (error) {
-        // Try to parse error message from FunctionsHttpError
-        let errorMessage = "Erro ao criar coordenador";
-        try {
-          // The error might contain a context with the response body
-          const errorContext = error as { context?: { body?: string } };
-          if (errorContext.context?.body) {
-            const parsed = JSON.parse(errorContext.context.body);
-            errorMessage = parsed.error || errorMessage;
-          } else if (error.message) {
-            errorMessage = error.message;
-          }
-        } catch {
-          errorMessage = error.message || errorMessage;
-        }
         toast({
           title: "Erro ao criar acesso",
-          description: errorMessage,
+          description: mensagemDeErroDaFuncao(error, null, "Erro ao criar coordenador"),
           variant: "destructive",
         });
         setIsSubmitting(false);

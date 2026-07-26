@@ -103,7 +103,7 @@ async function carregarEDepois(sequencia) {
 
 ## O que está coberto (2026-07-26)
 
-603 testes em 35 arquivos.
+612 testes em 36 arquivos.
 
 | Área | Arquivos |
 |---|---|
@@ -131,13 +131,12 @@ Onde um teste afirma comportamento **errado** de propósito, ele leva `⚠️ DE
 
 O ciclo já se fechou uma vez, e vale como modelo: dois testes de `useProvaLock` afirmavam que `isLoading` ficava preso em `true`, porque ficava; ao consertar o hook em 2026-07-25 eles quebraram, como previsto, e foram reescritos como **teste de regressão** — mesma montagem, asserção invertida, e o comentário passou de "defeito conhecido" para "isto já quebrou uma vez, não deixe voltar". Preserve esse comentário: é ele que impede alguém de "simplificar" o `else` que resolve o estado.
 
-**Há hoje três marcas `⚠️ DEFEITO`**, e todas têm item no `backlog.md` — a regra é essa: **marca sem item vira defeito aceito por esquecimento**, então abra os dois na mesma unidade de trabalho.
+**Há hoje duas marcas `⚠️ DEFEITO`**, e todas têm item no `backlog.md` — a regra é essa: **marca sem item vira defeito aceito por esquecimento**, então abra os dois na mesma unidade de trabalho.
 
 | Onde | O que o teste afirma, sabendo que está errado |
 |---|---|
 | `useOcorrencias` | lista **vazia** de unidades não restringe nada e devolve a prova inteira |
 | `guards.test.tsx` → matriz do `Dashboard` | colaborador puro fica em tela branca em vez de ir ao hub |
-| `CorrigirEmailAcessoDialog` | a mensagem do servidor é **descartada** quando a EF responde não-2xx (o motivo mora em `error.context.body`) |
 
 **O ciclo se fechou três vezes em 2026-07-26, e é a confirmação do método** — a marca serve para *ser derrubada*:
 
@@ -148,5 +147,6 @@ O ciclo já se fechou uma vez, e vale como modelo: dois testes de `useProvaLock`
 | `CoordenadoresProvaDialog` (barreira não pega superadmin) | os dois SELECT literais viraram `has_role` | regressão que afirma **a quem se pergunta** (`has_role`), não como se filtra a tabela |
 | `ValoresFuncaoProvaDialog` (aceita valor negativo) | CHECK no banco + recusa no cliente | regressão: recusa e **preserva o preenchimento**, e o zero segue aceito |
 | `ValoresFuncaoProvaDialog` (excluir sem confirmar) | entrou `AlertDialog` | quatro regressões: abre, nomeia a função, confirma, cancela |
+| `CorrigirEmailAcessoDialog` (descartava a mensagem do servidor) | extraído o helper `mensagemDeErroDaFuncao` | duas regressões, uma na consulta e outra na correção |
 
 Existe também a marca mais fraca **`⚠️ ATENÇÃO`**, para quando o comportamento **não é defeito**, mas morde quem depende dele. Não abre item de backlog; existe para quem for mexer ali não achar que pode simplificar aquilo. Quatro casos: `useCoordenadorUnidades` (lista vazia indistinguível de "ainda carregando" sem olhar `isLoading`); o bloco da **janela do `rolesLoaded`** em `guards.test.tsx` — 13 páginas decidem sem esperar os papéis, o que hoje não expulsa ninguém só porque o `role` anterior sobrevive ao refetch; o `PasswordConfirmDialog`, que **só zera senha e erro pelo Cancelar/Esc**, não quando o pai fecha via prop `open` (nenhuma das 5 páginas faz isso hoje); e o `MetaColaboradoresDialog`, em que **meta de função que perdeu o valor fica órfã** — o upsert nunca apaga, então a linha continua no banco sem aparecer na tela.

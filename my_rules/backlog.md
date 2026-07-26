@@ -13,7 +13,7 @@ Este item é o marco: quem retomar os testes começa por aqui. **Leia `testes.md
 
 ### Onde paramos (2026-07-26)
 
-**603 testes em 35 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
+**612 testes em 36 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
 
 Coberto:
 
@@ -50,7 +50,7 @@ Efeito colateral registrado: o `setFunctionResult` do mock passou a aceitar erro
 
 ✅ **`ValoresFuncaoProvaDialog` + `MetaColaboradoresDialog` saíram juntos** (20 + 13 testes), como uma unidade de trabalho só — e a razão é um acoplamento que o teste agora fixa: **a meta só existe para função que já tem valor cadastrado na prova**. São as duas metades da base de pagamento. Renderam três achados: **dois já corrigidos no mesmo dia** (valor negativo e exclusão sem confirmação) e um aberto, no item "Apagar o valor de uma função deixa a meta dela órfã" abaixo.
 
-✅ **`CorrigirEmailAcessoDialog` saiu em 2026-07-26** (16 testes) — a máquina de três estados da correção de `colab_email`, com foco na recusa do estado C (conta já confirmada: trocar seria trocar o login de alguém). Rendeu mais um achado: a mensagem de erro do servidor é descartada, item próprio abaixo.
+✅ **`CorrigirEmailAcessoDialog` saiu em 2026-07-26** (16 testes) — a máquina de três estados da correção de `colab_email`, com foco na recusa do estado C (conta já confirmada: trocar seria trocar o login de alguém). Rendeu mais um achado — a mensagem de erro do servidor era descartada —, **corrigido no mesmo dia** com o helper `lib/edge-function-error.ts`.
 
 **As próximas, em ordem:** os 4 hooks restantes para fechar aquela camada, depois interação nos que já têm schema, e o `ColaboradorDialog` (777 l.) por último, como unidade de trabalho própria.
 
@@ -107,27 +107,6 @@ Como documentado em [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/
 - Remover da UI de `/gerenciar-usuarios` a opção de conceder/selecionar o papel de `coordenador`.
 - A concessão de acesso de coordenador passará a ser **exclusiva** do fluxo de alocação da prova (`CoordenadoresProvaDialog`).
 - Com isso, o hook `useUsers.addCoordenadorAccess` (e o workaround da alocação falsa em `colaboradores_prova`) deverá ser excluído do código.
-
----
-
-## `CorrigirEmailAcessoDialog` descarta a mensagem de erro do servidor
-
-**Status:** pendente — **achado ao escrever teste** em 2026-07-26
-**Área:** Autenticação (ver [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md))
-
-A EF `corrigir-email-acesso` recusa com **status 409/400** e o motivo no corpo — e as mensagens dela são das mais bem escritas do repo ("Esta conta já foi confirmada e está em uso. Trocar o e-mail dela seria trocar o login de alguém…", "Informe o e-mail correto."). Nenhuma chega ao usuário.
-
-Em resposta não-2xx o supabase-js devolve `{ data: null, error: FunctionsHttpError }`, com o corpo em **`error.context.body` como string**. O diálogo faz:
-
-```ts
-if (error || data?.error) setErro(data?.error || 'Não foi possível corrigir o e-mail de acesso.');
-```
-
-`data` é `null`, então cai sempre na genérica. O usuário vê "Não foi possível corrigir o e-mail de acesso." e **não fica sabendo o motivo** — inclusive no caso mais provável, o e-mail já pertencer a outro cadastro. Vale para os dois modos, `consultar` e `corrigir`.
-
-**O conserto já existe no repo:** `CoordenadoresProvaDialog.tsx` desembrulha `context.body` com `JSON.parse` e cai na `error.message` quando não há corpo. Copiar aquele tratamento — de preferência **extraído para um helper compartilhado**, porque este é o segundo diálogo a precisar dele e as outras EFs respondem do mesmo jeito.
-
-Tem teste marcado `⚠️ DEFEITO`, que quebra quando o conserto entrar.
 
 ---
 

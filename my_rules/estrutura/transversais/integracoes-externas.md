@@ -61,3 +61,13 @@ Por que **superadmin** e não admin: a única porta é a página `/gerenciar-usu
 Existiu brevemente uma sétima function, `export-seed`, que gerava o dump SQL completo da produção (com o schema `auth`, portanto com os hashes de senha) e o enviava por e-mail. Era a única forma de extrair a base do Lovable Cloud, que não expõe connection string. Cumprido o papel, foi removida: uma function que exporta a base inteira a um request de distância não deve ficar deployada.
 
 Removida **do código e do projeto remoto** em 2026-07-12 — a rota `/functions/v1/export-seed` responde 404 em produção. Código e contexto preservados em [`../historico/export-seed/`](../../historico/export-seed/); o dump que ela gerou é o `supabase/seed.local.sql` (ver [`desenvolvimento-local.md`](./desenvolvimento-local.md)).
+
+## Erro de EF no cliente: quem usa `functions.invoke` precisa desembrulhar
+
+As EFs recusam com status **não-2xx** e o motivo no corpo, e essas mensagens são escritas para o usuário final. Mas o `supabase.functions.invoke` **não entrega esse corpo em `data`**: numa resposta não-2xx ele devolve `{ data: null, error: FunctionsHttpError }`, com o corpo em **`error.context.body`, como string**.
+
+Consequência: o padrão ingênuo `data?.error || "<genérica>"` cai **sempre** na genérica. Foi defeito real no `CorrigirEmailAcessoDialog` até 2026-07-26 — o servidor explicava, o cliente jogava fora, e o admin ficava sem saber o que corrigir (inclusive no caso provável de o e-mail já pertencer a outro cadastro).
+
+**Use `mensagemDeErroDaFuncao`** (`src/lib/edge-function-error.ts`, com teste próprio). Ele tenta, nesta ordem: o `error` do corpo → o `error` de `data` (algumas EFs respondem 200 com erro no corpo) → a `message` do erro de transporte → o padrão.
+
+**Só se aplica a quem usa `functions.invoke`** — hoje `CoordenadoresProvaDialog` e `CorrigirEmailAcessoDialog`. As outras cinco EFs são chamadas com **`fetch` cru** (`create-admin`, `recuperar-senha`, `reivindicar-acesso`, `public-create-colaborador`, `check-cpf-colaborador`), que lê `response.json()` e já enxerga o `error` do corpo — por isso nunca tiveram o problema.
