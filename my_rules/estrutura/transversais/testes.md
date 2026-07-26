@@ -65,7 +65,7 @@ O mock tem **teste próprio** (`supabase-mock.test.ts`): é infraestrutura de qu
 
 **O `AuthProvider` fica de fora de propósito:** ele dispara chamadas ao Supabase no mount, e embuti-lo no helper faria todo teste depender de um efeito invisível. Quem precisa dele monta explicitamente, como faz `useAuth.test.tsx`.
 
-## ⚠️ As quatro armadilhas que já custaram tempo aqui
+## ⚠️ As cinco armadilhas que já custaram tempo aqui
 
 **1. A sequência é consumida pela listagem antes de chegar à mutation.** A query de listagem também chama `from(<tabela>)`, então ela come a primeira entrada e o hook recebe um objeto onde espera array (`coordenadores.map is not a function`). Espere a carga inicial e **só então** instale a sequência — `setTableResultSequence` zera o contador. E a **última entrada precisa ser um array**, porque o refetch disparado pela invalidação cai nela.
 
@@ -89,7 +89,7 @@ async function carregarEDepois(sequencia) {
 
 ## O que está coberto (2026-07-25)
 
-287 testes em 21 arquivos.
+376 testes em 29 arquivos.
 
 | Área | Arquivos |
 |---|---|
@@ -97,10 +97,10 @@ async function carregarEDepois(sequencia) {
 | Acessibilidade | `components/dialogos-acessibilidade.test.ts` — invariante **estática**: lê o fonte e exige `DialogDescription` em cada um dos 28 `DialogContent` |
 | Schemas Zod (9) | `*Dialog.test.ts`, `pages/Auth.test.ts`, `pages/GerenciarUsuarios.test.ts` |
 | Auth | `useAuth.test.tsx` — hierarquia, `colaborador` paralelo, `rolesLoaded`, `signOut` |
-| Hooks de dados | `useEditais`, `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useProvaLock` |
+| Hooks de dados | `useEditais`, `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas` (+ `useSalasDistribuidasCapacidade` e `useFiscaisSala`), `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers` |
 | UI | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx` |
 
-**Sem cobertura ainda — 12 hooks** (esta lista já esteve errada, dizendo 8): `useProvas`, `useProvaUnidades`, `useUnidadesProva`, `useSalasProva`, `useSalasDistribuidas`, `useUnidadeCapacidade`, `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useCoordenadorUnidades`, `useOcorrencias`, `useUsers`, `useBancos`. Mais **10 dos 12 diálogos**, **as 23 páginas** (zero cobertura — daí os guards de papel não terem rede) e **as 8 Edge Functions** (rodam em Deno, fora do alcance desta suíte).
+**Sem cobertura ainda — 4 hooks** (a lista já esteve errada, dizendo 8 quando eram 12): `useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade`, `useBancos`. Mais **10 dos 12 diálogos**, **as 23 páginas** (zero cobertura — daí os guards de papel não terem rede) e **as 8 Edge Functions** (rodam em Deno, fora do alcance desta suíte — a autorização de duas delas é verificada pela bateria manual [`../../../docs/bateria-create-admin-autorizacao.md`](../../../docs/bateria-create-admin-autorizacao.md)).
 
 O inventário completo, com ordem de prioridade e o que **não** se testa aqui, está no [`backlog.md`](../../backlog.md) → "Completar a suíte de testes (Vitest)".
 
@@ -114,4 +114,6 @@ Onde um teste afirma comportamento **errado** de propósito, ele leva `⚠️ DE
 
 O ciclo já se fechou uma vez, e vale como modelo: dois testes de `useProvaLock` afirmavam que `isLoading` ficava preso em `true`, porque ficava; ao consertar o hook em 2026-07-25 eles quebraram, como previsto, e foram reescritos como **teste de regressão** — mesma montagem, asserção invertida, e o comentário passou de "defeito conhecido" para "isto já quebrou uma vez, não deixe voltar". Preserve esse comentário: é ele que impede alguém de "simplificar" o `else` que resolve o estado.
 
-**Hoje não há nenhum teste marcado `⚠️ DEFEITO` na suíte.** Se for marcar um novo, abra o item correspondente no `backlog.md` na mesma unidade de trabalho — a marca sem o item vira defeito aceito por esquecimento.
+**Há hoje um teste marcado `⚠️ DEFEITO`:** o de `useOcorrencias`, que afirma que uma lista **vazia** de unidades não restringe nada e devolve a prova inteira. O item correspondente está no `backlog.md` — a regra é essa: **marca sem item vira defeito aceito por esquecimento**, então abra os dois na mesma unidade de trabalho.
+
+Existe também a marca mais fraca **`⚠️ ATENÇÃO`** (em `useCoordenadorUnidades`), para quando o comportamento **não é defeito do hook**, mas morde quem o consome — ali, o fato de "lista vazia" ser indistinguível de "ainda carregando" sem olhar `isLoading`. Não abre item de backlog; existe para quem for mexer no hook não achar que pode simplificar aquilo.

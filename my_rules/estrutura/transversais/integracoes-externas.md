@@ -23,7 +23,7 @@ Todas em `supabase/functions/`, CORS liberado (`Access-Control-Allow-Origin: *`)
 
 | Function | Propósito |
 |---|---|
-| `create-admin` | Cria usuário no Supabase Auth + atribui role (admin/coordenador/superadmin) — usado por `useUsers.createUser` |
+| `create-admin` | Cria usuário no Supabase Auth + atribui role (admin/coordenador/superadmin) — usado por `useUsers.createUser`. 🔴 **NÃO CHECA QUEM CHAMA** — ver o alerta abaixo da tabela |
 | `create-coordenador` | Fluxo específico de criação de coordenador (usa `serve` do `deno.land/std`, padrão ligeiramente diferente das demais que usam `Deno.serve` direto — histórico de escrita em momentos diferentes, não um problema funcional) |
 | `check-cpf-colaborador` | Checa existência de CPF — devolve só `{exists}` (endurecida na 2B; antes vazava o e-mail). Usada em `/cadastro-publico` para decidir cadastrar-ou-reivindicar |
 | `reivindicar-acesso` | Caminho do **CPF** na porta única (2B): CPF → `{existe, ja_vinculado, email_mascarado}`, e dispara o link de acesso. Rate limit por IP (`reivindicacao_rate_limit`), **compartilhado com a `recuperar-senha`** — separados, o atacante somaria 5 + 5 |
@@ -36,6 +36,25 @@ Todas em `supabase/functions/`, CORS liberado (`Access-Control-Allow-Origin: *`)
 **`reset-codigo-acesso` não existe mais.** Servia ao "esqueci meu código", morto desde a 2A; foi **removida do repo** na 2D (2026-07-15), junto com o DROP da coluna `colab_codigo_acesso`. As 8 acima são as que existem hoje em `supabase/functions/`.
 
 `supabase/config.toml` só configura explicitamente `verify_jwt = false` para `create-coordenador` — as demais seguem o padrão default do Supabase. **Atenção:** esse default (`verify_jwt = true`) aceita a **anon key**, que é pública. Ele impede chamada anônima crua, mas **não** é controle de acesso; onde importa quem chama, a checagem é no corpo da function (como na `send-email`).
+
+### `create-admin` — fechada em 2026-07-25 (era o buraco mais grave do sistema)
+
+**O que era:** a função ia **direto do `req.json()` para `auth.admin.createUser`** com `service_role`, sem nenhuma checagem de autorização. Aceitava `role` do corpo, validando só que o valor estava na lista — e `"superadmin"` estava na lista. Some-se a isso que `useUsers.createUser` mandava **a própria anon key** no `Authorization`: a função nem teria como identificar o chamador. **Qualquer pessoa com a anon key criava uma conta `superadmin`.**
+
+Era a mesma falha da `send-email`, fechada em 2026-07-20, com consequência maior — aquela dava phishing, esta dava o sistema.
+
+**Como ficou**, nos dois lados:
+
+1. **Frontend** (`useUsers.createUser`) manda `session.access_token` no `Authorization` — o JWT que identifica a pessoa. A `apikey` continua sendo a pública, porque o papel dela é outro: identificar o **projeto** no gateway.
+2. **A function** monta um client com o header do chamador, faz `auth.getUser()` e **exige `superadmin`** via `has_role`. Sem sessão → 401; sem o papel → 403.
+
+Por que **superadmin** e não admin: a única porta é a página `/gerenciar-usuarios`, cujo guard já é `isSuperAdmin` — a regra espelha a UI em vez de afrouxá-la. E é o mínimo defensável, porque quem cria conta aqui pode criar outro superadmin, ou seja, **pode se replicar**.
+
+⚠️ **A verificação em `has_role` é por RPC, não por `SELECT` em `user_roles`** — a hierarquia (superadmin ⇒ admin) vive dentro daquela função desde a migration `20260725195530`, e consultar a tabela direto contorna a regra. A `corrigir-email-acesso` foi ajustada no mesmo passe pelo mesmo motivo: ela consultava a tabela e um comentário dela afirmava que `has_role` era "match literal, sem hierarquia" — verdade até 25/07, falsa depois.
+
+**A lição que generaliza:** `verify_jwt` não é autorização. Toda EF que usa `service_role` para algo privilegiado precisa decidir explicitamente quem pode chamá-la — ou exigindo `service_role` (se só o servidor chama, como a `send-email`), ou validando o usuário (se o frontend chama, como a `corrigir-email-acesso` e agora a `create-admin`). Não há terceira opção segura.
+
+⚠️ **Continua pendente:** verificar se o **projeto Supabase v1** ainda tem a versão vulnerável publicada — uma EF é chamável pela URL do projeto mesmo com o frontend fora do ar. Mesmo raciocínio do item da `send-email` no [`backlog.md`](../../backlog.md).
 
 ### `export-seed` — removida em 2026-07-12
 

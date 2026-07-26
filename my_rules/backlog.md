@@ -13,7 +13,7 @@ Este item é o marco: quem retomar os testes começa por aqui. **Leia `testes.md
 
 ### Onde paramos (2026-07-25)
 
-**285 testes em 20 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
+**376 testes em 29 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
 
 Coberto:
 
@@ -22,19 +22,22 @@ Coberto:
 | Registro de módulos | `lib/modulos.test.ts` — inclui invariantes sobre `MODULOS` inteiro |
 | Schemas Zod (9) | `ColaboradorDialog`, `EditalDialog`, `FuncaoColaboradorDialog`, `ProvaDialog`, `SalaProvaDialog`, `UnidadeProvaDialog`, `pages/Auth`, `pages/GerenciarUsuarios` |
 | Auth | `useAuth.test.tsx` — hierarquia, `colaborador` paralelo, `rolesLoaded`, `signOut` |
-| Hooks de dados (8) | `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useEditais`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useValoresFuncaoProva` (+ `useAuth`) |
+| Hooks de dados (18) | `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useEditais`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useValoresFuncaoProva`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas` + os dois vizinhos do mesmo arquivo (`useSalasDistribuidasCapacidade`, `useFiscaisSala`), `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers` (+ `useAuth`) |
 | UI de diálogo (2) | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx` |
+| Acessibilidade | `components/dialogos-acessibilidade.test.ts` — invariante estática sobre os 28 diálogos |
 | A própria infra | `src/test/supabase-mock.test.ts` — o mock tem teste próprio |
 
 ### O que falta, em ordem de valor
 
-**1. Hooks sem cobertura — são 12, não 8.**
+**1. Hooks sem cobertura — faltam 4.**
 
-> ⚠️ **Correção de um número que estava errado.** `testes.md` e o `00-modulo.md` listavam **8** hooks descobertos. O inventário real de 2026-07-25 dá **12**: a lista antiga esquecia `useBancos`, `useCoordenadorUnidades`, `useOcorrencias` e `useUnidadeCapacidade`.
+> ⚠️ **Correção de um número que já esteve errado.** `testes.md` e o `00-modulo.md` listavam **8**; o inventário real de 2026-07-25 deu **12**, porque a lista antiga esquecia `useBancos`, `useCoordenadorUnidades`, `useOcorrencias` e `useUnidadeCapacidade`.
 
-Faltam: `useProvas`, `useProvaUnidades`, `useUnidadesProva`, `useSalasProva`, `useSalasDistribuidas`, `useUnidadeCapacidade`, `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useCoordenadorUnidades`, `useOcorrencias`, `useUsers`, `useBancos`.
+**Feitos em 2026-07-25, os quatro prioritários:** `useOcorrencias`, `useCoordenadorUnidades`, `useProvas` e `useProvaUnidades`. A aposta se pagou: a primeira dupla rendeu o defeito do recorte por unidade (item acima), e a segunda fixou por escrito que `addUnidade`/`removeUnidade` **não são transacionais** (ver [`estrutura/modulos/aplicacao-provas/provas-e-unidades.md`](./estrutura/modulos/aplicacao-provas/provas-e-unidades.md)).
 
-Prioridade dentro do grupo: **`useOcorrencias` e `useCoordenadorUnidades` primeiro** — o primeiro porque ocorrências têm regra irreversível (encerramento) e efeito que hoje *não* acontece (o "Faltou", ver item próprio abaixo); o segundo porque é o que decide o que um coordenador enxerga, e errar ali é vazamento de escopo. `useBancos` é provavelmente lista estática — último.
+Faltam: `useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade`, `useBancos`.
+
+Os quatro que sobram são de baixo risco — CRUD parecido com o já coberto, e `useBancos` deve ser lista estática. **O valor agora está na camada 2 (diálogos) e na 3 (páginas/guards)**, não em terminar esta.
 
 **2. UI de diálogo — 2 de 12 cobertos.** Sem nenhum teste: `CoordenadoresProvaDialog`, `CorrigirEmailAcessoDialog`, `MetaColaboradoresDialog`, `PasswordConfirmDialog`, `SalaExtraDialog`, `ValoresFuncaoProvaDialog`. Com teste de schema mas sem teste de interação: `ColaboradorDialog`, `FuncaoColaboradorDialog`, `SalaProvaDialog`, `UnidadeProvaDialog`.
 
@@ -42,7 +45,9 @@ Prioridade dentro do grupo: **`useOcorrencias` e `useCoordenadorUnidades` primei
 
 **3. Páginas: zero cobertura.** São **23 páginas** e nenhuma tem teste de comportamento — os dois arquivos em `pages/` testam só schemas Zod. **Consequência direta:** os guards de papel não têm rede nenhuma. Foi por isso que duas páginas ficaram sem checagem de papel por meses sem nada acusar, e é a razão de o `RequireModulo` (item abaixo) ser arriscado enquanto isso não existir. Um teste de guard por página é repetitivo e barato — bom candidato a `it.each` sobre uma tabela rota × papel esperado.
 
-**4. Edge Functions: zero cobertura.** São 8 (`check-cpf-colaborador`, `corrigir-email-acesso`, `create-admin`, `create-coordenador`, `public-create-colaborador`, `recuperar-senha`, `reivindicar-acesso`, `send-email`) mais `_shared/`. Rodam em Deno, fora do alcance do Vitest como está montado — exigiria decisão de ferramenta (Deno test) antes de qualquer código. **Não é continuação natural da suíte atual; é tema próprio.** Registrar aqui para não parecer esquecimento: é onde vivem as políticas de anti-enumeração, rate limit e cooldown, ou seja, a lógica mais sensível do sistema.
+**4. Edge Functions: sem teste automatizado.** São 8 (`check-cpf-colaborador`, `corrigir-email-acesso`, `create-admin`, `create-coordenador`, `public-create-colaborador`, `recuperar-senha`, `reivindicar-acesso`, `send-email`) mais `_shared/`. Rodam em Deno, fora do alcance do Vitest como está montado — exigiria decisão de ferramenta (Deno test) antes de qualquer código. **Não é continuação natural da suíte atual; é tema próprio.** É onde vivem as políticas de anti-enumeração, rate limit e cooldown — a lógica mais sensível do sistema.
+
+O que **existe** hoje é verificação manual da **autorização** de duas delas, em [`../docs/bateria-create-admin-autorizacao.md`](../docs/bateria-create-admin-autorizacao.md) (7 casos, rodada em 2026-07-25) — inclusive o script de forjar JWT local, que qualquer teste futuro de EF vai precisar, porque o dump traz hashes de senha de produção e ninguém sabe as senhas.
 
 **5. O que deliberadamente NÃO se testa com Vitest.** As constraints de banco: a suíte roda contra um **mock** do Supabase, sem Postgres, então um teste ali afirmaria o mock, não o banco. A verificação correta é bateria SQL contra o banco local — feita, em [`../docs/bateria-db-constraints.sql`](../docs/bateria-db-constraints.sql) (22 casos). Histórico do tema em [`analises/concluidos/roadmap-db-constraints.yaml`](./analises/concluidos/roadmap-db-constraints.yaml).
 
@@ -55,6 +60,69 @@ Prioridade dentro do grupo: **`useOcorrencias` e `useCoordenadorUnidades` primei
 ### A automação ficou para o fim, por decisão
 
 **O usuário decidiu em 2026-07-25 deixar o CI para o final.** Não é esquecimento — está registrado no item próprio abaixo ("Rodar a suíte de testes automaticamente"), que segue válido e continua sendo o de maior alavancagem da lista. A consequência de a decisão valer: **nada roda a suíte sozinho**, então cada tema fechado depende de alguém lembrar. Escrever mais teste rende menos até o CI existir — o que é justamente o argumento para não perseguir 100% de cobertura antes dele.
+
+---
+
+## `addCoordenadorAccess` fabrica uma alocação falsa para satisfazer uma FK
+
+**Status:** pendente — **achado ao escrever teste** em 2026-07-25
+**Área:** Alocação e Funções (ver [`estrutura/modulos/aplicacao-provas/alocacao-e-funcoes.md`](./estrutura/modulos/aplicacao-provas/alocacao-e-funcoes.md))
+
+`coordenadores_prova` exige um `colaborador_prova_id`. Quando a unidade da prova ainda não tem **nenhuma** alocação, `useUsers.addCoordenadorAccess` não recusa: pega **qualquer colaborador** (`.limit(1)`, sem ordenação — o que o banco devolver primeiro) e **cria uma linha em `colaboradores_prova`** só para preencher a FK.
+
+**Por que isso é poluição de dado, e não um detalhe técnico:** `colaboradores_prova` é a tabela de **alocação real** — a que diz quem trabalha na prova, e de onde saem os relatórios e a base de pagamento. A linha fabricada faz um colaborador aparecer alocado numa unidade para a qual ninguém o escalou, **sem função e sem valor**. Ninguém que olhe a tela de alocação consegue distinguir essa linha de uma real.
+
+**A causa é de modelagem:** o acesso de coordenador está amarrado a uma alocação, quando são coisas independentes — coordenar uma prova não é trabalhar numa sala dela. O conserto honesto é **tornar `colaborador_prova_id` nullable** (ou removê-lo de `coordenadores_prova`), não melhorar o chute de qual colaborador usar.
+
+Enquanto isso não for decidido, o mínimo é **recusar** quando não há alocação, como já se faz quando a prova não tem unidade — melhor bloquear com mensagem clara do que inventar dado.
+
+---
+
+## Excluir função de colaborador apaga dados em cascata, e só o cliente protege
+
+**Status:** pendente — **achado ao escrever teste** em 2026-07-25
+**Área:** Alocação e Funções (ver [`estrutura/modulos/aplicacao-provas/alocacao-e-funcoes.md`](./estrutura/modulos/aplicacao-provas/alocacao-e-funcoes.md))
+
+As três FKs que apontam para `funcoes_colaboradores` são **destrutivas, não protetivas** (verificado no banco):
+
+| Tabela | `ON DELETE` | Efeito |
+|---|---|---|
+| `colaboradores_prova` | **SET NULL** | alocações ficam **sem função**, inclusive em provas já realizadas |
+| `meta_colaboradores_unidade` | **CASCADE** | metas somem |
+| `valores_funcao_prova` | **CASCADE** | valores de pagamento somem |
+
+Excluir uma função em uso **não dá erro**: apaga dado de várias provas em silêncio, incluindo registro financeiro. **A única barreira é o cliente** — `useFuncoesAssociadas` consulta as três tabelas e a página desabilita o botão. Uma chamada direta ao PostgREST por um admin passa reto.
+
+É a mesma lacuna que o tema de [DB constraints](./analises/concluidos/roadmap-db-constraints.yaml) fechou para *formatos*, agora em *integridade referencial*: a regra existe na UI e não no banco.
+
+**Conserto sugerido**, em ordem de preferência:
+1. **`ON DELETE RESTRICT`** nas três FKs — o banco recusa, e a UI passa a traduzir o `23503` (que ela já sabe fazer para outros casos). Mais simples e mais honesto: a exclusão vira erro, não perda silenciosa.
+2. Trigger `BEFORE DELETE` que levanta mensagem própria, se a de FK for considerada técnica demais.
+
+**Atenção ao escolher:** `SET NULL` em `colaboradores_prova` pode ter sido deliberado, para permitir aposentar uma função sem travar em histórico antigo. Se for o caso, a resposta certa talvez seja **soft delete** (uma coluna `ativa`) em vez de RESTRICT — decidir antes de migrar. Enquanto isso, o cliente continua sendo a única rede, e o `isFuncaoAssociada` que a sustenta **responde `false` enquanto carrega** (contido hoje só porque a página espera o `isLoading`).
+
+---
+
+## `useOcorrencias`: lista vazia de unidades não restringe nada
+
+**Status:** pendente — **achado por teste automatizado** em 2026-07-25
+**Área:** Ocorrências (ver [`estrutura/modulos/aplicacao-provas/ocorrencias.md`](./estrutura/modulos/aplicacao-provas/ocorrencias.md))
+
+O filtro por unidade em `useOcorrencias` é aplicado assim:
+
+```js
+if (provaUnidadeIds && provaUnidadeIds.length > 0) q = q.in("prova_unidade_id", provaUnidadeIds);
+```
+
+Uma lista **vazia** significa "nenhuma unidade permitida", mas cai no **mesmo ramo** do `undefined` que o admin usa para dizer "sem restrição": nenhum filtro é aplicado e a consulta devolve **todas as ocorrências da prova**.
+
+**Por que não é teórico.** Em `OcorrenciasProva.tsx:105` o segundo argumento vem de `scopedUnidadeIds`, derivado de `useCoordenadorUnidades` — que devolve `[]` **enquanto carrega** (`query.data ?? []`, e a query ainda nem resolveu). Ou seja: em **todo carregamento da página por um coordenador** existe uma janela em que a consulta roda sem filtro, e a tela mostra ocorrências de unidades que não são dele. Quando os ids chegam, o `queryKey` muda e o React Query refaz a consulta — a janela fecha sozinha, mas não antes de renderizar.
+
+**A RLS não segura isso.** A policy de `ocorrencias_colaborador` é `is_coordenador_prova(auth.uid(), prova_id)`, que autoriza **por prova**, não por unidade (confirmado no banco em 2026-07-25). O recorte por unidade existe **só no cliente** — então este `if` é a única barreira, e ela abre justamente quando deveria fechar ao máximo.
+
+**Conserto sugerido:** distinguir os dois casos, que hoje colidem. `undefined` = admin, sem restrição; `[]` = nada permitido → aplicar `.in("prova_unidade_id", [])`, que devolve zero linhas. Alternativa complementar: não disparar a consulta enquanto o escopo do coordenador não tiver resolvido (o `enabled` passaria a considerar isso), o que também evita a consulta ampla e o refetch.
+
+**Ao corrigir:** o teste `⚠️ DEFEITO` em `src/hooks/useOcorrencias.test.tsx` afirma hoje o comportamento **errado** de propósito. Ele vai quebrar quando o conserto entrar — é o sinal de que deve ser reescrito para o comportamento correto.
 
 ---
 

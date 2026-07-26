@@ -5,19 +5,75 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const jsonResp = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const supabaseAdmin = createClient(
+      supabaseUrl,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+
+    // ─── Quem está chamando? (fechado em 2026-07-25) ──────────────────────────
+    // Esta função cria conta no Auth e concede papel com `service_role`, aceitando
+    // `role` do corpo — inclusive "superadmin". Até esta data ela NÃO checava nada:
+    // o `verify_jwt` padrão do Supabase era o único portão, e ele **não é controle
+    // de acesso** — a anon key é um JWT válido e é PÚBLICA (vai no bundle do
+    // frontend). Pior: o próprio `useUsers.createUser` mandava a anon key como
+    // Authorization. Na prática, qualquer um com aquela chave criava um superadmin.
+    //
+    // É a mesma falha fechada na `send-email` em 2026-07-20; aqui a consequência era
+    // maior. O padrão abaixo é o mesmo da `corrigir-email-acesso`.
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return jsonResp({ error: "Não autenticado" }, 401);
+    }
+
+    const supabaseCaller = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY") ?? "", {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user: caller }, error: callerErr } = await supabaseCaller.auth.getUser();
+    // A anon key crua cai aqui: ela é um JWT sem usuário, então `getUser` não devolve
+    // ninguém. É exatamente o buraco que este bloco fecha.
+    if (callerErr || !caller) {
+      return jsonResp({ error: "Não autenticado" }, 401);
+    }
+
+    // Exige superadmin, não admin. A única porta para esta função é a página
+    // `/gerenciar-usuarios`, cujo guard já é `isSuperAdmin` — então isto espelha a UI
+    // em vez de afrouxá-la. E é o mínimo defensável: quem cria conta aqui pode criar
+    // um superadmin, ou seja, pode se replicar.
+    //
+    // Via `has_role` (RPC), não por SELECT em `user_roles`: a hierarquia
+    // (superadmin ⇒ admin) vive dentro daquela função desde a migration
+    // 20260725195530, e consultar a tabela direto contorna a regra.
+    const { data: ehSuperadmin, error: papelErr } = await supabaseAdmin.rpc("has_role", {
+      _user_id: caller.id,
+      _role: "superadmin",
+    });
+    if (papelErr) {
+      console.error("Falha ao verificar permissão do chamador:", papelErr);
+      return jsonResp({ error: "Falha ao verificar permissão" }, 500);
+    }
+    if (!ehSuperadmin) {
+      return jsonResp({ error: "Só um superadmin pode criar usuários." }, 403);
+    }
+    // ──────────────────────────────────────────────────────────────────────────
+
     const { email, password, fullName, role = "admin", provaId } = await req.json();
 
     if (!email || !password) {
-      return new Response(
-        JSON.stringify({ error: "Email e senha são obrigatórios" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return jsonResp({ error: "Email e senha são obrigatórios" }, 400);
     }
 
     // Validate role
@@ -26,17 +82,8 @@ Deno.serve(async (req) => {
 
     // Coordenador requires provaId
     if (selectedRole === "coordenador" && !provaId) {
-      return new Response(
-        JSON.stringify({ error: "Para criar um coordenador, é necessário informar a prova" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return jsonResp({ error: "Para criar um coordenador, é necessário informar a prova" }, 400);
     }
-
-    const supabaseAdmin = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-      { auth: { autoRefreshToken: false, persistSession: false } }
-    );
 
     // Create user with admin API
     const { data: userData, error: createError } = await supabaseAdmin.auth.admin.createUser({

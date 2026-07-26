@@ -256,13 +256,27 @@ export function useUsers() {
       role: AppRole;
       provaId?: string;
     }) => {
+      // Manda o token DA SESSÃO, não a anon key. A `create-admin` cria conta e concede
+      // papel com service_role (inclusive superadmin) e, desde 2026-07-25, exige que o
+      // chamador seja superadmin — o que só é verificável se o JWT identificar uma
+      // pessoa. A anon key é um JWT válido mas anônimo e público: mandá-la aqui era o
+      // que permitia a qualquer um criar um superadmin.
+      const { data: sessao } = await supabase.auth.getSession();
+      const accessToken = sessao.session?.access_token;
+      if (!accessToken) {
+        throw new Error("Sessão expirada. Entre novamente para criar usuários.");
+      }
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-admin`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+            // A `apikey` continua sendo a pública — é o que identifica o PROJETO no
+            // gateway. Quem identifica a PESSOA é o Authorization.
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({ email, password, fullName, role, provaId }),
         }

@@ -17,6 +17,31 @@
 
 Remover uma unidade de uma prova (`removeUnidadeMutation`) deleta em cascata as `salas_prova_distribuidas` daquela unidade+prova antes de deletar o vínculo em `prova_unidades`.
 
+### ⚠️ As duas operações têm três passos e NÃO são transacionais
+
+Vale para `addUnidade` e `removeUnidade`: cada passo é uma requisição própria do supabase-js, sem transação em volta. **Um toast de erro não significa "nada aconteceu"** — significa que parou no meio. Fixado por teste em `useProvaUnidades.test.tsx`.
+
+**Adicionar** — (1) grava o vínculo → (2) lê as salas do template → (3) copia para o snapshot. Falhando no passo 3, a unidade fica **vinculada e sem sala nenhuma**. É recuperável pela própria UI: remover e adicionar de novo refaz a cópia.
+
+**Remover** — (1) lê o vínculo para descobrir a unidade → (2) apaga o snapshot → (3) apaga o vínculo. Falhando no passo 3, as salas **já foram apagadas** e a unidade continua vinculada, com zero salas. **Este é o pior dos dois**, porque o snapshot podia estar customizado (salas extras do `SalaExtraDialog`, capacidades ajustadas, fiscais atribuídos) e nada disso existe no template — recriar pelo template não devolve o que foi editado.
+
+Dois detalhes que parecem menores e não são:
+
+- O delete do snapshot filtra por **`prova_id` E `sala_fk_unidade`**. Sem o `prova_id`, apagaria as salas daquela unidade em **todas** as provas.
+- Se o passo 1 da remoção falhar, nada é apagado — falha fechada, e é o comportamento certo: sem saber a unidade, um delete só por `prova_id` varreria o snapshot inteiro da prova.
+
+Se um dia isso precisar ser atômico, o caminho é uma RPC — não dá para resolver encadeando chamadas no cliente.
+
+### O snapshot em si: `useSalasDistribuidas`
+
+Três coisas fixadas por teste em `useSalasDistribuidas.test.tsx`:
+
+- **Salvar em lote também não é transacional.** `updateSalas` dispara **um `UPDATE` por sala**, em paralelo (`Promise.all`). Se um falhar, os outros já foram — o usuário vê "Erro ao salvar" e conclui que nada foi gravado, mas parte da edição está no banco. Mesma classe do problema acima, mesma saída (RPC).
+- **Sala sem `id` é ignorada em silêncio** (`if (!sala.id) return null`) — sem erro, sem aviso. Para sala nova o caminho é `addSala`; se um formulário passar a mandar linha nova pelo lote, ela some sem ninguém notar.
+- **`addSala` não carimba `created_by`**, ao contrário de `useProvas`, `useProvaUnidades` e `useOcorrencias`, que leem `auth.getUser()`. A sala extra nasce sem autoria. Não quebra nada hoje (a coluna é nullable), mas ninguém sabe quem a acrescentou à mão.
+
+E um contraste que vale conhecer: **`useSalasDistribuidasCapacidade` trata lista vazia de unidades como "nada a perguntar"** — o `enabled` exige `unidadeIds.length > 0` e a `queryFn` ainda devolve `{}` antes de montar consulta. É o **oposto** do que `useOcorrencias` faz com a mesma situação, onde lista vazia vira "sem restrição" e devolve a prova inteira (defeito no [`backlog.md`](../../../backlog.md)). Mesma entrada, decisões opostas no mesmo módulo: ao mexer em qualquer um dos dois, alinhe-os.
+
 ## Capacidade agregada
 
 `useUnidadeCapacidade.tsx` e `useSalasDistribuidasCapacidade` (em `useSalasDistribuidas.tsx`) calculam a soma de `sala_capacidade` por unidade a partir de `salas_prova_distribuidas` — ou seja, sempre a partir do snapshot da prova, não do template. Usado em `GerenciarProva.tsx` para mostrar quantos candidatos cabem por unidade.

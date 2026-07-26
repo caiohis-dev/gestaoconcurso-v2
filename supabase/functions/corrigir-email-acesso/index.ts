@@ -90,16 +90,23 @@ Deno.serve(async (req) => {
     if (callerErr || !caller) return jsonResp({ error: 'Não autenticado' }, 401);
 
     // Espelha exatamente a policy de UPDATE de colaboradores: has_role(admin) OR
-    // has_role(coordenador). has_role é match literal, sem hierarquia — um superadmin
-    // sem linha 'admin' também não edita a tabela, então aqui também não passa.
-    const { data: papeis, error: papeisErr } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', caller.id)
-      .in('role', ['admin', 'coordenador']);
+    // has_role(coordenador).
+    //
+    // ⚠️ Chama `has_role`, e não faz SELECT em `user_roles`. A diferença passou a
+    // importar em 2026-07-25: a migration 20260725195530 pôs a hierarquia DENTRO do
+    // `has_role` (superadmin ⇒ admin). Consultar a tabela direto contorna a regra e
+    // recria o bug que ela fechou — a policy deixaria o superadmin passar, e esta
+    // função o barraria, com a UI mostrando os botões. Onde o alvo é "a mesma regra
+    // da policy", use a mesma função que a policy usa.
+    const [admin, coordenador] = await Promise.all([
+      supabase.rpc('has_role', { _user_id: caller.id, _role: 'admin' }),
+      supabase.rpc('has_role', { _user_id: caller.id, _role: 'coordenador' }),
+    ]);
 
-    if (papeisErr) return jsonResp({ error: 'Falha ao verificar permissão' }, 500);
-    if (!papeis || papeis.length === 0) {
+    if (admin.error || coordenador.error) {
+      return jsonResp({ error: 'Falha ao verificar permissão' }, 500);
+    }
+    if (!admin.data && !coordenador.data) {
       return jsonResp({ error: 'Só a coordenação pode corrigir o e-mail de acesso.' }, 403);
     }
 
