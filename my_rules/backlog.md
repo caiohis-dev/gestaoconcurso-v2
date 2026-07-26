@@ -13,7 +13,7 @@ Este item é o marco: quem retomar os testes começa por aqui. **Leia `testes.md
 
 ### Onde paramos (2026-07-26)
 
-**742 testes em 46 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
+**743 testes em 46 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
 
 Coberto:
 
@@ -169,29 +169,6 @@ Excluir uma função em uso **não dá erro**: apaga dado de várias provas em s
 2. Trigger `BEFORE DELETE` que levanta mensagem própria, se a de FK for considerada técnica demais.
 
 **Atenção ao escolher:** `SET NULL` em `colaboradores_prova` pode ter sido deliberado, para permitir aposentar uma função sem travar em histórico antigo. Se for o caso, a resposta certa talvez seja **soft delete** (uma coluna `ativa`) em vez de RESTRICT — decidir antes de migrar. Enquanto isso, o cliente continua sendo a única rede, e o `isFuncaoAssociada` que a sustenta **responde `false` enquanto carrega** (contido hoje só porque a página espera o `isLoading`).
-
----
-
-## `useOcorrencias`: lista vazia de unidades não restringe nada
-
-**Status:** pendente — **achado por teste automatizado** em 2026-07-25
-**Área:** Ocorrências (ver [`estrutura/modulos/aplicacao-provas/ocorrencias.md`](./estrutura/modulos/aplicacao-provas/ocorrencias.md))
-
-O filtro por unidade em `useOcorrencias` é aplicado assim:
-
-```js
-if (provaUnidadeIds && provaUnidadeIds.length > 0) q = q.in("prova_unidade_id", provaUnidadeIds);
-```
-
-Uma lista **vazia** significa "nenhuma unidade permitida", mas cai no **mesmo ramo** do `undefined` que o admin usa para dizer "sem restrição": nenhum filtro é aplicado e a consulta devolve **todas as ocorrências da prova**.
-
-**Por que não é teórico.** Em `OcorrenciasProva.tsx:105` o segundo argumento vem de `scopedUnidadeIds`, derivado de `useCoordenadorUnidades` — que devolve `[]` **enquanto carrega** (`query.data ?? []`, e a query ainda nem resolveu). Ou seja: em **todo carregamento da página por um coordenador** existe uma janela em que a consulta roda sem filtro, e a tela mostra ocorrências de unidades que não são dele. Quando os ids chegam, o `queryKey` muda e o React Query refaz a consulta — a janela fecha sozinha, mas não antes de renderizar.
-
-**A RLS não segura isso.** A policy de `ocorrencias_colaborador` é `is_coordenador_prova(auth.uid(), prova_id)`, que autoriza **por prova**, não por unidade (confirmado no banco em 2026-07-25). O recorte por unidade existe **só no cliente** — então este `if` é a única barreira, e ela abre justamente quando deveria fechar ao máximo.
-
-**Conserto sugerido:** distinguir os dois casos, que hoje colidem. `undefined` = admin, sem restrição; `[]` = nada permitido → aplicar `.in("prova_unidade_id", [])`, que devolve zero linhas. Alternativa complementar: não disparar a consulta enquanto o escopo do coordenador não tiver resolvido (o `enabled` passaria a considerar isso), o que também evita a consulta ampla e o refetch.
-
-**Ao corrigir:** o teste `⚠️ DEFEITO` em `src/hooks/useOcorrencias.test.tsx` afirma hoje o comportamento **errado** de propósito. Ele vai quebrar quando o conserto entrar — é o sinal de que deve ser reescrito para o comportamento correto.
 
 ---
 

@@ -98,33 +98,40 @@ describe("useOcorrencias", () => {
       expect(chamou("in")).toBe(false);
     });
 
-    it("⚠️ DEFEITO: lista VAZIA de unidades não restringe nada — devolve a prova inteira", async () => {
-      // Comportamento REAL, não desejado — documentado aqui em vez de mascarado.
+    it("lista VAZIA de unidades devolve ZERO ocorrências, não a prova inteira", async () => {
+      // REGRESSÃO. A guarda era `if (provaUnidadeIds && provaUnidadeIds.length > 0)`, e
+      // com isso `[]` caía no MESMO ramo do `undefined` do admin: nenhum filtro, prova
+      // inteira. Mas os dois significam coisas opostas — `undefined` é "sem restrição",
+      // `[]` é "nenhuma unidade permitida".
       //
-      // A guarda é `if (provaUnidadeIds && provaUnidadeIds.length > 0)`. Uma lista
-      // vazia significa "nenhuma unidade permitida", mas cai no mesmo ramo do
-      // `undefined` do admin: NENHUM filtro é aplicado, e a consulta devolve todas as
-      // ocorrências da prova.
+      // Não era teórico: em `OcorrenciasProva.tsx` o segundo argumento vem de
+      // `scopedUnidadeIds`, derivado de `useCoordenadorUnidades`, que devolve `[]`
+      // ENQUANTO CARREGA — então todo carregamento da página por um coordenador tinha
+      // uma janela mostrando ocorrências de unidade que não é dele.
       //
-      // Por que não é teórico: em OcorrenciasProva.tsx o segundo argumento vem de
-      // `scopedUnidadeIds`, derivado de `useCoordenadorUnidades` — que devolve `[]`
-      // ENQUANTO CARREGA. Ou seja, em todo carregamento da página por um coordenador
-      // existe uma janela em que a consulta roda sem filtro. A RLS não segura: a
-      // policy de `ocorrencias_colaborador` é `is_coordenador_prova(uid, prova_id)`,
-      // que autoriza por PROVA, não por unidade — então o recorte por unidade é
-      // client-side e só existe aqui.
-      //
-      // Conserto (fora do escopo de testes): tratar `[]` como "nada permitido" —
-      // `.in("prova_unidade_id", [])` devolve zero linhas — ou não disparar a consulta
-      // enquanto o escopo do coordenador não tiver resolvido. Item no backlog.
-      const deOutraUnidade = ocorrencia("o9", "pu-que-nao-e-minha");
-      setTableResult(TABELA, { data: [deOutraUnidade], error: null });
+      // A RLS não cobre isso: a policy de `ocorrencias_colaborador` é
+      // `is_coordenador_prova(uid, prova_id)`, que autoriza por PROVA. O recorte por
+      // unidade existe só aqui.
+      setTableResult(TABELA, { data: [], error: null });
 
       const { result } = renderHookWithProviders(() => useOcorrencias("prova-1", []));
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      // O filtro é aplicado com a lista vazia — `.in(coluna, [])` devolve zero linhas.
+      expect(chamou("in")).toBe(true);
+      expect(result.current.ocorrencias).toHaveLength(0);
+    });
+
+    it("`undefined` continua significando 'sem restrição' — é o caminho do admin", async () => {
+      // O outro lado da distinção: sem isto, o conserto acima teria escondido as
+      // ocorrências de quem pode ver todas.
+      const deQualquerUnidade = ocorrencia("o9", "pu-qualquer");
+      setTableResult(TABELA, { data: [deQualquerUnidade], error: null });
+
+      const { result } = renderHookWithProviders(() => useOcorrencias("prova-1", undefined));
       await waitFor(() => expect(result.current.ocorrencias).toHaveLength(1));
 
       expect(chamou("in")).toBe(false);
-      expect(result.current.ocorrencias[0].prova_unidade_id).toBe("pu-que-nao-e-minha");
     });
 
     it("refaz a consulta quando o escopo de unidades muda", async () => {

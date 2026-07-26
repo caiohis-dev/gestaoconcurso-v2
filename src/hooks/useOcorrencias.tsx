@@ -72,7 +72,16 @@ export function useOcorrencias(provaId: string, provaUnidadeIds?: string[]) {
         .eq("prova_id", provaId)
         .order("data_ocorrencia", { ascending: false });
 
-      if (provaUnidadeIds && provaUnidadeIds.length > 0) {
+      // `undefined` e `[]` significam coisas OPOSTAS, e até 2026-07-26 caíam no mesmo
+      // ramo — o filtro só era aplicado quando havia ids, então lista vazia devolvia a
+      // prova INTEIRA. Quem passa `undefined` é o admin ("sem restrição"); quem passa
+      // `[]` é o coordenador sem unidade nenhuma visível, e aí o certo é ZERO linha.
+      //
+      // Não era teórico: `useCoordenadorUnidades` devolve `[]` enquanto carrega, então
+      // todo carregamento por coordenador tinha uma janela mostrando ocorrências de
+      // unidades que não são dele. A RLS não segura — ela autoriza por PROVA, não por
+      // unidade, então este filtro é a única barreira do recorte.
+      if (provaUnidadeIds !== undefined) {
         q = q.in("prova_unidade_id", provaUnidadeIds);
       }
 

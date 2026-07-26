@@ -2,6 +2,21 @@
 
 > Documento de área do módulo **Aplicação de Provas** — comece pelo contrato em [`00-modulo.md`](./00-modulo.md). Depende do modelo de alocação descrito em [`alocacao-e-funcoes.md`](./alocacao-e-funcoes.md).
 
+## O recorte por unidade é client-side — e `[]` não é `undefined`
+
+A policy de `ocorrencias_colaborador` é `is_coordenador_prova(auth.uid(), prova_id)`: autoriza por **prova**, não por unidade. O recorte por unidade existe **só no cliente**, no segundo argumento de `useOcorrencias` — então aquele filtro é a única barreira.
+
+⚠️ **Os dois valores significam coisas opostas, e até 2026-07-26 caíam no mesmo ramo:**
+
+| Valor | Significado | Comportamento |
+|---|---|---|
+| `undefined` | admin: sem restrição | nenhum filtro |
+| `[]` | coordenador sem unidade visível | **zero linhas** (`.in(coluna, [])`) |
+
+A guarda era `if (ids && ids.length > 0)`, então `[]` não aplicava filtro e devolvia a **prova inteira**. Não era teórico: `useCoordenadorUnidades` devolve `[]` enquanto carrega, então todo carregamento da página por um coordenador tinha uma janela mostrando ocorrência de unidade que não era dele.
+
+**Corrigido nas duas pontas:** o hook distingue os casos (falha fechado), e a página passou a **esperar** o escopo do coordenador resolver — senão o "nenhuma ocorrência" que aparece na janela seria mentira.
+
 ## Entidade `ocorrencias_colaborador`
 
 `useOcorrencias.tsx` (página `OcorrenciasProva.tsx`, rota `/ocorrencias-prova/:provaId`): registra um incidente ligado a um `colaborador_id`, dentro de uma `prova_id`/`prova_unidade_id`, com `descricao`, `tipo_ocorrencia`, `data_ocorrencia`, e um flag `substituido` + `substituto_id` (FK para outro colaborador que o substituiu).

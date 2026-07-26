@@ -77,7 +77,8 @@ export default function OcorrenciasProva() {
   const { user, loading: authLoading, isAdmin, isSuperAdmin, isCoordenador } = useAuth() as any;
   const { provas, isLoading: isLoadingProvas } = useProvas();
   const { provaUnidades, isLoading: isLoadingProvaUnidades } = useProvaUnidades(provaId || "");
-  const { provaUnidades: coordenadorUnidades } = useCoordenadorUnidades();
+  const { provaUnidades: coordenadorUnidades, isLoading: isLoadingCoordUnidades } =
+    useCoordenadorUnidades();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -233,7 +234,11 @@ export default function OcorrenciasProva() {
     [colaboradoresUnidade, form.colaborador_id],
   );
 
-  if (authLoading || isLoadingProvas) {
+  // O escopo do coordenador entra na espera: `useCoordenadorUnidades` devolve `[]`
+  // enquanto carrega, e `[]` agora significa "nenhuma unidade" — correto para a
+  // consulta (que passou a devolver zero linhas em vez da prova inteira), mas na tela
+  // apareceria um "nenhuma ocorrência" que é mentira. Esperar evita afirmar o vazio.
+  if (authLoading || isLoadingProvas || (isCoordenador && !isAdminOrSuper && isLoadingCoordUnidades)) {
     return (
       <div className="flex h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
