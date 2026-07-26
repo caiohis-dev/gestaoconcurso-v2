@@ -13,7 +13,7 @@ Este item é o marco: quem retomar os testes começa por aqui. **Leia `testes.md
 
 ### Onde paramos (2026-07-26)
 
-**612 testes em 36 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
+**641 testes em 40 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
 
 Coberto:
 
@@ -22,7 +22,7 @@ Coberto:
 | Registro de módulos | `lib/modulos.test.ts` — inclui invariantes sobre `MODULOS` inteiro |
 | Schemas Zod (9) | `ColaboradorDialog`, `EditalDialog`, `FuncaoColaboradorDialog`, `ProvaDialog`, `SalaProvaDialog`, `UnidadeProvaDialog`, `pages/Auth`, `pages/GerenciarUsuarios` |
 | Auth | `useAuth.test.tsx` — hierarquia, `colaborador` paralelo, `rolesLoaded`, `signOut` |
-| Hooks de dados (18) | `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useEditais`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useValoresFuncaoProva`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas` + os dois vizinhos do mesmo arquivo (`useSalasDistribuidasCapacidade`, `useFiscaisSala`), `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers` (+ `useAuth`) |
+| Hooks de dados (**todos**) | `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useEditais`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useValoresFuncaoProva`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas` + os dois vizinhos do mesmo arquivo (`useSalasDistribuidasCapacidade`, `useFiscaisSala`), `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers` (+ `useAuth`) |
 | UI de diálogo (7) | `EditalDialog`, `ProvaDialog`, `PasswordConfirmDialog`, `CoordenadoresProvaDialog`, `ValoresFuncaoProvaDialog`, `MetaColaboradoresDialog`, `CorrigirEmailAcessoDialog` (todos `.ui.test.tsx`) |
 | Acessibilidade | `components/dialogos-acessibilidade.test.ts` — invariante estática sobre os 28 diálogos |
 | **Guards de página** | `pages/guards.test.tsx` — **137 testes**: matriz 19 páginas × 5 papéis, a janela do `rolesLoaded` e o `isLoggingOut` |
@@ -30,15 +30,11 @@ Coberto:
 
 ### O que falta, em ordem de valor
 
-**1. Hooks sem cobertura — faltam 4.**
+**1. ✅ Hooks — CAMADA FECHADA em 2026-07-26.**
 
-> ⚠️ **Correção de um número que já esteve errado.** `testes.md` e o `00-modulo.md` listavam **8**; o inventário real de 2026-07-25 deu **12**, porque a lista antiga esquecia `useBancos`, `useCoordenadorUnidades`, `useOcorrencias` e `useUnidadeCapacidade`.
+Os **20 hooks de dados** têm teste (`use-mobile` e `use-toast` são utilitários do shadcn, fora da conta). A lista já esteve errada duas vezes — `testes.md` e o `00-modulo.md` diziam **8** quando eram **12** —, então o número acima vem de varredura, não de memória.
 
-**Feitos em 2026-07-25, os quatro prioritários:** `useOcorrencias`, `useCoordenadorUnidades`, `useProvas` e `useProvaUnidades`. A aposta se pagou: a primeira dupla rendeu o defeito do recorte por unidade (item acima), e a segunda fixou por escrito que `addUnidade`/`removeUnidade` **não são transacionais** (ver [`estrutura/modulos/aplicacao-provas/provas-e-unidades.md`](./estrutura/modulos/aplicacao-provas/provas-e-unidades.md)).
-
-Faltam: `useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade`, `useBancos`.
-
-Os quatro que sobram são de baixo risco — CRUD parecido com o já coberto, e `useBancos` deve ser lista estática. **O valor agora está na camada 2 (diálogos) e na 3 (páginas/guards)**, não em terminar esta.
+Os quatro últimos (`useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade`, `useBancos`) eram tidos como baixo risco, e em três dos quatro isso se confirmou. **A exceção foi o `useSalasProva`**, que esconde numeração de sala numa mutation: `número = andar × 100 + sequência`, calculada no cliente a partir das salas existentes, sem `SEQUENCE` no banco. O teste fixa que ela continua do **maior número daquele andar** (buraco de sala excluída não é reaproveitado, o que confundiria lista já impressa) e registra `⚠️ ATENÇÃO` no teto de **99 salas por andar** — ao estourar, a numeração invade o andar seguinte em silêncio.
 
 **2. UI de diálogo — 7 de 12 cobertos.** Sem nenhum teste: `SalaExtraDialog`. Com teste de schema mas sem teste de interação: `ColaboradorDialog`, `FuncaoColaboradorDialog`, `SalaProvaDialog`, `UnidadeProvaDialog`.
 

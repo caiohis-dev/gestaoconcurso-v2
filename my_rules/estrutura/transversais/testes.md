@@ -103,7 +103,7 @@ async function carregarEDepois(sequencia) {
 
 ## O que está coberto (2026-07-26)
 
-612 testes em 36 arquivos.
+641 testes em 40 arquivos.
 
 | Área | Arquivos |
 |---|---|
@@ -111,11 +111,11 @@ async function carregarEDepois(sequencia) {
 | Acessibilidade | `components/dialogos-acessibilidade.test.ts` — invariante **estática**: lê o fonte e exige `DialogDescription` em cada um dos 28 `DialogContent` |
 | Schemas Zod (9) | `*Dialog.test.ts`, `pages/Auth.test.ts`, `pages/GerenciarUsuarios.test.ts` |
 | Auth | `useAuth.test.tsx` — hierarquia, `colaborador` paralelo, `rolesLoaded`, `signOut` |
-| Hooks de dados | `useEditais`, `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas` (+ `useSalasDistribuidasCapacidade` e `useFiscaisSala`), `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers` |
+| Hooks de dados | `useEditais`, `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas` (+ `useSalasDistribuidasCapacidade` e `useFiscaisSala`), `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers`, `useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade`, `useBancos` — **a camada está fechada** |
 | UI | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx`, **`PasswordConfirmDialog.ui.test.tsx`** (16 — a barreira das ações destrutivas), **`CoordenadoresProvaDialog.ui.test.tsx`** (23 — a concessão de acesso de coordenador), **`ValoresFuncaoProvaDialog`** + **`MetaColaboradoresDialog`** (20 + 13 — o caminho do dinheiro), **`CorrigirEmailAcessoDialog`** (16 — a âncora de identidade) |
 | **Guards de página** | `pages/guards.test.tsx` — 137 testes: a matriz **19 páginas × 5 papéis**, mais a janela do `rolesLoaded` e o `isLoggingOut` |
 
-**Sem cobertura ainda — 4 hooks** (a lista já esteve errada, dizendo 8 quando eram 12): `useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade`, `useBancos`. Mais **5 dos 12 diálogos** e **as 8 Edge Functions** (rodam em Deno, fora do alcance desta suíte — a autorização de duas delas é verificada pela bateria manual [`../../../docs/bateria-create-admin-autorizacao.md`](../../../docs/bateria-create-admin-autorizacao.md)).
+**A camada de hooks fechou em 2026-07-26** — os 20 hooks de dados têm teste (`use-mobile` e `use-toast` são utilitários do shadcn, fora da conta). Falta **5 dos 12 diálogos** e **as 8 Edge Functions** (rodam em Deno, fora do alcance desta suíte — a autorização de duas delas é verificada pela bateria manual [`../../../docs/bateria-create-admin-autorizacao.md`](../../../docs/bateria-create-admin-autorizacao.md)).
 
 **Das páginas, o que está coberto é o guard, não o comportamento.** A bateria afirma quem entra e para onde o recusado é mandado; ela não exercita formulário, listagem nem ação de página nenhuma. As **4 páginas fora da matriz** são as que não têm guard a testar, todas públicas por natureza: `/auth`, `/cadastro-publico`, `/redefinir-senha` e `NotFound`.
 
@@ -149,4 +149,4 @@ O ciclo já se fechou uma vez, e vale como modelo: dois testes de `useProvaLock`
 | `ValoresFuncaoProvaDialog` (excluir sem confirmar) | entrou `AlertDialog` | quatro regressões: abre, nomeia a função, confirma, cancela |
 | `CorrigirEmailAcessoDialog` (descartava a mensagem do servidor) | extraído o helper `mensagemDeErroDaFuncao` | duas regressões, uma na consulta e outra na correção |
 
-Existe também a marca mais fraca **`⚠️ ATENÇÃO`**, para quando o comportamento **não é defeito**, mas morde quem depende dele. Não abre item de backlog; existe para quem for mexer ali não achar que pode simplificar aquilo. Quatro casos: `useCoordenadorUnidades` (lista vazia indistinguível de "ainda carregando" sem olhar `isLoading`); o bloco da **janela do `rolesLoaded`** em `guards.test.tsx` — 13 páginas decidem sem esperar os papéis, o que hoje não expulsa ninguém só porque o `role` anterior sobrevive ao refetch; o `PasswordConfirmDialog`, que **só zera senha e erro pelo Cancelar/Esc**, não quando o pai fecha via prop `open` (nenhuma das 5 páginas faz isso hoje); e o `MetaColaboradoresDialog`, em que **meta de função que perdeu o valor fica órfã** — o upsert nunca apaga, então a linha continua no banco sem aparecer na tela.
+Existe também a marca mais fraca **`⚠️ ATENÇÃO`**, para quando o comportamento **não é defeito**, mas morde quem depende dele. Não abre item de backlog; existe para quem for mexer ali não achar que pode simplificar aquilo. Cinco casos: `useCoordenadorUnidades` (lista vazia indistinguível de "ainda carregando" sem olhar `isLoading`); o bloco da **janela do `rolesLoaded`** em `guards.test.tsx` — 13 páginas decidem sem esperar os papéis, o que hoje não expulsa ninguém só porque o `role` anterior sobrevive ao refetch; o `PasswordConfirmDialog`, que **só zera senha e erro pelo Cancelar/Esc**, não quando o pai fecha via prop `open` (nenhuma das 5 páginas faz isso hoje); e o `MetaColaboradoresDialog`, em que **meta de função que perdeu o valor fica órfã** — o upsert nunca apaga, então a linha continua no banco sem aparecer na tela; e o `useSalasProva`, cujo esquema `andar × 100 + sequência` comporta **99 salas por andar** e invade o andar seguinte em silêncio ao estourar.
