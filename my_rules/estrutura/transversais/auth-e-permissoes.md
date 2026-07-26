@@ -145,6 +145,24 @@ A tela de entrada por módulos (o mecanismo em [`arquitetura-geral.md`](./arquit
 
 **Reforço — hub e `navLinks` são UX, não autorização.** Esconder um card ou um link não protege rota nenhuma; quem barra é RLS + as checagens das Edge Functions + os guards de página (cada página de gestão tem o seu, padrão `Dashboard.tsx`). Centralizar esses guards num `RequireModulo` lido do registro é melhoria pendente (backlog), deliberadamente fora do tema que criou o hub.
 
+### A matriz papel × rota tem versão executável (desde 2026-07-26)
+
+**`src/pages/guards.test.tsx`** afirma, para 18 páginas × 5 papéis, para onde cada guard manda quem não pode entrar. Antes dela as páginas tinham cobertura zero, e foi por isso que duas ficaram meses aceitando qualquer conta autenticada. **Ao mexer em guard, é lá que se atualiza a regra** — e ela é a especificação que o futuro `RequireModulo` tem de preservar.
+
+Dois padrões de guard convivem hoje, e a diferença é observável:
+
+| Estilo | Páginas | Comportamento |
+|---|---|---|
+| `useEffect` + `navigate`, esperando **`rolesLoaded`** e **`isLoggingOut`** | `Inicio`, `Colaboradores`, `FuncoesColaboradores` (+ `PerfilColaborador`, que espera `rolesLoaded`) | fica no spinner até os papéis chegarem |
+| `<Navigate>` em tempo de render, olhando só `authLoading` | as outras 13 | decide na hora; com os papéis ainda vazios, manda para `/` |
+
+**Isso ainda não é bug**, e o motivo é preciso: num refresh de token o `fetchUserRoles` só reescreve `role` **depois** de responder, então o papel anterior sobrevive à janela e ninguém é expulso. A janela com `role` vazio só existe na transição do login, e ali a página montada é a `/auth`, que espera `rolesLoaded`. É fragilidade latente — viraria bug real se alguém limpasse os papéis antes do refetch, ou fizesse o login cair direto numa página de módulo.
+
+**Duas exceções que são defeito de verdade** (ambas no backlog, no item do `RequireModulo`):
+
+- **`/perfil` não tem guard nenhum** — renderiza inteira para visitante deslogado. Não vaza dado (nada é lido do banco), mas é a terceira ocorrência da mesma omissão.
+- **`/dashboard` prende o colaborador puro em tela branca** — o guard usa `role !== null` como proxy de `rolesLoaded`, e o colaborador puro tem `role === null`: nunca é mandado ao hub, e o `return null` entrega página vazia.
+
 ### Duas formas distintas de conceder acesso de coordenador — atenção ao mexer aqui
 
 Existem **dois caminhos diferentes** no código para dar acesso de coordenador a um usuário, com precondições distintas:

@@ -59,7 +59,11 @@ Todas em `prefixosRota`. **Cada página tem o seu guard, escrito à mão** — n
 
 ✅ **`/funcoes-colaboradores` também ganhou o guard**, no mesmo dia e pelo mesmo motivo: era o **outro** caso da mesma omissão (só mandava para `/auth`; `isAdmin` apenas escondia as ações de escrita, então qualquer conta autenticada via a lista de funções em modo leitura). Ficou em `isAdmin` — que inclui superadmin —, decidido pelo usuário: o cadastro de funções é gestão, e o coordenador já vê os nomes das funções na tela de alocação.
 
-**Duas omissões idênticas em 15 páginas não é coincidência** — é o que guard escrito à mão produz, e o erro é silencioso: nada quebra, a página só fica aberta demais. É o argumento do `RequireModulo` no [`backlog.md`](../../../backlog.md), que elimina a classe inteira por construção.
+**Duas omissões idênticas em 15 páginas não é coincidência** — é o que guard escrito à mão produz, e o erro é silencioso: nada quebra, a página só fica aberta demais. É o argumento do `RequireModulo` no [`backlog.md`](../../../backlog.md), que elimina a classe inteira por construção. Uma **terceira** ocorrência apareceu depois, fora deste módulo: `/perfil` não tem guard nenhum.
+
+🧪 **A tabela acima tem versão executável desde 2026-07-26.** `src/pages/guards.test.tsx` afirma, para cada rota deste módulo, quem entra e para onde o recusado é mandado — inclusive as duas dimensões das notas acima (`rolesLoaded` e `isLoggingOut`). **Mudou guard? A tabela e o teste andam juntos.** Ver [`../../transversais/testes.md`](../../transversais/testes.md).
+
+⚠️ **Um defeito do módulo que a bateria achou:** `/dashboard` **prende o colaborador puro em tela branca**. O guard usa `role !== null` como proxy de `rolesLoaded` — o que evita expulsar admin na janela, mas o colaborador puro tem justamente `role === null`: nunca é mandado ao hub, e o `return null` entrega página vazia. Item no [`backlog.md`](../../../backlog.md).
 
 ## Regras de negócio que o BANCO garante (2026-07-25)
 

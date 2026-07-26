@@ -1,0 +1,595 @@
+/**
+ * Bateria dos GUARDS DE PÁGINA — a matriz rota × papel.
+ *
+ * Por que este arquivo existe: até 2026-07-26 as 23 páginas tinham cobertura ZERO, e
+ * cada uma escrevia o próprio guard à mão. Duas ficaram meses aceitando qualquer conta
+ * autenticada (`Colaboradores` e `FuncoesColaboradores`, corrigidas em 2026-07-25) sem
+ * nada acusar — guard escrito à mão erra por esquecimento, e o erro é silencioso: nada
+ * quebra, a página só fica aberta demais. Esta bateria é a rede que faltava.
+ *
+ * Também é a ESPECIFICAÇÃO do `RequireModulo` (item aberto no backlog): quando os guards
+ * forem centralizados num wrapper, esta matriz é o contrato que ele tem de preservar. Se
+ * um teste daqui quebrar durante aquela refatoração, a decisão mudou de comportamento.
+ *
+ * O que se afirma, e o que NÃO se afirma:
+ *  - RECUSA é asserção exata: para onde a página manda quem não pode entrar.
+ *  - PERMISSÃO é asserção negativa: quem pode entrar não é mandado para `/` nem `/auth`.
+ *    Não se afirma que a página renderiza inteira porque quatro delas dependem de a
+ *    entidade da URL existir (`/gerenciar-prova/:provaId` etc.) e, com o banco vazio do
+ *    mock, redirecionam para `/provas` — isso é o caminho de DADO, não o guard.
+ *
+ * E o de sempre: guard de página é UX/roteamento. A barreira real é RLS + as checagens
+ * das Edge Functions. Um guard furado é porta aberta na tela, não vazamento de dado.
+ */
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { ComponentType, ReactNode } from "react";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
+import { render, screen, waitFor } from "@testing-library/react";
+import { createTestQueryClient } from "@/test/utils";
+import { resetSupabaseMock, setTableResult, setRpcResult } from "@/test/supabase-mock";
+
+// ---------------------------------------------------------------------------
+// Mocks
+// ---------------------------------------------------------------------------
+
+/**
+ * O `useAuth` é mockado (e não o AuthProvider de verdade) porque o objeto de teste é o
+ * GUARD, não o provider: o que interessa é "dado este estado de auth, para onde vai?".
+ * Montar o provider real obrigaria a simular sessão do Supabase para chegar em cada
+ * combinação — e a janela do `rolesLoaded` (mais abaixo) é praticamente inalcançável por
+ * ali. O provider tem cobertura própria em `hooks/useAuth.test.tsx`.
+ *
+ * `vi.hoisted` é necessário porque `vi.mock` é içado: sem ele, a fábrica referenciaria um
+ * `const` ainda não inicializado.
+ */
+const auth = vi.hoisted(() => ({ atual: null as unknown }));
+
+vi.mock("@/integrations/supabase/client", async () => {
+  const { supabaseMock } = await import("@/test/supabase-mock");
+  return { supabase: supabaseMock };
+});
+
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => auth.atual,
+  AuthProvider: ({ children }: { children: ReactNode }) => children,
+}));
+
+// ---------------------------------------------------------------------------
+// Banco vazio, mas não nulo
+// ---------------------------------------------------------------------------
+
+/**
+ * O default do mock é `{ data: null }`, e várias páginas chamam `.some()`/`.map()` no
+ * resultado sem coalescer — o que derruba a página por TypeError antes de o guard ser
+ * avaliado, e o teste passaria a medir o crash, não a autorização. Então toda tabela e
+ * toda RPC do app respondem lista vazia aqui.
+ *
+ * A lista vem de `grep -rhoE '\.from\(...' src/`. Tabela nova no app sem entrada aqui não
+ * passa em silêncio: a página que a usa cai com TypeError.
+ */
+const TABELAS = [
+  "bancos",
+  "colaboradores",
+  "colaboradores_prova",
+  "coordenadores_prova",
+  "editais",
+  "funcoes_colaboradores",
+  "meta_colaboradores_unidade",
+  "ocorrencias_colaborador",
+  "profiles",
+  "provas",
+  "prova_unidades",
+  "sala_prova",
+  "salas_prova_distribuidas",
+  "unidades_prova",
+  "user_roles",
+  "valores_funcao_prova",
+];
+
+const RPCS = [
+  "encerrar_ocorrencias_unidade",
+  "finalizar_prova",
+  "finalizar_prova_unidade",
+  "get_coordenador_colaboradores",
+  "get_meu_colaborador",
+  "reabrir_prova",
+  "reabrir_prova_unidade",
+  "update_meu_colaborador",
+  "update_meus_dados_bancarios",
+];
+
+function bancoVazio(): void {
+  for (const t of TABELAS) setTableResult(t, { data: [], error: null });
+  for (const r of RPCS) setRpcResult(r, { data: [], error: null });
+}
+
+/**
+ * `DocumentosImpressao` busca o logo com `fetch` cru no mount para embutir no PDF, e o
+ * jsdom não resolve a URL de asset do Vite — 14 stacks de "Invalid URL" no stderr, que
+ * escondem ruído de verdade. O stub devolve um blob vazio: o guard não depende do logo.
+ */
+function stubarFetchDoLogo(): void {
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(new Blob()));
+}
+
+function cenarioLimpo(): void {
+  resetSupabaseMock();
+  bancoVazio();
+  stubarFetchDoLogo();
+}
+
+// ---------------------------------------------------------------------------
+// Estados de auth
+// ---------------------------------------------------------------------------
+
+const USUARIO = { id: "u-1", email: "gestor@fevre.test", user_metadata: {} };
+
+/** Base deslogada e resolvida (`loading: false`, `rolesLoaded: true`). */
+function estado(over: Record<string, unknown> = {}) {
+  return {
+    user: null,
+    session: null,
+    loading: false,
+    role: null,
+    roles: [] as string[],
+    rolesLoaded: true,
+    isAdmin: false,
+    isSuperAdmin: false,
+    isCoordenador: false,
+    isColaborador: false,
+    isLoggingOut: false,
+    signIn: vi.fn(),
+    signUp: vi.fn(),
+    signOut: vi.fn(),
+    ...over,
+  };
+}
+
+/**
+ * Os papéis espelham o que o `useAuth` monta de verdade (ver `useAuth.tsx:185-188`):
+ * `isAdmin` é true para superadmin também, e `colaborador` é dimensão PARALELA — o
+ * colaborador puro tem `role === null`, não um papel de gestão rebaixado.
+ */
+const PAPEIS = {
+  deslogado: () => estado(),
+  /** Colaborador puro: sem papel de gestão — não é coordenador nem admin. */
+  colaborador: () => estado({ user: USUARIO, roles: ["colaborador"], isColaborador: true }),
+  coordenador: () =>
+    estado({ user: USUARIO, role: "coordenador", roles: ["coordenador"], isCoordenador: true }),
+  admin: () => estado({ user: USUARIO, role: "admin", roles: ["admin"], isAdmin: true }),
+  superadmin: () =>
+    estado({
+      user: USUARIO,
+      role: "superadmin",
+      roles: ["superadmin"],
+      isAdmin: true,
+      isSuperAdmin: true,
+    }),
+};
+
+type Papel = keyof typeof PAPEIS;
+const TODOS_OS_PAPEIS = Object.keys(PAPEIS) as Papel[];
+
+const HUB = "/";
+const LOGIN = "/auth";
+
+// ---------------------------------------------------------------------------
+// Harness
+// ---------------------------------------------------------------------------
+
+function Sonda() {
+  const loc = useLocation();
+  return <span data-testid="rota">{loc.pathname}</span>;
+}
+
+interface Pagina {
+  nome: string;
+  /** O `path` da rota como está no `App.tsx` — com os `:params`. */
+  path: string;
+  /** A URL concreta visitada no teste. */
+  rota: string;
+  mod: () => Promise<{ default: ComponentType }>;
+  /** Papéis que a página deve DEIXAR entrar. */
+  permitidos: Papel[];
+  /**
+   * Destino esperado quando ele não é o padrão da recusa (`/auth` para deslogado, `/`
+   * para papel insuficiente). Cada entrada aqui carrega o porquê no comentário.
+   */
+  desvios?: Partial<Record<Papel, string>>;
+}
+
+async function montar(pagina: Pagina, st: unknown): Promise<void> {
+  auth.atual = st;
+  const { default: Componente } = await pagina.mod();
+  render(
+    <QueryClientProvider client={createTestQueryClient()}>
+      <MemoryRouter
+        initialEntries={[pagina.rota]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        <Sonda />
+        <Routes>
+          <Route path={pagina.path} element={<Componente />} />
+          {/* Rota-sentinela: existe só para o router ter onde parar. O que se afirma é o
+              pathname, não o conteúdo dela. */}
+          <Route path="*" element={<span>SENTINELA</span>} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+function rotaAtual(): string {
+  return screen.getByTestId("rota").textContent ?? "";
+}
+
+function spinnerNaTela(): boolean {
+  return document.querySelector(".animate-spin") !== null;
+}
+
+/**
+ * ⚠️ TODA espera aqui é POSITIVA (aguarda algo passar a valer), nunca um timeout usado
+ * como resposta. A primeira versão deste arquivo esperava 400ms pelo fim do spinner e
+ * tratava o estouro como "a página está esperando" — o que passava isolado e falhava na
+ * suíte cheia, porque sob carga uma página lenta é indistinguível de uma que espera. Com
+ * asserção positiva o timeout generoso é de graça: `waitFor` retorna no instante em que a
+ * condição vale, e só cobra o tempo quando o teste realmente vai falhar.
+ */
+const ESPERA = { timeout: 5000 };
+
+/** Aguarda o router parar no destino esperado. */
+async function esperarRota(destino: string): Promise<void> {
+  await waitFor(() => expect(rotaAtual()).toBe(destino), ESPERA);
+}
+
+/**
+ * Aguarda o fim do carregamento. Sem isso, as páginas que somam o `isLoading` das queries
+ * ao `authLoading` no early return (`OcorrenciasProva`, `GerenciarProva` e as outras duas
+ * com `:provaId`) seriam medidas ANTES de o guard rodar — e "ficou na rota" sairia como
+ * resultado para todo mundo, inclusive deslogado.
+ */
+async function esperarCarregar(): Promise<void> {
+  await waitFor(() => expect(spinnerNaTela()).toBe(false), ESPERA);
+}
+
+// ---------------------------------------------------------------------------
+// A matriz
+// ---------------------------------------------------------------------------
+
+/**
+ * Fonte da matriz: os guards das próprias páginas, conferidos um a um em 2026-07-26. A
+ * coluna `permitidos` é a REGRA pretendida — bate com `src/lib/modulos.ts` e com a matriz
+ * papel × módulo de `estrutura/transversais/auth-e-permissoes.md`.
+ */
+const PAGINAS: Pagina[] = [
+  {
+    nome: "Inicio (hub)",
+    path: "/",
+    rota: "/",
+    mod: () => import("./Inicio"),
+    permitidos: ["coordenador", "admin", "superadmin"],
+    desvios: {
+      // O colaborador puro nunca vê o hub: ele é dos papéis de gestão, e o colaborador
+      // segue direto para o próprio cadastro. Decisão de produto, não recusa.
+      colaborador: "/perfil-colaborador",
+    },
+  },
+  {
+    nome: "Dashboard",
+    path: "/dashboard",
+    rota: "/dashboard",
+    mod: () => import("./Dashboard"),
+    permitidos: ["admin", "superadmin"],
+    desvios: {
+      // ⚠️ DEFEITO: o colaborador puro NÃO é mandado para o hub — fica em tela branca.
+      // O guard usa `role !== null` como proxy de `rolesLoaded` (Dashboard.tsx:26), e o
+      // colaborador puro tem justamente `role === null`: cai para sempre no ramo "ainda
+      // não sei o papel", e o `return null` de baixo entrega página vazia. Registrado no
+      // backlog junto do guard ausente do `Perfil`.
+      colaborador: "/dashboard",
+    },
+  },
+  {
+    nome: "Colaboradores",
+    path: "/colaboradores",
+    rota: "/colaboradores",
+    mod: () => import("./Colaboradores"),
+    permitidos: ["coordenador", "admin", "superadmin"],
+  },
+  {
+    nome: "Provas",
+    path: "/provas",
+    rota: "/provas",
+    mod: () => import("./Provas"),
+    permitidos: ["coordenador", "admin", "superadmin"],
+  },
+  {
+    nome: "Editais",
+    path: "/editais",
+    rota: "/editais",
+    mod: () => import("./Editais"),
+    // Módulo à parte, só admin: editais são a base sobre a qual as provas são criadas.
+    permitidos: ["admin", "superadmin"],
+  },
+  {
+    nome: "UnidadesProva",
+    path: "/unidades-prova",
+    rota: "/unidades-prova",
+    mod: () => import("./UnidadesProva"),
+    permitidos: ["admin", "superadmin"],
+  },
+  {
+    nome: "SalasProva",
+    path: "/salas-prova/:unidadeId",
+    rota: "/salas-prova/u-1",
+    mod: () => import("./SalasProva"),
+    permitidos: ["admin", "superadmin"],
+  },
+  {
+    nome: "GerenciarProva",
+    path: "/gerenciar-prova/:provaId",
+    rota: "/gerenciar-prova/p-1",
+    mod: () => import("./GerenciarProva"),
+    permitidos: ["coordenador", "admin", "superadmin"],
+  },
+  {
+    nome: "GerenciarSalasDistribuidas",
+    path: "/gerenciar-salas-distribuidas/:provaId/:unidadeId",
+    rota: "/gerenciar-salas-distribuidas/p-1/u-1",
+    mod: () => import("./GerenciarSalasDistribuidas"),
+    permitidos: ["admin", "superadmin"],
+  },
+  {
+    nome: "GerenciarColaboradoresProva",
+    path: "/gerenciar-colaboradores-prova/:provaUnidadeId",
+    rota: "/gerenciar-colaboradores-prova/pu-1",
+    mod: () => import("./GerenciarColaboradoresProva"),
+    permitidos: ["coordenador", "admin", "superadmin"],
+  },
+  {
+    nome: "OcorrenciasProva",
+    path: "/ocorrencias-prova/:provaId",
+    rota: "/ocorrencias-prova/p-1",
+    mod: () => import("./OcorrenciasProva"),
+    permitidos: ["coordenador", "admin", "superadmin"],
+  },
+  {
+    nome: "FuncoesColaboradores",
+    path: "/funcoes-colaboradores",
+    rota: "/funcoes-colaboradores",
+    mod: () => import("./FuncoesColaboradores"),
+    // Só admin, por decisão de 2026-07-25: cadastro de funções é gestão, e o coordenador
+    // já vê os nomes das funções na tela de alocação.
+    permitidos: ["admin", "superadmin"],
+  },
+  {
+    nome: "DocumentosImpressao",
+    path: "/documentos-impressao/:provaId",
+    rota: "/documentos-impressao/p-1",
+    mod: () => import("./DocumentosImpressao"),
+    permitidos: ["admin", "superadmin"],
+  },
+  {
+    nome: "PainelDadosColaboradores",
+    path: "/painel-dados-colaboradores/:provaId",
+    rota: "/painel-dados-colaboradores/p-1",
+    mod: () => import("./PainelDadosColaboradores"),
+    permitidos: ["admin", "superadmin"],
+  },
+  {
+    nome: "GerenciarUsuarios",
+    path: "/gerenciar-usuarios",
+    rota: "/gerenciar-usuarios",
+    mod: () => import("./GerenciarUsuarios"),
+    // Config geral, não módulo: criar conta e dar papel é privilégio de superadmin. O
+    // admin é recusado aqui — é a única página em que isso acontece.
+    permitidos: ["superadmin"],
+  },
+  {
+    nome: "Cadastro",
+    path: "/cadastro",
+    rota: "/cadastro",
+    mod: () => import("./Cadastro"),
+    permitidos: ["coordenador", "admin", "superadmin"],
+  },
+  {
+    nome: "CadastroLote",
+    path: "/cadastro-lote",
+    rota: "/cadastro-lote",
+    mod: () => import("./CadastroLote"),
+    permitidos: ["coordenador", "admin", "superadmin"],
+  },
+  {
+    nome: "PerfilColaborador",
+    path: "/perfil-colaborador",
+    rota: "/perfil-colaborador",
+    mod: () => import("./PerfilColaborador"),
+    permitidos: ["colaborador"],
+    desvios: {
+      // Quem é gestor e NÃO é colaborador vai para `/auth`, não para o hub: o guard trata
+      // "não é colaborador" no mesmo ramo de "não está logado"
+      // (PerfilColaborador.tsx:132). Na prática o usuário volta ao hub, porque o /auth
+      // rebate quem já está logado — é feio, mas não trava ninguém. Não afeta os 12 que
+      // são gestor E colaborador: para eles `isColaborador` é true.
+      coordenador: LOGIN,
+      admin: LOGIN,
+      superadmin: LOGIN,
+    },
+  },
+];
+
+describe("guards de página — matriz papel × rota", () => {
+  beforeEach(cenarioLimpo);
+
+  it("a matriz cobre as páginas guardadas do App.tsx", () => {
+    // Sem esta asserção, esvaziar PAGINAS por acidente faria todo o resto passar por
+    // vacuidade — o mesmo cuidado que o teste de acessibilidade dos diálogos toma.
+    expect(PAGINAS.length).toBe(18);
+    expect(new Set(PAGINAS.map((p) => p.nome)).size).toBe(PAGINAS.length);
+  });
+
+  describe.each(PAGINAS)("$nome", (pagina) => {
+    const esperado = (papel: Papel): string =>
+      pagina.desvios?.[papel] ?? (papel === "deslogado" ? LOGIN : HUB);
+
+    const recusados = TODOS_OS_PAPEIS.filter((p) => !pagina.permitidos.includes(p));
+
+    it.each(recusados)("recusa %s", async (papel) => {
+      await montar(pagina, PAPEIS[papel]());
+      await esperarRota(esperado(papel));
+    });
+
+    it.each(pagina.permitidos)("deixa %s entrar", async (papel) => {
+      await montar(pagina, PAPEIS[papel]());
+      await esperarCarregar();
+      expect(rotaAtual()).not.toBe(LOGIN);
+      // O hub só é destino de RECUSA; para a página que mora nele, ficar é o certo.
+      if (pagina.rota !== HUB) expect(rotaAtual()).not.toBe(HUB);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// As duas dimensões que o RequireModulo tem de herdar
+// ---------------------------------------------------------------------------
+
+describe("⚠️ ATENÇÃO — a janela em que o usuário existe e os papéis ainda não", () => {
+  beforeEach(cenarioLimpo);
+
+  /**
+   * O estado: `user` setado, `loading` já false, `rolesLoaded` false, `role` ainda null.
+   * É real — `useAuth.tsx:88` zera `rolesLoaded` a cada `applySession` — e acontece na
+   * transição do login, quando o `getSession()` já resolveu (deixando `loading` false) e
+   * o `SIGNED_IN` chega depois.
+   *
+   * POR QUE ISTO NÃO ESTÁ MARCADO COMO DEFEITO: num refresh de token o `role` anterior é
+   * PRESERVADO (o `fetchUserRoles` só reescreve `role` depois de responder), então
+   * `isAdmin` continua true e ninguém é expulso. A janela com `role` vazio só ocorre na
+   * transição do login — e ali a página montada é a `/auth`, que espera `rolesLoaded`.
+   * Ou seja: hoje é FRAGILIDADE LATENTE, não bug observável. Viraria bug real no dia em
+   * que alguém limpar os papéis antes do refetch, ou fizer o login cair direto numa
+   * página de módulo.
+   *
+   * O valor deste teste é ser a especificação do `RequireModulo`: o wrapper precisa
+   * ESPERAR, e quando ele existir a lista de "quem espera" vira "todas as páginas".
+   */
+  const janela = () => estado({ user: USUARIO, rolesLoaded: false, role: null });
+
+  /** Espera no spinner — o comportamento correto, e o mais fácil de verificar. */
+  const ESPERAM_NO_SPINNER = [
+    "Inicio (hub)",
+    "Colaboradores",
+    "FuncoesColaboradores",
+    "PerfilColaborador",
+  ];
+
+  const decidemNaJanela = PAGINAS.filter(
+    (p) => !ESPERAM_NO_SPINNER.includes(p.nome) && p.nome !== "Dashboard",
+  );
+
+  it.each(PAGINAS.filter((p) => ESPERAM_NO_SPINNER.includes(p.nome)))(
+    "$nome espera os papéis chegarem",
+    async (pagina) => {
+      await montar(pagina, janela());
+      // Asserção positiva: o spinner na tela É a evidência de que a página está
+      // esperando, e é mais forte que "não navegou".
+      await waitFor(() => expect(spinnerNaTela()).toBe(true), ESPERA);
+      expect(rotaAtual()).toBe(pagina.rota);
+    },
+  );
+
+  it.each(decidemNaJanela)("$nome decide sem os papéis e manda para o hub", async (pagina) => {
+    await montar(pagina, janela());
+    await esperarRota(HUB);
+  });
+
+  it("Dashboard não navega, mas entrega tela vazia", async () => {
+    // Terceiro comportamento, e o menos útil dos três: o `role !== null` do guard impede
+    // o bounce (bom) e ao mesmo tempo prende o colaborador puro numa página em branco
+    // (ver o desvio registrado na matriz).
+    const dashboard = PAGINAS.find((p) => p.nome === "Dashboard")!;
+    await montar(dashboard, janela());
+    expect(rotaAtual()).toBe(dashboard.rota);
+    expect(spinnerNaTela()).toBe(false);
+    expect(screen.queryByRole("heading")).not.toBeInTheDocument();
+  });
+
+  it("as duas páginas consertadas em 2026-07-25 estão entre as que esperam", () => {
+    // Regressão: elas ganharam o `rolesLoaded` justamente porque decidir na janela
+    // expulsava coordenador legítimo. Não deixe "simplificar" isso de volta.
+    expect(ESPERAM_NO_SPINNER).toContain("Colaboradores");
+    expect(ESPERAM_NO_SPINNER).toContain("FuncoesColaboradores");
+  });
+});
+
+describe("logout em curso não deve disparar o bounce por papel", () => {
+  beforeEach(cenarioLimpo);
+
+  /**
+   * `signOut` limpa `user` ANTES de navegar (`useAuth.tsx:157-163`) e só depois faz
+   * `window.location.href = '/auth'`. Entre as duas coisas, um guard que reaja a `!user`
+   * navega por conta própria.
+   *
+   * Três páginas respeitam `isLoggingOut` e ficam quietas; as demais mandam para `/auth`.
+   * Isso é REDUNDANTE, não errado — o destino é o mesmo que o `signOut` já ia impor. Fica
+   * registrado porque o `RequireModulo` precisa herdar o `isLoggingOut`: senão o bounce
+   * por PAPEL, que não é inofensivo, volta a acontecer.
+   */
+  const RESPEITAM_LOGGING_OUT = ["Inicio (hub)", "Colaboradores", "FuncoesColaboradores"];
+  const saindo = () => estado({ user: null, isLoggingOut: true });
+
+  it.each(PAGINAS.filter((p) => RESPEITAM_LOGGING_OUT.includes(p.nome)))(
+    "$nome fica quieta",
+    async (pagina) => {
+      await montar(pagina, saindo());
+      expect(rotaAtual()).toBe(pagina.rota);
+    },
+  );
+
+  it.each(PAGINAS.filter((p) => !RESPEITAM_LOGGING_OUT.includes(p.nome)))(
+    "$nome manda para o login (redundante, mas inofensivo)",
+    async (pagina) => {
+      await montar(pagina, saindo());
+      await esperarRota(LOGIN);
+    },
+  );
+});
+
+// ---------------------------------------------------------------------------
+// O guard que não existe
+// ---------------------------------------------------------------------------
+
+describe("Perfil (/perfil)", () => {
+  beforeEach(cenarioLimpo);
+
+  /**
+   * ⚠️ DEFEITO — `Perfil.tsx` não tem guard NENHUM: lê `user` do contexto e renderiza,
+   * sem `useEffect` de redirecionamento e sem `<Navigate>`. É a terceira ocorrência da
+   * mesma omissão (as duas primeiras foram `Colaboradores` e `FuncoesColaboradores`, e
+   * são o argumento do item "Centralizar os guards num RequireModulo" no backlog).
+   *
+   * O que dá e o que não dá para fazer com isso: a página aparece inteira para visitante
+   * deslogado, com os campos vazios. Não é vazamento — o e-mail vem do próprio contexto
+   * (vazio sem sessão) e nada é lido do banco. Salvar não funciona: o `auth.updateUser`
+   * sem sessão falha e cai no toast de erro.
+   *
+   * Quando o guard entrar (ou o `RequireModulo` cobrir a rota), este teste QUEBRA — e é
+   * o sinal de reescrevê-lo como recusa, movendo `/perfil` para a matriz de cima.
+   */
+  it("⚠️ DEFEITO: renderiza para visitante deslogado em vez de mandar ao login", async () => {
+    const perfil: Pagina = {
+      nome: "Perfil",
+      path: "/perfil",
+      rota: "/perfil",
+      mod: () => import("./Perfil"),
+      permitidos: [],
+    };
+    await montar(perfil, PAPEIS.deslogado());
+
+    expect(rotaAtual()).toBe("/perfil");
+    // Não é só "não redirecionou": o formulário está de pé para quem não tem sessão.
+    expect(screen.getByRole("heading", { name: "Meu Perfil" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Nome Completo")).toBeInTheDocument();
+  });
+});

@@ -21,7 +21,7 @@
 | Sufixo | Para quê |
 |---|---|
 | `.test.ts` | contrato puro — schema Zod, função pura. Sem JSX, sem render |
-| `.test.tsx` | hook (precisa de provider) |
+| `.test.tsx` | hook (precisa de provider) ou página (precisa de provider + router) |
 | `.ui.test.tsx` | interação com componente renderizado |
 
 Um componente pode ter os dois: `EditalDialog.test.ts` (o schema isolado) e `EditalDialog.ui.test.tsx` (o comportamento na tela).
@@ -65,7 +65,17 @@ O mock tem **teste próprio** (`supabase-mock.test.ts`): é infraestrutura de qu
 
 **O `AuthProvider` fica de fora de propósito:** ele dispara chamadas ao Supabase no mount, e embuti-lo no helper faria todo teste depender de um efeito invisível. Quem precisa dele monta explicitamente, como faz `useAuth.test.tsx`.
 
-## ⚠️ As cinco armadilhas que já custaram tempo aqui
+## Testar página: o harness dos guards
+
+`src/pages/guards.test.tsx` é o único teste de página hoje, e o padrão dele vale para os próximos. Três decisões que não são óbvias:
+
+**1. O `useAuth` é mockado, não o `AuthProvider`.** O objeto de teste é o guard ("dado este estado de auth, para onde vai?"), não o provider — que tem cobertura própria em `useAuth.test.tsx`. Montar o provider real obrigaria a simular sessão do Supabase para alcançar cada combinação, e a janela do `rolesLoaded` é praticamente inalcançável por ali. O mock usa `vi.hoisted` para o objeto mutável de estado, porque `vi.mock` é içado.
+
+**2. Uma `<Sonda>` com `useLocation` dentro do `MemoryRouter`, e uma rota `*` sentinela.** O que se afirma é o `pathname` em que o router parou. Assim tanto `<Navigate>` em tempo de render quanto `useEffect` + `navigate` são medidos do mesmo jeito, sem espiar implementação.
+
+**3. Toda tabela e RPC do app devolvem lista vazia.** O default do mock é `{ data: null }`, e várias páginas chamam `.some()`/`.map()` sem coalescer — o teste mediria o TypeError, não a autorização.
+
+## ⚠️ As seis armadilhas que já custaram tempo aqui
 
 **1. A sequência é consumida pela listagem antes de chegar à mutation.** A query de listagem também chama `from(<tabela>)`, então ela come a primeira entrada e o hook recebe um objeto onde espera array (`coordenadores.map is not a function`). Espere a carga inicial e **só então** instale a sequência — `setTableResultSequence` zera o contador. E a **última entrada precisa ser um array**, porque o refetch disparado pela invalidação cai nela.
 
@@ -87,9 +97,13 @@ async function carregarEDepois(sequencia) {
 
 **5. Nem todo caminho passa pelo mock do Supabase.** A liberação do lock no `pagehide` usa `fetch` cru com `keepalive` (o cliente do Supabase não sobrevive ao unload), então asserção sobre `supabaseMock.rpc` **não vê nada** — é preciso `vi.spyOn(globalThis, "fetch")`. As envs `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` já vêm stubadas em `src/test/setup.ts`, o que permite conferir URL e headers. Eventos de ciclo de vida da página se disparam com `window.dispatchEvent(new Event("pagehide"))`; para o bfcache, monte o `pageshow` com `persisted = true` à mão, porque o jsdom não traz `PageTransitionEvent`.
 
-## O que está coberto (2026-07-25)
+**6. Timeout nunca é resposta — espera positiva, sempre.** Ao medir o guard das páginas, a primeira versão esperava 400ms pelo fim do spinner e tratava o estouro como "a página está esperando os papéis". Passou isolada e **falhou na suíte cheia**: sob carga, uma página lenta é indistinguível de uma que espera de propósito. A correção é inverter tudo em asserção do que **passa a valer** — `waitFor` até o router chegar no destino, ou até o spinner *aparecer* (que é a evidência positiva de "está esperando"). Com isso o timeout generoso sai de graça, porque o `waitFor` retorna no instante em que a condição vale e só cobra tempo quando o teste realmente vai falhar. A suíte inteira ficou **mais rápida** depois da troca (4,7s contra 6,8s).
 
-376 testes em 29 arquivos.
+> Corolário para quem for medir "não aconteceu nada": só é seguro afirmar isso quando a página não tem query pendente que possa mudar a decisão depois. Caso contrário, o teste está medindo o meio do caminho.
+
+## O que está coberto (2026-07-26)
+
+505 testes em 30 arquivos.
 
 | Área | Arquivos |
 |---|---|
@@ -99,8 +113,11 @@ async function carregarEDepois(sequencia) {
 | Auth | `useAuth.test.tsx` — hierarquia, `colaborador` paralelo, `rolesLoaded`, `signOut` |
 | Hooks de dados | `useEditais`, `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas` (+ `useSalasDistribuidasCapacidade` e `useFiscaisSala`), `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers` |
 | UI | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx` |
+| **Guards de página** | `pages/guards.test.tsx` — 129 testes: a matriz **18 páginas × 5 papéis**, mais a janela do `rolesLoaded` e o `isLoggingOut` |
 
-**Sem cobertura ainda — 4 hooks** (a lista já esteve errada, dizendo 8 quando eram 12): `useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade`, `useBancos`. Mais **10 dos 12 diálogos**, **as 23 páginas** (zero cobertura — daí os guards de papel não terem rede) e **as 8 Edge Functions** (rodam em Deno, fora do alcance desta suíte — a autorização de duas delas é verificada pela bateria manual [`../../../docs/bateria-create-admin-autorizacao.md`](../../../docs/bateria-create-admin-autorizacao.md)).
+**Sem cobertura ainda — 4 hooks** (a lista já esteve errada, dizendo 8 quando eram 12): `useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade`, `useBancos`. Mais **10 dos 12 diálogos** e **as 8 Edge Functions** (rodam em Deno, fora do alcance desta suíte — a autorização de duas delas é verificada pela bateria manual [`../../../docs/bateria-create-admin-autorizacao.md`](../../../docs/bateria-create-admin-autorizacao.md)).
+
+**Das páginas, o que está coberto é o guard, não o comportamento.** A bateria afirma quem entra e para onde o recusado é mandado; ela não exercita formulário, listagem nem ação de página nenhuma. As 5 páginas fora da matriz são as que não têm guard a testar: `/auth`, `/cadastro-publico`, `/redefinir-senha`, `NotFound` (públicas por natureza) e `/perfil` — esta última porque **não tem guard**, o que está registrado como defeito num teste próprio.
 
 O inventário completo, com ordem de prioridade e o que **não** se testa aqui, está no [`backlog.md`](../../backlog.md) → "Completar a suíte de testes (Vitest)".
 
@@ -114,6 +131,12 @@ Onde um teste afirma comportamento **errado** de propósito, ele leva `⚠️ DE
 
 O ciclo já se fechou uma vez, e vale como modelo: dois testes de `useProvaLock` afirmavam que `isLoading` ficava preso em `true`, porque ficava; ao consertar o hook em 2026-07-25 eles quebraram, como previsto, e foram reescritos como **teste de regressão** — mesma montagem, asserção invertida, e o comentário passou de "defeito conhecido" para "isto já quebrou uma vez, não deixe voltar". Preserve esse comentário: é ele que impede alguém de "simplificar" o `else` que resolve o estado.
 
-**Há hoje um teste marcado `⚠️ DEFEITO`:** o de `useOcorrencias`, que afirma que uma lista **vazia** de unidades não restringe nada e devolve a prova inteira. O item correspondente está no `backlog.md` — a regra é essa: **marca sem item vira defeito aceito por esquecimento**, então abra os dois na mesma unidade de trabalho.
+**Há hoje três marcas `⚠️ DEFEITO`**, e todas as três têm item no `backlog.md` — a regra é essa: **marca sem item vira defeito aceito por esquecimento**, então abra os dois na mesma unidade de trabalho.
 
-Existe também a marca mais fraca **`⚠️ ATENÇÃO`** (em `useCoordenadorUnidades`), para quando o comportamento **não é defeito do hook**, mas morde quem o consome — ali, o fato de "lista vazia" ser indistinguível de "ainda carregando" sem olhar `isLoading`. Não abre item de backlog; existe para quem for mexer no hook não achar que pode simplificar aquilo.
+| Onde | O que o teste afirma, sabendo que está errado |
+|---|---|
+| `useOcorrencias` | lista **vazia** de unidades não restringe nada e devolve a prova inteira |
+| `guards.test.tsx` → `Perfil` | `/perfil` renderiza inteira para visitante deslogado (não tem guard) |
+| `guards.test.tsx` → matriz do `Dashboard` | colaborador puro fica em tela branca em vez de ir ao hub |
+
+Existe também a marca mais fraca **`⚠️ ATENÇÃO`**, para quando o comportamento **não é defeito**, mas morde quem depende dele. Não abre item de backlog; existe para quem for mexer ali não achar que pode simplificar aquilo. Dois casos: `useCoordenadorUnidades` (lista vazia indistinguível de "ainda carregando" sem olhar `isLoading`) e o bloco da **janela do `rolesLoaded`** em `guards.test.tsx` — 13 páginas decidem sem esperar os papéis, o que hoje não expulsa ninguém só porque o `role` anterior sobrevive ao refetch.

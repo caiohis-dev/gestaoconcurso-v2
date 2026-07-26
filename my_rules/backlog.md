@@ -11,9 +11,9 @@ Lista de trabalho planejado, ainda não iniciado. Itens concluídos devem ser re
 
 Este item é o marco: quem retomar os testes começa por aqui. **Leia `testes.md` antes de escrever teste novo** — as armadilhas ali custaram tempo real (a sequência do mock consumida pela listagem; `.at(-1)` pegando o refetch e não a mutation; `act()` no que atualiza provider; fake timers com `shouldAdvanceTime`; e o caminho do `pagehide`, que não passa pelo mock do Supabase).
 
-### Onde paramos (2026-07-25)
+### Onde paramos (2026-07-26)
 
-**376 testes em 29 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
+**505 testes em 30 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
 
 Coberto:
 
@@ -25,6 +25,7 @@ Coberto:
 | Hooks de dados (18) | `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useEditais`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useValoresFuncaoProva`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas` + os dois vizinhos do mesmo arquivo (`useSalasDistribuidasCapacidade`, `useFiscaisSala`), `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers` (+ `useAuth`) |
 | UI de diálogo (2) | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx` |
 | Acessibilidade | `components/dialogos-acessibilidade.test.ts` — invariante estática sobre os 28 diálogos |
+| **Guards de página** | `pages/guards.test.tsx` — **129 testes**: matriz 18 páginas × 5 papéis, a janela do `rolesLoaded` e o `isLoggingOut` |
 | A própria infra | `src/test/supabase-mock.test.ts` — o mock tem teste próprio |
 
 ### O que falta, em ordem de valor
@@ -43,7 +44,11 @@ Os quatro que sobram são de baixo risco — CRUD parecido com o já coberto, e 
 
 `PasswordConfirmDialog` merece atenção especial: é a barreira de confirmação de ações destrutivas (encerrar ocorrências, excluir prova). É o diálogo em que uma regressão silenciosa custa mais caro.
 
-**3. Páginas: zero cobertura.** São **23 páginas** e nenhuma tem teste de comportamento — os dois arquivos em `pages/` testam só schemas Zod. **Consequência direta:** os guards de papel não têm rede nenhuma. Foi por isso que duas páginas ficaram sem checagem de papel por meses sem nada acusar, e é a razão de o `RequireModulo` (item abaixo) ser arriscado enquanto isso não existir. Um teste de guard por página é repetitivo e barato — bom candidato a `it.each` sobre uma tabela rota × papel esperado.
+**3. Páginas: os guards estão cobertos desde 2026-07-26; o comportamento, não.** A aposta do `it.each` sobre a tabela rota × papel se pagou: `pages/guards.test.tsx` cobre **18 páginas × 5 papéis** e é agora a especificação do `RequireModulo` (item abaixo), que deixou de ser arriscado. A bateria foi **falsificada de propósito** antes de ser aceita — quebrar o guard do `Editais` fez cair exatamente os casos "recusa colaborador" e "recusa coordenador", que é a falha que passou meses invisível.
+
+Rendeu dois achados, ambos incorporados ao item do `RequireModulo`: **`/perfil` não tem guard nenhum** e **`/dashboard` prende o colaborador puro em tela branca**.
+
+**O que falta em páginas** é o comportamento: formulário, listagem, ação. Nenhuma página tem isso. As candidatas de maior valor são as que concentram ação destrutiva ou dinheiro — `GerenciarColaboradoresProva` (alocação, base de pagamento) e `OcorrenciasProva`.
 
 **4. Edge Functions: sem teste automatizado.** São 8 (`check-cpf-colaborador`, `corrigir-email-acesso`, `create-admin`, `create-coordenador`, `public-create-colaborador`, `recuperar-senha`, `reivindicar-acesso`, `send-email`) mais `_shared/`. Rodam em Deno, fora do alcance do Vitest como está montado — exigiria decisão de ferramenta (Deno test) antes de qualquer código. **Não é continuação natural da suíte atual; é tema próprio.** É onde vivem as políticas de anti-enumeração, rate limit e cooldown — a lógica mais sensível do sistema.
 
@@ -143,6 +148,25 @@ Foi **deixado de fora de propósito** do tema que criou o hub (decisão D5 do [`
 > Nenhum dos dois era vazamento de dado (a RLS contém), mas **duas ocorrências da mesma omissão em 15 páginas é o argumento do item**, não uma coincidência: guard escrito à mão erra por esquecimento, e o erro é silencioso — nada quebra, a página só fica aberta demais. Os dois consertos pontuais **não substituem o wrapper**; eles mostram por que ele é necessário. Inventário de guards por rota: [`estrutura/modulos/aplicacao-provas/00-modulo.md`](./estrutura/modulos/aplicacao-provas/00-modulo.md).
 >
 > **Dois detalhes que o wrapper precisa herdar** (achados ao consertar o `Colaboradores.tsx`): esperar **`rolesLoaded`**, não só `loading` — cada refresh de token reabre a janela em que o usuário existe e os papéis ainda não, e decidir ali expulsa coordenador; e respeitar **`isLoggingOut`**, senão o logout dispara o bounce por papel antes do redirect.
+
+### O item deixou de ser arriscado: existe rede desde 2026-07-26
+
+`src/pages/guards.test.tsx` (129 testes) afirma a matriz **18 páginas × 5 papéis** e é a **especificação do wrapper**: se um teste dali quebrar durante a refatoração, a decisão de autorização mudou de comportamento. Fazer o `RequireModulo` agora é trocar 18 guards à mão por um, com o contrato escrito.
+
+**O retrato medido dos dois detalhes acima** — não é mais leitura de código, é teste:
+
+| Dimensão | Quem já faz certo | Quem não |
+|---|---|---|
+| Espera `rolesLoaded` | `Inicio`, `Colaboradores`, `FuncoesColaboradores`, `PerfilColaborador` | as outras 13 (`<Navigate>` em render, olhando só `authLoading`) |
+| Respeita `isLoggingOut` | `Inicio`, `Colaboradores`, `FuncoesColaboradores` | as outras 15 — **inofensivo**: mandam para `/auth`, que é o destino que o `signOut` já ia impor |
+
+**Correção de dimensionamento:** as 13 que decidem sem esperar os papéis **não estão quebradas hoje**, ao contrário do que a redação anterior deste item sugeria. O motivo é preciso: no refresh de token o `fetchUserRoles` só reescreve `role` **depois** de responder, então o papel anterior sobrevive à janela e `isAdmin` continua true. A janela com `role` vazio só existe na transição do login, e ali a página montada é a `/auth`, que espera `rolesLoaded`. É **fragilidade latente** — viraria bug real no dia em que alguém limpar os papéis antes do refetch, ou fizer o login cair direto numa página de módulo. O wrapper fecha isso de uma vez.
+
+### Dois defeitos de verdade, achados pela bateria
+
+**1. `/perfil` não tem guard nenhum.** `Perfil.tsx` lê `user` do contexto e renderiza — sem `useEffect` de redirecionamento e sem `<Navigate>`. **Terceira ocorrência da mesma omissão**, e a mais completa das três: as outras duas pelo menos mandavam o deslogado para `/auth`. Não é vazamento — o e-mail vem do próprio contexto (vazio sem sessão), nada é lido do banco, e salvar falha no `auth.updateUser`. É porta aberta na tela. Tem teste marcado `⚠️ DEFEITO`, que **quebra quando o guard entrar** — é o sinal de mover `/perfil` para a matriz de páginas guardadas.
+
+**2. `/dashboard` prende o colaborador puro em tela branca.** O guard usa `role !== null` como proxy de `rolesLoaded` (`Dashboard.tsx:26`) para não expulsar admin na janela — a intenção é boa, e é o único lugar que se protegeu disso sem usar `rolesLoaded`. Mas o colaborador puro tem justamente `role === null`: ele cai para sempre no ramo "ainda não sei o papel", nunca é mandado ao hub, e o `return null` de baixo entrega **página vazia**. Conserto: trocar o proxy pelo `rolesLoaded` de verdade — o que o wrapper já vai fazer.
 
 ---
 
