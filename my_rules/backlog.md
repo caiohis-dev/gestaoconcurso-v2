@@ -13,7 +13,7 @@ Este item é o marco: quem retomar os testes começa por aqui. **Leia `testes.md
 
 ### Onde paramos (2026-07-26)
 
-**684 testes em 44 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
+**708 testes em 45 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
 
 Coberto:
 
@@ -23,7 +23,7 @@ Coberto:
 | Schemas Zod (9) | `ColaboradorDialog`, `EditalDialog`, `FuncaoColaboradorDialog`, `ProvaDialog`, `SalaProvaDialog`, `UnidadeProvaDialog`, `pages/Auth`, `pages/GerenciarUsuarios` |
 | Auth | `useAuth.test.tsx` — hierarquia, `colaborador` paralelo, `rolesLoaded`, `signOut` |
 | Hooks de dados (**todos**) | `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useEditais`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useValoresFuncaoProva`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas` + os dois vizinhos do mesmo arquivo (`useSalasDistribuidasCapacidade`, `useFiscaisSala`), `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers` (+ `useAuth`) |
-| UI de diálogo (11 de 12) | `EditalDialog`, `ProvaDialog`, `PasswordConfirmDialog`, `CoordenadoresProvaDialog`, `ValoresFuncaoProvaDialog`, `MetaColaboradoresDialog`, `CorrigirEmailAcessoDialog` (todos `.ui.test.tsx`) |
+| UI de diálogo (**12 de 12**) | `EditalDialog`, `ProvaDialog`, `PasswordConfirmDialog`, `CoordenadoresProvaDialog`, `ValoresFuncaoProvaDialog`, `MetaColaboradoresDialog`, `CorrigirEmailAcessoDialog` (todos `.ui.test.tsx`) |
 | Acessibilidade | `components/dialogos-acessibilidade.test.ts` — invariante estática sobre os 28 diálogos |
 | **Guards de página** | `pages/guards.test.tsx` — **137 testes**: matriz 19 páginas × 5 papéis, a janela do `rolesLoaded` e o `isLoggingOut` |
 | A própria infra | `src/test/supabase-mock.test.ts` — o mock tem teste próprio |
@@ -36,7 +36,7 @@ Os **20 hooks de dados** têm teste (`use-mobile` e `use-toast` são utilitário
 
 Os quatro últimos (`useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade`, `useBancos`) eram tidos como baixo risco, e em três dos quatro isso se confirmou. **A exceção foi o `useSalasProva`**, que esconde numeração de sala numa mutation: `número = andar × 100 + sequência`, calculada no cliente a partir das salas existentes, sem `SEQUENCE` no banco. O teste fixa que ela continua do **maior número daquele andar** (buraco de sala excluída não é reaproveitado, o que confundiria lista já impressa) e registra `⚠️ ATENÇÃO` no teto de **99 salas por andar** — ao estourar, a numeração invade o andar seguinte em silêncio.
 
-**2. UI de diálogo — 11 de 12 cobertos.** Falta só o **`ColaboradorDialog`** (777 l., o maior componente do repo), que tem os 33 testes de schema mas nenhum de interação — é a etapa 5 do plano, e pede unidade de trabalho própria.
+**2. ✅ UI de diálogo — TODOS os 12 cobertos**, desde 2026-07-26. O último foi o `ColaboradorDialog` (777 l., o maior componente do repo): 24 testes de interação sobre a âncora de identidade, o modo público e a normalização do payload. Rendeu dois achados próprios (CPF com `padStart` e o aviso `aria-hidden`), ambos com item abaixo.
 
 ✅ **`PasswordConfirmDialog` foi o primeiro, em 2026-07-26** — era o que mais importava: a barreira de confirmação das ações destrutivas (excluir edital e prova, finalizar/reabrir, encerrar ocorrências), com 7 usos em 5 páginas. 16 testes fixam o contrato numa frase: **`onConfirm` só roda depois de a senha ser aceita pelo servidor**, e erro em qualquer etapa **não fecha o diálogo** — porque fechar sem executar pareceria sucesso. Falsificado: neutralizar a checagem de `signInError` derruba o teste da senha incorreta.
 
@@ -109,6 +109,37 @@ Como documentado em [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/
 - Remover da UI de `/gerenciar-usuarios` a opção de conceder/selecionar o papel de `coordenador`.
 - A concessão de acesso de coordenador passará a ser **exclusiva** do fluxo de alocação da prova (`CoordenadoresProvaDialog`).
 - Com isso, o hook `useUsers.addCoordenadorAccess` (e o workaround da alocação falsa em `colaboradores_prova`) deverá ser excluído do código.
+
+---
+
+## CPF incompleto vira outro CPF: o `padStart` roda antes da validação
+
+**Status:** pendente — **achado ao escrever teste** do `ColaboradorDialog` em 2026-07-26
+**Área:** Colaboradores (ver [`estrutura/modulos/aplicacao-provas/colaboradores.md`](./estrutura/modulos/aplicacao-provas/colaboradores.md))
+
+O schema declara `colab_cpf: z.string().length(11, 'CPF deve ter 11 dígitos')` e **essa mensagem é inalcançável**. O payload é montado com `onlyDigits(formData.colab_cpf).padStart(11, '0')`, e o `padStart` roda **antes** do `parse` — todo CPF chega ao Zod já com 11 caracteres.
+
+Duas consequências, ambas com teste marcado `⚠️ DEFEITO`:
+
+- **Digitar 6 dígitos grava um CPF de 11 que a pessoa não tem** (`123456` → `00000123456`).
+- **CPF vazio vira `00000000000`** — o cadastro nasce com um CPF que não é de ninguém, e o segundo caso desses esbarra na unicidade, com erro que não explica nada.
+
+**O banco não segura:** o CHECK criado no tema das constraints exige **11 dígitos**, e zeros são dígitos.
+
+**Conserto:** validar o que foi **digitado**, não o que foi normalizado — mover o `padStart` para depois do `parse`, ou validar `onlyDigits(...)` com `.length(11)` antes de padear. Cuidado ao mexer: o `padStart` existe porque há CPFs legítimos começando com zero, e a coluna é texto. Ele não deve sumir, só sair da frente da validação.
+
+---
+
+## O aviso final do cadastro público é invisível para leitor de tela
+
+**Status:** pendente — **achado ao escrever teste** em 2026-07-26
+**Área:** Colaboradores / acessibilidade
+
+O aviso de sucesso ou erro do cadastro público vive **fora do portal do Radix** — o que é deliberado e correto, é o que permite o `z-[60]` funcionar. Mas um `Dialog` modal marca todo o conteúdo irmão com **`aria-hidden="true"`**, e o aviso é irmão. Resultado: a mensagem mais importante do fluxo — *"cadastro criado, abra o link no seu e-mail"* — **não é anunciada**, e o botão não entra na árvore de acessibilidade (nos testes, só é encontrável com `hidden: true`).
+
+**Pesa mais aqui do que pesaria em outro lugar:** é o cadastro **público**, aberto a qualquer candidato, e no `publicMode` o diálogo **não se deixa fechar** — quem depende de leitor de tela fica sem retorno nenhum e sem saída.
+
+**Conserto sugerido:** fechar o `Dialog` antes de mostrar o aviso (o aviso passa a ser a única camada), ou mover o aviso para dentro do portal do Radix e resolver o empilhamento por lá. A segunda opção reabre a armadilha de z-index já paga uma vez — decidir com cuidado. Tem teste marcado `⚠️ DEFEITO`.
 
 ---
 
