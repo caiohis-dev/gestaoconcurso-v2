@@ -114,6 +114,19 @@ Como documentado em [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/
 
 ---
 
+## O cadastro público não valida o CPF antes de consultar o banco
+
+**Status:** pendente — **achado na auditoria de `analises/`** em 2026-07-26
+**Área:** Colaboradores (ver [`estrutura/modulos/aplicacao-provas/colaboradores.md`](./estrutura/modulos/aplicacao-provas/colaboradores.md))
+
+`/cadastro-publico` pede o CPF, apenas tira o que não é dígito (`CadastroPublico.tsx:35`) e já chama a EF `check-cpf-colaborador`. Desde 2026-07-26 existe `cpfValido` (`src/lib/cpf.ts`), usado pelo `ColaboradorDialog` e pelo `CadastroLote` — **esta porta ficou de fora**, e é a única aberta ao público.
+
+Validar antes da consulta poupa uma ida ao servidor, dá mensagem melhor ("confira os dígitos" em vez de "não encontrado") e reduz superfície de sondagem, já que a EF responde se o CPF existe.
+
+⚠️ **Armadilha ao implementar:** aquele arquivo já tem um **estado** chamado `cpfValido` (`CadastroPublico.tsx:26`), que guarda o CPF em string. Importar a função de mesmo nome colide. Renomeie o estado (`cpfConferido`, por exemplo) — não a função, que já está em uso em dois lugares.
+
+---
+
 ## Sanear os 16 CPFs inválidos, para então poder exigi-los no banco
 
 **Status:** pendente — **medido em 2026-07-26**, ao introduzir a validação de dígito verificador

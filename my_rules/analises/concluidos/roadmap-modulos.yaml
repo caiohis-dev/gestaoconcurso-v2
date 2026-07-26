@@ -2,6 +2,32 @@
 # Criado em 2026-07-21, CONCLUÍDO e mergeado em 2026-07-24. Arquivado em concluidos/
 # em 2026-07-25. Este arquivo é o registro do desenho e das decisões, não um plano vivo.
 # O estado final do que foi construído vive na documentação de estrutura, não aqui.
+#
+# ┌───────────────────────────────────────────────────────────────────────────────┐
+# │ ⚠️ LEIA ANTES DE USAR ISTO COMO GUIA — o que mudou DEPOIS do arquivamento      │
+# └───────────────────────────────────────────────────────────────────────────────┘
+#
+# Em 2026-07-26 os guards de página foram centralizados (o saldo da D5, abaixo).
+# DUAS coisas que este arquivo afirma deixaram de valer, e as duas induzem a erro
+# se lidas como regra atual:
+#
+#   1. "os guards de página seguem espalhados" (status) — não seguem. Existe um
+#      wrapper único, `src/components/RequireAcesso.tsx`, aplicado no App.tsx.
+#
+#   2. "o registro de módulos alimenta o hub, o header E OS GUARDS" (princípios) —
+#      ⚠️ ISTO NUNCA CHEGOU A SER VERDADE, e foi rejeitado com motivo ao implementar:
+#      o registro conhece papel por MÓDULO, e as rotas são mais finas. O módulo
+#      `aplicacao-provas` admite coordenador, mas SETE rotas dele são só admin
+#      (/dashboard, /unidades-prova, /salas-prova, /gerenciar-salas-distribuidas,
+#      /funcoes-colaboradores, /documentos-impressao, /painel-dados-colaboradores).
+#      Ler os papéis do registro DARIA A ESSAS SETE um acesso que nunca tiveram —
+#      afrouxamento, não refatoração. Os papéis são declarados rota a rota no
+#      App.tsx; o registro segue sendo UX, como o próprio modulos.ts diz no topo.
+#
+# O que continua valendo deste arquivo: o mecanismo de módulos (D1..D4), o recorte
+# entre módulo e config geral, e o princípio de que o hub ESCONDE mas não BARRA.
+# Regra do projeto para arquivo arquivado: não se reescreve a história — corrige-se
+# o que seria lido como regra. Ver estrutura/transversais/auth-e-permissoes.md.
 
 roadmap:
   titulo: "Tela de entrada por módulos — preparação do terreno para os próximos módulos"
@@ -10,8 +36,10 @@ roadmap:
     CONCLUÍDO. Desenho fechado em 2026-07-21 (D1..D5 confirmadas pelo usuário);
     etapas 1-6 implementadas na feat/modulos e mergeadas em dev em 2026-07-24
     (merge 5314e36, --no-ff; branch apagada). Smoke manual validado pelo usuário.
-    Saldo deliberado: os guards de página seguem espalhados — a centralização num
-    RequireModulo (decisão D5) foi deixada de fora de propósito e está no backlog.
+    Saldo deliberado: os guards de página seguiram espalhados — a centralização
+    (decisão D5) foi deixada de fora de propósito e virou item de backlog.
+    ⚠️ FEITA EM 2026-07-26, com nome RequireAcesso e SEM ler papéis do registro;
+    ver o bloco no topo deste arquivo.
   onde_esta_agora: >
     O mecanismo de módulos: estrutura/transversais/arquitetura-geral.md, seção 6.
     A matriz papel x módulo: estrutura/transversais/auth-e-permissoes.md.
@@ -41,7 +69,7 @@ roadmap:
   principios:
     - "Segurança continua no servidor. O hub e o filtro de navLinks são UX: escondem, não barram. Quem barra é RLS + as checagens das EFs + os guards de página. Nenhuma ação deste roadmap relaxa um guard existente."
     - "Nenhuma mudança de banco. Acesso a módulo deriva dos papéis que já existem em user_roles (via useAuth). Não criar tabela de módulos, não criar enum novo."
-    - "Uma fonte de verdade. O registro de módulos alimenta o hub, o header e os guards — nunca duplicar a lista de rotas de um módulo em dois lugares."
+    - "Uma fonte de verdade. O registro de módulos alimenta o hub e o header — nunca duplicar a lista de rotas de um módulo em dois lugares. ⚠️ CORRIGIDO EM 2026-07-26: este princípio dizia 'e os guards'. Os guards NÃO leem do registro, de propósito — ver o bloco no topo deste arquivo."
     - "O colaborador puro não é tocado. O fluxo dele (/auth → /perfil-colaborador, sem Layout) permanece byte a byte igual — acabou de ser testado e aprovado (bateria 2026-07-21)."
 
   decisoes:
@@ -282,6 +310,8 @@ roadmap:
             - Marcar este item como concluído quando a bateria passar.
             - ADICIONAR item novo (saldo da D5): 'Centralizar guards de página num
               RequireModulo lido do registro de módulos' — pendente, não urgente.
+              # ⚠️ Feito em 2026-07-26, mas NÃO "lido do registro": aquela parte da
+              # proposta estava errada e teria afrouxado o acesso. Ver o topo.
         - acao: "Fechar o tema"
           detalhe: "Merge --no-ff feat/modulos → dev, push, apagar a branch — no fechamento, não semanas depois."
       verificacao:
