@@ -70,20 +70,33 @@ Deno.serve(async (req) => {
     }
     // ──────────────────────────────────────────────────────────────────────────
 
-    const { email, password, fullName, role = "admin", provaId } = await req.json();
+    const { email, password, fullName, role = "admin" } = await req.json();
 
     if (!email || !password) {
       return jsonResp({ error: "Email e senha são obrigatórios" }, 400);
     }
 
-    // Validate role
-    const validRoles = ["admin", "user", "coordenador", "superadmin"];
-    const selectedRole = validRoles.includes(role) ? role : "user";
-
-    // Coordenador requires provaId
-    if (selectedRole === "coordenador" && !provaId) {
-      return jsonResp({ error: "Para criar um coordenador, é necessário informar a prova" }, 400);
+    // `coordenador` saiu daqui em 2026-07-26, junto com a concessão pela UI.
+    //
+    // POR QUE RECUSAR EM VEZ DE SÓ IGNORAR: o papel sozinho NÃO é inofensivo. O
+    // `RequireAcesso` deriva `isCoordenador` de `user_roles`, então quem recebe só o
+    // papel passa pelos guards das rotas de coordenação e entra — para ver listas
+    // vazias, porque as consultas se apoiam em `coordenadores_prova`, que estaria vazia.
+    // É exatamente o meio-usuário que levou a fabricar alocação falsa aqui.
+    //
+    // E recusa explícita, não rebaixamento silencioso: cair no `else` e criar a conta
+    // como "user" produziria papel errado sem sinal nenhum.
+    const validRoles = ["admin", "user", "superadmin"];
+    if (role === "coordenador") {
+      return jsonResp(
+        {
+          error:
+            "Acesso de coordenador não é concedido aqui. Aloque a pessoa na prova com função de coordenação e conceda pelo painel da prova.",
+        },
+        400,
+      );
     }
+    const selectedRole = validRoles.includes(role) ? role : "user";
 
     // Create user with admin API
     const { data: userData, error: createError } = await supabaseAdmin.auth.admin.createUser({
@@ -120,11 +133,6 @@ Deno.serve(async (req) => {
             });
           }
 
-          // If coordenador and provaId provided, create coordenadores_prova entry
-          if (selectedRole === "coordenador" && provaId) {
-            await createCoordenadorAccess(supabaseAdmin, existingUser.id, provaId);
-          }
-
           return new Response(
             JSON.stringify({ 
               success: true, 
@@ -153,11 +161,6 @@ Deno.serve(async (req) => {
       console.error("Error assigning role:", roleError);
     }
 
-    // If coordenador, create access to prova
-    if (selectedRole === "coordenador" && provaId) {
-      await createCoordenadorAccess(supabaseAdmin, userId, provaId);
-    }
-
     return new Response(
       JSON.stringify({ 
         success: true, 
@@ -175,92 +178,3 @@ Deno.serve(async (req) => {
     );
   }
 });
-
-async function createCoordenadorAccess(supabaseAdmin: any, userId: string, provaId: string) {
-  // Check if access already exists
-  const { data: existingAccess } = await supabaseAdmin
-    .from("coordenadores_prova")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("prova_id", provaId)
-    .maybeSingle();
-
-  if (existingAccess) {
-    console.log("User already has coordinator access to this prova");
-    return;
-  }
-
-  // Get a prova_unidade for the prova
-  const { data: provaUnidade, error: unidadeError } = await supabaseAdmin
-    .from("prova_unidades")
-    .select("id")
-    .eq("prova_id", provaId)
-    .limit(1)
-    .maybeSingle();
-
-  if (unidadeError || !provaUnidade) {
-    console.error("No prova_unidades found for prova:", provaId);
-    throw new Error("Esta prova não possui unidades vinculadas. Adicione uma unidade primeiro.");
-  }
-
-  // Create a placeholder colaboradores_prova entry if needed
-  // First check if user has a colaboradores entry (via cpf matching email prefix or similar)
-  // For now, we'll create a minimal colaboradores_prova entry
-  
-  // Get or create a colaborador for this user
-  const { data: existingColabProva } = await supabaseAdmin
-    .from("colaboradores_prova")
-    .select("id")
-    .eq("prova_unidade_id", provaUnidade.id)
-    .limit(1)
-    .maybeSingle();
-
-  let colaboradorProvaId = existingColabProva?.id;
-
-  if (!colaboradorProvaId) {
-    // Create a temporary colaborador if needed
-    // First, check if there's any colaborador we can use
-    const { data: anyColab } = await supabaseAdmin
-      .from("colaboradores")
-      .select("id")
-      .limit(1)
-      .maybeSingle();
-
-    if (anyColab) {
-      // Create colaboradores_prova entry
-      const { data: newColabProva, error: colabProvaError } = await supabaseAdmin
-        .from("colaboradores_prova")
-        .insert({
-          prova_unidade_id: provaUnidade.id,
-          colaborador_id: anyColab.id,
-        })
-        .select("id")
-        .single();
-
-      if (colabProvaError) {
-        console.error("Error creating colaboradores_prova:", colabProvaError);
-        throw new Error("Erro ao criar vínculo do coordenador");
-      }
-      
-      colaboradorProvaId = newColabProva.id;
-    } else {
-      throw new Error("Não há colaboradores cadastrados. Cadastre um colaborador primeiro.");
-    }
-  }
-
-  // Create coordenadores_prova entry
-  const { error: coordError } = await supabaseAdmin
-    .from("coordenadores_prova")
-    .insert({
-      user_id: userId,
-      prova_id: provaId,
-      colaborador_prova_id: colaboradorProvaId,
-    });
-
-  if (coordError) {
-    console.error("Error creating coordenadores_prova:", coordError);
-    throw new Error("Erro ao vincular coordenador à prova");
-  }
-
-  console.log("Coordinator access created successfully");
-}

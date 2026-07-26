@@ -61,7 +61,32 @@ Executada contra o Supabase local com `functions serve --no-verify-jwt` (de prop
 | **A4** | `tentar "$JWT_ADMIN" admin` | **403** `{"error":"Só um superadmin pode criar usuários."}` | Autenticado **não basta** — admin comum não cria conta. Espelha o guard da página `/gerenciar-usuarios`, que é `isSuperAdmin` |
 | **A5** | `tentar "$JWT_SUPER" admin` | **200** `{"success":true}` | O caminho legítimo continua funcionando |
 | **A6** | `tentar "$JWT_SUPER" superadmin` | **200** | Superadmin pode criar superadmin — decisão consciente: quem administra contas pode se replicar |
-| **A7** | `tentar "$JWT_SUPER" coordenador` sem `provaId` | **400** | A validação de negócio continua depois da autorização, na ordem certa |
+| **A7** | `tentar "$JWT_SUPER" coordenador` sem `provaId` | **400** | A validação de negócio continua depois da autorização, na ordem certa. ⚠️ **O motivo do 400 mudou em 26/07** — ver a seção seguinte |
+
+## Casos de coordenador — a fabricação de alocação (acrescentados em 2026-07-26)
+
+A EF **deixou de conceder acesso de coordenador**. Antes, ela pegava um colaborador arbitrário (`.limit(1)`) e criava uma linha em `colaboradores_prova` só para satisfazer a FK `NOT NULL` de `coordenadores_prova` — dado inventado na tabela que serve de base ao pagamento. **Não há teste automatizado guardando isso**: estes dois casos são a única barreira.
+
+| # | Chamada | Esperado |
+|---|---|---|
+| **A9** | `role: "coordenador"` **com** `provaId` válido | **400** `{"error":"Acesso de coordenador não é concedido aqui. Aloque a pessoa na prova…"}` |
+| **A10** | `role: "coordenador"` **sem** `provaId` | **400**, mesma mensagem (é o A7, com a mensagem nova) |
+
+⚠️ **Recusa, não rebaixamento.** Se algum dia isto voltar 200 criando a conta como `user`, é regressão: papel errado sem sinal. E se voltar 200 concedendo `coordenador`, é pior — o `RequireAcesso` deriva `isCoordenador` de `user_roles`, então a pessoa **passaria pelos guards** das rotas de coordenação para ver listas vazias.
+
+### 🔴 O status HTTP não é a prova — a contagem é
+
+Um 400 pode chegar *depois* de a linha ter sido escrita. O que realmente prova é a contagem inalterada nas duas tabelas, antes e depois de rodar A9/A10:
+
+```bash
+Q() { sg docker -c "docker exec supabase_db_dqslqfzqukcahogkieet psql -U postgres -At -c \"$1\""; }
+Q 'select count(*) from public.colaboradores_prova;'
+Q 'select count(*) from public.coordenadores_prova;'
+```
+
+**Rodada de 2026-07-26:** A9 e A10 → 400 com a mensagem nova; A5 (`admin`) → 200 com o papel gravado; sem `Authorization` → 401. Contagens **554 / 9 antes e depois**. A conta criada em A5 foi apagada (`user_roles` e `auth.users`).
+
+> Colhido aí: a conta criada pela EF termina com **dois** papéis — `user`, do trigger `handle_new_user`, e o pedido. Comportamento antigo e sem efeito prático (`has_role` é por papel), mas quem for contar papéis por usuário precisa saber.
 
 ## Checagem de regressão da hierarquia
 
@@ -82,4 +107,4 @@ Vale repetir estes três sempre que mexer na autorização de qualquer EF: o ris
 
 ## Depois de rodar
 
-As contas criadas em A5/A6/A7 são **reais**. Remova-as pelo dashboard do Auth local (`http://127.0.0.1:54323`), ou rode `sg docker -c 'npx supabase db reset'` para voltar ao estado do dump.
+As contas criadas em A5/A6 são **reais** (A7/A9/A10 param antes de criar). Remova-as pelo dashboard do Auth local (`http://127.0.0.1:54323`), ou rode `sg docker -c 'npx supabase db reset'` para voltar ao estado do dump.

@@ -251,12 +251,15 @@ describe("useUsers", () => {
    * /gerenciar-usuarios, incluindo um teste marcado `⚠️ DEFEITO` que afirmava a
    * fabricação de alocação falsa.
    *
-   * ⚠️ ATENÇÃO — O DEFEITO NÃO FOI CORRIGIDO, PERDEU A TESTEMUNHA.
-   * A mesma fabricação (`.limit(1)` pegando um colaborador arbitrário para satisfazer
-   * a FK NOT NULL de `coordenadores_prova`) continua viva em
-   * `supabase/functions/create-admin/index.ts` → `createCoordenadorAccess`, que roda
-   * com service_role, fora da RLS. Aquilo é Deno e está fora do alcance desta suíte,
-   * então hoje NADA acusa a regressão. É o item seguinte do backlog.
+   * ✅ O DEFEITO FOI CORRIGIDO no mesmo dia, dos dois lados. A cópia da fabricação em
+   * `supabase/functions/create-admin/index.ts` (`createCoordenadorAccess`) também saiu,
+   * e a EF passou a RECUSAR `role: "coordenador"` com 400.
+   *
+   * ⚠️ MAS A COBERTURA NÃO VOLTOU. Aquilo é Deno, fora do alcance desta suíte — um teste
+   * aqui afirmaria o mock, não a function. Quem mexer na `create-admin` roda a bateria
+   * manual `docs/bateria-create-admin-autorizacao.md` (casos A9/A10), e confere a
+   * CONTAGEM de colaboradores_prova/coordenadores_prova antes e depois: o 400 sozinho
+   * não prova que nada foi escrito.
    */
 
   describe("criar usuário (Edge Function)", () => {

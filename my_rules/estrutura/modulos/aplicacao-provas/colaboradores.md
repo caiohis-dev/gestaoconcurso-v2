@@ -107,4 +107,4 @@ Ele já foi uma camada `fixed` renderizada **fora** do portal do Radix, e aquilo
 
 ## `GerenciarUsuarios` ≠ gestão de colaboradores
 
-`/gerenciar-usuarios` (`useUsers.tsx`) gerencia contas com role de sistema (`profiles` + `user_roles`), incluindo criação de novos admins/coordenadores via Edge Function `create-admin` e concessão de acesso de coordenador a uma prova. Isso é ortogonal ao cadastro de colaboradores descrito acima — um "usuário" criado ali não aparece na lista de `colaboradores` a menos que também tenha um registro correspondente nessa tabela.
+`/gerenciar-usuarios` (`useUsers.tsx`) gerencia contas com role de sistema (`profiles` + `user_roles`), incluindo criação de novos admins via Edge Function `create-admin`. **Não concede mais acesso de coordenador** (saiu em 2026-07-26, dos dois lados): a coluna Coordenador é somente leitura, e conceder é exclusivo do `CoordenadoresProvaDialog`, que exige alocação real na prova. Isso é ortogonal ao cadastro de colaboradores descrito acima — um "usuário" criado ali não aparece na lista de `colaboradores` a menos que também tenha um registro correspondente nessa tabela.

@@ -178,7 +178,11 @@ As páginas de gestão **não guardam mais a si mesmas**. A autorização de rot
 
 **A regra que ficou:** nesta tela se concede **papel puro** (superadmin, admin). Coordenação depende de alocação, então se concede — e se revoga — na prova. A coluna Coordenador do `/gerenciar-usuarios` virou **somente leitura**: mostra o papel e as provas, sem controle.
 
-> ⚠️ **A fabricação NÃO acabou.** A EF `create-admin` tem a **própria cópia** (`createCoordenadorAccess`), com o mesmo `.limit(1)`, e roda com `service_role` — fora da RLS. Hoje ela está **inalcançável pela UI** (o formulário não oferece mais o papel), mas segue chamável por quem tiver um token de superadmin. **É a próxima tarefa do [`backlog.md`](../../backlog.md)**, e enquanto não sair não há teste automatizado acusando: a EF é Deno, fora do alcance da suíte.
+> ✅ **A fabricação acabou — as duas cópias saíram em 2026-07-26.** A EF `create-admin` tinha a própria (`createCoordenadorAccess`), com o mesmo `.limit(1)` e rodando com `service_role`, fora da RLS. Ela **passou a recusar `role: "coordenador"` com 400**, apontando o fluxo da prova, e o `provaId` saiu do contrato.
+>
+> **Por que recusar em vez de só ignorar o papel:** o papel sozinho não é inofensivo. `RequireAcesso` deriva `isCoordenador` de `user_roles` — quem o recebesse sem vínculo **passaria pelos guards** das rotas de coordenação e entraria, para ver listas vazias (as consultas se apoiam em `coordenadores_prova`). É o meio-usuário que levou alguém a fabricar alocação em primeiro lugar. Rebaixar em silêncio para `user` seria pior: papel errado, sem sinal.
+>
+> ⚠️ **Nada automatizado guarda isso** — a EF é Deno, fora do alcance da suíte, e o teste `⚠️ DEFEITO` que acusava a fabricação saiu junto com o hook. Quem mexer na `create-admin` roda a bateria manual: [`../../../docs/bateria-create-admin-autorizacao.md`](../../../docs/bateria-create-admin-autorizacao.md), casos **A9/A10** — e confere a **contagem** das duas tabelas antes e depois, porque o 400 sozinho não prova nada.
 
 **Revogar** acontece no mesmo diálogo: o `deleteMutation` do `useCoordenadoresProva` apaga o vínculo e, **se era o último**, remove também o papel. A ordem é a segura — apaga o acesso antes do papel, então falhar no fim deixa papel sem acesso, que não concede nada (`is_coordenador_prova` lê só `coordenadores_prova`).
 

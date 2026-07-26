@@ -138,8 +138,8 @@ export function useUsers() {
   // `coordenadores_prova`. A concessão passou a ser exclusiva do
   // CoordenadoresProvaDialog, que exige alocação de verdade com função de coordenação.
   //
-  // ⚠️ A MESMA fabricação continua viva na Edge Function `create-admin`
-  // (`createCoordenadorAccess`), que roda com service_role. Item aberto no backlog.
+  // ✅ A cópia da EF `create-admin` também foi apagada em 2026-07-26, e a EF passou a
+  // RECUSAR role "coordenador" com 400. Não existe mais caminho que fabrique alocação.
 
   const createUser = useMutation({
     mutationFn: async ({ 
@@ -147,13 +147,11 @@ export function useUsers() {
       password, 
       fullName, 
       role,
-      provaId,
     }: { 
       email: string; 
       password: string; 
       fullName: string; 
       role: AppRole;
-      provaId?: string;
     }) => {
       // Manda o token DA SESSÃO, não a anon key. A `create-admin` cria conta e concede
       // papel com service_role (inclusive superadmin) e, desde 2026-07-25, exige que o
@@ -177,7 +175,7 @@ export function useUsers() {
             apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
             Authorization: `Bearer ${accessToken}`,
           },
-          body: JSON.stringify({ email, password, fullName, role, provaId }),
+          body: JSON.stringify({ email, password, fullName, role }),
         }
       );
 

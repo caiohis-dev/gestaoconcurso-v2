@@ -23,7 +23,7 @@ Todas em `supabase/functions/`, CORS liberado (`Access-Control-Allow-Origin: *`)
 
 | Function | Propósito |
 |---|---|
-| `create-admin` | Cria usuário no Supabase Auth + atribui role (admin/coordenador/superadmin) — usado por `useUsers.createUser`. 🔴 **NÃO CHECA QUEM CHAMA** — ver o alerta abaixo da tabela |
+| `create-admin` | Cria usuário no Supabase Auth + atribui role — usado por `useUsers.createUser`. ✅ Exige **superadmin autenticado** desde 25/07 (ver abaixo). Aceita `admin`, `user` e `superadmin`; **recusa `coordenador` com 400** desde 26/07 |
 | `create-coordenador` | Fluxo específico de criação de coordenador (usa `serve` do `deno.land/std`, padrão ligeiramente diferente das demais que usam `Deno.serve` direto — histórico de escrita em momentos diferentes, não um problema funcional) |
 | `check-cpf-colaborador` | Checa existência de CPF — devolve só `{exists}` (endurecida na 2B; antes vazava o e-mail). Usada em `/cadastro-publico` para decidir cadastrar-ou-reivindicar |
 | `reivindicar-acesso` | Caminho do **CPF** na porta única (2B): CPF → `{existe, ja_vinculado, email_mascarado}`, e dispara o link de acesso. Rate limit por IP (`reivindicacao_rate_limit`), **compartilhado com a `recuperar-senha`** — separados, o atacante somaria 5 + 5 |
