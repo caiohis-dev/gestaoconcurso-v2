@@ -129,25 +129,16 @@ Validar antes da consulta poupa uma ida ao servidor, dá mensagem melhor ("confi
 
 ---
 
-## Sanear os 16 CPFs inválidos, para então poder exigi-los no banco
+## ❌ FORA DO BACKLOG 2026-07-26 — os CPFs inválidos são trabalho do coordenador
 
-**Status:** pendente — **medido em 2026-07-26**, ao introduzir a validação de dígito verificador
-**Área:** Colaboradores (ver [`estrutura/modulos/aplicacao-provas/colaboradores.md`](./estrutura/modulos/aplicacao-provas/colaboradores.md))
+**Decisão do usuário:** o coordenador resolve. Não é trabalho de código e não fica na fila de implementação.
 
-Dos **771** CPFs cadastrados, **16 não passam na validação de dígito verificador**: 14 com DV errado e 2 formados por dígitos repetidos.
+Dos **771** CPFs cadastrados, **16** não passam na validação de dígito verificador (14 com DV errado, 2 formados por dígitos repetidos) — medido em 2026-07-26. Não dá para corrigir por algoritmo: CPF errado é o CPF de outra pessoa.
 
-Desde 2026-07-26 o **cliente** valida (`src/lib/cpf.ts`, usado pelo `ColaboradorDialog` e pelo `CadastroLote`), mas **de propósito só quando o CPF é novo ou alterado** — validar sempre travaria a edição desses 16 cadastros, impedindo corrigir telefone ou e-mail deles no dia da prova. É decisão registrada, não esquecimento.
+**O que continua valendo, e é a razão de esta nota existir:**
 
-**O que falta, em ordem:**
-
-1. **Sanear os 16** — trabalho de dado, com a pessoa: CPF errado é CPF de outra pessoa, não dá para "consertar" por algoritmo.
-2. **Só então** criar o CHECK de DV no banco. Antes disso, a migration falharia na carga.
-
-⚠️ **Onde a correção precisa morar:** no **dump**, não no `seed.pos.sql` — ele roda *depois* da carga, e as constraints vêm das migrations, que rodam *antes*. É a regra que o tema dos CHECKs descobriu e que já custou três correções manuais no dump. Ver [`estrutura/transversais/desenvolvimento-local.md`](./estrutura/transversais/desenvolvimento-local.md).
-
-> **Nota sobre o CHECK de DV:** não é trivial em SQL puro (precisa de função IMMUTABLE calculando módulo 11). Vale medir se o ganho supera o custo, dado que os dois escritores do cliente já validam.
-
----
+- O cliente valida (`src/lib/cpf.ts`, usado por `ColaboradorDialog` e `CadastroLote`), mas **de propósito só quando o CPF é novo ou alterado**. Validar sempre travaria a edição desses cadastros, impedindo corrigir telefone ou e-mail deles no dia da prova. **É decisão registrada — não "conserte" isso achando que é esquecimento.**
+- **Um CHECK de DV no banco depende do saneamento acontecer primeiro**, senão a migration falha na carga. Enquanto os 16 existirem, esse CHECK não é possível — e a correção teria de morar no **dump**, não no `seed.pos.sql`, que roda depois das migrations.
 
 ## Apagar o valor de uma função deixa a meta dela órfã no banco
 
@@ -334,13 +325,11 @@ Publicar a v2 em infraestrutura própria (ex.: Vercel, Netlify, ou build estáti
 
 ---
 
-## Verificar exposição da `send-email` no projeto Supabase antigo (v1)
+## ❌ DESCARTADO 2026-07-26 — exposição da `send-email` no projeto v1
 
-**Status:** pendente — **a verificar antes de considerar o assunto fechado**
-**Área:** Segurança / Infraestrutura (ver [`estrutura/transversais/integracoes-externas.md`](./estrutura/transversais/integracoes-externas.md))
+**Decisão do usuário:** não é problema, porque **não há sistema no ar**.
 
-Em 2026-07-20 descobriu-se que a `send-email` **não checava quem a chamava**. O `verify_jwt` padrão exige um JWT, mas a **anon key é um JWT válido e é pública** — vai no bundle do frontend. Qualquer pessoa com essa chave podia mandar `{to, subject, html}` arbitrário **pelo servidor SMTP da FEVRE**: o e-mail sai com SPF/DKIM legítimos e serve de vetor de phishing contra os próprios colaboradores. **Corrigido no código** (a função passou a exigir `service_role`).
+Registro do que era, para quem reabrir: em 2026-07-20 descobriu-se que a `send-email` não checava quem a chamava — o `verify_jwt` exige um JWT, mas a anon key é um JWT válido e público. **Corrigido no código deste repo** (passou a exigir `service_role`); a dúvida que restava era se o projeto Supabase **v1** ainda teria a versão vulnerável publicada.
 
-**O que falta:** a correção vale para o código deste repo. **O projeto Supabase antigo (v1) pode ainda ter a versão vulnerável publicada** — e uma Edge Function fica acessível pela URL do projeto **independentemente de o frontend estar no ar** (hoje não está). Se o projeto v1 ainda existe, o endpoint provavelmente continua chamável com a anon key antiga.
+⚠️ **A premissa que fica anotada, não contestada:** uma Edge Function responde pela URL do projeto **independentemente de o frontend estar no ar**. Ou seja, "sistema fora do ar" e "endpoint inalcançável" não são a mesma coisa — o que fecha o assunto de fato é o projeto v1 **não existir mais** ou não ter a function publicada. Se algum dia se confirmar que o projeto v1 segue ativo, isto volta a valer, incluindo checar o volume de envio da conta SMTP.
 
-**A fazer:** confirmar se o projeto v1 ainda está ativo; se estiver, ou republicar a `send-email` corrigida nele, ou remover a function, ou derrubar o projeto. Enquanto isso não for verificado, considere as credenciais SMTP da Hostinger como **potencialmente já expostas a uso indevido** — vale checar o volume de envio na conta e, na dúvida, **trocar `SMTP_PASS`** (a senha está nos secrets das EFs e no `.env` local, então a troca é barata).
