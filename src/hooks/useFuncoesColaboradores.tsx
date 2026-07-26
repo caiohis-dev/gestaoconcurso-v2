@@ -20,6 +20,40 @@ export type FuncaoColaboradorInsert = {
   cargo_editavel?: boolean | null;
 };
 
+/**
+ * Traduz o 23503 que o banco passou a devolver ao recusar a exclusão de uma função em
+ * uso (migration 20260726190000, que trocou SET NULL/CASCADE por RESTRICT nas três FKs).
+ *
+ * Nomeia QUAL uso está bloqueando, porque as três origens pedem providências diferentes:
+ * desalocar gente, apagar meta ou apagar valor de pagamento. O nome da constraint é o
+ * que identifica a tabela — a mensagem crua do Postgres cita as duas tabelas e não serve
+ * para quem está na tela.
+ *
+ * ⚠️ Casar por `/colaboradores/` em vez de `/colaboradores_prova/` troca a instrução:
+ * `meta_colaboradores_unidade` também contém "colaboradores", e a pessoa seria mandada
+ * desalocar gente quando o obstáculo é uma meta. Há teste guardando exatamente isso.
+ *
+ * ⚠️ O Postgres reporta só a PRIMEIRA violação encontrada. Resolvida aquela, uma nova
+ * tentativa pode esbarrar em outra tabela — daí o "ainda" na frase, em vez de dar a
+ * entender que aquele é o único obstáculo.
+ */
+export function mensagemErroExclusaoFuncao(error: { message: string; code?: string }): string {
+  const emUso =
+    error.code === '23503' || /foreign key constraint|violates foreign key/i.test(error.message);
+  if (!emUso) return error.message;
+
+  if (/colaboradores_prova/.test(error.message)) {
+    return 'Ainda há colaboradores alocados com esta função. Troque a função deles (ou desaloque) antes de excluí-la.';
+  }
+  if (/meta_colaboradores_unidade/.test(error.message)) {
+    return 'Ainda há metas de colaboradores definidas para esta função. Remova as metas antes de excluí-la.';
+  }
+  if (/valores_funcao_prova/.test(error.message)) {
+    return 'Ainda há valores de pagamento cadastrados para esta função. Remova os valores antes de excluí-la.';
+  }
+  return 'Esta função está em uso e não pode ser excluída.';
+}
+
 export function useFuncoesColaboradores() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -119,7 +153,7 @@ export function useFuncoesColaboradores() {
     onError: (error: Error) => {
       toast({
         title: 'Erro ao excluir',
-        description: error.message,
+        description: mensagemErroExclusaoFuncao(error),
         variant: 'destructive',
       });
     },

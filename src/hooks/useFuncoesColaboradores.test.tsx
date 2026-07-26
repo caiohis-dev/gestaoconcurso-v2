@@ -19,7 +19,10 @@ vi.mock("@/integrations/supabase/client", async () => {
 const { toastMock } = vi.hoisted(() => ({ toastMock: vi.fn() }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: toastMock }) }));
 
-import { useFuncoesColaboradores } from "@/hooks/useFuncoesColaboradores";
+import {
+  useFuncoesColaboradores,
+  mensagemErroExclusaoFuncao,
+} from "@/hooks/useFuncoesColaboradores";
 
 const TABELA = "funcoes_colaboradores";
 
@@ -225,5 +228,84 @@ describe("useFuncoesColaboradores", () => {
         ),
       );
     });
+
+    it("traduz o 23503 do RESTRICT em instrução, em vez de mostrar o erro cru", async () => {
+      const { result } = renderHookWithProviders(() => useFuncoesColaboradores());
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      setTableResult(TABELA, { data: null, error: erroPostgrest("23503", MSG_FK.alocacao) });
+      result.current.delete("f1");
+
+      await waitFor(() =>
+        expect(toastMock).toHaveBeenCalledWith(
+          expect.objectContaining({
+            title: "Erro ao excluir",
+            variant: "destructive",
+            description: expect.stringContaining("colaboradores alocados"),
+          }),
+        ),
+      );
+      // O erro cru do Postgres cita duas tabelas e não diz o que fazer — não pode vazar.
+      const ultimo = toastMock.mock.calls.at(-1)?.[0];
+      expect(ultimo.description).not.toContain("foreign key");
+    });
+  });
+});
+
+/**
+ * Mensagens REAIS do Postgres, capturadas do banco local em 2026-07-26 depois da
+ * migration 20260726190000 (`BEGIN; DELETE …; ROLLBACK;` numa função editável em uso).
+ * Não são inventadas: a tradução casa por nome de constraint, então uma string aproximada
+ * daria um teste que passa contra um erro que nunca acontece.
+ */
+const MSG_FK = {
+  alocacao:
+    'update or delete on table "funcoes_colaboradores" violates foreign key constraint "colaboradores_prova_funcao_id_fkey" on table "colaboradores_prova"',
+  meta: 'update or delete on table "funcoes_colaboradores" violates foreign key constraint "meta_colaboradores_unidade_funcao_id_fkey" on table "meta_colaboradores_unidade"',
+  valor:
+    'update or delete on table "funcoes_colaboradores" violates foreign key constraint "valores_funcao_prova_funcao_id_fkey" on table "valores_funcao_prova"',
+};
+
+describe("mensagemErroExclusaoFuncao", () => {
+  it("nomeia a alocação como o que bloqueia", () => {
+    expect(mensagemErroExclusaoFuncao({ code: "23503", message: MSG_FK.alocacao })).toContain(
+      "colaboradores alocados",
+    );
+  });
+
+  it("nomeia a meta como o que bloqueia", () => {
+    expect(mensagemErroExclusaoFuncao({ code: "23503", message: MSG_FK.meta })).toContain("metas");
+  });
+
+  it("nomeia o valor de pagamento como o que bloqueia", () => {
+    expect(mensagemErroExclusaoFuncao({ code: "23503", message: MSG_FK.valor })).toContain(
+      "valores de pagamento",
+    );
+  });
+
+  it("distingue meta_colaboradores_unidade de colaboradores_prova", () => {
+    // As duas contêm "colaboradores": casar por substring ingênua trocaria a instrução,
+    // mandando a pessoa desalocar gente quando o obstáculo é uma meta.
+    const msg = mensagemErroExclusaoFuncao({ code: "23503", message: MSG_FK.meta });
+    expect(msg).not.toContain("alocados");
+  });
+
+  it("cai numa frase genérica se a constraint for de outra tabela (FK nova)", () => {
+    const futura =
+      'update or delete on table "funcoes_colaboradores" violates foreign key constraint "tabela_nova_funcao_id_fkey" on table "tabela_nova"';
+    expect(mensagemErroExclusaoFuncao({ code: "23503", message: futura })).toBe(
+      "Esta função está em uso e não pode ser excluída.",
+    );
+  });
+
+  it("reconhece pelo texto quando o código não vem", () => {
+    expect(mensagemErroExclusaoFuncao({ message: MSG_FK.alocacao })).toContain(
+      "colaboradores alocados",
+    );
+  });
+
+  it("não interfere em erro que não é de FK — o do trigger de função do sistema passa inteiro", () => {
+    const trigger = "Não é permitido excluir funções básicas do sistema.";
+    expect(mensagemErroExclusaoFuncao({ code: "P0001", message: trigger })).toBe(trigger);
   });
 });

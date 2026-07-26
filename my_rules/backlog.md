@@ -164,30 +164,21 @@ Tem teste marcado `⚠️ ATENÇÃO`, não `DEFEITO`: não é falha do diálogo,
 
 ---
 
-## Excluir função de colaborador apaga dados em cascata, e só o cliente protege
+## ✅ CONCLUÍDO 2026-07-26 — excluir função em uso passou a ser recusado pelo banco
 
-**Status:** pendente — **achado ao escrever teste** em 2026-07-25
 **Área:** Alocação e Funções (ver [`estrutura/modulos/aplicacao-provas/alocacao-e-funcoes.md`](./estrutura/modulos/aplicacao-provas/alocacao-e-funcoes.md))
 
-As três FKs que apontam para `funcoes_colaboradores` são **destrutivas, não protetivas** (verificado no banco):
+As três FKs que apontavam para `funcoes_colaboradores` eram destrutivas — `SET NULL` em `colaboradores_prova`, `CASCADE` em `meta_colaboradores_unidade` e `valores_funcao_prova`. Excluir uma função em uso não dava erro: apagava registro financeiro de várias provas em silêncio. Só o cliente protegia, e uma chamada direta ao PostgREST passava reto.
 
-| Tabela | `ON DELETE` | Efeito |
-|---|---|---|
-| `colaboradores_prova` | **SET NULL** | alocações ficam **sem função**, inclusive em provas já realizadas |
-| `meta_colaboradores_unidade` | **CASCADE** | metas somem |
-| `valores_funcao_prova` | **CASCADE** | valores de pagamento somem |
+Migration `20260726190000_funcoes_colaboradores_on_delete_restrict.sql`: as três viraram **`ON DELETE RESTRICT`**. O `23503` chega à UI traduzido por `mensagemErroExclusaoFuncao`, que **nomeia qual uso bloqueia** (alocação, meta ou valor), porque as três pedem providências diferentes.
 
-Excluir uma função em uso **não dá erro**: apaga dado de várias provas em silêncio, incluindo registro financeiro. **A única barreira é o cliente** — `useFuncoesAssociadas` consulta as três tabelas e a página desabilita o botão. Uma chamada direta ao PostgREST por um admin passa reto.
+**Decisão do usuário (26/07):** `RESTRICT`, **não** soft delete. A dúvida registrada aqui era se o `SET NULL` seria deliberado, para aposentar função sem travar em histórico; **não existe função aposentada** — o bloqueio que a UI já fazia é o comportamento correto, e a migration só o move para onde não pode ser contornado.
 
-É a mesma lacuna que o tema de [DB constraints](./analises/concluidos/roadmap-db-constraints.yaml) fechou para *formatos*, agora em *integridade referencial*: a regra existe na UI e não no banco.
+**Medido antes de apertar:** 0 de 554 linhas de `colaboradores_prova` com `funcao_id` nulo — o `SET NULL` nunca disparou em produção. Nenhum saneamento foi necessário.
 
-**Conserto sugerido**, em ordem de preferência:
-1. **`ON DELETE RESTRICT`** nas três FKs — o banco recusa, e a UI passa a traduzir o `23503` (que ela já sabe fazer para outros casos). Mais simples e mais honesto: a exclusão vira erro, não perda silenciosa.
-2. Trigger `BEFORE DELETE` que levanta mensagem própria, se a de FK for considerada técnica demais.
+**Verificado com `db reset` + DELETE real em transação:** função editável com alocação → recusa citando `colaboradores_prova`; editável só com meta e valor → recusa citando `meta_colaboradores_unidade`; e o **controle positivo** — função editável sem uso nenhum → `DELETE 1`. Excluir continua possível quando deve ser.
 
-**Atenção ao escolher:** `SET NULL` em `colaboradores_prova` pode ter sido deliberado, para permitir aposentar uma função sem travar em histórico antigo. Se for o caso, a resposta certa talvez seja **soft delete** (uma coluna `ativa`) em vez de RESTRICT — decidir antes de migrar. Enquanto isso, o cliente continua sendo a única rede, e o `isFuncaoAssociada` que a sustenta **responde `false` enquanto carrega** (contido hoje só porque a página espera o `isLoading`).
-
----
+> **Achado de brinde, agora documentado:** existe uma segunda barreira mais antiga no banco, o trigger `check_system_funcao_changes`, que recusa excluir/renomear/tornar editável as funções com `cargo_editavel = false`. Ele **dispara antes** da checagem de FK — tentar excluir função do sistema levanta `P0001`, não `23503`. Não estava em doc nenhuma.
 
 ## Dois `useEffect` do `GerenciarColaboradoresProva` escrevem estado fora do React Query
 

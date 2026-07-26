@@ -21,28 +21,42 @@ Esses UUIDs literais identificam quais linhas de `funcoes_colaboradores` contam 
 
 **E há uma segunda tela acoplada a estas linhas, por outro caminho:** `useFiscaisSala` (em `useSalasDistribuidas.tsx`) identifica o fiscal pelo **nome**, com `includes("fiscal") && includes("sala")`. Renomear a função esvazia aquela lista sem erro. Duas telas, dois acoplamentos diferentes, ambos silenciosos — ver o ponto frágil 1 do [contrato do módulo](./00-modulo.md).
 
-### ⚠️⚠️ Excluir uma função NÃO é bloqueado pelo banco — ele apaga em cascata
+### ✅ Excluir uma função em uso é recusado PELO BANCO (desde 2026-07-26)
 
-Verificado no banco em 2026-07-25. As três FKs que apontam para `funcoes_colaboradores` são **destrutivas, não protetivas**:
+As três FKs que apontam para `funcoes_colaboradores` eram **destrutivas, não protetivas** — `SET NULL` em `colaboradores_prova`, `CASCADE` nas outras duas. Excluir uma função em uso **não dava erro**: apagava metas e valores de pagamento de várias provas em silêncio, e deixava alocações de provas já realizadas sem função. A única barreira era o cliente, então uma chamada direta ao PostgREST por um admin passava reto.
 
-| Tabela | `ON DELETE` | O que acontece ao excluir a função |
+A migration `20260726190000_funcoes_colaboradores_on_delete_restrict.sql` trocou as três por **`ON DELETE RESTRICT`**:
+
+| Tabela | Antes | Agora |
 |---|---|---|
-| `colaboradores_prova` | **SET NULL** | toda alocação que usava a função fica **sem função** — inclusive em provas já realizadas |
-| `meta_colaboradores_unidade` | **CASCADE** | as metas daquela função **somem** |
-| `valores_funcao_prova` | **CASCADE** | os valores de pagamento **somem** |
+| `colaboradores_prova` | SET NULL | **RESTRICT** |
+| `meta_colaboradores_unidade` | CASCADE | **RESTRICT** |
+| `valores_funcao_prova` | CASCADE | **RESTRICT** |
 
-Ou seja: excluir uma função em uso **não dá erro**. Ela apaga dados de várias provas em silêncio, incluindo registro financeiro.
+**Por que RESTRICT e não soft delete:** cogitou-se que o `SET NULL` fosse deliberado, para permitir *aposentar* uma função sem travar em histórico antigo. O usuário decidiu em 26/07 que **não existe função aposentada** — o bloqueio que a UI de `/funcoes-colaboradores` já fazia é o comportamento correto, e a migration só o move para onde não pode ser contornado.
 
-**A única barreira é o cliente:** `useFuncoesAssociadas` pergunta às três tabelas se a função está em uso e a página desabilita o botão. Duas consequências que precisam sobreviver a refatoração:
+Medido antes de apertar: **0 linhas** de `colaboradores_prova` com `funcao_id` nulo (de 554), ou seja o `SET NULL` nunca chegou a disparar em produção. A troca não exigiu saneamento.
 
-1. **`isFuncaoAssociada` devolve `false` enquanto carrega.** Hoje isso não morde porque `FuncoesColaboradores.tsx` só renderiza a tabela depois de `isLoadingAssociacoes` virar `false`. **Quem reusar o hook em outro lugar precisa gatear pelo `isLoading` também** — confiar só no booleano reabre a janela.
-2. **Se uma tabela nova passar a referenciar `funcao_id`, ela tem de entrar nas três consultas do hook** — senão a exclusão volta a ser liberada para funções em uso, sem nada acusar.
+**O erro chega à UI traduzido.** `mensagemErroExclusaoFuncao` (em `useFuncoesColaboradores.tsx`) converte o `23503` numa instrução que **nomeia qual uso bloqueia** — alocação, meta ou valor —, porque as três pedem providências diferentes. ⚠️ Duas sutilezas com teste guardando: casar por `/colaboradores/` em vez de `/colaboradores_prova/` faria `meta_colaboradores_unidade` cair no ramo errado; e o Postgres reporta só a **primeira** violação, então a frase diz "ainda há" — resolvida uma, a próxima tentativa pode esbarrar em outra tabela.
 
-Fechar isso de verdade é trabalho de banco (trigger que recusa, ou `ON DELETE RESTRICT`) — item no [`backlog.md`](../../../backlog.md).
+### ⚠️ Há uma SEGUNDA barreira no banco, mais antiga, e ela dispara primeiro
+
+O trigger `check_system_funcao_changes` (`BEFORE DELETE OR UPDATE`, função `prevent_system_funcao_changes()`, `SECURITY DEFINER`) recusa, para linhas com **`cargo_editavel = false`**:
+
+- **excluir** → *"Não é permitido excluir funções básicas do sistema."*
+- **renomear** → *"Não é permitido alterar o nome de funções básicas do sistema."*
+- **tornar editável** (`false → true`) → *"Não é permitido tornar funções do sistema editáveis."*
+
+São as 7 funções básicas marcadas por UUID nas migrations originais (ver [`../../transversais/desenvolvimento-local.md`](../../transversais/desenvolvimento-local.md)). Consequência prática ao depurar: **tentar excluir uma função do sistema levanta `P0001`, não `23503`** — o trigger corre antes da checagem de FK. Para exercitar o RESTRICT é preciso uma função **editável** e em uso.
 
 ### `useFuncoesAssociadas.tsx` — proteção contra exclusão de função em uso
 
-Verifica se uma função está referenciada em qualquer uma de três tabelas (`valores_funcao_prova`, `colaboradores_prova`, `meta_colaboradores_unidade`) e expõe `isFuncaoAssociada(funcaoId)`. Usado pela UI de `/funcoes-colaboradores` para impedir exclusão/edição de funções já em uso — ao adicionar uma quarta tabela que referencia `funcao_id`, essa função precisa ser atualizada também, senão a checagem fica incompleta.
+Verifica se uma função está referenciada em qualquer uma de três tabelas (`valores_funcao_prova`, `colaboradores_prova`, `meta_colaboradores_unidade`) e expõe `isFuncaoAssociada(funcaoId)`. Usado pela UI de `/funcoes-colaboradores` para desabilitar o botão de exclusão de funções já em uso.
+
+**Ele deixou de ser a rede de segurança e passou a ser conveniência** — quem recusa agora é o banco (RESTRICT, acima). Isso rebaixou duas fragilidades que antes eram graves, e vale saber que elas continuam ali:
+
+1. **`isFuncaoAssociada` devolve `false` enquanto carrega.** Antes, essa janela permitia apagar dado; hoje ela só permite *tentar*, e a pessoa leva a mensagem traduzida em vez do botão desabilitado. Ainda assim, quem reusar o hook em outro lugar deve gatear pelo `isLoading` — `FuncoesColaboradores.tsx` já faz isso.
+2. **Uma quarta tabela que referencie `funcao_id` precisa entrar nas três consultas do hook** — senão o botão fica habilitado indevidamente. E a FK dela deve nascer `RESTRICT`: `mensagemErroExclusaoFuncao` tem um ramo genérico justamente para esse caso, mas a instrução sai vaga até alguém nomear a tabela nova ali.
 
 ## `valores_funcao_prova` — valor de pagamento por função, por prova
 
