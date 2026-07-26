@@ -104,7 +104,7 @@ Travar o campo (Etapa 1) impede o estrago novo, mas não conserta quem já está
 
 ### Perfis
 
-- `/perfil` — dados do próprio usuário (tabela `profiles`), qualquer conta.
+- `/perfil` — a conta do Supabase Auth do próprio usuário (nome em `profiles` + senha). **Restrita a gestão desde 2026-07-26**: colaborador puro é mandado para `/perfil-colaborador`, que é a página dele. Quem tem `role === 'user'` **entra**, de propósito — tem conta no Auth e o hub já o aceita; barrá-lo o deixaria sem lugar para trocar a própria senha.
 - `/perfil-colaborador` — o cadastro de colaborador de quem tem `isColaborador`.
 
 ## Modelo de roles (equipe admin)
@@ -147,21 +147,21 @@ A tela de entrada por módulos (o mecanismo em [`arquitetura-geral.md`](./arquit
 
 ### A matriz papel × rota tem versão executável (desde 2026-07-26)
 
-**`src/pages/guards.test.tsx`** afirma, para 18 páginas × 5 papéis, para onde cada guard manda quem não pode entrar. Antes dela as páginas tinham cobertura zero, e foi por isso que duas ficaram meses aceitando qualquer conta autenticada. **Ao mexer em guard, é lá que se atualiza a regra** — e ela é a especificação que o futuro `RequireModulo` tem de preservar.
+**`src/pages/guards.test.tsx`** afirma, para 19 páginas × 5 papéis, para onde cada guard manda quem não pode entrar. Antes dela as páginas tinham cobertura zero, e foi por isso que duas ficaram meses aceitando qualquer conta autenticada. **Ao mexer em guard, é lá que se atualiza a regra** — e ela é a especificação que o futuro `RequireModulo` tem de preservar.
 
 Dois padrões de guard convivem hoje, e a diferença é observável:
 
 | Estilo | Páginas | Comportamento |
 |---|---|---|
-| `useEffect` + `navigate`, esperando **`rolesLoaded`** e **`isLoggingOut`** | `Inicio`, `Colaboradores`, `FuncoesColaboradores` (+ `PerfilColaborador`, que espera `rolesLoaded`) | fica no spinner até os papéis chegarem |
+| `useEffect` + `navigate`, esperando **`rolesLoaded`** e **`isLoggingOut`** | `Inicio`, `Colaboradores`, `FuncoesColaboradores`, `Perfil` (+ `PerfilColaborador`, que espera `rolesLoaded`) | fica no spinner até os papéis chegarem |
 | `<Navigate>` em tempo de render, olhando só `authLoading` | as outras 13 | decide na hora; com os papéis ainda vazios, manda para `/` |
 
 **Isso ainda não é bug**, e o motivo é preciso: num refresh de token o `fetchUserRoles` só reescreve `role` **depois** de responder, então o papel anterior sobrevive à janela e ninguém é expulso. A janela com `role` vazio só existe na transição do login, e ali a página montada é a `/auth`, que espera `rolesLoaded`. É fragilidade latente — viraria bug real se alguém limpasse os papéis antes do refetch, ou fizesse o login cair direto numa página de módulo.
 
-**Duas exceções que são defeito de verdade** (ambas no backlog, no item do `RequireModulo`):
+**Duas exceções que eram defeito de verdade** — uma fechada, uma aberta:
 
-- **`/perfil` não tem guard nenhum** — renderiza inteira para visitante deslogado. Não vaza dado (nada é lido do banco), mas é a terceira ocorrência da mesma omissão.
-- **`/dashboard` prende o colaborador puro em tela branca** — o guard usa `role !== null` como proxy de `rolesLoaded`, e o colaborador puro tem `role === null`: nunca é mandado ao hub, e o `return null` entrega página vazia.
+- ✅ **`/perfil` não tinha guard nenhum** — renderizava inteira para visitante deslogado. Era a **terceira ocorrência** da mesma omissão, e a mais completa: as outras duas ao menos mandavam o deslogado para `/auth`. **Corrigido em 2026-07-26** com o idiom das outras (espera `rolesLoaded`, respeita `isLoggingOut`). Não era vazamento — nada era lido do banco, e salvar falhava no `auth.updateUser`.
+- ⚠️ **`/dashboard` prende o colaborador puro em tela branca** — o guard usa `role !== null` como proxy de `rolesLoaded`, e o colaborador puro tem `role === null`: nunca é mandado ao hub, e o `return null` entrega página vazia. **Segue aberto** no backlog, com teste marcado `⚠️ DEFEITO`; sai junto do `RequireModulo`, que já vai trocar aquele proxy.
 
 ### Duas formas distintas de conceder acesso de coordenador — atenção ao mexer aqui
 

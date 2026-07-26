@@ -7,13 +7,13 @@ Lista de trabalho planejado, ainda não iniciado. Itens concluídos devem ser re
 ## Completar a suíte de testes (Vitest) — onde paramos e o que falta
 
 **Status:** parcial — a suíte existe e roda desde 2026-07-25; a cobertura está **incompleta por decisão**, não por esquecimento
-**Área:** Infraestrutura / transversal (ver [`estrutura/transversais/testes.md`](./estrutura/transversais/testes.md) para infra, convenções e as **5 armadilhas**)
+**Área:** Infraestrutura / transversal (ver [`estrutura/transversais/testes.md`](./estrutura/transversais/testes.md) para infra, convenções e as **6 armadilhas**)
 
-Este item é o marco: quem retomar os testes começa por aqui. **Leia `testes.md` antes de escrever teste novo** — as armadilhas ali custaram tempo real (a sequência do mock consumida pela listagem; `.at(-1)` pegando o refetch e não a mutation; `act()` no que atualiza provider; fake timers com `shouldAdvanceTime`; e o caminho do `pagehide`, que não passa pelo mock do Supabase).
+Este item é o marco: quem retomar os testes começa por aqui. **Leia `testes.md` antes de escrever teste novo** — as armadilhas ali custaram tempo real (a sequência do mock consumida pela listagem; `.at(-1)` pegando o refetch e não a mutation; `act()` no que atualiza provider; fake timers com `shouldAdvanceTime`; o caminho do `pagehide`, que não passa pelo mock do Supabase; e **timeout usado como resposta**, que passou isolado e falhou na suíte cheia).
 
 ### Onde paramos (2026-07-26)
 
-**505 testes em 30 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
+**513 testes em 30 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
 
 Coberto:
 
@@ -25,7 +25,7 @@ Coberto:
 | Hooks de dados (18) | `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useEditais`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useValoresFuncaoProva`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas` + os dois vizinhos do mesmo arquivo (`useSalasDistribuidasCapacidade`, `useFiscaisSala`), `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers` (+ `useAuth`) |
 | UI de diálogo (2) | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx` |
 | Acessibilidade | `components/dialogos-acessibilidade.test.ts` — invariante estática sobre os 28 diálogos |
-| **Guards de página** | `pages/guards.test.tsx` — **129 testes**: matriz 18 páginas × 5 papéis, a janela do `rolesLoaded` e o `isLoggingOut` |
+| **Guards de página** | `pages/guards.test.tsx` — **137 testes**: matriz 19 páginas × 5 papéis, a janela do `rolesLoaded` e o `isLoggingOut` |
 | A própria infra | `src/test/supabase-mock.test.ts` — o mock tem teste próprio |
 
 ### O que falta, em ordem de valor
@@ -44,11 +44,13 @@ Os quatro que sobram são de baixo risco — CRUD parecido com o já coberto, e 
 
 `PasswordConfirmDialog` merece atenção especial: é a barreira de confirmação de ações destrutivas (encerrar ocorrências, excluir prova). É o diálogo em que uma regressão silenciosa custa mais caro.
 
-**3. Páginas: os guards estão cobertos desde 2026-07-26; o comportamento, não.** A aposta do `it.each` sobre a tabela rota × papel se pagou: `pages/guards.test.tsx` cobre **18 páginas × 5 papéis** e é agora a especificação do `RequireModulo` (item abaixo), que deixou de ser arriscado. A bateria foi **falsificada de propósito** antes de ser aceita — quebrar o guard do `Editais` fez cair exatamente os casos "recusa colaborador" e "recusa coordenador", que é a falha que passou meses invisível.
+**3. Páginas: os guards estão cobertos desde 2026-07-26; o comportamento, não.** A aposta do `it.each` sobre a tabela rota × papel se pagou: `pages/guards.test.tsx` cobre **19 páginas × 5 papéis** e é agora a especificação do `RequireModulo` (item abaixo), que deixou de ser arriscado. A bateria foi **falsificada de propósito** antes de ser aceita — quebrar o guard do `Editais` fez cair exatamente os casos "recusa colaborador" e "recusa coordenador", que é a falha que passou meses invisível.
 
-Rendeu dois achados, ambos incorporados ao item do `RequireModulo`: **`/perfil` não tem guard nenhum** e **`/dashboard` prende o colaborador puro em tela branca**.
+Rendeu dois achados, ambos detalhados no item do `RequireModulo`: **`/perfil` não tinha guard nenhum** (corrigido em 2026-07-26, e `/perfil` entrou na matriz — daí as 19 páginas) e **`/dashboard` prende o colaborador puro em tela branca** (aberto).
 
 **O que falta em páginas** é o comportamento: formulário, listagem, ação. Nenhuma página tem isso. As candidatas de maior valor são as que concentram ação destrutiva ou dinheiro — `GerenciarColaboradoresProva` (alocação, base de pagamento) e `OcorrenciasProva`.
+
+**Sugestão anotada, não feita:** a matriz usa 5 papéis e **não inclui `user` puro** (conta sem papel de gestão e sem `colaborador`). Seriam 19 combinações novas; vale se algum dia o `user` ganhar significado além de "vê o hub vazio".
 
 **4. Edge Functions: sem teste automatizado.** São 8 (`check-cpf-colaborador`, `corrigir-email-acesso`, `create-admin`, `create-coordenador`, `public-create-colaborador`, `recuperar-senha`, `reivindicar-acesso`, `send-email`) mais `_shared/`. Rodam em Deno, fora do alcance do Vitest como está montado — exigiria decisão de ferramenta (Deno test) antes de qualquer código. **Não é continuação natural da suíte atual; é tema próprio.** É onde vivem as políticas de anti-enumeração, rate limit e cooldown — a lógica mais sensível do sistema.
 
@@ -70,16 +72,27 @@ O que **existe** hoje é verificação manual da **autorização** de duas delas
 
 ## `addCoordenadorAccess` fabrica uma alocação falsa para satisfazer uma FK
 
-**Status:** pendente — **achado ao escrever teste** em 2026-07-25
-**Área:** Alocação e Funções (ver [`estrutura/modulos/aplicacao-provas/alocacao-e-funcoes.md`](./estrutura/modulos/aplicacao-provas/alocacao-e-funcoes.md))
+**Status:** pendente — **achado ao escrever teste** em 2026-07-25 (decisão de resolução em 2026-07-26)
+**Área:** Alocação e Funções (ver [`estrutura/modulos/aplicacao-provas/alocacao-e-funcoes.md`](./estrutura/modulos/aplicacao-provas/alocacao-e-funcoes.md)) / Autenticação (ver [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md))
 
 `coordenadores_prova` exige um `colaborador_prova_id`. Quando a unidade da prova ainda não tem **nenhuma** alocação, `useUsers.addCoordenadorAccess` não recusa: pega **qualquer colaborador** (`.limit(1)`, sem ordenação — o que o banco devolver primeiro) e **cria uma linha em `colaboradores_prova`** só para preencher a FK.
 
 **Por que isso é poluição de dado, e não um detalhe técnico:** `colaboradores_prova` é a tabela de **alocação real** — a que diz quem trabalha na prova, e de onde saem os relatórios e a base de pagamento. A linha fabricada faz um colaborador aparecer alocado numa unidade para a qual ninguém o escalou, **sem função e sem valor**. Ninguém que olhe a tela de alocação consegue distinguir essa linha de uma real.
 
-**A causa é de modelagem:** o acesso de coordenador está amarrado a uma alocação, quando são coisas independentes — coordenar uma prova não é trabalhar numa sala dela. O conserto honesto é **tornar `colaborador_prova_id` nullable** (ou removê-lo de `coordenadores_prova`), não melhorar o chute de qual colaborador usar.
+**A causa é de modelagem:** o acesso de coordenador está amarrado a uma alocação, quando são coisas independentes — coordenar uma prova não é trabalhar numa sala dela. O conserto honesto seria tornar `colaborador_prova_id` nullable, mas a solução arquitetural decidida é outra.
 
-Enquanto isso não for decidido, o mínimo é **recusar** quando não há alocação, como já se faz quando a prova não tem unidade — melhor bloquear com mensagem clara do que inventar dado.
+### Decisão de resolução: Excluir a concessão de coordenador pela UI de `/gerenciar-usuarios`
+
+**Decidido em 2026-07-26:** em vez de contornar a FK ou melhorar o chute de qual colaborador usar, **refatorar a rota `/gerenciar-usuarios` (acessível pelo botão "Usuários" na headerbar) para excluir a possibilidade de concessão de acesso a coordenador por ali**.
+
+Como documentado em [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md), hoje existem duas formas de dar acesso de coordenador:
+1. Pelo `CoordenadoresProvaDialog` (dentro da gestão da prova), que exige uma alocação real em `colaboradores_prova` com função de coordenação.
+2. Pela tela `/gerenciar-usuarios` via `useUsers.addCoordenadorAccess`, que é o caminho "de emergência" que fabrica a linha sintética quando não há alocação.
+
+**Ação necessária:**
+- Remover da UI de `/gerenciar-usuarios` a opção de conceder/selecionar o papel de `coordenador`.
+- A concessão de acesso de coordenador passará a ser **exclusiva** do fluxo de alocação da prova (`CoordenadoresProvaDialog`).
+- Com isso, o hook `useUsers.addCoordenadorAccess` (e o workaround da alocação falsa em `colaboradores_prova`) deverá ser excluído do código.
 
 ---
 
@@ -151,7 +164,7 @@ Foi **deixado de fora de propósito** do tema que criou o hub (decisão D5 do [`
 
 ### O item deixou de ser arriscado: existe rede desde 2026-07-26
 
-`src/pages/guards.test.tsx` (129 testes) afirma a matriz **18 páginas × 5 papéis** e é a **especificação do wrapper**: se um teste dali quebrar durante a refatoração, a decisão de autorização mudou de comportamento. Fazer o `RequireModulo` agora é trocar 18 guards à mão por um, com o contrato escrito.
+`src/pages/guards.test.tsx` (137 testes) afirma a matriz **19 páginas × 5 papéis** e é a **especificação do wrapper**: se um teste dali quebrar durante a refatoração, a decisão de autorização mudou de comportamento. Fazer o `RequireModulo` agora é trocar 19 guards à mão por um, com o contrato escrito.
 
 **O retrato medido dos dois detalhes acima** — não é mais leitura de código, é teste:
 
@@ -162,11 +175,17 @@ Foi **deixado de fora de propósito** do tema que criou o hub (decisão D5 do [`
 
 **Correção de dimensionamento:** as 13 que decidem sem esperar os papéis **não estão quebradas hoje**, ao contrário do que a redação anterior deste item sugeria. O motivo é preciso: no refresh de token o `fetchUserRoles` só reescreve `role` **depois** de responder, então o papel anterior sobrevive à janela e `isAdmin` continua true. A janela com `role` vazio só existe na transição do login, e ali a página montada é a `/auth`, que espera `rolesLoaded`. É **fragilidade latente** — viraria bug real no dia em que alguém limpar os papéis antes do refetch, ou fizer o login cair direto numa página de módulo. O wrapper fecha isso de uma vez.
 
-### Dois defeitos de verdade, achados pela bateria
+### Dois defeitos de verdade, achados pela bateria — um fechado, um aberto
 
-**1. `/perfil` não tem guard nenhum.** `Perfil.tsx` lê `user` do contexto e renderiza — sem `useEffect` de redirecionamento e sem `<Navigate>`. **Terceira ocorrência da mesma omissão**, e a mais completa das três: as outras duas pelo menos mandavam o deslogado para `/auth`. Não é vazamento — o e-mail vem do próprio contexto (vazio sem sessão), nada é lido do banco, e salvar falha no `auth.updateUser`. É porta aberta na tela. Tem teste marcado `⚠️ DEFEITO`, que **quebra quando o guard entrar** — é o sinal de mover `/perfil` para a matriz de páginas guardadas.
+**1. ✅ `/perfil` não tinha guard nenhum — CORRIGIDO em 2026-07-26.** `Perfil.tsx` lia `user` do contexto e renderizava, sem `useEffect` de redirecionamento e sem `<Navigate>`. Era a **terceira ocorrência da mesma omissão**, e a mais completa das três: as outras duas pelo menos mandavam o deslogado para `/auth`. Nunca foi vazamento — nada era lido do banco e salvar falhava no `auth.updateUser`; era porta aberta na tela.
 
-**2. `/dashboard` prende o colaborador puro em tela branca.** O guard usa `role !== null` como proxy de `rolesLoaded` (`Dashboard.tsx:26`) para não expulsar admin na janela — a intenção é boa, e é o único lugar que se protegeu disso sem usar `rolesLoaded`. Mas o colaborador puro tem justamente `role === null`: ele cai para sempre no ramo "ainda não sei o papel", nunca é mandado ao hub, e o `return null` de baixo entrega **página vazia**. Conserto: trocar o proxy pelo `rolesLoaded` de verdade — o que o wrapper já vai fazer.
+> **Conferido antes de mexer:** a hipótese de que fosse deliberado, para o cadastro público, **não se sustenta** — o botão "Novo Colaborador" do `/auth` leva a `/cadastro-publico` (rota separada, sem guard de propósito), e `/perfil` só é alcançável pelo dropdown "Alterar Cadastro" do header, que exige login.
+>
+> **Decisão de alcance:** restrita a **gestão**; colaborador puro vai para `/perfil-colaborador`, que é a página dele — evita duas telas concorrentes de "meus dados". Quem tem `role === 'user'` entra, de propósito: tem conta no Auth e o hub já o aceita.
+>
+> **Um defeito adjacente saiu no mesmo commit:** o campo Nome Completo era inicializado no `useState`, que roda antes de a sessão resolver — num reload direto em `/perfil` aparecia **vazio** para quem tinha nome salvo, e salvar assim **apagava o nome**. Sincronizado por `user?.id`, como `PerfilColaborador.tsx:141` já fazia.
+
+**2. ⚠️ `/dashboard` prende o colaborador puro em tela branca — ABERTO.** O guard usa `role !== null` como proxy de `rolesLoaded` (`Dashboard.tsx:26`) para não expulsar admin na janela — a intenção é boa, e é o único lugar que se protegeu disso sem usar `rolesLoaded`. Mas o colaborador puro tem justamente `role === null`: ele cai para sempre no ramo "ainda não sei o papel", nunca é mandado ao hub, e o `return null` de baixo entrega **página vazia**. Conserto: trocar o proxy pelo `rolesLoaded` de verdade — o que o wrapper já vai fazer.
 
 ---
 

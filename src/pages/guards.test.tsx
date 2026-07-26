@@ -401,6 +401,20 @@ const PAGINAS: Pagina[] = [
     permitidos: ["coordenador", "admin", "superadmin"],
   },
   {
+    nome: "Perfil",
+    path: "/perfil",
+    rota: "/perfil",
+    mod: () => import("./Perfil"),
+    // Config geral, não módulo: é a conta do Supabase Auth (nome + senha). Ganhou guard
+    // em 2026-07-26 — antes não tinha nenhum e renderizava para visitante deslogado.
+    permitidos: ["coordenador", "admin", "superadmin"],
+    desvios: {
+      // Colaborador puro tem página própria para "meus dados"; duas telas concorrentes
+      // seria pior que uma recusa.
+      colaborador: "/perfil-colaborador",
+    },
+  },
+  {
     nome: "PerfilColaborador",
     path: "/perfil-colaborador",
     rota: "/perfil-colaborador",
@@ -425,7 +439,7 @@ describe("guards de página — matriz papel × rota", () => {
   it("a matriz cobre as páginas guardadas do App.tsx", () => {
     // Sem esta asserção, esvaziar PAGINAS por acidente faria todo o resto passar por
     // vacuidade — o mesmo cuidado que o teste de acessibilidade dos diálogos toma.
-    expect(PAGINAS.length).toBe(18);
+    expect(PAGINAS.length).toBe(19);
     expect(new Set(PAGINAS.map((p) => p.nome)).size).toBe(PAGINAS.length);
   });
 
@@ -482,6 +496,7 @@ describe("⚠️ ATENÇÃO — a janela em que o usuário existe e os papéis ai
     "Colaboradores",
     "FuncoesColaboradores",
     "PerfilColaborador",
+    "Perfil",
   ];
 
   const decidemNaJanela = PAGINAS.filter(
@@ -536,7 +551,12 @@ describe("logout em curso não deve disparar o bounce por papel", () => {
    * registrado porque o `RequireModulo` precisa herdar o `isLoggingOut`: senão o bounce
    * por PAPEL, que não é inofensivo, volta a acontecer.
    */
-  const RESPEITAM_LOGGING_OUT = ["Inicio (hub)", "Colaboradores", "FuncoesColaboradores"];
+  const RESPEITAM_LOGGING_OUT = [
+    "Inicio (hub)",
+    "Colaboradores",
+    "FuncoesColaboradores",
+    "Perfil",
+  ];
   const saindo = () => estado({ user: null, isLoggingOut: true });
 
   it.each(PAGINAS.filter((p) => RESPEITAM_LOGGING_OUT.includes(p.nome)))(
@@ -557,39 +577,47 @@ describe("logout em curso não deve disparar o bounce por papel", () => {
 });
 
 // ---------------------------------------------------------------------------
-// O guard que não existe
+// Regressões do /perfil — a página que não tinha guard
 // ---------------------------------------------------------------------------
 
+/**
+ * Até 2026-07-26 `Perfil.tsx` não tinha guard NENHUM: lia `user` do contexto e
+ * renderizava, sem `useEffect` de redirecionamento e sem `<Navigate>`. Era a terceira
+ * ocorrência da mesma omissão (as duas primeiras foram `Colaboradores` e
+ * `FuncoesColaboradores`) e a mais completa: aquelas ao menos mandavam o deslogado para
+ * `/auth`.
+ *
+ * A recusa em si é afirmada pela matriz lá em cima. Aqui ficam as duas coisas que a
+ * matriz não vê — e que foi o guard ausente que deixou passar.
+ */
 describe("Perfil (/perfil)", () => {
   beforeEach(cenarioLimpo);
 
-  /**
-   * ⚠️ DEFEITO — `Perfil.tsx` não tem guard NENHUM: lê `user` do contexto e renderiza,
-   * sem `useEffect` de redirecionamento e sem `<Navigate>`. É a terceira ocorrência da
-   * mesma omissão (as duas primeiras foram `Colaboradores` e `FuncoesColaboradores`, e
-   * são o argumento do item "Centralizar os guards num RequireModulo" no backlog).
-   *
-   * O que dá e o que não dá para fazer com isso: a página aparece inteira para visitante
-   * deslogado, com os campos vazios. Não é vazamento — o e-mail vem do próprio contexto
-   * (vazio sem sessão) e nada é lido do banco. Salvar não funciona: o `auth.updateUser`
-   * sem sessão falha e cai no toast de erro.
-   *
-   * Quando o guard entrar (ou o `RequireModulo` cobrir a rota), este teste QUEBRA — e é
-   * o sinal de reescrevê-lo como recusa, movendo `/perfil` para a matriz de cima.
-   */
-  it("⚠️ DEFEITO: renderiza para visitante deslogado em vez de mandar ao login", async () => {
-    const perfil: Pagina = {
-      nome: "Perfil",
-      path: "/perfil",
-      rota: "/perfil",
-      mod: () => import("./Perfil"),
-      permitidos: [],
-    };
-    await montar(perfil, PAPEIS.deslogado());
+  const perfil = PAGINAS.find((p) => p.nome === "Perfil")!;
 
-    expect(rotaAtual()).toBe("/perfil");
-    // Não é só "não redirecionou": o formulário está de pé para quem não tem sessão.
-    expect(screen.getByRole("heading", { name: "Meu Perfil" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Nome Completo")).toBeInTheDocument();
+  it("não deixa escapar o formulário para quem não tem sessão", async () => {
+    // Complemento da matriz: ela afirma "foi para /auth", isto afirma "e a tela de conta
+    // não apareceu no caminho". Era exatamente o que acontecia antes do guard.
+    await montar(perfil, PAPEIS.deslogado());
+    await esperarRota(LOGIN);
+    expect(screen.queryByRole("heading", { name: "Meu Perfil" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Nome Completo")).not.toBeInTheDocument();
+  });
+
+  it("preenche o nome atual quando a sessão resolve depois do mount", async () => {
+    // O nome vinha só do `useState` inicial, que roda no primeiro render — quando a
+    // sessão ainda não resolveu. Num reload direto em /perfil o campo aparecia VAZIO
+    // para quem tinha nome salvo, e salvar assim APAGAVA o nome. A sincronização por
+    // `user?.id` conserta; este teste é a rede dela.
+    await montar(
+      perfil,
+      estado({
+        user: { ...USUARIO, user_metadata: { full_name: "Fulana de Souza" } },
+        role: "admin",
+        roles: ["admin"],
+        isAdmin: true,
+      }),
+    );
+    await waitFor(() => expect(screen.getByLabelText("Nome Completo")).toHaveValue("Fulana de Souza"));
   });
 });
