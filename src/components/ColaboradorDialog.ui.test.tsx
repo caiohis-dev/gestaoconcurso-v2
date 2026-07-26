@@ -158,12 +158,12 @@ describe("ColaboradorDialog (interação)", () => {
   });
 
   describe("normalização do que é enviado", () => {
-    it("completa o CPF com zero à esquerda", async () => {
-      // CPF é texto no banco e há cadastros que começam com 0; sem o padStart o dígito
-      // sumiria e o CPF viraria outro.
+    it("preserva o zero à esquerda do CPF", async () => {
+      // CPF é texto no banco justamente porque há cadastros que começam com 0. Tratá-lo
+      // como número comeria o dígito e gravaria o CPF de outra pessoa.
       const user = userEvent.setup();
       abrir();
-      await preencherObrigatorios(user, { cpf: "1234567890" });
+      await preencherObrigatorios(user, { cpf: "01234567890" });
       await user.click(screen.getByRole("button", { name: "Cadastrar" }));
 
       await waitFor(() => expect(create).toHaveBeenCalled());
@@ -218,6 +218,7 @@ describe("ColaboradorDialog (interação)", () => {
       // barra o submit antes e o Zod nem roda (armadilha 7 do testes.md).
       const user = userEvent.setup();
       abrir();
+      await user.type(screen.getByLabelText("CPF *"), "52998224725");
       await user.type(screen.getByLabelText("Telefone *"), "24999998888");
       await user.type(screen.getByLabelText("Email *"), "nova@exemplo.com");
       await user.click(screen.getByRole("button", { name: "Cadastrar" }));
@@ -225,19 +226,13 @@ describe("ColaboradorDialog (interação)", () => {
       expect(await screen.findByText("Nome completo obrigatório")).toBeInTheDocument();
       expect(screen.getByText("Data de nascimento obrigatória")).toBeInTheDocument();
       expect(create).not.toHaveBeenCalled();
-      // O CPF NÃO aparece na lista, e não é esquecimento — ver o teste ⚠️ DEFEITO abaixo.
-      expect(screen.queryByText("CPF deve ter 11 dígitos")).not.toBeInTheDocument();
     });
 
-    it("⚠️ DEFEITO: CPF incompleto vira OUTRO CPF, em vez de ser recusado", async () => {
-      // `colab_cpf: z.string().length(11, "CPF deve ter 11 dígitos")` parece cobrir isto,
-      // mas o payload é montado com `onlyDigits(...).padStart(11, "0")` — e o padStart
-      // roda ANTES do parse. Todo CPF chega ao Zod já com 11 caracteres, então a
-      // validação de tamanho **nunca falha** e a mensagem é inalcançável.
-      //
-      // O efeito não é cosmético: digitar 6 dígitos grava um CPF de 11 que a pessoa não
-      // tem. E o CHECK do banco também passa — ele exige 11 DÍGITOS, e zeros são
-      // dígitos. Item no backlog.
+    it("recusa CPF incompleto em vez de fabricar outro", async () => {
+      // REGRESSÃO. Até 2026-07-26 digitar 6 dígitos gravava `00000123456` — o CPF de
+      // outra pessoa. A causa era de ORDEM: o `padStart(11, "0")` montava o payload
+      // antes do parse, então o `.length(11)` do schema nunca falhava. Agora a checagem
+      // roda sobre os dígitos DIGITADOS, antes de qualquer normalização.
       const user = userEvent.setup();
       abrir();
       await user.type(screen.getByLabelText("Nome Completo *"), "Beltrana Silva");
@@ -247,14 +242,78 @@ describe("ColaboradorDialog (interação)", () => {
       await user.type(screen.getByLabelText("Email *"), "nova@exemplo.com");
       await user.click(screen.getByRole("button", { name: "Cadastrar" }));
 
-      await waitFor(() => expect(create).toHaveBeenCalled());
-      expect(create.mock.calls[0][0].colab_cpf).toBe("00000123456");
+      expect(await screen.findByText("CPF deve ter 11 dígitos")).toBeInTheDocument();
+      expect(create).not.toHaveBeenCalled();
     });
 
-    it("⚠️ DEFEITO: CPF VAZIO é gravado como 00000000000", async () => {
-      // Mesma causa, resultado pior: sem digitar nada, o padStart entrega onze zeros —
-      // 11 dígitos, portanto válido para o Zod e para o CHECK do banco. O cadastro nasce
-      // com um CPF que não é de ninguém, e o segundo caso desses esbarra na unicidade.
+    it("recusa CPF com dígito verificador errado", async () => {
+      // 11 dígitos, formato perfeito, e mesmo assim não existe: é o caso que só o
+      // módulo 11 pega. `52998224725` é válido; trocar o último dígito o invalida.
+      const user = userEvent.setup();
+      abrir();
+      await user.type(screen.getByLabelText("Nome Completo *"), "Beltrana Silva");
+      await user.type(screen.getByLabelText("CPF *"), "52998224726");
+      await user.type(screen.getByLabelText("Data de Nascimento *"), "20051990");
+      await user.type(screen.getByLabelText("Telefone *"), "24999998888");
+      await user.type(screen.getByLabelText("Email *"), "nova@exemplo.com");
+      await user.click(screen.getByRole("button", { name: "Cadastrar" }));
+
+      expect(
+        await screen.findByText("CPF inválido — confira os dígitos"),
+      ).toBeInTheDocument();
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it("recusa CPF de dígitos repetidos, que passa na aritmética", async () => {
+      const user = userEvent.setup();
+      abrir();
+      await user.type(screen.getByLabelText("Nome Completo *"), "Beltrana Silva");
+      await user.type(screen.getByLabelText("CPF *"), "11111111111");
+      await user.type(screen.getByLabelText("Data de Nascimento *"), "20051990");
+      await user.type(screen.getByLabelText("Telefone *"), "24999998888");
+      await user.type(screen.getByLabelText("Email *"), "nova@exemplo.com");
+      await user.click(screen.getByRole("button", { name: "Cadastrar" }));
+
+      expect(
+        await screen.findByText("CPF inválido — confira os dígitos"),
+      ).toBeInTheDocument();
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it("editar cadastro LEGADO com CPF inválido, sem tocar no CPF, continua salvando", async () => {
+      // Decisão de escopo, e sem este teste ela se perde: 16 dos 771 cadastros de
+      // produção têm CPF inválido de origem. Validar sempre impediria corrigir o
+      // telefone deles — travaria atendimento por causa de dado antigo. Só CPF NOVO ou
+      // ALTERADO é validado.
+      const user = userEvent.setup();
+      abrir({ colaborador: { ...COLABORADOR, colab_cpf: "11111111111" } });
+      await user.clear(screen.getByLabelText("Telefone *"));
+      await user.type(screen.getByLabelText("Telefone *"), "24988887777");
+      await user.click(screen.getByRole("button", { name: "Atualizar" }));
+
+      await waitFor(() => expect(update).toHaveBeenCalled());
+      expect(update.mock.calls[0][0].colab_telefone).toBe(24988887777);
+      expect(screen.queryByText(/CPF inválido/)).not.toBeInTheDocument();
+    });
+
+    it("mas ALTERAR o CPF de um cadastro legado passa a exigir CPF válido", async () => {
+      // O outro lado da mesma decisão: tolerar o legado não é liberar dado novo ruim.
+      const user = userEvent.setup();
+      abrir({ colaborador: { ...COLABORADOR, colab_cpf: "11111111111" } });
+      await user.clear(screen.getByLabelText("CPF *"));
+      await user.type(screen.getByLabelText("CPF *"), "22222222222");
+      await user.click(screen.getByRole("button", { name: "Atualizar" }));
+
+      expect(
+        await screen.findByText("CPF inválido — confira os dígitos"),
+      ).toBeInTheDocument();
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it("recusa CPF vazio em vez de gravar onze zeros", async () => {
+      // REGRESSÃO. Mesma causa, resultado pior: sem digitar nada o padStart entregava
+      // onze zeros — 11 dígitos, válido para o Zod E para o CHECK do banco. Hoje morre
+      // duas vezes: por tamanho aqui, e pela blacklist de repetidos do `cpfValido`.
       const user = userEvent.setup();
       abrir();
       await user.type(screen.getByLabelText("Nome Completo *"), "Beltrana Silva");
@@ -263,8 +322,8 @@ describe("ColaboradorDialog (interação)", () => {
       await user.type(screen.getByLabelText("Email *"), "nova@exemplo.com");
       await user.click(screen.getByRole("button", { name: "Cadastrar" }));
 
-      await waitFor(() => expect(create).toHaveBeenCalled());
-      expect(create.mock.calls[0][0].colab_cpf).toBe("00000000000");
+      expect(await screen.findByText("CPF deve ter 11 dígitos")).toBeInTheDocument();
+      expect(create).not.toHaveBeenCalled();
     });
   });
 
@@ -370,16 +429,13 @@ describe("ColaboradorDialog (interação)", () => {
       ).toBeInTheDocument();
     });
 
-    it("⚠️ DEFEITO: o aviso final é aria-hidden — invisível para leitor de tela", async () => {
-      // O aviso vive FORA do portal do Radix (é o que permite o z-[60] funcionar), e um
-      // Dialog modal marca todo o conteúdo irmão com `aria-hidden="true"`. Resultado: a
-      // mensagem mais importante do fluxo — "cadastro criado, abra o link no seu e-mail"
-      // — não é anunciada por leitor de tela, e o botão não entra na árvore de
-      // acessibilidade (só é encontrável com `hidden: true`).
-      //
-      // Pesa mais aqui do que pesaria em outro lugar: é o CADASTRO PÚBLICO, aberto a
-      // qualquer candidato, e no publicMode o diálogo não se deixa fechar — quem depende
-      // de leitor de tela fica sem retorno nenhum. Item no backlog.
+    it("o aviso é acessível: dentro do diálogo, anunciável e focável", async () => {
+      // REGRESSÃO. Até 2026-07-26 o aviso vivia FORA do portal do Radix, e um dialog
+      // modal marca todo conteúdo irmão com `aria-hidden="true"` — a mensagem mais
+      // importante do fluxo não era anunciada, e o botão só era encontrável com
+      // `hidden: true`. Pesava mais aqui do que pesaria em outro lugar: é o cadastro
+      // PÚBLICO, e no publicMode o diálogo não se deixa fechar, então quem depende de
+      // leitor de tela ficava sem retorno e sem saída.
       responderEF({ email_mascarado: "n***a@exemplo.com" });
       const user = userEvent.setup();
       abrir({ publicMode: true });
@@ -387,28 +443,51 @@ describe("ColaboradorDialog (interação)", () => {
       await user.click(screen.getByRole("button", { name: "Cadastrar" }));
 
       const aviso = await screen.findByText(/Cadastro realizado!/);
-      expect(aviso.closest("[aria-hidden='true']")).not.toBeNull();
-      expect(screen.queryByRole("button", { name: "Continuar" })).not.toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: "Continuar", hidden: true }),
-      ).toBeInTheDocument();
+      expect(aviso.closest("[aria-hidden='true']")).toBeNull();
+      // Sem `hidden: true` — é o que prova que entrou na árvore de acessibilidade.
+      expect(screen.getByRole("button", { name: "Continuar" })).toBeInTheDocument();
     });
 
-    it("o aviso final vence as duas defesas do Radix", async () => {
-      // Armadilha real e já paga neste repo: o aviso vive FORA do portal do Radix, e
-      // precisa de z-[60] (senão o DialogContent, que vem depois no DOM, pinta por cima)
-      // E de pointer-events-auto (senão aparece e não responde a clique, porque o dialog
-      // modal põe pointer-events:none no body). Só um dos dois dá bug pior que nenhum.
+    it("o aviso substitui o formulário, em vez de se empilhar sobre ele", async () => {
+      // A troca de camada por substituição é o que dispensou o `z-[60]` e o
+      // `pointer-events-auto`: não há mais duas camadas disputando.
       responderEF({ email_mascarado: "n***a@exemplo.com" });
       const user = userEvent.setup();
       abrir({ publicMode: true });
       await preencherObrigatorios(user);
       await user.click(screen.getByRole("button", { name: "Cadastrar" }));
 
-      const aviso = await screen.findByText(/Cadastro realizado!/);
-      const overlay = aviso.closest("div.fixed");
-      expect(overlay).toHaveClass("z-[60]");
-      expect(overlay).toHaveClass("pointer-events-auto");
+      await screen.findByText(/Cadastro realizado!/);
+      expect(screen.queryByLabelText("Nome Completo *")).not.toBeInTheDocument();
+      expect(document.querySelector(".z-\\[60\\]")).toBeNull();
+    });
+
+    it("'Continuar' encerra o fluxo público — é o que leva ao /auth", async () => {
+      responderEF({ email_mascarado: "n***a@exemplo.com" });
+      const user = userEvent.setup();
+      abrir({ publicMode: true });
+      await preencherObrigatorios(user);
+      await user.click(screen.getByRole("button", { name: "Cadastrar" }));
+      await screen.findByText(/Cadastro realizado!/);
+
+      await user.click(screen.getByRole("button", { name: "Continuar" }));
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+    });
+
+    it("depois de erro, 'Fechar' devolve o formulário PREENCHIDO", async () => {
+      // A pessoa acabou de digitar tudo; perder o preenchimento por causa de um erro de
+      // servidor seria punir quem não errou.
+      responderEF({ error: "duplicate key value: cpf ja cadastrado" }, false, 409);
+      const user = userEvent.setup();
+      abrir({ publicMode: true });
+      await preencherObrigatorios(user);
+      await user.click(screen.getByRole("button", { name: "Cadastrar" }));
+      await screen.findByText("Este CPF já está cadastrado no sistema.");
+
+      await user.click(screen.getByRole("button", { name: "Fechar" }));
+
+      expect(screen.getByLabelText("Nome Completo *")).toHaveValue("Beltrana Silva");
+      expect(onOpenChange).not.toHaveBeenCalled();
     });
   });
 

@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { cpfValido } from '@/lib/cpf';
 import { supabase } from '@/integrations/supabase/client';
 import Layout from '@/components/Layout';
 import { Button } from '@/components/ui/button';
@@ -414,14 +415,21 @@ export default function CadastroLote() {
       // ===== 1ª VALIDAÇÃO: CPF (formato + duplicidade como aviso) =====
       const colunaExcelCpfPre = mapeamento['colab_cpf'];
       const cpfRaw = colunaExcelCpfPre ? linha[colunaExcelCpfPre] : null;
-      const cpfNormalizado = (cpfRaw?.toString() || '').replace(/\D/g, '').padStart(11, '0');
+      // Sem `padStart` aqui, ao contrário do resto: a planilha ou traz o CPF completo ou
+      // não traz. Padear antes de validar foi exatamente o defeito do ColaboradorDialog
+      // — "123456" virava 00000123456, o CPF de outra pessoa.
+      const cpfDigitos = (cpfRaw?.toString() || '').replace(/\D/g, '');
 
-      if (!cpfRaw || cpfNormalizado.length !== 11 || /^0+$/.test(cpfNormalizado)) {
-        const msg = 'CPF ausente ou inválido (deve ter 11 dígitos numéricos)';
+      // `cpfValido` cobre tamanho, dígitos repetidos E os dois verificadores (módulo 11).
+      // Antes daqui a importação conferia só tamanho e todos-zeros: CPF de 11 dígitos
+      // inventado entrava, e importação é justamente quem escreve SEM passar pelo
+      // formulário — a lição que este repo já pagou com os e-mails sem trim.
+      if (!cpfRaw || !cpfValido(cpfDigitos)) {
+        const msg = 'CPF ausente ou inválido (11 dígitos, com dígitos verificadores corretos)';
         setLog(prev => [...prev, `❌ Erro ao cadastrar ${nomeCompleto}: ${msg}`]);
         setErros(prev => prev + 1);
         setErrosPorTipo(prev => ({ ...prev, ['CPF inválido']: (prev['CPF inválido'] || 0) + 1 }));
-        setRegistrosNaoIncluidos(prev => [...prev, { nome: nomeCompleto, cpf: cpfNormalizado }]);
+        setRegistrosNaoIncluidos(prev => [...prev, { nome: nomeCompleto, cpf: cpfDigitos }]);
         setResultadosLinhas(prev => { const n = [...prev]; n[i] = { status: 'Erro', mensagem: msg }; return n; });
         setProgresso(((i + 1) / dadosImportados.length) * 100);
         await new Promise(resolve => setTimeout(resolve, 50));
@@ -431,12 +439,12 @@ export default function CadastroLote() {
       const { data: cpfExistente } = await supabase
         .from('colaboradores')
         .select('id')
-        .eq('colab_cpf', cpfNormalizado)
+        .eq('colab_cpf', cpfDigitos)
         .maybeSingle();
 
       if (cpfExistente) {
         const msg = 'CPF já cadastrado na base — registro ignorado';
-        setLog(prev => [...prev, `⚠️ ${nomeCompleto} — CPF ${cpfNormalizado.slice(0,3)}.${cpfNormalizado.slice(3,6)}.${cpfNormalizado.slice(6,9)}-${cpfNormalizado.slice(9)} já cadastrado (aviso)`]);
+        setLog(prev => [...prev, `⚠️ ${nomeCompleto} — CPF ${cpfDigitos.slice(0,3)}.${cpfDigitos.slice(3,6)}.${cpfDigitos.slice(6,9)}-${cpfDigitos.slice(9)} já cadastrado (aviso)`]);
         setAvisos(prev => prev + 1);
         setResultadosLinhas(prev => { const n = [...prev]; n[i] = { status: 'Aviso', mensagem: msg }; return n; });
         setProgresso(((i + 1) / dadosImportados.length) * 100);

@@ -13,7 +13,7 @@ Este item é o marco: quem retomar os testes começa por aqui. **Leia `testes.md
 
 ### Onde paramos (2026-07-26)
 
-**708 testes em 45 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
+**742 testes em 46 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
 
 Coberto:
 
@@ -112,34 +112,23 @@ Como documentado em [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/
 
 ---
 
-## CPF incompleto vira outro CPF: o `padStart` roda antes da validação
+## Sanear os 16 CPFs inválidos, para então poder exigi-los no banco
 
-**Status:** pendente — **achado ao escrever teste** do `ColaboradorDialog` em 2026-07-26
+**Status:** pendente — **medido em 2026-07-26**, ao introduzir a validação de dígito verificador
 **Área:** Colaboradores (ver [`estrutura/modulos/aplicacao-provas/colaboradores.md`](./estrutura/modulos/aplicacao-provas/colaboradores.md))
 
-O schema declara `colab_cpf: z.string().length(11, 'CPF deve ter 11 dígitos')` e **essa mensagem é inalcançável**. O payload é montado com `onlyDigits(formData.colab_cpf).padStart(11, '0')`, e o `padStart` roda **antes** do `parse` — todo CPF chega ao Zod já com 11 caracteres.
+Dos **771** CPFs cadastrados, **16 não passam na validação de dígito verificador**: 14 com DV errado e 2 formados por dígitos repetidos.
 
-Duas consequências, ambas com teste marcado `⚠️ DEFEITO`:
+Desde 2026-07-26 o **cliente** valida (`src/lib/cpf.ts`, usado pelo `ColaboradorDialog` e pelo `CadastroLote`), mas **de propósito só quando o CPF é novo ou alterado** — validar sempre travaria a edição desses 16 cadastros, impedindo corrigir telefone ou e-mail deles no dia da prova. É decisão registrada, não esquecimento.
 
-- **Digitar 6 dígitos grava um CPF de 11 que a pessoa não tem** (`123456` → `00000123456`).
-- **CPF vazio vira `00000000000`** — o cadastro nasce com um CPF que não é de ninguém, e o segundo caso desses esbarra na unicidade, com erro que não explica nada.
+**O que falta, em ordem:**
 
-**O banco não segura:** o CHECK criado no tema das constraints exige **11 dígitos**, e zeros são dígitos.
+1. **Sanear os 16** — trabalho de dado, com a pessoa: CPF errado é CPF de outra pessoa, não dá para "consertar" por algoritmo.
+2. **Só então** criar o CHECK de DV no banco. Antes disso, a migration falharia na carga.
 
-**Conserto:** validar o que foi **digitado**, não o que foi normalizado — mover o `padStart` para depois do `parse`, ou validar `onlyDigits(...)` com `.length(11)` antes de padear. Cuidado ao mexer: o `padStart` existe porque há CPFs legítimos começando com zero, e a coluna é texto. Ele não deve sumir, só sair da frente da validação.
+⚠️ **Onde a correção precisa morar:** no **dump**, não no `seed.pos.sql` — ele roda *depois* da carga, e as constraints vêm das migrations, que rodam *antes*. É a regra que o tema dos CHECKs descobriu e que já custou três correções manuais no dump. Ver [`estrutura/transversais/desenvolvimento-local.md`](./estrutura/transversais/desenvolvimento-local.md).
 
----
-
-## O aviso final do cadastro público é invisível para leitor de tela
-
-**Status:** pendente — **achado ao escrever teste** em 2026-07-26
-**Área:** Colaboradores / acessibilidade
-
-O aviso de sucesso ou erro do cadastro público vive **fora do portal do Radix** — o que é deliberado e correto, é o que permite o `z-[60]` funcionar. Mas um `Dialog` modal marca todo o conteúdo irmão com **`aria-hidden="true"`**, e o aviso é irmão. Resultado: a mensagem mais importante do fluxo — *"cadastro criado, abra o link no seu e-mail"* — **não é anunciada**, e o botão não entra na árvore de acessibilidade (nos testes, só é encontrável com `hidden: true`).
-
-**Pesa mais aqui do que pesaria em outro lugar:** é o cadastro **público**, aberto a qualquer candidato, e no `publicMode` o diálogo **não se deixa fechar** — quem depende de leitor de tela fica sem retorno nenhum e sem saída.
-
-**Conserto sugerido:** fechar o `Dialog` antes de mostrar o aviso (o aviso passa a ser a única camada), ou mover o aviso para dentro do portal do Radix e resolver o empilhamento por lá. A segunda opção reabre a armadilha de z-index já paga uma vez — decidir com cuidado. Tem teste marcado `⚠️ DEFEITO`.
+> **Nota sobre o CHECK de DV:** não é trivial em SQL puro (precisa de função IMMUTABLE calculando módulo 11). Vale medir se o ganho supera o custo, dado que os dois escritores do cliente já validam.
 
 ---
 

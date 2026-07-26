@@ -22,6 +22,7 @@ import {
 import CorrigirEmailAcessoDialog from '@/components/CorrigirEmailAcessoDialog';
 import { ESTADO_CIVIL_OPTIONS, RACA_OPTIONS, GRAU_INSTRUCAO_OPTIONS } from '@/lib/constants';
 import { maskDateBR, brDateToIso, isoToBrDate, maskCPF, maskPIS, onlyDigits } from '@/lib/utils';
+import { cpfValido } from '@/lib/cpf';
 import { useBancos, TIPO_CONTA_OPTIONS } from '@/hooks/useBancos';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { z } from 'zod';
@@ -144,6 +145,28 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
+
+    // O CPF é conferido AQUI, sobre os dígitos DIGITADOS — antes do `padStart` que
+    // monta o payload logo abaixo. A ordem é o que corrigiu o defeito de 2026-07-26:
+    // validando depois do padStart, todo CPF já chegava com 11 caracteres e o
+    // `.length(11)` do schema nunca falhava — "123456" virava 00000123456 (o CPF de
+    // outra pessoa) e vazio virava 00000000000.
+    //
+    // Na EDIÇÃO só se valida quando o CPF muda: 16 dos 771 cadastros de produção têm
+    // CPF inválido de origem (14 com DV errado, 2 com dígitos repetidos), e travá-los
+    // impediria corrigir telefone ou e-mail deles. CPF novo ou alterado, sempre valida.
+    const cpfDigitado = onlyDigits(formData.colab_cpf);
+    const cpfMudou = !colaborador || cpfDigitado !== colaborador.colab_cpf;
+    if (cpfMudou) {
+      if (cpfDigitado.length !== 11) {
+        setErrors({ colab_cpf: 'CPF deve ter 11 dígitos' });
+        return;
+      }
+      if (!cpfValido(cpfDigitado)) {
+        setErrors({ colab_cpf: 'CPF inválido — confira os dígitos' });
+        return;
+      }
+    }
 
     const data: ColaboradorInsert = {
       colab_matricula: formData.colab_matricula || null,
@@ -269,6 +292,60 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
             </DialogDescription>
           </DialogHeader>
 
+          {/* Concluído o cadastro público, o DIÁLOGO INTEIRO vira o aviso — o formulário
+              sai de cena. Antes isto era uma camada `fixed` renderizada FORA do portal do
+              Radix, e aquilo trazia dois problemas: precisava de `z-[60]` e
+              `pointer-events-auto` para vencer o dialog (bug real, já pago), e — pior —
+              ficava sob o `aria-hidden` que um dialog modal aplica a todo conteúdo irmão,
+              de modo que leitor de tela NÃO anunciava a mensagem mais importante do
+              fluxo. Dentro do portal, nada disso existe. Ver `colaboradores.md`. */}
+          {submitStatus ? (
+            <div className="flex flex-col items-center text-center space-y-6 py-6">
+              <div
+                className={`w-24 h-24 rounded-full flex items-center justify-center ${
+                  submitStatus.type === 'success'
+                    ? 'bg-green-100 dark:bg-green-900/30 animate-pulse'
+                    : 'bg-red-100 dark:bg-red-900/30'
+                }`}
+              >
+                {submitStatus.type === 'success' ? (
+                  <CheckCircle2 className="w-16 h-16 text-green-600 dark:text-green-400" />
+                ) : (
+                  <XCircle className="w-16 h-16 text-red-600 dark:text-red-400" />
+                )}
+              </div>
+              <h2
+                className={`text-3xl font-bold ${
+                  submitStatus.type === 'success'
+                    ? 'text-green-600 dark:text-green-400'
+                    : 'text-red-600 dark:text-red-400'
+                }`}
+              >
+                {submitStatus.type === 'success' ? 'Cadastro realizado!' : 'Erro ao cadastrar'}
+              </h2>
+              <p className="text-lg text-foreground font-medium">{submitStatus.message}</p>
+              <Button
+                type="button"
+                autoFocus
+                onClick={() => {
+                  // Sucesso encerra o fluxo público: o `onOpenChange(false)` é o que leva
+                  // ao /auth (ver CadastroPublico). Erro só limpa o aviso, e o formulário
+                  // reaparece preenchido para nova tentativa.
+                  if (submitStatus.type === 'success') {
+                    onOpenChange(false);
+                  }
+                  setSubmitStatus(null);
+                }}
+                className={`mt-2 text-white px-10 py-3 text-lg font-semibold ${
+                  submitStatus.type === 'success'
+                    ? 'bg-green-600 hover:bg-green-700'
+                    : 'bg-red-600 hover:bg-red-700'
+                }`}
+              >
+                {submitStatus.type === 'success' ? 'Continuar' : 'Fechar'}
+              </Button>
+            </div>
+          ) : (
           <form onSubmit={handleSubmit} className="space-y-6">
           {/* Identificação */}
           <div className="space-y-4">
@@ -693,6 +770,7 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
             </Button>
           </DialogFooter>
         </form>
+          )}
       </DialogContent>
     </Dialog>
 
@@ -705,73 +783,6 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
       />
     )}
 
-    {submitStatus && (
-      // Este aviso convive com o Dialog aberto, e precisa vencer duas defesas dele:
-      //   z-[60]            — o DialogContent do Radix vive num portal anexado ao body,
-      //                       depois deste nó no DOM; com z-index igual (z-50) ele
-      //                       pintaria por cima e engoliria o aviso.
-      //   pointer-events-auto — com um dialog modal aberto, o Radix põe
-      //                       pointer-events:none no <body> e só a camada dele volta a
-      //                       receber clique; sem isto o aviso aparece e nada responde.
-      // No publicMode o dialog não se deixa fechar, então não há como contornar por fora.
-      <div
-        className="fixed inset-0 z-[60] pointer-events-auto flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in p-4"
-        onClick={(e) => e.stopPropagation()}
-        onPointerDown={(e) => e.stopPropagation()}
-      >
-        <div
-          className={`bg-background border-4 ${
-            submitStatus.type === 'success' ? 'border-green-500' : 'border-red-500'
-          } rounded-2xl p-10 max-w-lg w-full shadow-2xl relative`}
-          onClick={(e) => e.stopPropagation()}
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          <div className="flex flex-col items-center text-center space-y-6">
-            <div
-              className={`w-24 h-24 rounded-full flex items-center justify-center ${
-                submitStatus.type === 'success'
-                  ? 'bg-green-100 dark:bg-green-900/30 animate-pulse'
-                  : 'bg-red-100 dark:bg-red-900/30'
-              }`}
-            >
-              {submitStatus.type === 'success' ? (
-                <CheckCircle2 className="w-16 h-16 text-green-600 dark:text-green-400" />
-              ) : (
-                <XCircle className="w-16 h-16 text-red-600 dark:text-red-400" />
-              )}
-            </div>
-            <h2
-              className={`text-3xl font-bold ${
-                submitStatus.type === 'success'
-                  ? 'text-green-600 dark:text-green-400'
-                  : 'text-red-600 dark:text-red-400'
-              }`}
-            >
-              {submitStatus.type === 'success' ? 'Cadastro realizado!' : 'Erro ao cadastrar'}
-            </h2>
-            <p className="text-lg text-foreground font-medium">
-              {submitStatus.message}
-            </p>
-            <Button
-              type="button"
-              onClick={() => {
-                if (submitStatus.type === 'success') {
-                  onOpenChange(false);
-                }
-                setSubmitStatus(null);
-              }}
-              className={`mt-2 text-white px-10 py-3 text-lg font-semibold ${
-                submitStatus.type === 'success'
-                  ? 'bg-green-600 hover:bg-green-700'
-                  : 'bg-red-600 hover:bg-red-700'
-              }`}
-            >
-              {submitStatus.type === 'success' ? 'Continuar' : 'Fechar'}
-            </Button>
-          </div>
-        </div>
-      </div>
-    )}
     </>
   );
 }
