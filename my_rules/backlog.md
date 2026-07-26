@@ -13,7 +13,7 @@ Este item é o marco: quem retomar os testes começa por aqui. **Leia `testes.md
 
 ### Onde paramos (2026-07-26)
 
-**581 testes em 34 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
+**587 testes em 34 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
 
 Coberto:
 
@@ -48,7 +48,7 @@ Os quatro que sobram são de baixo risco — CRUD parecido com o já coberto, e 
 
 Efeito colateral registrado: o `setFunctionResult` do mock passou a aceitar erro no formato do `FunctionsHttpError` (`context.body` como string), que é diferente do erro do PostgREST. Antes só compilava com cast. O `supabase-mock.test.ts` ganhou dois testes por isso.
 
-✅ **`ValoresFuncaoProvaDialog` + `MetaColaboradoresDialog` saíram juntos** (14 + 13 testes), como uma unidade de trabalho só — e a razão é um acoplamento que o teste agora fixa: **a meta só existe para função que já tem valor cadastrado na prova**. São as duas metades da base de pagamento. Renderam três achados, no item "Valor de pagamento aceita negativo" abaixo.
+✅ **`ValoresFuncaoProvaDialog` + `MetaColaboradoresDialog` saíram juntos** (20 + 13 testes), como uma unidade de trabalho só — e a razão é um acoplamento que o teste agora fixa: **a meta só existe para função que já tem valor cadastrado na prova**. São as duas metades da base de pagamento. Renderam três achados: **dois já corrigidos no mesmo dia** (valor negativo e exclusão sem confirmação) e um aberto, no item "Apagar o valor de uma função deixa a meta dela órfã" abaixo.
 
 **As próximas, em ordem:** `CorrigirEmailAcessoDialog` (mexe no `colab_email`, a âncora de identidade), depois os 4 hooks restantes para fechar aquela camada, depois interação nos que já têm schema, e o `ColaboradorDialog` (777 l.) por último, como unidade de trabalho própria.
 
@@ -108,22 +108,18 @@ Como documentado em [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/
 
 ---
 
-## Valor de pagamento aceita negativo, e excluí-lo não pede confirmação
+## Apagar o valor de uma função deixa a meta dela órfã no banco
 
-**Status:** pendente — **achado ao escrever teste** do `ValoresFuncaoProvaDialog` em 2026-07-26
+**Status:** pendente — **achado ao escrever teste** do `MetaColaboradoresDialog` em 2026-07-26
 **Área:** Alocação e Funções (ver [`estrutura/modulos/aplicacao-provas/alocacao-e-funcoes.md`](./estrutura/modulos/aplicacao-provas/alocacao-e-funcoes.md))
 
-Três achados no caminho do dinheiro, do mais para o menos grave:
+`upsertMetas` é upsert puro (`onConflict` em prova+função) e **nunca apaga**. Quando uma função perde o valor de pagamento, ela desaparece do `MetaColaboradoresDialog` — mas a linha em `meta_colaboradores_unidade` **continua no banco**, invisível na tela e nunca mais reenviada.
 
-**1. `valor_pagamento` negativo entra no banco.** O `min="0"` do input só vale para a validação nativa do navegador, que exige submit de `<form>` — e o diálogo não tem form: o clique chama `handleAdd` direto, `parseFloat("-150")` devolve `-150`, e **não existe CHECK** para `valor_pagamento` (o tema dos [17 CHECKs](./analises/concluidos/roadmap-db-constraints.yaml) cobriu formatos — CPF, e-mail, PIX —, não estes números). Tem teste marcado `⚠️ DEFEITO`.
+Tem teste marcado `⚠️ ATENÇÃO`, não `DEFEITO`: não é falha do diálogo, que não tem como saber. O risco é para quem ler `meta_colaboradores_unidade` direto — relatório ou tela de alocação contando meta de função que não tem valor nesta prova.
 
-> Contraste que vale registrar, porque explica por que só um dos dois diálogos tem o furo: no `MetaColaboradoresDialog` o campo começa em `"0"`, então `"0-"` é intermediário inválido e o navegador descarta o sinal; no `ValoresFuncaoProvaDialog` o campo começa **vazio**, `"-"` sozinho é intermediário válido, e o negativo passa. O `handleChange` das metas ainda satura com `Math.max(0, …)` — o de valores não tem clamp nenhum.
+**Cuidado ao consertar:** apagar meta órfã é **decisão de produto**, não limpeza óbvia — pode ser histórico legítimo de prova já realizada. Decidir antes de migrar.
 
-**Conserto:** CHECK `valor_pagamento >= 0` no banco (a barreira que falta) **e** clamp no cliente, para dar mensagem em vez de erro do PostgREST. Enquanto isso, `quantidade_meta` também não tem CHECK — só o clamp do cliente protege.
-
-**2. Excluir valor de pagamento não pede confirmação.** Um clique na lixeira e a linha de `valores_funcao_prova` vai embora. O repo tem `PasswordConfirmDialog` exatamente para ação destrutiva, e o usa em excluir prova e encerrar ocorrências — mas não aqui. Atenuante real: o valor é **congelado na alocação**, então apagar não altera pagamento já alocado.
-
-**3. Apagar o valor deixa a meta órfã.** `upsertMetas` é upsert puro (`onConflict` prova+função) e **nunca apaga**. Sem valor, a função desaparece do `MetaColaboradoresDialog`, mas a linha em `meta_colaboradores_unidade` **continua no banco** — invisível na tela e nunca mais reenviada. Encadeado com o item 2, é um clique sem confirmação que deixa dado pendurado. Tem teste marcado `⚠️ ATENÇÃO` (não é defeito do diálogo, que não tem como saber). Cuidado ao consertar: apagar meta órfã é decisão de produto, não limpeza óbvia — pode ser histórico legítimo.
+> Os outros dois achados da mesma sessão **foram corrigidos em 2026-07-26**, e é por isso que este ficou menos alcançável: o valor negativo (`chk_valor_pagamento_nao_negativo` + recusa no cliente) e a exclusão sem confirmação (agora há `AlertDialog`). O gatilho mais curto para criar a órfã era justamente aquele clique sem confirmação.
 
 ---
 
@@ -263,6 +259,17 @@ O conteúdo antigo continua recuperável no histórico do git (última versão e
 Refatorar o diálogo de Nova Ocorrência (`src/pages/OcorrenciasProva.tsx`) para um fluxo em wizard (passos), em vez do formulário único atual.
 
 Junto com a refatoração, **corrigir a funcionalidade de "Faltou"**: quando uma ocorrência marca que o colaborador faltou, ele deve ser **retirado da unidade daquela prova** (ou seja, o vínculo correspondente em `colaboradores_prova` deve ser removido/desfeito para aquela prova+unidade). Hoje esse efeito não acontece.
+
+---
+
+## Uma prova nunca pode ter seu Edital modificado
+
+**Status:** pendente — adicionado em 2026-07-26
+**Área:** Aplicação de Provas / Editais (ver [`estrutura/modulos/aplicacao-provas/provas-e-unidades.md`](./estrutura/modulos/aplicacao-provas/provas-e-unidades.md) e [`estrutura/modulos/editais/00-modulo.md`](./estrutura/modulos/editais/00-modulo.md))
+
+Na rota `/gerenciar-prova` há um botão **"Parâmetros Gerais"** que permite alterar o cadastro da prova. Toda prova tem um edital associado a ela. O botão "Parâmetros Gerais" permite alterar o Edital.
+
+**O que vamos mudar:** uma prova **nunca** pode ter seu Edital modificado. O campo de vinculação ao Edital deve ser permitido apenas no momento do cadastro/criação da prova, ficando travado/inviabilizado para alteração quando a prova for editada posteriormente via "Parâmetros Gerais". O valor da vinculação com o Edital segue sendo visualizado na UI conduzida atraves de Parametros Gerais. Apenas visualizado.
 
 ---
 

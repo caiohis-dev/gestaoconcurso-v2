@@ -83,6 +83,10 @@ Três coisas que valem saber antes de mexer aqui:
 2. **Nos horários, o banco é mais rígido que o formulário.** O Zod declara os horários como `z.string().optional()` e não confere ordem nenhuma; a CHECK barra prova que termina antes (ou no mesmo instante em que) começa. Foi decisão consciente — se um formulário novo permitir salvar isso, o erro vem do banco.
 3. **`unid_sigla` e `prova_edital` são `CHAR`**, não `VARCHAR`: o Postgres preenche com espaços, então `length()` é sempre o tamanho da coluna. Só `length(trim(...))` diz alguma coisa.
 
+➕ **Complemento de 2026-07-26 — `20260726150000_check_valores_nao_negativos.sql`.** O tema dos 17 mirou **formatos**, e deixou sem barreira os dois números do caminho do dinheiro. Entraram dois CHECKs de piso zero: `valores_funcao_prova.valor_pagamento >= 0` e `meta_colaboradores_unidade.quantidade_meta >= 0` — medidos antes (24 e 186 linhas, zero violações). O gatilho foi um defeito real: o `min="0"` do input **não valida nada** sem submit de `<form>`, e o `ValoresFuncaoProvaDialog` não tem form, então `-150` entrava na base de pagamento.
+
+**O piso é `>= 0`, não `> 0`, nos dois casos.** `quantidade_meta = 0` é como se **zera** uma meta, e `valor_pagamento = 0` cobre função voluntária — o que não se defende é o negativo, que só pode ser engano.
+
 **Ficaram de fora, de propósito:** o teto de `sala_andar` (depende de `unid_andares` de *outra* tabela — `CHECK` não expressa, e um `CHECK` com função consultando outra tabela **não é reavaliado** quando ela muda, virando mentira silenciosa); o dígito verificador do CPF (algoritmo, não formato); e o teto de 99 andares (número redondo de formulário, não limite de prédio).
 
 ## Tabelas que o módulo possui

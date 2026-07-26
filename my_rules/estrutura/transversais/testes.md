@@ -103,7 +103,7 @@ async function carregarEDepois(sequencia) {
 
 ## O que está coberto (2026-07-26)
 
-581 testes em 34 arquivos.
+587 testes em 34 arquivos.
 
 | Área | Arquivos |
 |---|---|
@@ -112,7 +112,7 @@ async function carregarEDepois(sequencia) {
 | Schemas Zod (9) | `*Dialog.test.ts`, `pages/Auth.test.ts`, `pages/GerenciarUsuarios.test.ts` |
 | Auth | `useAuth.test.tsx` — hierarquia, `colaborador` paralelo, `rolesLoaded`, `signOut` |
 | Hooks de dados | `useEditais`, `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas` (+ `useSalasDistribuidasCapacidade` e `useFiscaisSala`), `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers` |
-| UI | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx`, **`PasswordConfirmDialog.ui.test.tsx`** (16 — a barreira das ações destrutivas), **`CoordenadoresProvaDialog.ui.test.tsx`** (23 — a concessão de acesso de coordenador), **`ValoresFuncaoProvaDialog`** + **`MetaColaboradoresDialog`** (14 + 13 — o caminho do dinheiro) |
+| UI | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx`, **`PasswordConfirmDialog.ui.test.tsx`** (16 — a barreira das ações destrutivas), **`CoordenadoresProvaDialog.ui.test.tsx`** (23 — a concessão de acesso de coordenador), **`ValoresFuncaoProvaDialog`** + **`MetaColaboradoresDialog`** (20 + 13 — o caminho do dinheiro) |
 | **Guards de página** | `pages/guards.test.tsx` — 137 testes: a matriz **19 páginas × 5 papéis**, mais a janela do `rolesLoaded` e o `isLoggingOut` |
 
 **Sem cobertura ainda — 4 hooks** (a lista já esteve errada, dizendo 8 quando eram 12): `useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade`, `useBancos`. Mais **6 dos 12 diálogos** e **as 8 Edge Functions** (rodam em Deno, fora do alcance desta suíte — a autorização de duas delas é verificada pela bateria manual [`../../../docs/bateria-create-admin-autorizacao.md`](../../../docs/bateria-create-admin-autorizacao.md)).
@@ -131,14 +131,12 @@ Onde um teste afirma comportamento **errado** de propósito, ele leva `⚠️ DE
 
 O ciclo já se fechou uma vez, e vale como modelo: dois testes de `useProvaLock` afirmavam que `isLoading` ficava preso em `true`, porque ficava; ao consertar o hook em 2026-07-25 eles quebraram, como previsto, e foram reescritos como **teste de regressão** — mesma montagem, asserção invertida, e o comentário passou de "defeito conhecido" para "isto já quebrou uma vez, não deixe voltar". Preserve esse comentário: é ele que impede alguém de "simplificar" o `else` que resolve o estado.
 
-**Há hoje quatro marcas `⚠️ DEFEITO`**, e todas têm item no `backlog.md` — a regra é essa: **marca sem item vira defeito aceito por esquecimento**, então abra os dois na mesma unidade de trabalho.
+**Há hoje duas marcas `⚠️ DEFEITO`**, e todas têm item no `backlog.md` — a regra é essa: **marca sem item vira defeito aceito por esquecimento**, então abra os dois na mesma unidade de trabalho.
 
 | Onde | O que o teste afirma, sabendo que está errado |
 |---|---|
 | `useOcorrencias` | lista **vazia** de unidades não restringe nada e devolve a prova inteira |
 | `guards.test.tsx` → matriz do `Dashboard` | colaborador puro fica em tela branca em vez de ir ao hub |
-| `ValoresFuncaoProvaDialog` | aceita **valor de pagamento negativo** (`min="0"` não é validado sem `<form>`, e não há CHECK no banco) |
-| `ValoresFuncaoProvaDialog` | **excluir valor de pagamento não pede confirmação** — um clique e a linha vai embora |
 
 **O ciclo se fechou três vezes em 2026-07-26, e é a confirmação do método** — a marca serve para *ser derrubada*:
 
@@ -147,5 +145,7 @@ O ciclo já se fechou uma vez, e vale como modelo: dois testes de `useProvaLock`
 | `useProvaLock` (`isLoading` preso) | consertado o hook | teste de regressão com a asserção invertida |
 | `/perfil` (renderiza para deslogado) | entrou o guard | duas regressões: o formulário **não escapa** no caminho para o `/auth`, e o nome vem preenchido quando a sessão resolve depois do mount |
 | `CoordenadoresProvaDialog` (barreira não pega superadmin) | os dois SELECT literais viraram `has_role` | regressão que afirma **a quem se pergunta** (`has_role`), não como se filtra a tabela |
+| `ValoresFuncaoProvaDialog` (aceita valor negativo) | CHECK no banco + recusa no cliente | regressão: recusa e **preserva o preenchimento**, e o zero segue aceito |
+| `ValoresFuncaoProvaDialog` (excluir sem confirmar) | entrou `AlertDialog` | quatro regressões: abre, nomeia a função, confirma, cancela |
 
 Existe também a marca mais fraca **`⚠️ ATENÇÃO`**, para quando o comportamento **não é defeito**, mas morde quem depende dele. Não abre item de backlog; existe para quem for mexer ali não achar que pode simplificar aquilo. Quatro casos: `useCoordenadorUnidades` (lista vazia indistinguível de "ainda carregando" sem olhar `isLoading`); o bloco da **janela do `rolesLoaded`** em `guards.test.tsx` — 13 páginas decidem sem esperar os papéis, o que hoje não expulsa ninguém só porque o `role` anterior sobrevive ao refetch; o `PasswordConfirmDialog`, que **só zera senha e erro pelo Cancelar/Esc**, não quando o pai fecha via prop `open` (nenhuma das 5 páginas faz isso hoje); e o `MetaColaboradoresDialog`, em que **meta de função que perdeu o valor fica órfã** — o upsert nunca apaga, então a linha continua no banco sem aparecer na tela.

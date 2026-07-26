@@ -54,6 +54,8 @@ Verifica se uma função está referenciada em qualquer uma de três tabelas (`v
 
 ## `colaboradores_prova` — a tabela de alocação real
 
+> 🧪 **O caminho do dinheiro tem bateria de interação desde 2026-07-26** — `ValoresFuncaoProvaDialog.ui.test.tsx` (20) e `MetaColaboradoresDialog.ui.test.tsx` (13). O acoplamento que elas fixam: **a meta só existe para função que já tem valor cadastrado nesta prova**. Dois consertos saíram dali no mesmo dia — o banco passou a recusar valor negativo (`chk_valor_pagamento_nao_negativo`, que o cliente agora barra antes com mensagem) e excluir um valor passou a **pedir confirmação**. Ficou aberto que apagar o valor deixa a **meta órfã** no banco, porque o upsert nunca apaga (item no [`backlog.md`](../../../backlog.md)).
+
 `useColaboradoresProva.tsx`: liga `colaborador_id` + `prova_unidade_id` + `funcao_id`, com um **`valor_pagamento` próprio, copiado no momento da alocação** — não é um lookup ao vivo em `valores_funcao_prova`. Consequência prática: mudar o valor de uma função em `valores_funcao_prova` **não** atualiza retroativamente colaboradores já alocados; é preciso editar cada `colaboradores_prova` manualmente (ou reatribuir) se o valor mudou depois da alocação.
 
 Regras de negócio observadas:

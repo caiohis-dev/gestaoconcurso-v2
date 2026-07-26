@@ -69,7 +69,15 @@ export function useValoresFuncaoProva(provaId: string) {
       queryClient.invalidateQueries({ queryKey: ["valores-funcao-prova", provaId] });
       toast.success("Valor atualizado com sucesso!");
     },
-    onError: () => {
+    onError: (error: { code?: string }) => {
+      // 23514 = check_violation. Desde a migration 20260726150000 o banco recusa
+      // `valor_pagamento < 0`; sem traduzir, o usuário veria só "Erro ao atualizar
+      // valor" e não saberia o que corrigir. O diálogo já barra antes de chegar aqui —
+      // isto é a rede para quem chamar por outro caminho.
+      if (error?.code === "23514") {
+        toast.error("O valor de pagamento não pode ser negativo.");
+        return;
+      }
       toast.error("Erro ao atualizar valor");
     },
   });

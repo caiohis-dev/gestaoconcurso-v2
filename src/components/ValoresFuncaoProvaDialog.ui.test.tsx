@@ -15,6 +15,10 @@ import userEvent from "@testing-library/user-event";
 const valoresHook = vi.hoisted(() => ({ atual: null as unknown }));
 const funcoesHook = vi.hoisted(() => ({ atual: null as unknown }));
 
+/** O diálogo usa `sonner` direto para recusar valor inválido antes de chamar o hook. */
+const toastMock = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
+vi.mock("sonner", () => ({ toast: toastMock }));
+
 vi.mock("@/hooks/useValoresFuncaoProva", () => ({
   useValoresFuncaoProva: () => valoresHook.atual,
 }));
@@ -63,6 +67,8 @@ describe("ValoresFuncaoProvaDialog (interação)", () => {
   }
 
   beforeEach(() => {
+    toastMock.error.mockClear();
+    toastMock.success.mockClear();
     upsertValor = vi.fn();
     deleteValor = vi.fn();
     onOpenChange = vi.fn();
@@ -160,22 +166,61 @@ describe("ValoresFuncaoProvaDialog (interação)", () => {
       expect(campoValor()).toHaveValue(null);
     });
 
-    it("⚠️ DEFEITO: aceita valor NEGATIVO de pagamento", async () => {
-      // O `min="0"` do input só vale para a validação nativa do navegador, que exige
-      // submit de <form> — e aqui não há form nenhum: o clique chama `handleAdd` direto.
-      // O `parseFloat` aceita o negativo, e NÃO existe CHECK no banco para
-      // `valor_pagamento` (o tema dos 17 CHECKs cobriu formatos, não estes números).
-      // Ou seja: -150 chega ao banco e entra na base de pagamento. Item no backlog.
+    it("RECUSA valor negativo, sem mandar nada ao servidor", async () => {
+      // REGRESSÃO. Até 2026-07-26 o -150 passava: o `min="0"` do input só vale para a
+      // validação NATIVA do navegador, que exige submit de <form>, e aqui não há form —
+      // o clique chama `handleAdd` direto. O banco também não tinha CHECK. Hoje há os
+      // dois: constraint `chk_valor_pagamento_nao_negativo` e esta recusa no cliente.
+      //
+      // Recusa, e não saturação: virar 150 seria adivinhar a intenção, e virar 0 seria
+      // pior, porque 0 é valor VÁLIDO (função não remunerada).
       const user = userEvent.setup();
       abrir();
       await escolherFuncao(user, /Fiscal de Sala/);
       await user.type(campoValor(), "-150");
       await user.click(botaoAdicionar());
 
-      expect(upsertValor).toHaveBeenCalledWith({
-        funcaoId: FISCAL.id,
-        valorPagamento: -150,
-      });
+      expect(upsertValor).not.toHaveBeenCalled();
+      expect(toastMock.error).toHaveBeenCalledWith(
+        "O valor de pagamento não pode ser negativo.",
+      );
+    });
+
+    it("preserva o preenchimento quando recusa, para permitir corrigir", async () => {
+      const user = userEvent.setup();
+      abrir();
+      await escolherFuncao(user, /Fiscal de Sala/);
+      await user.type(campoValor(), "-150");
+      await user.click(botaoAdicionar());
+
+      expect(campoValor()).toHaveValue(-150);
+    });
+
+    it("aceita zero, que é valor válido (função não remunerada)", async () => {
+      const user = userEvent.setup();
+      abrir();
+      await escolherFuncao(user, /Fiscal de Sala/);
+      await user.type(campoValor(), "0");
+      await user.click(botaoAdicionar());
+
+      expect(upsertValor).toHaveBeenCalledWith({ funcaoId: FISCAL.id, valorPagamento: 0 });
+    });
+
+    it("também recusa negativo na edição embutida", async () => {
+      comHooks({ valoresFuncao: [valor()] });
+      const user = userEvent.setup();
+      abrir();
+      await user.click(screen.getByText(/R\$\s?150,50/));
+      const inputs = screen.getAllByRole("spinbutton");
+      await user.clear(inputs[1]);
+      await user.type(inputs[1], "-9");
+      const linha = screen.getByText("Fiscal de Sala").closest("tr")!;
+      await user.click(within(linha).getAllByRole("button")[0]);
+
+      expect(upsertValor).not.toHaveBeenCalled();
+      expect(toastMock.error).toHaveBeenCalledWith(
+        "O valor de pagamento não pode ser negativo.",
+      );
     });
   });
 
@@ -218,22 +263,52 @@ describe("ValoresFuncaoProvaDialog (interação)", () => {
       });
     });
 
-    it("⚠️ DEFEITO: excluir valor de pagamento não pede confirmação", async () => {
-      // Um clique na lixeira e o dado de pagamento vai embora, sem confirmar nada. O
-      // repo tem `PasswordConfirmDialog` exatamente para ação destrutiva, e ele é usado
-      // em excluir prova e encerrar ocorrências — mas não aqui.
-      //
-      // E o efeito não fica contido neste diálogo: sem valor, a função desaparece do
-      // MetaColaboradoresDialog, deixando a meta dela órfã (ver o teste de lá).
-      comHooks({ valoresFuncao: [valor()] });
-      const user = userEvent.setup();
-      abrir();
-      const linha = screen.getByText("Fiscal de Sala").closest("tr")!;
-      const botoes = within(linha).getAllByRole("button");
-      await user.click(botoes[botoes.length - 1]);
+    describe("excluir valor pede confirmação", () => {
+      // REGRESSÃO. Até 2026-07-26 um clique na lixeira apagava direto o dado de
+      // pagamento. Ficou em AlertDialog simples, e não no PasswordConfirmDialog, porque
+      // o valor é CONGELADO na alocação — apagar não altera pagamento já feito.
+      async function clicarLixeira(user: ReturnType<typeof userEvent.setup>) {
+        comHooks({ valoresFuncao: [valor()] });
+        abrir();
+        const linha = screen.getByText("Fiscal de Sala").closest("tr")!;
+        const botoes = within(linha).getAllByRole("button");
+        await user.click(botoes[botoes.length - 1]);
+        return screen.getByRole("alertdialog");
+      }
 
-      expect(deleteValor).toHaveBeenCalledWith("v-1");
-      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      it("abre a confirmação em vez de apagar", async () => {
+        const user = userEvent.setup();
+        const confirmacao = await clicarLixeira(user);
+
+        expect(deleteValor).not.toHaveBeenCalled();
+        expect(within(confirmacao).getByText("Remover valor da função")).toBeInTheDocument();
+        // O texto tem de dizer as duas consequências: o que NÃO muda (alocação já feita)
+        // e o que muda (a função deixa de aceitar meta).
+        expect(within(confirmacao).getByText(/alocação já feita não muda/)).toBeInTheDocument();
+        expect(within(confirmacao).getByText(/deixa de aceitar meta/)).toBeInTheDocument();
+      });
+
+      it("nomeia a função que será removida", async () => {
+        const user = userEvent.setup();
+        const confirmacao = await clicarLixeira(user);
+        expect(within(confirmacao).getByText(/"Fiscal de Sala"/)).toBeInTheDocument();
+      });
+
+      it("confirmar apaga pelo id da linha", async () => {
+        const user = userEvent.setup();
+        const confirmacao = await clicarLixeira(user);
+        await user.click(within(confirmacao).getByRole("button", { name: "Remover" }));
+
+        expect(deleteValor).toHaveBeenCalledWith("v-1");
+      });
+
+      it("cancelar não apaga nada", async () => {
+        const user = userEvent.setup();
+        const confirmacao = await clicarLixeira(user);
+        await user.click(within(confirmacao).getByRole("button", { name: "Cancelar" }));
+
+        expect(deleteValor).not.toHaveBeenCalled();
+      });
     });
 
     it("sobrevive a valor cuja função não veio no join", () => {

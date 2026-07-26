@@ -19,6 +19,11 @@ roadmap:
     Etapas 1, 2 e 3:
       - etapa 1: analises/db-constraints-mapeamento.md (18 regras medidas contra dados reais)
       - etapa 2: migration 20260725202722_fortificar_constraints_db.sql (17 CHECKs), validada
+      - complemento 2026-07-26: migration 20260726150000_check_valores_nao_negativos.sql
+        acrescenta 2 CHECKs que este tema NAO cobriu (ele mirou formatos): piso zero em
+        valores_funcao_prova.valor_pagamento e meta_colaboradores_unidade.quantidade_meta.
+        Achado ao escrever teste de interacao do ValoresFuncaoProvaDialog. Zero violacoes
+        no dado existente (24 e 186 linhas medidas antes).
                  por `supabase db reset` completo — as 771 linhas reais passam
       - etapa 3: docs/bateria-db-constraints.sql (22 casos, 22 ok) + conferência HTTP (400/23514)
     Etapa 4: docs de estrutura atualizadas, análises movidas para concluidos/, merge em

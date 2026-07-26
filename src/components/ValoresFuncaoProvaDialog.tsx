@@ -23,9 +23,20 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useValoresFuncaoProva } from "@/hooks/useValoresFuncaoProva";
 import { useFuncoesColaboradores } from "@/hooks/useFuncoesColaboradores";
 import { Loader2, Plus, Trash2, Save } from "lucide-react";
+import { toast } from "sonner";
 
 interface ValoresFuncaoProvaDialogProps {
   open: boolean;
@@ -48,13 +59,35 @@ export function ValoresFuncaoProvaDialog({
   const [novoValor, setNovoValor] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingValor, setEditingValor] = useState("");
+  const [valorParaExcluir, setValorParaExcluir] = useState<string | null>(null);
 
   const funcoesDisponiveis = funcoes.filter(
     (f) => !valoresFuncao.some((v) => v.funcao_id === f.id)
   );
 
+  /**
+   * O `min="0"` do input só vale para a validação NATIVA do navegador, que exige submit
+   * de <form> — e aqui não há form: o clique chama esta função direto. Até 2026-07-26 um
+   * `-150` digitado entrava na base de pagamento. O banco passou a recusar (constraint
+   * `chk_valor_pagamento_nao_negativo`); isto barra antes, com mensagem legível.
+   *
+   * RECUSA em vez de saturar: transformar -150 em 150 é adivinhar a intenção, e em 0
+   * seria pior ainda, porque 0 é valor VÁLIDO (função não remunerada).
+   */
+  const valorInvalido = (texto: string): string | null => {
+    const n = parseFloat(texto);
+    if (!Number.isFinite(n)) return "Informe um valor numérico.";
+    if (n < 0) return "O valor de pagamento não pode ser negativo.";
+    return null;
+  };
+
   const handleAdd = () => {
     if (selectedFuncao && novoValor) {
+      const problema = valorInvalido(novoValor);
+      if (problema) {
+        toast.error(problema);
+        return;
+      }
       upsertValor({
         funcaoId: selectedFuncao,
         valorPagamento: parseFloat(novoValor),
@@ -71,6 +104,11 @@ export function ValoresFuncaoProvaDialog({
 
   const handleSaveEdit = (funcaoId: string) => {
     if (editingValor) {
+      const problema = valorInvalido(editingValor);
+      if (problema) {
+        toast.error(problema);
+        return;
+      }
       upsertValor({
         funcaoId,
         valorPagamento: parseFloat(editingValor),
@@ -79,6 +117,16 @@ export function ValoresFuncaoProvaDialog({
       setEditingValor("");
     }
   };
+
+  const confirmarExclusao = () => {
+    if (valorParaExcluir) {
+      deleteValor(valorParaExcluir);
+      setValorParaExcluir(null);
+    }
+  };
+
+  const nomeDoValorParaExcluir = valoresFuncao.find((v) => v.id === valorParaExcluir)
+    ?.funcoes_colaboradores?.cargo_nome;
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("pt-BR", {
@@ -207,7 +255,7 @@ export function ValoresFuncaoProvaDialog({
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => deleteValor(valor.id)}
+                            onClick={() => setValorParaExcluir(valor.id)}
                             className="text-destructive hover:text-destructive"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -222,6 +270,37 @@ export function ValoresFuncaoProvaDialog({
           )}
         </div>
       </DialogContent>
+
+      {/* Até 2026-07-26 a lixeira apagava direto, num clique. É dado da base de
+          pagamento; confirmar é o mínimo. Fica em AlertDialog simples, e não no
+          PasswordConfirmDialog: o valor é CONGELADO na alocação, então apagar não altera
+          pagamento já feito — pedir senha aqui seria atrito desproporcional. */}
+      <AlertDialog
+        open={valorParaExcluir !== null}
+        onOpenChange={(aberto) => !aberto && setValorParaExcluir(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover valor da função</AlertDialogTitle>
+            <AlertDialogDescription>
+              {nomeDoValorParaExcluir
+                ? `O valor de "${nomeDoValorParaExcluir}" será removido desta prova. `
+                : "O valor será removido desta prova. "}
+              A alocação já feita não muda, porque o valor é congelado no momento da
+              alocação. Mas a função deixa de aceitar meta de colaboradores.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmarExclusao}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Remover
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }
