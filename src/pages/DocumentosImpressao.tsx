@@ -71,14 +71,6 @@ export default function DocumentosImpressao() {
     );
   }
 
-  if (!user) {
-    return <Navigate to="/auth" replace />;
-  }
-
-  if (!isAdmin) {
-    return <Navigate to="/" replace />;
-  }
-
   if (!isLoadingProvas && !prova) {
     return <Navigate to="/provas" replace />;
   }

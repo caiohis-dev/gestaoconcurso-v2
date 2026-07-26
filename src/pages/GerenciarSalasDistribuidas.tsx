@@ -76,14 +76,6 @@ export default function GerenciarSalasDistribuidas() {
     );
   }
 
-  if (!user) {
-    return <Navigate to="/auth" replace />;
-  }
-
-  if (!isAdmin) {
-    return <Navigate to="/" replace />;
-  }
-
   const prova = provas.find((p) => p.id === provaId);
   const unidade = unidades.find((u) => u.id === unidadeId);
 

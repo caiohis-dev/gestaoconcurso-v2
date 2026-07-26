@@ -33,37 +33,36 @@ O módulo é grande demais para um arquivo. O recorte interno é por **feature/d
 
 ## Rotas e guards
 
-Todas em `prefixosRota`. **Cada página tem o seu guard, escrito à mão** — não há wrapper central (o `RequireModulo` é item de backlog, deliberadamente fora do tema que criou o hub).
+Todas em `prefixosRota`. **Desde 2026-07-26 a autorização é do `RequireAcesso`, no `App.tsx`** — as páginas não guardam mais a si mesmas. A coluna abaixo é o que a rota declara; ver [`../../transversais/auth-e-permissoes.md`](../../transversais/auth-e-permissoes.md).
 
-| Rota | Página | Guard efetivo |
+| Rota | Página | `papeis` no `RequireAcesso` |
 |---|---|---|
-| `/dashboard` | `Dashboard.tsx` | `isAdmin` |
-| `/colaboradores` | `Colaboradores.tsx` (era `/` até 2026-07-24) | `isAdmin \|\| isCoordenador` (desde 2026-07-25) |
-| `/cadastro` | `Cadastro.tsx` | `isAdmin \|\| isCoordenador` |
-| `/cadastro-lote` | `CadastroLote.tsx` | `isAdmin \|\| isCoordenador` |
-| `/provas` | `Provas.tsx` (171 l.) | `isAdmin \|\| isCoordenador` |
-| `/gerenciar-prova/:provaId` | `GerenciarProva.tsx` | `isAdmin \|\| isCoordenador` |
-| `/unidades-prova` | `UnidadesProva.tsx` (199 l.) | `isAdmin` |
-| `/salas-prova/:unidadeId` | `SalasProva.tsx` (260 l.) | `isAdmin` |
-| `/gerenciar-salas-distribuidas/:provaId/:unidadeId` | `GerenciarSalasDistribuidas.tsx` (435 l.) | `isAdmin` |
-| `/gerenciar-colaboradores-prova/:provaUnidadeId` | `GerenciarColaboradoresProva.tsx` (935 l.) | `isAdmin \|\| isCoordenador` |
-| `/ocorrencias-prova/:provaId` | `OcorrenciasProva.tsx` | `isAdminOrSuper \|\| isCoordenador` |
-| `/funcoes-colaboradores` | `FuncoesColaboradores.tsx` (236 l.) | `isAdmin` (desde 2026-07-25) |
-| `/documentos-impressao/:provaId` | `DocumentosImpressao.tsx` | `isAdmin` **+ `prova_finalizada`** |
-| `/painel-dados-colaboradores/:provaId` | `PainelDadosColaboradores.tsx` | `isAdmin` |
+| `/dashboard` | `Dashboard.tsx` | `["admin"]` |
+| `/colaboradores` | `Colaboradores.tsx` (era `/` até 2026-07-24) | `["admin", "coordenador"]` |
+| `/cadastro` | `Cadastro.tsx` | `["admin", "coordenador"]` |
+| `/cadastro-lote` | `CadastroLote.tsx` | `["admin", "coordenador"]` |
+| `/provas` | `Provas.tsx` (171 l.) | `["admin", "coordenador"]` |
+| `/gerenciar-prova/:provaId` | `GerenciarProva.tsx` | `["admin", "coordenador"]` |
+| `/unidades-prova` | `UnidadesProva.tsx` (199 l.) | `["admin"]` |
+| `/salas-prova/:unidadeId` | `SalasProva.tsx` (260 l.) | `["admin"]` |
+| `/gerenciar-salas-distribuidas/:provaId/:unidadeId` | `GerenciarSalasDistribuidas.tsx` (435 l.) | `["admin"]` |
+| `/gerenciar-colaboradores-prova/:provaUnidadeId` | `GerenciarColaboradoresProva.tsx` (935 l.) | `["admin", "coordenador"]` |
+| `/ocorrencias-prova/:provaId` | `OcorrenciasProva.tsx` | `["admin", "coordenador"]` |
+| `/funcoes-colaboradores` | `FuncoesColaboradores.tsx` (236 l.) | `["admin"]` |
+| `/documentos-impressao/:provaId` | `DocumentosImpressao.tsx` | `["admin"]` **+ `prova_finalizada`** |
+| `/painel-dados-colaboradores/:provaId` | `PainelDadosColaboradores.tsx` | `["admin"]` |
 
-✅ **`/colaboradores` ganhou o guard de papel em 2026-07-25.** Até então o `useEffect` só mandava para `/auth` quem não estava logado, e qualquer conta autenticada alcançava a página pela URL. Agora bounce para `/` quem não é `isAdmin || isCoordenador`. Duas notas de implementação que valem para qualquer guard novo:
+### O histórico, porque explica por que a guarda virou uma só
 
-- **Esperar `rolesLoaded`, não só `loading`.** `useAuth` só faz `setLoading(false)` depois de buscar os papéis, mas cada `applySession` posterior (refresh de token) reabre a janela em que o usuário já existe e os papéis ainda não. Decidir ali expulsaria coordenador para o hub. O idiom correto é o do `Inicio.tsx`: `if (loading || !rolesLoaded) return;`.
-- **Respeitar `isLoggingOut`.** Sem isso o logout dispara o bounce por papel antes do redirect do `signOut`.
+Três omissões apareceram em três lugares diferentes, e todas eram da mesma engrenagem, não da política:
 
-✅ **`/funcoes-colaboradores` também ganhou o guard**, no mesmo dia e pelo mesmo motivo: era o **outro** caso da mesma omissão (só mandava para `/auth`; `isAdmin` apenas escondia as ações de escrita, então qualquer conta autenticada via a lista de funções em modo leitura). Ficou em `isAdmin` — que inclui superadmin —, decidido pelo usuário: o cadastro de funções é gestão, e o coordenador já vê os nomes das funções na tela de alocação.
+- **`/colaboradores`** e **`/funcoes-colaboradores`** (2026-07-25) mandavam o deslogado para `/auth` e paravam aí — qualquer conta autenticada alcançava a página pela URL. `isAdmin` só escondia as ações de escrita.
+- **`/perfil`** (config geral) não tinha guard nenhum.
+- **`/dashboard`** usava `role !== null` como proxy de `rolesLoaded` e **prendia o colaborador puro numa tela branca** — corrigido de graça quando o `RequireAcesso` entrou.
 
-**Duas omissões idênticas em 15 páginas não é coincidência** — é o que guard escrito à mão produz, e o erro é silencioso: nada quebra, a página só fica aberta demais. É o argumento do `RequireModulo` no [`backlog.md`](../../../backlog.md), que elimina a classe inteira por construção. Uma **terceira** ocorrência apareceu depois, fora deste módulo — `/perfil`, config geral, sem guard nenhum —, **fechada em 2026-07-26**; ver [`../../transversais/auth-e-permissoes.md`](../../transversais/auth-e-permissoes.md).
+**Três ocorrências da mesma classe não é coincidência:** guard escrito à mão erra por esquecimento, e o erro é silencioso — nada quebra, a página só fica aberta demais. Foi o argumento da centralização, feita em 2026-07-26.
 
-🧪 **A tabela acima tem versão executável desde 2026-07-26.** `src/pages/guards.test.tsx` afirma, para cada rota deste módulo, quem entra e para onde o recusado é mandado — inclusive as duas dimensões das notas acima (`rolesLoaded` e `isLoggingOut`). **Mudou guard? A tabela e o teste andam juntos.** Ver [`../../transversais/testes.md`](../../transversais/testes.md).
-
-⚠️ **Um defeito do módulo que a bateria achou:** `/dashboard` **prende o colaborador puro em tela branca**. O guard usa `role !== null` como proxy de `rolesLoaded` — o que evita expulsar admin na janela, mas o colaborador puro tem justamente `role === null`: nunca é mandado ao hub, e o `return null` entrega página vazia. Item no [`backlog.md`](../../../backlog.md).
+🧪 **A tabela acima tem versão executável:** `src/pages/guards.test.tsx` afirma, para cada rota, quem entra e para onde o recusado vai — e o harness compõe rota + `RequireAcesso` como o `App.tsx`. **Mudou papel de rota? A tabela e o teste andam juntos.**
 
 ## Regras de negócio que o BANCO garante (2026-07-25)
 

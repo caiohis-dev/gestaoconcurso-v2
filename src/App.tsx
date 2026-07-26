@@ -28,6 +28,7 @@ import PainelDadosColaboradores from "./pages/PainelDadosColaboradores";
 import Dashboard from "./pages/Dashboard";
 import GerenciarUsuarios from "./pages/GerenciarUsuarios";
 import NotFound from "./pages/NotFound";
+import { RequireAcesso } from "@/components/RequireAcesso";
 
 const queryClient = new QueryClient();
 
@@ -40,31 +41,31 @@ const App = () => (
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<Inicio />} />
-              <Route path="/colaboradores" element={<Colaboradores />} />
-              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/colaboradores" element={<RequireAcesso papeis={["admin", "coordenador"]}><Colaboradores /></RequireAcesso>} />
+              <Route path="/dashboard" element={<RequireAcesso papeis={["admin"]}><Dashboard /></RequireAcesso>} />
               {/* Porta única desde a etapa 2A: colaborador e gestor entram pelo mesmo
                   lugar. /auth-admin sobrevive só como atalho para links antigos. */}
               <Route path="/auth" element={<Auth />} />
               <Route path="/auth-admin" element={<Navigate to="/auth" replace />} />
               <Route path="/redefinir-senha" element={<RedefinirSenha />} />
-              <Route path="/cadastro" element={<Cadastro />} />
+              <Route path="/cadastro" element={<RequireAcesso papeis={["admin", "coordenador"]}><Cadastro /></RequireAcesso>} />
               <Route path="/cadastro-publico" element={<CadastroPublico />} />
-              <Route path="/cadastro-lote" element={<CadastroLote />} />
+              <Route path="/cadastro-lote" element={<RequireAcesso papeis={["admin", "coordenador"]}><CadastroLote /></RequireAcesso>} />
               <Route path="/perfil" element={<Perfil />} />
               
               <Route path="/perfil-colaborador" element={<PerfilColaborador />} />
-              <Route path="/unidades-prova" element={<UnidadesProva />} />
-              <Route path="/salas-prova/:unidadeId" element={<SalasProva />} />
-              <Route path="/provas" element={<Provas />} />
-              <Route path="/editais" element={<Editais />} />
-              <Route path="/gerenciar-prova/:provaId" element={<GerenciarProva />} />
-              <Route path="/gerenciar-salas-distribuidas/:provaId/:unidadeId" element={<GerenciarSalasDistribuidas />} />
-              <Route path="/gerenciar-colaboradores-prova/:provaUnidadeId" element={<GerenciarColaboradoresProva />} />
-              <Route path="/ocorrencias-prova/:provaId" element={<OcorrenciasProva />} />
-              <Route path="/funcoes-colaboradores" element={<FuncoesColaboradores />} />
-              <Route path="/documentos-impressao/:provaId" element={<DocumentosImpressao />} />
-              <Route path="/painel-dados-colaboradores/:provaId" element={<PainelDadosColaboradores />} />
-              <Route path="/gerenciar-usuarios" element={<GerenciarUsuarios />} />
+              <Route path="/unidades-prova" element={<RequireAcesso papeis={["admin"]}><UnidadesProva /></RequireAcesso>} />
+              <Route path="/salas-prova/:unidadeId" element={<RequireAcesso papeis={["admin"]}><SalasProva /></RequireAcesso>} />
+              <Route path="/provas" element={<RequireAcesso papeis={["admin", "coordenador"]}><Provas /></RequireAcesso>} />
+              <Route path="/editais" element={<RequireAcesso papeis={["admin"]}><Editais /></RequireAcesso>} />
+              <Route path="/gerenciar-prova/:provaId" element={<RequireAcesso papeis={["admin", "coordenador"]}><GerenciarProva /></RequireAcesso>} />
+              <Route path="/gerenciar-salas-distribuidas/:provaId/:unidadeId" element={<RequireAcesso papeis={["admin"]}><GerenciarSalasDistribuidas /></RequireAcesso>} />
+              <Route path="/gerenciar-colaboradores-prova/:provaUnidadeId" element={<RequireAcesso papeis={["admin", "coordenador"]}><GerenciarColaboradoresProva /></RequireAcesso>} />
+              <Route path="/ocorrencias-prova/:provaId" element={<RequireAcesso papeis={["admin", "coordenador"]}><OcorrenciasProva /></RequireAcesso>} />
+              <Route path="/funcoes-colaboradores" element={<RequireAcesso papeis={["admin"]}><FuncoesColaboradores /></RequireAcesso>} />
+              <Route path="/documentos-impressao/:provaId" element={<RequireAcesso papeis={["admin"]}><DocumentosImpressao /></RequireAcesso>} />
+              <Route path="/painel-dados-colaboradores/:provaId" element={<RequireAcesso papeis={["admin"]}><PainelDadosColaboradores /></RequireAcesso>} />
+              <Route path="/gerenciar-usuarios" element={<RequireAcesso papeis={["superadmin"]}><GerenciarUsuarios /></RequireAcesso>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

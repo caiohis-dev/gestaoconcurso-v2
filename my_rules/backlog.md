@@ -13,7 +13,7 @@ Este item é o marco: quem retomar os testes começa por aqui. **Leia `testes.md
 
 ### Onde paramos (2026-07-26)
 
-**743 testes em 46 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
+**743 testes em 46 arquivos.** Guards centralizados no `RequireAcesso` desde 2026-07-26. Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
 
 Coberto:
 
@@ -172,48 +172,16 @@ Excluir uma função em uso **não dá erro**: apaga dado de várias provas em s
 
 ---
 
-## Centralizar os guards de página num `RequireModulo`
+## Dois `useEffect` do `GerenciarColaboradoresProva` escrevem estado fora do React Query
 
-**Status:** pendente — aberto em 2026-07-24, como saldo da D5 do tema "tela de entrada por módulos"
-**Área:** Auth e Permissões (ver [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md)) / Arquitetura (ver [`estrutura/transversais/arquitetura-geral.md`](./estrutura/transversais/arquitetura-geral.md) §6)
+**Status:** pendente — **achado ao centralizar os guards** em 2026-07-26
+**Área:** Alocação e Funções
 
-Cada página de gestão hoje tem o **próprio** guard, repetido à mão (padrão `Dashboard.tsx`: checa papel, senão `navigate("/")`). O registro de módulos (`src/lib/modulos.ts`) já sabe, por rota, qual módulo e quais papéis — então dá para trocar os ~11 guards espalhados por **um** wrapper `RequireModulo` que lê o registro e decide num lugar só.
+A página tem dois efeitos que chamam `supabase...then()` **cru** (linhas ~116 e ~132) e chamam `setState` no `.then`, em vez de usar React Query como o resto do repo. Consequência visível hoje: **3 avisos de `act` no stderr** da bateria de guards, e nenhum truque de teste os silencia — tentei esperar as queries assentarem, drenar macrotarefa e desmontar a árvore antes do fim. A causa é a página, não o teste.
 
-Foi **deixado de fora de propósito** do tema que criou o hub (decisão D5 do [`analises/concluidos/roadmap-modulos.yaml`](./analises/concluidos/roadmap-modulos.yaml)): misturar uma refatoração de autorização com uma feature de navegação transformaria uma coisa em duas. Ao fazer, manter o princípio: o wrapper é UX/roteamento; RLS + EFs continuam sendo a barreira real.
+Por que incomoda além do ruído: estado que aterrissa fora do ciclo do React Query não participa de cache, invalidação nem `isLoading`, então a tela pode mostrar dado velho sem ninguém perceber.
 
-> **Correção do que estava escrito aqui (2026-07-25):** este item afirmava que "os guards atuais continuam corretos". **Dois não estavam** — e a omissão é do mesmo tipo nos dois: o `useEffect` manda para `/auth` quem não está logado e **para por aí**, sem o `navigate("/")` por papel que as outras páginas têm.
->
-> - `Colaboradores.tsx` — **corrigido em 2026-07-25** (`isAdmin || isCoordenador`).
-> - `FuncoesColaboradores.tsx` — **corrigido em 2026-07-25** (`isAdmin`, decidido pelo usuário: cadastro de funções é gestão, e o coordenador já vê os nomes na tela de alocação).
->
-> Nenhum dos dois era vazamento de dado (a RLS contém), mas **duas ocorrências da mesma omissão em 15 páginas é o argumento do item**, não uma coincidência: guard escrito à mão erra por esquecimento, e o erro é silencioso — nada quebra, a página só fica aberta demais. Os dois consertos pontuais **não substituem o wrapper**; eles mostram por que ele é necessário. Inventário de guards por rota: [`estrutura/modulos/aplicacao-provas/00-modulo.md`](./estrutura/modulos/aplicacao-provas/00-modulo.md).
->
-> **Dois detalhes que o wrapper precisa herdar** (achados ao consertar o `Colaboradores.tsx`): esperar **`rolesLoaded`**, não só `loading` — cada refresh de token reabre a janela em que o usuário existe e os papéis ainda não, e decidir ali expulsa coordenador; e respeitar **`isLoggingOut`**, senão o logout dispara o bounce por papel antes do redirect.
-
-### O item deixou de ser arriscado: existe rede desde 2026-07-26
-
-`src/pages/guards.test.tsx` (137 testes) afirma a matriz **19 páginas × 5 papéis** e é a **especificação do wrapper**: se um teste dali quebrar durante a refatoração, a decisão de autorização mudou de comportamento. Fazer o `RequireModulo` agora é trocar 19 guards à mão por um, com o contrato escrito.
-
-**O retrato medido dos dois detalhes acima** — não é mais leitura de código, é teste:
-
-| Dimensão | Quem já faz certo | Quem não |
-|---|---|---|
-| Espera `rolesLoaded` | `Inicio`, `Colaboradores`, `FuncoesColaboradores`, `PerfilColaborador` | as outras 13 (`<Navigate>` em render, olhando só `authLoading`) |
-| Respeita `isLoggingOut` | `Inicio`, `Colaboradores`, `FuncoesColaboradores` | as outras 15 — **inofensivo**: mandam para `/auth`, que é o destino que o `signOut` já ia impor |
-
-**Correção de dimensionamento:** as 13 que decidem sem esperar os papéis **não estão quebradas hoje**, ao contrário do que a redação anterior deste item sugeria. O motivo é preciso: no refresh de token o `fetchUserRoles` só reescreve `role` **depois** de responder, então o papel anterior sobrevive à janela e `isAdmin` continua true. A janela com `role` vazio só existe na transição do login, e ali a página montada é a `/auth`, que espera `rolesLoaded`. É **fragilidade latente** — viraria bug real no dia em que alguém limpar os papéis antes do refetch, ou fizer o login cair direto numa página de módulo. O wrapper fecha isso de uma vez.
-
-### Dois defeitos de verdade, achados pela bateria — um fechado, um aberto
-
-**1. ✅ `/perfil` não tinha guard nenhum — CORRIGIDO em 2026-07-26.** `Perfil.tsx` lia `user` do contexto e renderizava, sem `useEffect` de redirecionamento e sem `<Navigate>`. Era a **terceira ocorrência da mesma omissão**, e a mais completa das três: as outras duas pelo menos mandavam o deslogado para `/auth`. Nunca foi vazamento — nada era lido do banco e salvar falhava no `auth.updateUser`; era porta aberta na tela.
-
-> **Conferido antes de mexer:** a hipótese de que fosse deliberado, para o cadastro público, **não se sustenta** — o botão "Novo Colaborador" do `/auth` leva a `/cadastro-publico` (rota separada, sem guard de propósito), e `/perfil` só é alcançável pelo dropdown "Alterar Cadastro" do header, que exige login.
->
-> **Decisão de alcance:** restrita a **gestão**; colaborador puro vai para `/perfil-colaborador`, que é a página dele — evita duas telas concorrentes de "meus dados". Quem tem `role === 'user'` entra, de propósito: tem conta no Auth e o hub já o aceita.
->
-> **Um defeito adjacente saiu no mesmo commit:** o campo Nome Completo era inicializado no `useState`, que roda antes de a sessão resolver — num reload direto em `/perfil` aparecia **vazio** para quem tinha nome salvo, e salvar assim **apagava o nome**. Sincronizado por `user?.id`, como `PerfilColaborador.tsx:141` já fazia.
-
-**2. ⚠️ `/dashboard` prende o colaborador puro em tela branca — ABERTO.** O guard usa `role !== null` como proxy de `rolesLoaded` (`Dashboard.tsx:26`) para não expulsar admin na janela — a intenção é boa, e é o único lugar que se protegeu disso sem usar `rolesLoaded`. Mas o colaborador puro tem justamente `role === null`: ele cai para sempre no ramo "ainda não sei o papel", nunca é mandado ao hub, e o `return null` de baixo entrega **página vazia**. Conserto: trocar o proxy pelo `rolesLoaded` de verdade — o que o wrapper já vai fazer.
+**Conserto:** transformar os dois efeitos em `useQuery`. O ruído no stderr some junto, e é o sinal de que deu certo.
 
 ---
 

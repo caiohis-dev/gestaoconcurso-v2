@@ -37,17 +37,7 @@ export default function UnidadesProva() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [unidadeToDelete, setUnidadeToDelete] = useState<UnidadeProva | null>(null);
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      navigate("/auth");
-    }
-  }, [user, authLoading, navigate]);
 
-  useEffect(() => {
-    if (!authLoading && user && !isAdmin) {
-      navigate("/");
-    }
-  }, [user, authLoading, isAdmin, navigate]);
 
   if (authLoading || isLoading) {
     return (
@@ -59,9 +49,6 @@ export default function UnidadesProva() {
     );
   }
 
-  if (!user || !isAdmin) {
-    return null;
-  }
 
   const handleCreate = () => {
     setEditingUnidade(null);

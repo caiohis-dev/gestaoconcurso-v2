@@ -423,10 +423,7 @@ describe("ColaboradorDialog (interação)", () => {
       await user.click(screen.getByRole("button", { name: "Cadastrar" }));
 
       expect(await screen.findByText(/Erro ao cadastrar/)).toBeInTheDocument();
-      // `hidden: true` é necessário — ver o teste ⚠️ DEFEITO logo abaixo.
-      expect(
-        screen.getByRole("button", { name: "Fechar", hidden: true }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Fechar" })).toBeInTheDocument();
     });
 
     it("o aviso é acessível: dentro do diálogo, anunciável e focável", async () => {

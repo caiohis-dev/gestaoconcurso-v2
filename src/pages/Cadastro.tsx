@@ -9,14 +9,8 @@ export default function Cadastro() {
   const navigate = useNavigate();
   const [dialogOpen, setDialogOpen] = useState(true);
 
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate('/auth');
-    } else if (!loading && !isAdmin && !isCoordenador) {
-      navigate('/');
-    }
-  }, [user, loading, isAdmin, isCoordenador, navigate]);
-
+  // NÃO é guard: fechar o diálogo devolve a pessoa à lista. A autorização mora no
+  // RequireAcesso da rota, no App.tsx.
   useEffect(() => {
     if (!dialogOpen) {
       navigate('/colaboradores');

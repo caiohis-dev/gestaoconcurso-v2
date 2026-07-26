@@ -28,6 +28,7 @@ import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import { render, screen, waitFor } from "@testing-library/react";
 import { createTestQueryClient } from "@/test/utils";
 import { resetSupabaseMock, setTableResult, setRpcResult } from "@/test/supabase-mock";
+import { RequireAcesso, type PapelExigido } from "@/components/RequireAcesso";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -54,6 +55,7 @@ vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => auth.atual,
   AuthProvider: ({ children }: { children: ReactNode }) => children,
 }));
+
 
 // ---------------------------------------------------------------------------
 // Banco vazio, mas não nulo
@@ -190,8 +192,13 @@ interface Pagina {
   /** A URL concreta visitada no teste. */
   rota: string;
   mod: () => Promise<{ default: ComponentType }>;
-  /** Papéis que a página deve DEIXAR entrar. */
+  /** Papéis que a página deve DEIXAR entrar (o resultado observável). */
   permitidos: Papel[];
+  /**
+   * O que o `App.tsx` declara no `RequireAcesso` daquela rota. `undefined` = a página
+   * guarda a si mesma (hub, /perfil, /perfil-colaborador — nenhuma é página de módulo).
+   */
+  exige?: PapelExigido[];
   /**
    * Destino esperado quando ele não é o padrão da recusa (`/auth` para deslogado, `/`
    * para papel insuficiente). Cada entrada aqui carrega o porquê no comentário.
@@ -210,7 +217,20 @@ async function montar(pagina: Pagina, st: unknown): Promise<void> {
       >
         <Sonda />
         <Routes>
-          <Route path={pagina.path} element={<Componente />} />
+          <Route
+            path={pagina.path}
+            element={
+              // Compor aqui do mesmo jeito que o `App.tsx` é o que faz esta bateria
+              // continuar sendo a especificação depois que os guards saíram das páginas.
+              pagina.exige ? (
+                <RequireAcesso papeis={pagina.exige}>
+                  <Componente />
+                </RequireAcesso>
+              ) : (
+                <Componente />
+              )
+            }
+          />
           {/* Rota-sentinela: existe só para o router ter onde parar. O que se afirma é o
               pathname, não o conteúdo dela. */}
           <Route path="*" element={<span>SENTINELA</span>} />
@@ -280,21 +300,15 @@ const PAGINAS: Pagina[] = [
     path: "/dashboard",
     rota: "/dashboard",
     mod: () => import("./Dashboard"),
+    exige: ["admin"],
     permitidos: ["admin", "superadmin"],
-    desvios: {
-      // ⚠️ DEFEITO: o colaborador puro NÃO é mandado para o hub — fica em tela branca.
-      // O guard usa `role !== null` como proxy de `rolesLoaded` (Dashboard.tsx:26), e o
-      // colaborador puro tem justamente `role === null`: cai para sempre no ramo "ainda
-      // não sei o papel", e o `return null` de baixo entrega página vazia. Registrado no
-      // backlog junto do guard ausente do `Perfil`.
-      colaborador: "/dashboard",
-    },
   },
   {
     nome: "Colaboradores",
     path: "/colaboradores",
     rota: "/colaboradores",
     mod: () => import("./Colaboradores"),
+    exige: ["admin", "coordenador"],
     permitidos: ["coordenador", "admin", "superadmin"],
   },
   {
@@ -302,6 +316,7 @@ const PAGINAS: Pagina[] = [
     path: "/provas",
     rota: "/provas",
     mod: () => import("./Provas"),
+    exige: ["admin", "coordenador"],
     permitidos: ["coordenador", "admin", "superadmin"],
   },
   {
@@ -309,6 +324,7 @@ const PAGINAS: Pagina[] = [
     path: "/editais",
     rota: "/editais",
     mod: () => import("./Editais"),
+    exige: ["admin"],
     // Módulo à parte, só admin: editais são a base sobre a qual as provas são criadas.
     permitidos: ["admin", "superadmin"],
   },
@@ -317,6 +333,7 @@ const PAGINAS: Pagina[] = [
     path: "/unidades-prova",
     rota: "/unidades-prova",
     mod: () => import("./UnidadesProva"),
+    exige: ["admin"],
     permitidos: ["admin", "superadmin"],
   },
   {
@@ -324,6 +341,7 @@ const PAGINAS: Pagina[] = [
     path: "/salas-prova/:unidadeId",
     rota: "/salas-prova/u-1",
     mod: () => import("./SalasProva"),
+    exige: ["admin"],
     permitidos: ["admin", "superadmin"],
   },
   {
@@ -331,6 +349,7 @@ const PAGINAS: Pagina[] = [
     path: "/gerenciar-prova/:provaId",
     rota: "/gerenciar-prova/p-1",
     mod: () => import("./GerenciarProva"),
+    exige: ["admin", "coordenador"],
     permitidos: ["coordenador", "admin", "superadmin"],
   },
   {
@@ -338,6 +357,7 @@ const PAGINAS: Pagina[] = [
     path: "/gerenciar-salas-distribuidas/:provaId/:unidadeId",
     rota: "/gerenciar-salas-distribuidas/p-1/u-1",
     mod: () => import("./GerenciarSalasDistribuidas"),
+    exige: ["admin"],
     permitidos: ["admin", "superadmin"],
   },
   {
@@ -345,6 +365,7 @@ const PAGINAS: Pagina[] = [
     path: "/gerenciar-colaboradores-prova/:provaUnidadeId",
     rota: "/gerenciar-colaboradores-prova/pu-1",
     mod: () => import("./GerenciarColaboradoresProva"),
+    exige: ["admin", "coordenador"],
     permitidos: ["coordenador", "admin", "superadmin"],
   },
   {
@@ -352,6 +373,7 @@ const PAGINAS: Pagina[] = [
     path: "/ocorrencias-prova/:provaId",
     rota: "/ocorrencias-prova/p-1",
     mod: () => import("./OcorrenciasProva"),
+    exige: ["admin", "coordenador"],
     permitidos: ["coordenador", "admin", "superadmin"],
   },
   {
@@ -359,6 +381,7 @@ const PAGINAS: Pagina[] = [
     path: "/funcoes-colaboradores",
     rota: "/funcoes-colaboradores",
     mod: () => import("./FuncoesColaboradores"),
+    exige: ["admin"],
     // Só admin, por decisão de 2026-07-25: cadastro de funções é gestão, e o coordenador
     // já vê os nomes das funções na tela de alocação.
     permitidos: ["admin", "superadmin"],
@@ -368,6 +391,7 @@ const PAGINAS: Pagina[] = [
     path: "/documentos-impressao/:provaId",
     rota: "/documentos-impressao/p-1",
     mod: () => import("./DocumentosImpressao"),
+    exige: ["admin"],
     permitidos: ["admin", "superadmin"],
   },
   {
@@ -375,6 +399,7 @@ const PAGINAS: Pagina[] = [
     path: "/painel-dados-colaboradores/:provaId",
     rota: "/painel-dados-colaboradores/p-1",
     mod: () => import("./PainelDadosColaboradores"),
+    exige: ["admin"],
     permitidos: ["admin", "superadmin"],
   },
   {
@@ -382,6 +407,7 @@ const PAGINAS: Pagina[] = [
     path: "/gerenciar-usuarios",
     rota: "/gerenciar-usuarios",
     mod: () => import("./GerenciarUsuarios"),
+    exige: ["superadmin"],
     // Config geral, não módulo: criar conta e dar papel é privilégio de superadmin. O
     // admin é recusado aqui — é a única página em que isso acontece.
     permitidos: ["superadmin"],
@@ -391,6 +417,7 @@ const PAGINAS: Pagina[] = [
     path: "/cadastro",
     rota: "/cadastro",
     mod: () => import("./Cadastro"),
+    exige: ["admin", "coordenador"],
     permitidos: ["coordenador", "admin", "superadmin"],
   },
   {
@@ -398,6 +425,7 @@ const PAGINAS: Pagina[] = [
     path: "/cadastro-lote",
     rota: "/cadastro-lote",
     mod: () => import("./CadastroLote"),
+    exige: ["admin", "coordenador"],
     permitidos: ["coordenador", "admin", "superadmin"],
   },
   {
@@ -460,6 +488,17 @@ describe("guards de página — matriz papel × rota", () => {
       expect(rotaAtual()).not.toBe(LOGIN);
       // O hub só é destino de RECUSA; para a página que mora nele, ficar é o certo.
       if (pagina.rota !== HUB) expect(rotaAtual()).not.toBe(HUB);
+      // Esperar as queries assentarem antes de encerrar. Sem isto, o que ainda estava em
+      // voo atualiza estado depois do teste e vira aviso de `act` (armadilha 3): ruído
+      // que esconde problema real na suíte seguinte. Só a página maior do repo (935 l.)
+      // chegava a produzi-lo, mas a espera é barata e vale para todas.
+      // ⚠️ RUÍDO CONHECIDO, 3 avisos de `act` nesta página e só nela.
+      // `GerenciarColaboradoresProva` tem dois `useEffect` que chamam
+      // `supabase...then()` CRU (linhas ~116 e ~132), fora do React Query — o resto do
+      // repo não faz isso. O estado que eles atualizam aterrissa fora de qualquer
+      // `act`, e nem esperar as queries, nem drenar macrotarefa, nem desmontar a árvore
+      // silenciam: as três coisas foram tentadas. A causa é a página, não o teste.
+      // Anotado no backlog; some quando aqueles efeitos virarem query.
     });
   });
 });
@@ -468,98 +507,59 @@ describe("guards de página — matriz papel × rota", () => {
 // As duas dimensões que o RequireModulo tem de herdar
 // ---------------------------------------------------------------------------
 
-describe("⚠️ ATENÇÃO — a janela em que o usuário existe e os papéis ainda não", () => {
+describe("a janela em que o usuário existe e os papéis ainda não", () => {
   beforeEach(cenarioLimpo);
 
   /**
    * O estado: `user` setado, `loading` já false, `rolesLoaded` false, `role` ainda null.
-   * É real — `useAuth.tsx:88` zera `rolesLoaded` a cada `applySession` — e acontece na
-   * transição do login, quando o `getSession()` já resolveu (deixando `loading` false) e
-   * o `SIGNED_IN` chega depois.
+   * É real — `useAuth.tsx:88` zera `rolesLoaded` a cada `applySession`.
    *
-   * POR QUE ISTO NÃO ESTÁ MARCADO COMO DEFEITO: num refresh de token o `role` anterior é
-   * PRESERVADO (o `fetchUserRoles` só reescreve `role` depois de responder), então
-   * `isAdmin` continua true e ninguém é expulso. A janela com `role` vazio só ocorre na
-   * transição do login — e ali a página montada é a `/auth`, que espera `rolesLoaded`.
-   * Ou seja: hoje é FRAGILIDADE LATENTE, não bug observável. Viraria bug real no dia em
-   * que alguém limpar os papéis antes do refetch, ou fizer o login cair direto numa
-   * página de módulo.
+   * **Antes do `RequireAcesso` esta seção era `⚠️ ATENÇÃO`:** 13 páginas decidiam sobre
+   * um conjunto de papéis VAZIO e mandavam para o hub, e só quatro esperavam. Não chegava
+   * a expulsar ninguém — no refresh de token o `role` anterior sobrevive ao refetch —,
+   * mas era fragilidade latente, e virava bug real no dia em que alguém limpasse os
+   * papéis antes do refetch ou fizesse o login cair direto numa página de módulo.
    *
-   * O valor deste teste é ser a especificação do `RequireModulo`: o wrapper precisa
-   * ESPERAR, e quando ele existir a lista de "quem espera" vira "todas as páginas".
+   * Com a guarda única, **nenhuma página decide sem os papéis**. Deixou de ser ressalva e
+   * virou invariante — é o principal ganho da centralização, junto com o `isLoggingOut`.
    */
   const janela = () => estado({ user: USUARIO, rolesLoaded: false, role: null });
 
-  /** Espera no spinner — o comportamento correto, e o mais fácil de verificar. */
-  const ESPERAM_NO_SPINNER = [
-    "Inicio (hub)",
-    "Colaboradores",
-    "FuncoesColaboradores",
-    "PerfilColaborador",
-    "Perfil",
-  ];
-
-  const decidemNaJanela = PAGINAS.filter(
-    (p) => !ESPERAM_NO_SPINNER.includes(p.nome) && p.nome !== "Dashboard",
-  );
-
-  it.each(PAGINAS.filter((p) => ESPERAM_NO_SPINNER.includes(p.nome)))(
-    "$nome espera os papéis chegarem",
-    async (pagina) => {
-      await montar(pagina, janela());
-      // Asserção positiva: o spinner na tela É a evidência de que a página está
-      // esperando, e é mais forte que "não navegou".
-      await waitFor(() => expect(spinnerNaTela()).toBe(true), ESPERA);
-      expect(rotaAtual()).toBe(pagina.rota);
-    },
-  );
-
-  it.each(decidemNaJanela)("$nome decide sem os papéis e manda para o hub", async (pagina) => {
+  it.each(PAGINAS)("$nome espera, em vez de decidir", async (pagina) => {
     await montar(pagina, janela());
-    await esperarRota(HUB);
+    // O spinner na tela é a evidência positiva de que está esperando — mais forte que
+    // "não navegou". A única exceção é o /perfil, que resolve o mesmo estado sem spinner.
+    if (pagina.nome !== "Perfil") {
+      await waitFor(() => expect(spinnerNaTela()).toBe(true), ESPERA);
+    }
+    expect(rotaAtual()).toBe(pagina.rota);
   });
 
-  it("Dashboard não navega, mas entrega tela vazia", async () => {
-    // Terceiro comportamento, e o menos útil dos três: o `role !== null` do guard impede
-    // o bounce (bom) e ao mesmo tempo prende o colaborador puro numa página em branco
-    // (ver o desvio registrado na matriz).
-    const dashboard = PAGINAS.find((p) => p.nome === "Dashboard")!;
-    await montar(dashboard, janela());
-    expect(rotaAtual()).toBe(dashboard.rota);
-    expect(spinnerNaTela()).toBe(false);
-    expect(screen.queryByRole("heading")).not.toBeInTheDocument();
-  });
-
-  it("as duas páginas consertadas em 2026-07-25 estão entre as que esperam", () => {
-    // Regressão: elas ganharam o `rolesLoaded` justamente porque decidir na janela
-    // expulsava coordenador legítimo. Não deixe "simplificar" isso de volta.
-    expect(ESPERAM_NO_SPINNER).toContain("Colaboradores");
-    expect(ESPERAM_NO_SPINNER).toContain("FuncoesColaboradores");
+  it("as duas páginas consertadas em 2026-07-25 seguem esperando", () => {
+    // Elas ganharam o `rolesLoaded` à mão porque decidir na janela expulsava coordenador
+    // legítimo. Agora a regra vale para todas, mas o registro fica: foi o que motivou.
+    const nomes = PAGINAS.map((p) => p.nome);
+    expect(nomes).toContain("Colaboradores");
+    expect(nomes).toContain("FuncoesColaboradores");
   });
 });
 
-describe("logout em curso não deve disparar o bounce por papel", () => {
+describe("logout em curso não dispara redirecionamento por conta própria", () => {
   beforeEach(cenarioLimpo);
 
   /**
    * `signOut` limpa `user` ANTES de navegar (`useAuth.tsx:157-163`) e só depois faz
    * `window.location.href = '/auth'`. Entre as duas coisas, um guard que reaja a `!user`
-   * navega por conta própria.
+   * navega sozinho.
    *
-   * Três páginas respeitam `isLoggingOut` e ficam quietas; as demais mandam para `/auth`.
-   * Isso é REDUNDANTE, não errado — o destino é o mesmo que o `signOut` já ia impor. Fica
-   * registrado porque o `RequireModulo` precisa herdar o `isLoggingOut`: senão o bounce
-   * por PAPEL, que não é inofensivo, volta a acontecer.
+   * Antes eram três páginas respeitando `isLoggingOut` e quinze mandando para `/auth` —
+   * inofensivo (o destino era o mesmo), mas inconsistente. A guarda única fecha isso: as
+   * de gestão ficam todas quietas. As três que guardam a si mesmas seguem com a regra
+   * delas.
    */
-  const RESPEITAM_LOGGING_OUT = [
-    "Inicio (hub)",
-    "Colaboradores",
-    "FuncoesColaboradores",
-    "Perfil",
-  ];
   const saindo = () => estado({ user: null, isLoggingOut: true });
 
-  it.each(PAGINAS.filter((p) => RESPEITAM_LOGGING_OUT.includes(p.nome)))(
+  it.each(PAGINAS.filter((p) => p.exige || p.nome !== "PerfilColaborador"))(
     "$nome fica quieta",
     async (pagina) => {
       await montar(pagina, saindo());
@@ -567,13 +567,11 @@ describe("logout em curso não deve disparar o bounce por papel", () => {
     },
   );
 
-  it.each(PAGINAS.filter((p) => !RESPEITAM_LOGGING_OUT.includes(p.nome)))(
-    "$nome manda para o login (redundante, mas inofensivo)",
-    async (pagina) => {
-      await montar(pagina, saindo());
-      await esperarRota(LOGIN);
-    },
-  );
+  it("PerfilColaborador segue mandando ao login — guarda própria, não é página de módulo", async () => {
+    const pagina = PAGINAS.find((p) => p.nome === "PerfilColaborador")!;
+    await montar(pagina, saindo());
+    await esperarRota(LOGIN);
+  });
 });
 
 // ---------------------------------------------------------------------------

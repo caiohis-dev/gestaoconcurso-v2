@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Navigate, useParams, Link } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useProvas } from "@/hooks/useProvas";
 import { useUnidadesProva } from "@/hooks/useUnidadesProva";
@@ -410,14 +410,6 @@ export default function GerenciarColaboradoresProva() {
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
-  }
-
-  if (!user) {
-    return <Navigate to="/auth" replace />;
-  }
-
-  if (!isAdmin && !isCoordenador) {
-    return <Navigate to="/" replace />;
   }
 
   if (unidadeLock.isLoading) {

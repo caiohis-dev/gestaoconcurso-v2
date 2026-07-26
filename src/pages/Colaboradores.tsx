@@ -10,20 +10,6 @@ export default function Colaboradores() {
   const { user, loading, rolesLoaded, isAdmin, isCoordenador, isLoggingOut } = useAuth();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    if (isLoggingOut) return;
-    // Esperar `rolesLoaded`, não só `loading`: um refresh de token reabre a janela em
-    // que o usuário já existe e os papéis ainda não — decidir ali expulsaria coordenador.
-    if (loading || !rolesLoaded) return;
-    if (!user) {
-      navigate("/auth", { replace: true });
-    } else if (!isAdmin && !isCoordenador) {
-      // O módulo Aplicação de Provas é de gestão (ver src/lib/modulos.ts). A RLS já
-      // devolve lista vazia a quem não é admin/coordenador; este guard é a barreira
-      // de UX que faltava aqui e que as outras páginas do módulo já tinham.
-      navigate("/", { replace: true });
-    }
-  }, [user, loading, rolesLoaded, isAdmin, isCoordenador, navigate, isLoggingOut]);
 
 
   if (loading || !rolesLoaded) {
@@ -34,9 +20,6 @@ export default function Colaboradores() {
     );
   }
 
-  if (!user || (!isAdmin && !isCoordenador)) {
-    return null;
-  }
 
   return (
     <Layout>

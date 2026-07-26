@@ -50,17 +50,7 @@ export default function SalasProva() {
 
   const unidade = unidades.find((u) => u.id === unidadeId);
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      navigate("/auth");
-    }
-  }, [user, authLoading, navigate]);
 
-  useEffect(() => {
-    if (!authLoading && user && !isAdmin) {
-      navigate("/");
-    }
-  }, [user, authLoading, isAdmin, navigate]);
 
   if (authLoading || isLoading) {
     return (
@@ -72,9 +62,6 @@ export default function SalasProva() {
     );
   }
 
-  if (!user || !isAdmin) {
-    return null;
-  }
 
   if (!unidadeId) {
     navigate("/unidades-prova");

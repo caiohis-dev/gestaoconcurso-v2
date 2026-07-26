@@ -136,13 +136,6 @@ export default function CadastroLote() {
   const pausadoRef = useRef(false);
   const paradoRef = useRef(false);
 
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate('/auth');
-    } else if (!loading && !isAdmin && !isCoordenador) {
-      navigate('/');
-    }
-  }, [user, loading, isAdmin, isCoordenador, navigate]);
 
   useEffect(() => {
     if (logRef.current) {

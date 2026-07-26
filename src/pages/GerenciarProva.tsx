@@ -93,14 +93,6 @@ export default function GerenciarProva() {
     );
   }
 
-  if (!user) {
-    return <Navigate to="/auth" replace />;
-  }
-
-  if (!isAdmin && !isCoordenador) {
-    return <Navigate to="/" replace />;
-  }
-
   const prova = provas.find((p) => p.id === provaId);
 
   if (!isLoadingProvas && !prova) {

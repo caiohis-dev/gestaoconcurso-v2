@@ -1,5 +1,4 @@
 import { useState, useMemo } from "react";
-import { Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useProvas, Prova, ProvaInsert, ProvaUpdate } from "@/hooks/useProvas";
@@ -63,14 +62,6 @@ export default function Provas() {
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
-  }
-
-  if (!user) {
-    return <Navigate to="/auth" replace />;
-  }
-
-  if (!isAdmin && !isCoordenador) {
-    return <Navigate to="/" replace />;
   }
 
   const handleCreate = () => {

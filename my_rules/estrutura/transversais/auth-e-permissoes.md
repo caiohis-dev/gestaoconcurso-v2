@@ -145,23 +145,28 @@ A tela de entrada por módulos (o mecanismo em [`arquitetura-geral.md`](./arquit
 
 **Reforço — hub e `navLinks` são UX, não autorização.** Esconder um card ou um link não protege rota nenhuma; quem barra é RLS + as checagens das Edge Functions + os guards de página (cada página de gestão tem o seu, padrão `Dashboard.tsx`). Centralizar esses guards num `RequireModulo` lido do registro é melhoria pendente (backlog), deliberadamente fora do tema que criou o hub.
 
-### A matriz papel × rota tem versão executável (desde 2026-07-26)
+### Uma guarda só: `RequireAcesso` (desde 2026-07-26)
 
-**`src/pages/guards.test.tsx`** afirma, para 19 páginas × 5 papéis, para onde cada guard manda quem não pode entrar. Antes dela as páginas tinham cobertura zero, e foi por isso que duas ficaram meses aceitando qualquer conta autenticada. **Ao mexer em guard, é lá que se atualiza a regra** — e ela é a especificação que o futuro `RequireModulo` tem de preservar.
+As páginas de gestão **não guardam mais a si mesmas**. A autorização de rota mora em `src/components/RequireAcesso.tsx`, aplicado no `App.tsx`:
 
-Dois padrões de guard convivem hoje, e a diferença é observável:
+```tsx
+<Route path="/dashboard" element={<RequireAcesso papeis={["admin"]}><Dashboard /></RequireAcesso>} />
+```
 
-| Estilo | Páginas | Comportamento |
-|---|---|---|
-| `useEffect` + `navigate`, esperando **`rolesLoaded`** e **`isLoggingOut`** | `Inicio`, `Colaboradores`, `FuncoesColaboradores`, `Perfil` (+ `PerfilColaborador`, que espera `rolesLoaded`) | fica no spinner até os papéis chegarem |
-| `<Navigate>` em tempo de render, olhando só `authLoading` | as outras 13 | decide na hora; com os papéis ainda vazios, manda para `/` |
+**O que a guarda faz, e por que é isto que valia centralizar:** os três bugs que apareceram eram todos de MECÂNICA, nunca de política — `Colaboradores` e `FuncoesColaboradores` mandavam o deslogado ao login e paravam aí, `/perfil` não tinha guard nenhum, e o `Dashboard` usava `role !== null` como proxy de `rolesLoaded` e prendia o colaborador puro numa tela branca. Então a engrenagem é que ficou num lugar só: esperar `rolesLoaded`, respeitar `isLoggingOut`, deslogado para `/auth`, papel insuficiente para o hub.
 
-**Isso ainda não é bug**, e o motivo é preciso: num refresh de token o `fetchUserRoles` só reescreve `role` **depois** de responder, então o papel anterior sobrevive à janela e ninguém é expulso. A janela com `role` vazio só existe na transição do login, e ali a página montada é a `/auth`, que espera `rolesLoaded`. É fragilidade latente — viraria bug real se alguém limpasse os papéis antes do refetch, ou fizesse o login cair direto numa página de módulo.
+⚠️ **Os papéis continuam na tabela de rotas, e NÃO vêm do registro de módulos** — ao contrário do que o backlog propunha. O registro conhece papel por **módulo**, e as rotas são mais finas: `aplicacao-provas` admite `coordenador`, mas `/dashboard`, `/unidades-prova`, `/salas-prova`, `/gerenciar-salas-distribuidas`, `/funcoes-colaboradores`, `/documentos-impressao` e `/painel-dados-colaboradores` são **só admin**. Ler os papéis do registro daria a essas sete um acesso que nunca tiveram — afrouxamento, não refatoração. E `modulos.ts` diz no cabeçalho que segurança não mora lá: ele é UX.
 
-**Duas exceções que eram defeito de verdade** — uma fechada, uma aberta:
+**Duas ressalvas viraram invariante:**
 
-- ✅ **`/perfil` não tinha guard nenhum** — renderizava inteira para visitante deslogado. Era a **terceira ocorrência** da mesma omissão, e a mais completa: as outras duas ao menos mandavam o deslogado para `/auth`. **Corrigido em 2026-07-26** com o idiom das outras (espera `rolesLoaded`, respeita `isLoggingOut`). Não era vazamento — nada era lido do banco, e salvar falhava no `auth.updateUser`.
-- ⚠️ **`/dashboard` prende o colaborador puro em tela branca** — o guard usa `role !== null` como proxy de `rolesLoaded`, e o colaborador puro tem `role === null`: nunca é mandado ao hub, e o `return null` entrega página vazia. **Segue aberto** no backlog, com teste marcado `⚠️ DEFEITO`; sai junto do `RequireModulo`, que já vai trocar aquele proxy.
+| Antes | Agora |
+|---|---|
+| 13 páginas decidiam sem esperar `rolesLoaded`; 4 esperavam | **nenhuma** decide sem os papéis |
+| 3 páginas respeitavam `isLoggingOut`; 15 mandavam ao login | as de gestão ficam **todas** quietas |
+
+**Três rotas seguem com guarda própria, de propósito**, porque não são páginas de módulo e cada uma decide diferente: `/` (o hub, que roteia por papel), `/perfil` e `/perfil-colaborador`.
+
+🧪 **A especificação é `src/pages/guards.test.tsx`** — 137 testes, matriz 19 páginas × 5 papéis. O harness compõe rota + wrapper como o `App.tsx` faz; se um teste dali quebrar numa refatoração de autorização, a decisão mudou de comportamento.
 
 ### Duas formas distintas de conceder acesso de coordenador — atenção ao mexer aqui
 

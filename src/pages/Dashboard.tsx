@@ -20,15 +20,6 @@ export default function Dashboard() {
   const { user, loading, isAdmin, role } = useAuth();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate("/auth");
-    } else if (!loading && user && role !== null && !isAdmin) {
-      // Wait until role is loaded before bouncing non-admins, otherwise we'd
-      // redirect admins while their role is still being fetched.
-      navigate("/");
-    }
-  }, [user, loading, isAdmin, role, navigate]);
 
   // Fetch total provas
   const { data: totalProvas = 0, isLoading: loadingProvas } = useQuery({
@@ -150,9 +141,6 @@ export default function Dashboard() {
     );
   }
 
-  if (!user || !isAdmin) {
-    return null;
-  }
 
   return (
     <Layout>

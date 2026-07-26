@@ -73,7 +73,9 @@ O mock tem **teste próprio** (`supabase-mock.test.ts`): é infraestrutura de qu
 
 **2. Uma `<Sonda>` com `useLocation` dentro do `MemoryRouter`, e uma rota `*` sentinela.** O que se afirma é o `pathname` em que o router parou. Assim tanto `<Navigate>` em tempo de render quanto `useEffect` + `navigate` são medidos do mesmo jeito, sem espiar implementação.
 
-**3. Toda tabela e RPC do app devolvem lista vazia.** O default do mock é `{ data: null }`, e várias páginas chamam `.some()`/`.map()` sem coalescer — o teste mediria o TypeError, não a autorização.
+**3. A bateria compõe como o `App.tsx` compõe.** Desde a centralização dos guards, cada entrada da matriz declara os papéis que a rota exige e o harness embrulha a página no `RequireAcesso` — senão a bateria testaria uma composição que não existe. É o que a manteve como especificação depois de os guards saírem das páginas.
+
+**4. Toda tabela e RPC do app devolvem lista vazia.** O default do mock é `{ data: null }`, e várias páginas chamam `.some()`/`.map()` sem coalescer — o teste mediria o TypeError, não a autorização.
 
 ## ⚠️ As sete armadilhas que já custaram tempo aqui
 
@@ -137,11 +139,10 @@ Onde um teste afirma comportamento **errado** de propósito, ele leva `⚠️ DE
 
 O ciclo já se fechou uma vez, e vale como modelo: dois testes de `useProvaLock` afirmavam que `isLoading` ficava preso em `true`, porque ficava; ao consertar o hook em 2026-07-25 eles quebraram, como previsto, e foram reescritos como **teste de regressão** — mesma montagem, asserção invertida, e o comentário passou de "defeito conhecido" para "isto já quebrou uma vez, não deixe voltar". Preserve esse comentário: é ele que impede alguém de "simplificar" o `else` que resolve o estado.
 
-**Há hoje duas marcas `⚠️ DEFEITO`**, e todas têm item no `backlog.md` — a regra é essa: **marca sem item vira defeito aceito por esquecimento**, então abra os dois na mesma unidade de trabalho.
+**Há hoje UMA marca `⚠️ DEFEITO`**, e todas têm item no `backlog.md` — a regra é essa: **marca sem item vira defeito aceito por esquecimento**, então abra os dois na mesma unidade de trabalho.
 
 | Onde | O que o teste afirma, sabendo que está errado |
 |---|---|
-| `guards.test.tsx` → matriz do `Dashboard` | colaborador puro fica em tela branca em vez de ir ao hub |
 | `useUsers` | `addCoordenadorAccess` fabrica uma alocação falsa com um colaborador arbitrário |
 
 **O ciclo se fechou três vezes em 2026-07-26, e é a confirmação do método** — a marca serve para *ser derrubada*:
@@ -157,6 +158,7 @@ O ciclo já se fechou uma vez, e vale como modelo: dois testes de `useProvaLock`
 | `ColaboradorDialog` (CPF incompleto virava outro CPF) | validação de DV **antes** do `padStart` | recusa incompleto, DV errado, repetidos — e o legado segue editável |
 | `ColaboradorDialog` (aviso `aria-hidden`) | o aviso passou para **dentro** do `DialogContent` | acessível sem `hidden: true`, e o hack de `z-[60]` sumiu |
 | `useOcorrencias` (lista vazia devolvia a prova inteira) | `undefined` e `[]` deixaram de cair no mesmo ramo | zero linhas com `[]`, sem restrição com `undefined` |
+| `Dashboard` (colaborador puro em tela branca) | o `RequireAcesso` substituiu o proxy `role !== null` | ele passou a ser recusado como em qualquer outra página |
 | `useUsers` (revogar coordenador em dois passos) | virou a RPC transacional `revogar_coordenador` | três regressões: vai pela RPC, falha não deixa estado parcial, e outros papéis seguem no DELETE direto |
 
 Existe também a marca mais fraca **`⚠️ ATENÇÃO`**, para quando o comportamento **não é defeito**, mas morde quem depende dele. Não abre item de backlog; existe para quem for mexer ali não achar que pode simplificar aquilo. Cinco casos: `useCoordenadorUnidades` (lista vazia indistinguível de "ainda carregando" sem olhar `isLoading`); o bloco da **janela do `rolesLoaded`** em `guards.test.tsx` — 13 páginas decidem sem esperar os papéis, o que hoje não expulsa ninguém só porque o `role` anterior sobrevive ao refetch; o `PasswordConfirmDialog`, que **só zera senha e erro pelo Cancelar/Esc**, não quando o pai fecha via prop `open` (nenhuma das 5 páginas faz isso hoje); e o `MetaColaboradoresDialog`, em que **meta de função que perdeu o valor fica órfã** — o upsert nunca apaga, então a linha continua no banco sem aparecer na tela; e o `useSalasProva`, cujo esquema `andar × 100 + sequência` comporta **99 salas por andar** e invade o andar seguinte em silêncio ao estourar.

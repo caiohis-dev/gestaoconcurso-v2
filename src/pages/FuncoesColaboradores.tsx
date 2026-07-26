@@ -44,20 +44,6 @@ export default function FuncoesColaboradores() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [funcaoToDelete, setFuncaoToDelete] = useState<FuncaoColaborador | null>(null);
 
-  useEffect(() => {
-    if (isLoggingOut) return;
-    // Esperar `rolesLoaded`, não só `authLoading`: cada refresh de token reabre a
-    // janela em que o usuário já existe e os papéis ainda não.
-    if (authLoading || !rolesLoaded) return;
-    if (!user) {
-      navigate("/auth", { replace: true });
-    } else if (!isAdmin) {
-      // `isAdmin` inclui superadmin (ver useAuth). Antes a página só checava login, e
-      // `isAdmin` apenas escondia as ações de escrita — qualquer conta autenticada via
-      // a lista de funções pela URL.
-      navigate("/", { replace: true });
-    }
-  }, [user, authLoading, rolesLoaded, isAdmin, navigate, isLoggingOut]);
 
   if (authLoading || !rolesLoaded || isLoading || isLoadingAssociacoes) {
     return (
@@ -67,9 +53,6 @@ export default function FuncoesColaboradores() {
     );
   }
 
-  if (!user || !isAdmin) {
-    return null;
-  }
 
   const handleCreate = () => {
     setEditingFuncao(null);

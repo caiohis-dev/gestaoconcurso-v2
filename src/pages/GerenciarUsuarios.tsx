@@ -91,13 +91,6 @@ export default function GerenciarUsuarios() {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate("/auth");
-    } else if (!loading && user && !isSuperAdmin) {
-      navigate("/");
-    }
-  }, [user, loading, isSuperAdmin, navigate]);
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -186,9 +179,6 @@ export default function GerenciarUsuarios() {
     );
   }
 
-  if (!user || !isSuperAdmin) {
-    return null;
-  }
 
   return (
     <Layout>
