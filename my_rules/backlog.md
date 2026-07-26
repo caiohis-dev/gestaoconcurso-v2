@@ -13,7 +13,7 @@ Este item é o marco: quem retomar os testes começa por aqui. **Leia `testes.md
 
 ### Onde paramos (2026-07-26)
 
-**587 testes em 34 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
+**603 testes em 35 arquivos.** Vitest 2 + React Testing Library + jsdom, `npm test`. Infra em `src/test/` (mock do Supabase, helpers de render).
 
 Coberto:
 
@@ -23,7 +23,7 @@ Coberto:
 | Schemas Zod (9) | `ColaboradorDialog`, `EditalDialog`, `FuncaoColaboradorDialog`, `ProvaDialog`, `SalaProvaDialog`, `UnidadeProvaDialog`, `pages/Auth`, `pages/GerenciarUsuarios` |
 | Auth | `useAuth.test.tsx` — hierarquia, `colaborador` paralelo, `rolesLoaded`, `signOut` |
 | Hooks de dados (18) | `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useEditais`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useValoresFuncaoProva`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas` + os dois vizinhos do mesmo arquivo (`useSalasDistribuidasCapacidade`, `useFiscaisSala`), `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers` (+ `useAuth`) |
-| UI de diálogo (6) | `EditalDialog`, `ProvaDialog`, `PasswordConfirmDialog`, `CoordenadoresProvaDialog`, `ValoresFuncaoProvaDialog`, `MetaColaboradoresDialog` (todos `.ui.test.tsx`) |
+| UI de diálogo (7) | `EditalDialog`, `ProvaDialog`, `PasswordConfirmDialog`, `CoordenadoresProvaDialog`, `ValoresFuncaoProvaDialog`, `MetaColaboradoresDialog`, `CorrigirEmailAcessoDialog` (todos `.ui.test.tsx`) |
 | Acessibilidade | `components/dialogos-acessibilidade.test.ts` — invariante estática sobre os 28 diálogos |
 | **Guards de página** | `pages/guards.test.tsx` — **137 testes**: matriz 19 páginas × 5 papéis, a janela do `rolesLoaded` e o `isLoggingOut` |
 | A própria infra | `src/test/supabase-mock.test.ts` — o mock tem teste próprio |
@@ -40,7 +40,7 @@ Faltam: `useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade`, `useBancos`
 
 Os quatro que sobram são de baixo risco — CRUD parecido com o já coberto, e `useBancos` deve ser lista estática. **O valor agora está na camada 2 (diálogos) e na 3 (páginas/guards)**, não em terminar esta.
 
-**2. UI de diálogo — 6 de 12 cobertos.** Sem nenhum teste: `CorrigirEmailAcessoDialog`, `SalaExtraDialog`. Com teste de schema mas sem teste de interação: `ColaboradorDialog`, `FuncaoColaboradorDialog`, `SalaProvaDialog`, `UnidadeProvaDialog`.
+**2. UI de diálogo — 7 de 12 cobertos.** Sem nenhum teste: `SalaExtraDialog`. Com teste de schema mas sem teste de interação: `ColaboradorDialog`, `FuncaoColaboradorDialog`, `SalaProvaDialog`, `UnidadeProvaDialog`.
 
 ✅ **`PasswordConfirmDialog` foi o primeiro, em 2026-07-26** — era o que mais importava: a barreira de confirmação das ações destrutivas (excluir edital e prova, finalizar/reabrir, encerrar ocorrências), com 7 usos em 5 páginas. 16 testes fixam o contrato numa frase: **`onConfirm` só roda depois de a senha ser aceita pelo servidor**, e erro em qualquer etapa **não fecha o diálogo** — porque fechar sem executar pareceria sucesso. Falsificado: neutralizar a checagem de `signInError` derruba o teste da senha incorreta.
 
@@ -50,7 +50,9 @@ Efeito colateral registrado: o `setFunctionResult` do mock passou a aceitar erro
 
 ✅ **`ValoresFuncaoProvaDialog` + `MetaColaboradoresDialog` saíram juntos** (20 + 13 testes), como uma unidade de trabalho só — e a razão é um acoplamento que o teste agora fixa: **a meta só existe para função que já tem valor cadastrado na prova**. São as duas metades da base de pagamento. Renderam três achados: **dois já corrigidos no mesmo dia** (valor negativo e exclusão sem confirmação) e um aberto, no item "Apagar o valor de uma função deixa a meta dela órfã" abaixo.
 
-**As próximas, em ordem:** `CorrigirEmailAcessoDialog` (mexe no `colab_email`, a âncora de identidade), depois os 4 hooks restantes para fechar aquela camada, depois interação nos que já têm schema, e o `ColaboradorDialog` (777 l.) por último, como unidade de trabalho própria.
+✅ **`CorrigirEmailAcessoDialog` saiu em 2026-07-26** (16 testes) — a máquina de três estados da correção de `colab_email`, com foco na recusa do estado C (conta já confirmada: trocar seria trocar o login de alguém). Rendeu mais um achado: a mensagem de erro do servidor é descartada, item próprio abaixo.
+
+**As próximas, em ordem:** os 4 hooks restantes para fechar aquela camada, depois interação nos que já têm schema, e o `ColaboradorDialog` (777 l.) por último, como unidade de trabalho própria.
 
 **3. Páginas: os guards estão cobertos desde 2026-07-26; o comportamento, não.** A aposta do `it.each` sobre a tabela rota × papel se pagou: `pages/guards.test.tsx` cobre **19 páginas × 5 papéis** e é agora a especificação do `RequireModulo` (item abaixo), que deixou de ser arriscado. A bateria foi **falsificada de propósito** antes de ser aceita — quebrar o guard do `Editais` fez cair exatamente os casos "recusa colaborador" e "recusa coordenador", que é a falha que passou meses invisível.
 
@@ -105,6 +107,27 @@ Como documentado em [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/
 - Remover da UI de `/gerenciar-usuarios` a opção de conceder/selecionar o papel de `coordenador`.
 - A concessão de acesso de coordenador passará a ser **exclusiva** do fluxo de alocação da prova (`CoordenadoresProvaDialog`).
 - Com isso, o hook `useUsers.addCoordenadorAccess` (e o workaround da alocação falsa em `colaboradores_prova`) deverá ser excluído do código.
+
+---
+
+## `CorrigirEmailAcessoDialog` descarta a mensagem de erro do servidor
+
+**Status:** pendente — **achado ao escrever teste** em 2026-07-26
+**Área:** Autenticação (ver [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md))
+
+A EF `corrigir-email-acesso` recusa com **status 409/400** e o motivo no corpo — e as mensagens dela são das mais bem escritas do repo ("Esta conta já foi confirmada e está em uso. Trocar o e-mail dela seria trocar o login de alguém…", "Informe o e-mail correto."). Nenhuma chega ao usuário.
+
+Em resposta não-2xx o supabase-js devolve `{ data: null, error: FunctionsHttpError }`, com o corpo em **`error.context.body` como string**. O diálogo faz:
+
+```ts
+if (error || data?.error) setErro(data?.error || 'Não foi possível corrigir o e-mail de acesso.');
+```
+
+`data` é `null`, então cai sempre na genérica. O usuário vê "Não foi possível corrigir o e-mail de acesso." e **não fica sabendo o motivo** — inclusive no caso mais provável, o e-mail já pertencer a outro cadastro. Vale para os dois modos, `consultar` e `corrigir`.
+
+**O conserto já existe no repo:** `CoordenadoresProvaDialog.tsx` desembrulha `context.body` com `JSON.parse` e cai na `error.message` quando não há corpo. Copiar aquele tratamento — de preferência **extraído para um helper compartilhado**, porque este é o segundo diálogo a precisar dele e as outras EFs respondem do mesmo jeito.
+
+Tem teste marcado `⚠️ DEFEITO`, que quebra quando o conserto entrar.
 
 ---
 
