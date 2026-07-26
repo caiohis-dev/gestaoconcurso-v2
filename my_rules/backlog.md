@@ -116,6 +116,35 @@ E as contagens de `colaboradores_prova` / `coordenadores_prova` **iguais antes e
 
 **Criar um coordenador passou de 1 para 3 passos:** criar a conta → alocar na prova com função de coordenação → conceder no diálogo. É mais correto (não inventa alocação), mas é mais trabalho no dia da prova. **Vale confirmar na operação** — se não for aceitável, a saída mais honesta é tornar `coordenadores_prova.colaborador_prova_id` **nullable**, que era o conserto de modelagem descartado no começo, e não voltar a fabricar linha.
 
+## Três regras que ainda moram só no cliente (auditoria do padrão, 26/07)
+
+**Status:** pendente — **achadas na auditoria de invariantes** de 2026-07-26, feita para atacar o padrão em vez de mais um item avulso
+**Área:** transversal (ver [`estrutura/transversais/invariantes.md`](./estrutura/transversais/invariantes.md), que traz o mapa, o porquê e a lista de verificação)
+
+O padrão: **regra implementada só na camada que o usuário vê**. Gerou a cascata de funções, a meta órfã e a fabricação de alocação — todas fechadas em 26/07. A auditoria varreu o schema inteiro (19 tabelas) e os hooks atrás do que restou.
+
+### 🔴 1. Excluir colaborador apaga ocorrências, e a própria tela permite
+
+`useColaboradores.deleteMutation` recusa se houver vínculo em `colaboradores_prova` — mas as três FKs que apontam para `colaboradores` são **CASCADE** (`colaboradores_prova`, `ocorrencias_colaborador`, `email_atualizacao_log`).
+
+O agravante não é o PostgREST: **é a UI.** O cliente checa alocação e **não checa ocorrência**, então um colaborador com histórico mas sem alocação é excluível pela tela, levando o histórico junto. **Medido: 18 das 19 ocorrências** do banco pertencem a colaboradores nessa exata situação.
+
+**Conserto na forma do que já foi feito:** `ON DELETE RESTRICT` em `ocorrencias_colaborador` e `colaboradores_prova`, com a mensagem traduzida nomeando o obstáculo. ⚠️ **Decisão de produto antes:** excluir colaborador com histórico deve ser impossível, ou deve existir uma saída (anonimizar? desativar?). Hoje a UI oferece exclusão como se fosse reversível.
+
+### 🟠 2. Numeração de sala: calculada no cliente, sem unicidade no banco
+
+`useSalasProva.createMultipleMutation` lê o maior `sala_numero` do andar e insere `max + 1`. Não há índice único em `(sala_fk_unidade, sala_numero)` — duas sessões simultâneas geram números repetidos, sem erro. **0 duplicatas hoje**, é preventivo.
+
+**Conserto:** índice único no par, e o cliente traduzindo o `23505`. Um `UNIQUE` transforma a corrida em erro visível, que é o comportamento correto.
+
+### 🟡 3. Vincular unidade a uma prova: três passos sem transação
+
+`useProvaUnidades` insere em `prova_unidades`, lê as salas e insere em `salas_prova_distribuidas`. Falhar no terceiro passo deixa a **unidade vinculada sem sala nenhuma** — estado indistinguível, na tela, de "unidade sem salas cadastradas". `salas_prova_distribuidas` é a **única tabela do schema com zero unique, zero check e zero trigger**.
+
+**Conserto:** RPC que faça os três passos numa transação, como a `revogar_coordenador`. É o segundo caso do padrão irmão — **vários passos sem transação**.
+
+---
+
 ## O cadastro público não valida o CPF antes de consultar o banco
 
 **Status:** pendente — **achado na auditoria de `analises/`** em 2026-07-26

@@ -30,6 +30,7 @@ O que atravessa módulos, ou é anterior a eles. Um doc de módulo **referencia*
 | [`transversais/integracoes-externas.md`](./transversais/integracoes-externas.md) | E-mail transacional (tudo pela `send-email`), as 8 Edge Functions |
 | [`transversais/desenvolvimento-local.md`](./transversais/desenvolvimento-local.md) | Supabase local via Docker, scripts, a divisão `migrations` / `seed.pos.sql` / `seed.local.sql` |
 | [`transversais/testes.md`](./transversais/testes.md) | Vitest + RTL: como rodar, convenções, a infra de `src/test/` (mock do Supabase, helpers de render) e as armadilhas conhecidas |
+| [`transversais/invariantes.md`](./transversais/invariantes.md) | **Onde mora cada regra de negócio** — o que o banco garante, o que ainda mora só no cliente, e a lista de verificação a usar ao criar regra nova |
 
 **Rotas fora de qualquer módulo** (config geral e público), cobertas pelos transversais: `/` (hub), `/auth`, `/redefinir-senha`, `/cadastro-publico`, `/perfil`, `/perfil-colaborador`, `/gerenciar-usuarios`.
 
@@ -50,4 +51,4 @@ O que atravessa módulos, ou é anterior a eles. Um doc de módulo **referencia*
 - [`../historico/`](../historico/) — código aposentado cujo raciocínio vale preservar (hoje, a Edge Function `export-seed`).
 - `docs/` (raiz do repo) — baterias de teste manual e documentação pontual de fluxo (ex.: sanitização do cadastro em lote).
 
-**Ordem de leitura para quem chega:** `transversais/arquitetura-geral.md` → `transversais/auth-e-permissoes.md` → o `00-modulo.md` do módulo da tarefa. Para subir o ambiente, vá direto a `transversais/desenvolvimento-local.md`.
+**Ordem de leitura para quem chega:** `transversais/arquitetura-geral.md` → `transversais/auth-e-permissoes.md` → o `00-modulo.md` do módulo da tarefa. **Vai implementar ou mexer numa regra de negócio? `transversais/invariantes.md` antes de escrever.** Para subir o ambiente, vá direto a `transversais/desenvolvimento-local.md`.
