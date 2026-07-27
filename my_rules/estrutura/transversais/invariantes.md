@@ -113,10 +113,26 @@ Quatro tabelas operacionais tinham `SELECT ... USING (true)` — **qualquer aute
 
 | Tabela | Situação |
 |---|---|
-| `meta_colaboradores_unidade` | ✅ **corrigida** (`20260726260000`): admin tudo; coordenador só as unidades em que está alocado; mais ninguém |
-| `colaboradores_prova` | ⚠️ aberta — `USING (true)` |
-| `valores_funcao_prova` | ⚠️ aberta — `USING (true)`, e são **valores de pagamento** |
-| `salas_prova_distribuidas` | ⚠️ aberta — `USING (true)` |
+| `meta_colaboradores_unidade` | ✅ `20260726260000` — recorte por **unidade** |
+| `valores_funcao_prova` | ✅ `20260726270000` — recorte por **prova** |
+| `colaboradores_prova` | ✅ `20260726270000` — recorte por **prova** |
+| `salas_prova_distribuidas` | ✅ `20260726270000` — recorte por **prova** |
+
+Em todas: admin (e superadmin, pela hierarquia dentro do `has_role`) vê tudo; coordenador vê o seu escopo; **qualquer outro autenticado não vê nada**. Medido depois de aplicar: admin 24/554/58/186, coordenador 17/531/42/17, autenticado sem papel 0/0/0/0.
+
+### Por que os níveis de recorte diferem — e por que isso NÃO é descuido
+
+As metas são por **unidade**; as outras três, por **prova**. A razão é concreta: `OcorrenciasProva`, que o coordenador acessa, consulta `colaboradores_prova` filtrando pela **prova inteira**, para montar quem pode receber ocorrência e quem pode substituir. E a RLS de `ocorrencias_colaborador` já era por prova.
+
+Recortar `colaboradores_prova` por unidade criaria um **desencontro**: o coordenador enxergaria a ocorrência de outra unidade e não a alocação por trás dela — a receita do "some o nome na tela". Já as metas não têm nenhum leitor cross-unidade, então lá o recorte mais apertado sai de graça.
+
+**Regra que fica: o nível de recorte se deduz de quem lê, não da simetria.** Uniformizar por estética afrouxa uma tabela ou quebra uma tela.
+
+⏭️ **Apertar as três para unidade é possível**, mas exige antes decidir se o coordenador deve registrar ocorrência de outra unidade da prova dele. É decisão de operação, não de schema.
+
+### Custo: nenhum mensurável
+
+`is_coordenador_prova` é `STABLE`, e o planejador transforma o `EXISTS` de `colaboradores_prova` num *hashed SubPlan* — avaliado uma vez, não por linha. `SELECT *` na tabela inteira como coordenador: **5 ms**, com 23 linhas removidas pelo filtro (as da outra prova).
 
 `ocorrencias_colaborador` já estava correta, recortada por `is_coordenador_prova`.
 
