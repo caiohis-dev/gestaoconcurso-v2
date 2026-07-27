@@ -111,7 +111,9 @@ async function carregarEDepois(sequencia) {
 
 ## O que está coberto (2026-07-26)
 
-743 testes em 46 arquivos.
+754 testes em 46 arquivos.
+
+⚠️ **O que esta suíte NÃO cobre, e é preciso saber:** ela mocka o Supabase, então **não exercita RLS, constraints, triggers nem transação**. Todo o trabalho de banco de 2026-07-26 (RESTRICTs, triggers, RPCs transacionais e o recorte de RLS) foi verificado **à mão contra o banco local**, com `ROLLBACK` e controle positivo. Quem mexer nessas regras refaz a verificação manualmente — as consultas estão em [`invariantes.md`](./invariantes.md) e no [`backlog.md`](../../backlog.md).
 
 | Área | Arquivos |
 |---|---|

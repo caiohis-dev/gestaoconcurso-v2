@@ -160,6 +160,31 @@ A **atomicidade** da RPC foi provada sabotando a cópia com um `CHECK ... NOT VA
 
 ---
 
+## ✅ CONCLUÍDO 2026-07-26 — segunda e terceira rodadas da auditoria de invariantes
+
+**Área:** transversal (ver [`estrutura/transversais/invariantes.md`](./estrutura/transversais/invariantes.md))
+
+Depois de fechar as três primeiras lacunas, a auditoria foi refeita **sobre o schema inteiro** (a primeira só olhara as FKs das tabelas sob investigação) e depois estendida à **leitura**. Saldo:
+
+| Decisão do usuário | Como ficou |
+|---|---|
+| **Prova não se exclui. Nem com senha.** | policy de DELETE removida **+** trigger `check_prova_nao_excluivel` (pega `service_role`, que passa por cima da RLS). Sumiu do hook, da página e do card |
+| **Unidade só se exclui sem nenhum uso** | `RESTRICT` em `prova_unidades` e `salas_prova_distribuidas`; `sala_prova` segue CASCADE (as salas são parte da unidade) |
+| **Desalocar quem tem coordenação: bloquear no banco** | `RESTRICT` em `coordenadores_prova.colaborador_prova_id`; pré-check removido |
+| **Fiscal de sala: avisar, não bloquear** | aviso na confirmação de remoção, com o número da sala |
+| **Recorte de leitura por RLS** | 4 tabelas saíram de `USING (true)` |
+
+### ⏭️ O que ficou decidido em aberto
+
+1. **Apertar as três tabelas de `USING (true)` para recorte por UNIDADE** (hoje são por prova). Exige antes decidir **se o coordenador deve registrar ocorrência de outra unidade da prova dele** — é decisão de operação, não de schema. Hoje `OcorrenciasProva` lê a prova inteira e a RLS de ocorrências é por prova; igualar sem essa decisão cria desencontro ou afrouxa.
+2. **Prova criada por engano não tem como ser apagada.** Se incomodar na operação, a saída é um conceito de *arquivada/cancelada* — **não** reabrir o DELETE.
+
+### 🔴 Nada disso tem teste automatizado
+
+A suíte mocka o Supabase: não exercita RLS, constraint, trigger nem transação. Tudo foi verificado à mão contra o banco local, com `ROLLBACK` e **controle positivo** em cada caso. As consultas de auditoria e as tabelas de resultado esperado estão em [`estrutura/transversais/invariantes.md`](./estrutura/transversais/invariantes.md). **Quem mexer nessas regras refaz a verificação manualmente.**
+
+---
+
 ## O cadastro público não valida o CPF antes de consultar o banco
 
 **Status:** pendente — **achado na auditoria de `analises/`** em 2026-07-26

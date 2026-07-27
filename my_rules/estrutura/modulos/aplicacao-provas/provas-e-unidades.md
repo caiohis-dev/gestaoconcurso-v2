@@ -22,20 +22,34 @@
 
 Remover uma unidade de uma prova (`removeUnidadeMutation`) deleta em cascata as `salas_prova_distribuidas` daquela unidade+prova antes de deletar o vínculo em `prova_unidades`.
 
-### ⚠️ As duas operações têm três passos e NÃO são transacionais
+### ✅ As duas operações são transacionais desde 2026-07-26
 
-Vale para `addUnidade` e `removeUnidade`: cada passo é uma requisição própria do supabase-js, sem transação em volta. **Um toast de erro não significa "nada aconteceu"** — significa que parou no meio. Fixado por teste em `useProvaUnidades.test.tsx`.
+**Isto era o contrário até 26/07, e o aviso antigo está aposentado de propósito.** `addUnidade` e `removeUnidade` eram três requisições soltas do supabase-js, sem transação: um toast de erro não significava "nada aconteceu", significava que parou no meio.
 
-**Adicionar** — (1) grava o vínculo → (2) lê as salas do template → (3) copia para o snapshot. Falhando no passo 3, a unidade fica **vinculada e sem sala nenhuma**. É recuperável pela própria UI: remover e adicionar de novo refaz a cópia.
+- **Adicionar** falhando no passo 3 deixava a unidade **vinculada e sem sala nenhuma** — estado que a tela não distingue de "unidade sem salas cadastradas".
+- **Remover** falhando no passo 3 apagava o snapshot e mantinha o vínculo. Era o pior dos dois, porque o snapshot podia estar customizado (salas extras, capacidades ajustadas, fiscais) e recriar pelo template não devolve o que foi editado.
 
-**Remover** — (1) lê o vínculo para descobrir a unidade → (2) apaga o snapshot → (3) apaga o vínculo. Falhando no passo 3, as salas **já foram apagadas** e a unidade continua vinculada, com zero salas. **Este é o pior dos dois**, porque o snapshot podia estar customizado (salas extras do `SalaExtraDialog`, capacidades ajustadas, fiscais atribuídos) e nada disso existe no template — recriar pelo template não devolve o que foi editado.
+Viraram as RPCs **`vincular_unidade_a_prova(p_prova_id, p_unidade_id)`** e **`desvincular_unidade_da_prova(p_prova_unidade_id)`** (migration `20260726230000`). Corpo de função PL/pgSQL roda em transação: qualquer exceção desfaz o que veio antes. Verificado sabotando a cópia com um `CHECK ... NOT VALID` — o vínculo não sobra.
 
-Dois detalhes que parecem menores e não são:
+Três coisas a preservar em refatoração:
 
-- O delete do snapshot filtra por **`prova_id` E `sala_fk_unidade`**. Sem o `prova_id`, apagaria as salas daquela unidade em **todas** as provas.
-- Se o passo 1 da remoção falhar, nada é apagado — falha fechada, e é o comportamento certo: sem saber a unidade, um delete só por `prova_id` varreria o snapshot inteiro da prova.
+- **`prova_id` NÃO é parâmetro do desvincular** — sai da própria linha. Recebê-lo de fora abriria a chance de o cliente mandar um que não corresponde ao vínculo e apagar o snapshot de **outra prova**. (O antigo delete do cliente filtrava por `prova_id` E `sala_fk_unidade` justamente por isso; agora o problema não existe.)
+- **Autorização por `has_role(auth.uid(),'admin')`** dentro das RPCs, espelhando as policies das duas tabelas — não afrouxa nada. Via `has_role`, nunca `SELECT` literal em `user_roles`.
+- **Desvincular pode falhar por um motivo indireto:** `colaboradores_prova` cascateia de `prova_unidades`, e o `RESTRICT` de `coordenadores_prova` (migration `20260726250000`) faz a cascata esbarrar quando há **coordenador alocado** naquela unidade. É o comportamento certo — desvincular não deve revogar coordenação em silêncio — e `useProvaUnidades` traduz o erro apontando a tela de *Acesso dos Coordenadores*.
 
-Se um dia isso precisar ser atômico, o caminho é uma RPC — não dá para resolver encadeando chamadas no cliente.
+### ⛔ A prova NÃO pode ser excluída (desde 2026-07-26)
+
+`provas` era a raiz de **sete cascatas**: `prova_unidades` (que por sua vez leva alocações, metas e ocorrências), `valores_funcao_prova`, `coordenadores_prova`, `salas_prova_distribuidas`, `email_atualizacao_log`, `ocorrencias_colaborador` e `prova_edit_locks`. Medido na prova principal: apagá-la levaria **531 alocações, as 19 ocorrências do banco, 17 valores de pagamento, 172 metas, 42 salas e 10 acessos de coordenador**.
+
+Havia confirmação por senha (`PasswordConfirmDialog`). A decisão do usuário foi que **nem isso basta** — o registro de uma prova é permanente.
+
+Em duas camadas, de propósito (migration `20260726240000`):
+1. a **policy de DELETE foi removida** → sem policy, a RLS nega por padrão, o que cobre PostgREST e cliente;
+2. o trigger **`check_prova_nao_excluivel`** recusa → pega quem passa **por cima** da RLS, isto é `service_role`, que é como rodam as Edge Functions.
+
+No cliente não sobrou nada: `useProvas` não expõe `delete`, a página não tem o diálogo e o `ProvaCard` não tem botão nem prop `onDelete`. **Consequência assumida:** prova criada por engano também não se apaga; se isso incomodar, a saída é um conceito de arquivada, não reabrir o DELETE.
+
+**A unidade do catálogo (`unidades_prova`) só se exclui sem nenhum uso:** `prova_unidades` e `salas_prova_distribuidas` viraram `RESTRICT`. `sala_prova` continua `CASCADE` de propósito — as salas cadastradas são parte da unidade, não uso dela.
 
 ### O snapshot em si: `useSalasDistribuidas`
 
