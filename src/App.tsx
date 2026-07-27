@@ -18,6 +18,8 @@ import UnidadesProva from "./pages/UnidadesProva";
 import SalasProva from "./pages/SalasProva";
 import Provas from "./pages/Provas";
 import Editais from "./pages/Editais";
+import Candidatos from "./pages/Candidatos";
+import CandidatosImportar from "./pages/CandidatosImportar";
 import GerenciarProva from "./pages/GerenciarProva";
 import GerenciarSalasDistribuidas from "./pages/GerenciarSalasDistribuidas";
 import GerenciarColaboradoresProva from "./pages/GerenciarColaboradoresProva";
@@ -58,6 +60,10 @@ const App = () => (
               <Route path="/salas-prova/:unidadeId" element={<RequireAcesso papeis={["admin"]}><SalasProva /></RequireAcesso>} />
               <Route path="/provas" element={<RequireAcesso papeis={["admin", "coordenador"]}><Provas /></RequireAcesso>} />
               <Route path="/editais" element={<RequireAcesso papeis={["admin"]}><Editais /></RequireAcesso>} />
+              {/* Candidatos: só admin, como Editais. O coordenador opera colaboradores,
+                  não inscritos — e a RLS da tabela fecha a leitura no mesmo papel. */}
+              <Route path="/candidatos" element={<RequireAcesso papeis={["admin"]}><Candidatos /></RequireAcesso>} />
+              <Route path="/candidatos/importar" element={<RequireAcesso papeis={["admin"]}><CandidatosImportar /></RequireAcesso>} />
               <Route path="/gerenciar-prova/:provaId" element={<RequireAcesso papeis={["admin", "coordenador"]}><GerenciarProva /></RequireAcesso>} />
               <Route path="/gerenciar-salas-distribuidas/:provaId/:unidadeId" element={<RequireAcesso papeis={["admin"]}><GerenciarSalasDistribuidas /></RequireAcesso>} />
               <Route path="/gerenciar-colaboradores-prova/:provaUnidadeId" element={<RequireAcesso papeis={["admin", "coordenador"]}><GerenciarColaboradoresProva /></RequireAcesso>} />

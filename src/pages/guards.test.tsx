@@ -72,6 +72,7 @@ vi.mock("@/hooks/useAuth", () => ({
  */
 const TABELAS = [
   "bancos",
+  "candidatos",
   "colaboradores",
   "colaboradores_prova",
   "coordenadores_prova",
@@ -90,6 +91,7 @@ const TABELAS = [
 ];
 
 const RPCS = [
+  "contar_candidatos_por_edital",
   "encerrar_ocorrencias_unidade",
   "finalizar_prova",
   "finalizar_prova_unidade",
@@ -329,6 +331,25 @@ const PAGINAS: Pagina[] = [
     permitidos: ["admin", "superadmin"],
   },
   {
+    nome: "Candidatos",
+    path: "/candidatos",
+    rota: "/candidatos",
+    mod: () => import("./Candidatos"),
+    exige: ["admin"],
+    // Só admin, e o motivo é mais forte do que em Editais: cada linha de `candidatos` é
+    // CPF, endereço e telefone de um cidadão. O coordenador opera colaboradores (quem
+    // APLICA a prova), não inscritos. A RLS da tabela fecha no mesmo papel.
+    permitidos: ["admin", "superadmin"],
+  },
+  {
+    nome: "CandidatosImportar",
+    path: "/candidatos/importar",
+    rota: "/candidatos/importar",
+    mod: () => import("./CandidatosImportar"),
+    exige: ["admin"],
+    permitidos: ["admin", "superadmin"],
+  },
+  {
     nome: "UnidadesProva",
     path: "/unidades-prova",
     rota: "/unidades-prova",
@@ -467,7 +488,8 @@ describe("guards de página — matriz papel × rota", () => {
   it("a matriz cobre as páginas guardadas do App.tsx", () => {
     // Sem esta asserção, esvaziar PAGINAS por acidente faria todo o resto passar por
     // vacuidade — o mesmo cuidado que o teste de acessibilidade dos diálogos toma.
-    expect(PAGINAS.length).toBe(19);
+    // 19 até 2026-07-26; 21 desde o módulo Candidatos (/candidatos e /candidatos/importar).
+    expect(PAGINAS.length).toBe(21);
     expect(new Set(PAGINAS.map((p) => p.nome)).size).toBe(PAGINAS.length);
   });
 

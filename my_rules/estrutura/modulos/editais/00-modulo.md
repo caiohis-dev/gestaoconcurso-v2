@@ -52,6 +52,8 @@ editais
 
 **Relação com `provas`:** `provas.edital_id uuid REFERENCES editais(id) ON DELETE RESTRICT`. **1 edital → N provas.**
 
+**Relação com `candidatos`** (desde 2026-07-27): `candidatos.edital_id uuid NOT NULL REFERENCES editais(id) ON DELETE RESTRICT`. **1 edital → N inscritos.** São **dois dependentes com RESTRICT**, e o de candidatos é o que mais barra na prática — ver a nota na exclusão, abaixo. O módulo é [`../candidatos/00-modulo.md`](../candidatos/00-modulo.md).
+
 ## Permissões
 
 | Operação | RLS |
@@ -77,7 +79,7 @@ A tabela herda os `GRANT`s do `ALTER DEFAULT PRIVILEGES` da migration `202607120
 
 **Erros traduzidos** — os dois casos que o usuário realmente encontra:
 - **`23505`** (ou match de `editais_nome_key` na mensagem) → *"Já existe um edital com esse nome."* (`mensagemErroEdital` no hook).
-- **`23503`** na exclusão → *"Há provas vinculadas a este edital. Remova ou realoque as provas antes de excluí-lo."* É o `ON DELETE RESTRICT` chegando à UI com instrução acionável em vez de erro cru do Postgres.
+- **`23503`** na exclusão → mensagem acionável em vez de erro cru do Postgres. ⚠️ **Desde 2026-07-27 há DOIS textos, escolhidos pelo nome da constraint na mensagem:** se veio `candidatos_edital_id_fkey`, *"Há candidatos importados neste edital. Remova os inscritos (Candidatos → Limpar edital) antes de excluí-lo."*; caso contrário, *"Há provas vinculadas a este edital…"*. Não volte a um texto só: candidatos é o dependente que mais barra (milhares de inscritos contra poucas provas), e culpar "provas" mandaria o usuário procurar no lugar errado.
 
 **Invalidação de cache:** `update` invalida `["editais"]` **e `["provas"]`**. Necessário porque o nome da prova na UI vem de join com editais — sem isso, renomear um edital deixaria a tela de provas mostrando o nome velho.
 

@@ -22,7 +22,7 @@ O projeto foi originalmente gerado pelo **Lovable** (plataforma low-code), mas e
 | Estado servidor | TanStack React Query 5 — usado de forma consistente na maioria dos hooks de entidade (`useQuery`/`useMutation` + `invalidateQueries`); algumas páginas fazem fetch manual com `useState`/`useEffect` em vez de React Query — `PainelDadosColaboradores.tsx`, `Dashboard.tsx` e `GerenciarColaboradoresProva.tsx` (esta última com dois efeitos que chamam `supabase...then()` cru, item aberto no backlog). **Não assuma cache automático sem checar o hook específico** |
 | Formulários | React Hook Form + Zod |
 | PDF | jsPDF + jspdf-autotable (geração 100% client-side, ver [`documentos-e-relatorios.md`](../modulos/aplicacao-provas/documentos-e-relatorios.md)) |
-| Planilhas | xlsx (SheetJS) — usado em `CadastroLote.tsx` para importação em massa |
+| Planilhas | xlsx (SheetJS) — importação em massa (`CadastroLote.tsx`, `CandidatosImportar.tsx`) e exportação de relatórios. ⚠️ Leia planilha de entrada com `{ header: 1, raw: false }`: modo objeto perde colunas de cabeçalho repetido e modo cru come zero à esquerda de CPF/CEP — ver [`candidatos/00-modulo.md`](../modulos/candidatos/00-modulo.md) |
 | Gráficos | Recharts (Dashboard) |
 | Backend/dados | Supabase (Postgres + Auth + Edge Functions), projeto `dqslqfzqukcahogkieet` |
 
@@ -34,10 +34,10 @@ TypeScript está configurado com tipagem **frouxa** (`tsconfig.app.json`): `stri
 
 Toda lógica de negócio sensível ou que exige elevação de privilégio vive em dois lugares fora do frontend:
 
-1. **Funções de banco (`SECURITY DEFINER`)** em `supabase/migrations/*.sql` — **37 das 85** migrations definem funções com `SECURITY DEFINER`, chamadas do frontend via `supabase.rpc(...)`. Fazem validação de permissão manualmente dentro do PL/pgSQL (ex.: `has_role`, `is_coordenador_prova`) antes de agir, já que RLS sozinho não cobriria todos os casos. ⚠️ **Este parágrafo dizia que "autenticação de colaborador não usa Supabase Auth" — falso desde a subetapa 2A (2026-07-14)**, que unificou tudo num login só; corrigido na auditoria de 2026-07-26. Ver [`auth-e-permissoes.md`](./auth-e-permissoes.md).
+1. **Funções de banco (`SECURITY DEFINER`)** em `supabase/migrations/*.sql` — **41 das 95** migrations definem funções com `SECURITY DEFINER`, chamadas do frontend via `supabase.rpc(...)`. Fazem validação de permissão manualmente dentro do PL/pgSQL (ex.: `has_role`, `is_coordenador_prova`) antes de agir, já que RLS sozinho não cobriria todos os casos. ⚠️ **Este parágrafo dizia que "autenticação de colaborador não usa Supabase Auth" — falso desde a subetapa 2A (2026-07-14)**, que unificou tudo num login só; corrigido na auditoria de 2026-07-26. Ver [`auth-e-permissoes.md`](./auth-e-permissoes.md).
 2. **Edge Functions (Deno)** em `supabase/functions/*` — usadas para operações administrativas que exigem a service role key. Detalhadas em [`integracoes-externas.md`](./integracoes-externas.md).
 
-**20 das 85** migrations habilitam RLS explicitamente em tabelas (`ENABLE ROW LEVEL SECURITY`). Não existe servidor Node/Express próprio — o "backend" é inteiramente Supabase (BaaS) + Edge Functions.
+**21 das 95** migrations habilitam RLS explicitamente em tabelas (`ENABLE ROW LEVEL SECURITY`). Não existe servidor Node/Express próprio — o "backend" é inteiramente Supabase (BaaS) + Edge Functions.
 
 **Padrão a seguir ao adicionar features novas:** prefira RPC `SECURITY DEFINER` com checagem manual de permissão em vez de abrir uma tabela via policy permissiva — é o padrão dominante no schema atual.
 
@@ -57,7 +57,7 @@ Toda lógica de negócio sensível ou que exige elevação de privilégio vive e
 ├── supabase/
 │   ├── config.toml               # project_id + config de verify_jwt por function
 │   ├── functions/                 # Edge Functions (Deno), uma pasta por função + _shared/ (templates de e-mail)
-│   └── migrations/                # 85 migrations SQL — fonte da verdade do schema
+│   └── migrations/                # 95 migrations SQL — fonte da verdade do schema
 ├── public/                        # Estáticos (logo, favicon); ver nota sobre auth_users_export.csv abaixo
 ├── my_rules/estrutura/            # Esta documentação (transversais/ + modulos/)
 └── docs/                          # Documentação pontual de features específicas
@@ -76,6 +76,7 @@ Toda lógica de negócio sensível ou que exige elevação de privilégio vive e
 | `/unidades-prova`, `/salas-prova/:unidadeId` | Cadastro de unidades e salas (template) | [`provas-e-unidades.md`](../modulos/aplicacao-provas/provas-e-unidades.md) |
 | `/provas`, `/gerenciar-prova/:provaId` | CRUD de provas | [`provas-e-unidades.md`](../modulos/aplicacao-provas/provas-e-unidades.md) |
 | `/editais` | CRUD de editais (só admin); a prova referencia um edital | **Módulo próprio:** [`editais/00-modulo.md`](../modulos/editais/00-modulo.md) |
+| `/candidatos`, `/candidatos/importar` | Os inscritos de cada edital e o assistente de importação de planilha (só admin) | **Módulo próprio:** [`candidatos/00-modulo.md`](../modulos/candidatos/00-modulo.md) |
 | `/gerenciar-salas-distribuidas/:provaId/:unidadeId` | Distribuição de salas por prova/unidade | [`provas-e-unidades.md`](../modulos/aplicacao-provas/provas-e-unidades.md) |
 | `/gerenciar-colaboradores-prova/:provaUnidadeId` | Alocação de colaboradores por função | [`alocacao-e-funcoes.md`](../modulos/aplicacao-provas/alocacao-e-funcoes.md) |
 | `/ocorrencias-prova/:provaId` | Registro de ocorrências | [`ocorrencias.md`](../modulos/aplicacao-provas/ocorrencias.md) |
@@ -88,7 +89,7 @@ Navegação visível no header (`Layout.tsx`) é filtrada por role **e por módu
 
 ## 6. Módulos e a tela de entrada (hub)
 
-Desde 2026-07-24 a raiz `/` não abre mais uma lista, e sim um **hub** (`src/pages/Inicio.tsx`) que mostra a cada gestor os **módulos** a que ele tem acesso. Hoje existem **dois** módulos: *Aplicação de Provas* (todas as rotas de gestão da tabela acima) e *Editais* (`/editais`, só admin/superadmin). A estrutura está pronta para os próximos: o valor está no **mecanismo**, não na lista.
+Desde 2026-07-24 a raiz `/` não abre mais uma lista, e sim um **hub** (`src/pages/Inicio.tsx`) que mostra a cada gestor os **módulos** a que ele tem acesso. Hoje existem **três** módulos: *Aplicação de Provas* (todas as rotas de gestão da tabela acima), *Editais* (`/editais`, só admin/superadmin) e *Candidatos* (`/candidatos`, idem, criado em 2026-07-27). A estrutura está pronta para os próximos: o valor está no **mecanismo**, não na lista.
 
 **A fonte de verdade é `src/lib/modulos.ts`.** Um módulo é uma entrada no array `MODULOS`, com: `id`, `nome`, `descricao`, `icone`, os `papeis` de gestão que o acessam, `rotaEntrada(ctx)` (para onde o card leva, por papel), `prefixosRota` (as rotas que pertencem ao módulo) e `navLinks` (os links que o header mostra dentro dele). **Módulo novo = 1 entrada aqui** — nunca duplicar a lista de rotas de um módulo em outro arquivo. Quem lê desse registro: o hub (`modulosDoUsuario`) e o header (`moduloDaRota` + `navLinks`). ⚠️ **Os guards NÃO leem daqui, e isso é decisão**: o registro conhece papel por MÓDULO, e as rotas são mais finas — `aplicacao-provas` admite coordenador, mas sete rotas dele são só admin. Ler os papéis daqui afrouxaria o acesso. Ver `RequireAcesso` em [`auth-e-permissoes.md`](./auth-e-permissoes.md).
 

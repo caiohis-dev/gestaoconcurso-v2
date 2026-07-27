@@ -52,6 +52,116 @@ export type Database = {
         }
         Relationships: []
       }
+      candidatos: {
+        Row: {
+          bairro: string | null
+          cargo: string | null
+          cargo_chave: string | null
+          celular: string | null
+          cep: string | null
+          cidade: string | null
+          complemento: string | null
+          concurso_id_origem: string | null
+          confirmado: boolean
+          cpf: string | null
+          created_at: string | null
+          created_by: string | null
+          data_nascimento: string | null
+          edital_id: string
+          email: string | null
+          hora_nascimento: string | null
+          id: string
+          identidade_emissao: string | null
+          identidade_numero: string | null
+          identidade_orgao: string | null
+          identidade_uf: string | null
+          logradouro: string | null
+          n_inscricao: string
+          nome: string
+          numero: string | null
+          portador_deficiencia: boolean
+          raca: number | null
+          sexo: string | null
+          telefone: string | null
+          uf: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          bairro?: string | null
+          cargo?: string | null
+          cargo_chave?: string | null
+          celular?: string | null
+          cep?: string | null
+          cidade?: string | null
+          complemento?: string | null
+          concurso_id_origem?: string | null
+          confirmado?: boolean
+          cpf?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          data_nascimento?: string | null
+          edital_id: string
+          email?: string | null
+          hora_nascimento?: string | null
+          id?: string
+          identidade_emissao?: string | null
+          identidade_numero?: string | null
+          identidade_orgao?: string | null
+          identidade_uf?: string | null
+          logradouro?: string | null
+          n_inscricao: string
+          nome: string
+          numero?: string | null
+          portador_deficiencia?: boolean
+          raca?: number | null
+          sexo?: string | null
+          telefone?: string | null
+          uf?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          bairro?: string | null
+          cargo?: string | null
+          cargo_chave?: string | null
+          celular?: string | null
+          cep?: string | null
+          cidade?: string | null
+          complemento?: string | null
+          concurso_id_origem?: string | null
+          confirmado?: boolean
+          cpf?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          data_nascimento?: string | null
+          edital_id?: string
+          email?: string | null
+          hora_nascimento?: string | null
+          id?: string
+          identidade_emissao?: string | null
+          identidade_numero?: string | null
+          identidade_orgao?: string | null
+          identidade_uf?: string | null
+          logradouro?: string | null
+          n_inscricao?: string
+          nome?: string
+          numero?: string | null
+          portador_deficiencia?: boolean
+          raca?: number | null
+          sexo?: string | null
+          telefone?: string | null
+          uf?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidatos_edital_id_fkey"
+            columns: ["edital_id"]
+            isOneToOne: false
+            referencedRelation: "editais"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       colaboradores: {
         Row: {
           agencia: string | null
@@ -943,7 +1053,17 @@ export type Database = {
           user_name: string
         }[]
       }
-      desvincular_unidade_da_prova: { Args: { p_prova_unidade_id: string }; Returns: undefined }
+      contar_candidatos_por_edital: {
+        Args: never
+        Returns: {
+          edital_id: string
+          total: number
+        }[]
+      }
+      desvincular_unidade_da_prova: {
+        Args: { p_prova_unidade_id: string }
+        Returns: undefined
+      }
       encerrar_ocorrencias_unidade: {
         Args: { p_prova_unidade_id: string; p_user_id: string }
         Returns: boolean
@@ -1025,10 +1145,6 @@ export type Database = {
         Returns: boolean
       }
       revogar_coordenador: { Args: { p_user_id: string }; Returns: undefined }
-      vincular_unidade_a_prova: {
-        Args: { p_prova_id: string; p_unidade_id: string }
-        Returns: string
-      }
       update_meu_colaborador: {
         Args: {
           p_bairro: string
@@ -1071,6 +1187,10 @@ export type Database = {
       verify_user_password: {
         Args: { p_email: string; p_password: string }
         Returns: boolean
+      }
+      vincular_unidade_a_prova: {
+        Args: { p_prova_id: string; p_unidade_id: string }
+        Returns: string
       }
     }
     Enums: {

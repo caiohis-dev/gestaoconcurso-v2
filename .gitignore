@@ -56,3 +56,12 @@ supabase/seed.local.sql
 *.njsproj
 *.sln
 *.sw?
+
+# Obsidian
+.obsidian/
+
+# Planilhas de trabalho — DADO PESSOAL DE TERCEIRO, nunca versionar.
+# docs/temp/ é onde entram os arquivos que alimentam importação (ex.: a planilha de
+# inscritos do concurso 002-2026-SMA, com 7.416 CPFs, e-mails e endereços de cidadãos).
+# Ficava fora do .gitignore, a um `git add .` de virar histórico público e permanente.
+docs/temp/

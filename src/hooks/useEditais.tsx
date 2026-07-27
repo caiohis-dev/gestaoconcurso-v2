@@ -117,14 +117,24 @@ export function useEditais() {
       toast({ title: "Edital excluído", description: "O edital foi excluído com sucesso." });
     },
     onError: (error: { message: string; code?: string }) => {
-      // ON DELETE RESTRICT (D6): apagar um edital com provas vinculadas devolve
-      // violação de FK (23503). Traduz para uma mensagem que diz o que fazer.
+      // ON DELETE RESTRICT (D6): apagar um edital com dependentes devolve violação de FK
+      // (23503). Traduz para uma mensagem que diz o que fazer.
+      //
+      // ⚠️ DUAS tabelas apontam para editais com RESTRICT, e a mensagem precisa saber
+      // qual barrou. Desde o módulo Candidatos (2026-07-27), `candidatos.edital_id` é a
+      // segunda — e é a que costuma barrar, porque um edital tem milhares de inscritos e
+      // poucas provas. Culpar "provas vinculadas" quando quem barrou foram os inscritos
+      // manda o usuário procurar no lugar errado: é exatamente a armadilha do RESTRICT
+      // indireto descrita em my_rules/estrutura/transversais/invariantes.md.
       const isFk = error.code === "23503" || /foreign key|violates/i.test(error.message);
+      const foramCandidatos = /candidatos_edital_id_fkey|"?candidatos"?/i.test(error.message);
       toast({
         title: "Erro ao excluir edital",
-        description: isFk
-          ? "Há provas vinculadas a este edital. Remova ou realoque as provas antes de excluí-lo."
-          : error.message,
+        description: !isFk
+          ? error.message
+          : foramCandidatos
+            ? "Há candidatos importados neste edital. Remova os inscritos (Candidatos → Limpar edital) antes de excluí-lo."
+            : "Há provas vinculadas a este edital. Remova ou realoque as provas antes de excluí-lo.",
         variant: "destructive",
       });
     },

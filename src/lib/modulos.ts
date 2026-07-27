@@ -5,6 +5,8 @@ import {
   FileText,
   ScrollText,
   Building2,
+  Users,
+  Upload,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -20,7 +22,7 @@ import {
  */
 
 // Cresce com o sistema. Hoje só existe um módulo.
-export type ModuloId = 'aplicacao-provas' | 'editais';
+export type ModuloId = 'aplicacao-provas' | 'editais' | 'candidatos';
 
 // Papéis de GESTÃO que podem receber um módulo. A dimensão 'colaborador' fica de fora:
 // o colaborador puro nunca vê o hub (segue direto para /perfil-colaborador), e config
@@ -109,7 +111,28 @@ const editais: Modulo = {
   ],
 };
 
-export const MODULOS: Modulo[] = [aplicacaoProvas, editais];
+// Candidatos são os INSCRITOS de um edital — pessoas que fazem a prova, não gente que
+// trabalha nela. Por isso é módulo próprio e não uma tela de Aplicação de Provas: aquele
+// módulo cuida de quem APLICA a prova (fiscais, coordenadores, apoio). Só admin, como
+// Editais, e pela mesma razão reforçada: cada linha aqui é CPF, endereço e telefone de um
+// cidadão, e a RLS da tabela fecha a leitura em admin.
+const candidatos: Modulo = {
+  id: 'candidatos',
+  nome: 'Candidatos',
+  descricao: 'Os inscritos de cada edital, carregados por importação de planilha.',
+  icone: Users,
+  papeis: ['superadmin', 'admin'],
+  rotaEntrada: () => '/candidatos',
+  // Um prefixo só: `moduloDaRota` casa por igualdade OU prefixo + '/', então
+  // '/candidatos/importar' já entra por aqui sem precisar ser listada.
+  prefixosRota: ['/candidatos'],
+  navLinks: [
+    { href: '/candidatos', label: 'Candidatos', icon: Users, showFor: ['admin', 'superadmin'] },
+    { href: '/candidatos/importar', label: 'Importar', icon: Upload, showFor: ['admin', 'superadmin'] },
+  ],
+};
+
+export const MODULOS: Modulo[] = [aplicacaoProvas, editais, candidatos];
 
 // Papéis de gestão que o usuário efetivamente tem. superadmin ⊇ admin, então um
 // módulo restrito a ['admin'] continua visível para o superadmin.

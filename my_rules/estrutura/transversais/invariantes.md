@@ -38,6 +38,7 @@ Não repita esforço: isto está coberto e não precisa de barreira no cliente p
 | Valor não se remove com meta > 0 pendente | trigger `check_valor_sem_meta` (26/07) |
 | Revogação de coordenador é atômica | RPC `revogar_coordenador` |
 | Hierarquia de papéis (`superadmin ⇒ admin`) | dentro do `has_role` |
+| Inscrição de candidato única por (edital, nº, cargo); formato de CPF/CEP/e-mail/raça do candidato | `candidatos_inscricao_cargo_key` + **6 CHECKs** (27/07) — ver [`../modulos/candidatos/00-modulo.md`](../modulos/candidatos/00-modulo.md) |
 
 ## ✅ As três lacunas da auditoria foram fechadas no mesmo dia
 
@@ -85,6 +86,8 @@ Ao bloquear a desalocação de quem tem acesso de coordenador, apareceu um efeit
 É o comportamento certo — desvincular não deve revogar coordenação em silêncio —, mas o erro chega numa tela em que a pessoa **não estava mexendo com coordenação**, falando de uma tabela que ela não citou. Por isso `useProvaUnidades` ganhou tradutor próprio (`mensagemErroDesvinculoUnidade`), separado do de desalocação.
 
 **A regra que fica:** ao pôr `RESTRICT` numa FK, verifique **quem cascateia para a tabela pai**. Cada cascata que chega ali passa a poder falhar por causa do seu RESTRICT, numa operação que parece não ter relação. Sem tradução nessas telas, o usuário leva um erro incompreensível.
+
+**Corolário, aprendido em 2026-07-27 com o módulo Candidatos:** quando uma tabela passa a ter **mais de um** dependente com `RESTRICT`, a mensagem traduzida **precisa saber qual deles barrou**. `editais` tinha só `provas`, e o tradutor de `useEditais` dizia sempre *"Há provas vinculadas"*. Com `candidatos.edital_id` (o segundo, e o que mais barra — um edital tem milhares de inscritos e poucas provas), aquela frase mandaria o usuário procurar prova onde o problema é inscrito. O conserto é barato e a omissão é fácil: ramificar pelo **nome da constraint** que vem na mensagem do Postgres (`candidatos_edital_id_fkey`). **Ao criar FK nova com RESTRICT, procure o tradutor de erro da tabela pai no mesmo passe.**
 
 ### O que segue morando só no cliente, e é aceito
 

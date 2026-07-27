@@ -132,13 +132,13 @@ Travar o campo (Etapa 1) impede o estrago novo, mas não conserta quem já está
 
 ### Módulos: o que cada papel vê no hub (2026-07-24)
 
-A tela de entrada por módulos (o mecanismo em [`arquitetura-geral.md`](./arquitetura-geral.md) §6) deriva o acesso **dos papéis que já existem** — sem tabela nem enum de módulos no banco. Hoje são dois módulos (Aplicação de Provas, para todo gestor; Editais, só admin/superadmin); a matriz ainda é simples, mas o que importa é a regra.
+A tela de entrada por módulos (o mecanismo em [`arquitetura-geral.md`](./arquitetura-geral.md) §6) deriva o acesso **dos papéis que já existem** — sem tabela nem enum de módulos no banco. Hoje são três módulos (Aplicação de Provas, para todo gestor; Editais e Candidatos, só admin/superadmin); a matriz ainda é simples, mas o que importa é a regra.
 
 | Papel | Vê o hub? | Módulos no hub | Entrada do card *Aplicação de Provas* |
 |---|---|---|---|
-| `superadmin` | sim | Aplicação de Provas + Editais (+ "Usuários" no header, fora dos cards) | `/dashboard` |
-| `admin` | sim | Aplicação de Provas + Editais | `/dashboard` |
-| `coordenador` | sim | Aplicação de Provas (Editais é só admin) | `/colaboradores` |
+| `superadmin` | sim | Aplicação de Provas + Editais + Candidatos (+ "Usuários" no header, fora dos cards) | `/dashboard` |
+| `admin` | sim | Aplicação de Provas + Editais + Candidatos | `/dashboard` |
+| `coordenador` | sim | Aplicação de Provas (Editais e Candidatos são só admin) | `/colaboradores` |
 | `user` puro | sim | **nenhum** — vê o estado vazio ("fale com a administração") | — |
 | `colaborador` puro (`role === null`) | **não** | — cai direto em `/perfil-colaborador` | — |
 

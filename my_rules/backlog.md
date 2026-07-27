@@ -2,7 +2,20 @@
 
 Lista de trabalho planejado, ainda não iniciado. Itens concluídos devem ser removidos daqui (o histórico do que foi feito vive na documentação em [`estrutura/`](./estrutura/), não neste arquivo).
 
-> **Última auditoria contra o código: 2026-07-26.** Cada item foi conferido no código e no banco local; o que estava desatualizado está marcado no próprio item. Números que valem repetir, porque foram medidos e não estimados: **85 migrations**, **771 colaboradores** (565 com chave PIX, **0** com `tipo_chave_pix`), **`anon` ainda com `TRUNCATE` em 23 tabelas**, e as três FKs de `funcao_id` seguem `SET NULL`/`CASCADE`/`CASCADE`.
+> **Última auditoria contra o código: 2026-07-26.** Cada item foi conferido no código e no banco local; o que estava desatualizado está marcado no próprio item. Números que valem repetir, porque foram medidos e não estimados: **95 migrations** (85 até 26/07), **771 colaboradores** (565 com chave PIX, **0** com `tipo_chave_pix`), **`anon` ainda com `TRUNCATE` em 23 tabelas**, e as três FKs de `funcao_id` seguem `SET NULL`/`CASCADE`/`CASCADE`.
+
+---
+
+## Candidatos — o que o módulo deixou em aberto
+
+**Status:** o módulo está pronto e verificado (2026-07-27). Estes são os fios soltos que ele **não** resolveu, e nenhum bloqueia nada hoje.
+**Área:** módulo Candidatos — ver [`estrutura/modulos/candidatos/00-modulo.md`](./estrutura/modulos/candidatos/00-modulo.md)
+
+1. **Nenhuma tela consome candidato ainda.** A tabela é uma ilha: não há vínculo entre candidato e prova, unidade ou sala. Se um dia for preciso saber *em que sala cada inscrito faz prova*, isso é **feature nova com desenho próprio** — não é para pendurar `prova_id`/`sala_id` em `candidatos` sem decidir antes o que acontece quando a mesma pessoa concorre a dois cargos.
+
+2. **`editais.n_candidatos` (digitado à mão) e a contagem real de inscritos não conversam.** São coisas diferentes — previsão do edital contra lista real —, e hoje ninguém sincroniza. O card da listagem já mostra a contagem real, vinda da RPC `contar_candidatos_por_edital`. Quem for unificar precisa **decidir qual manda**, porque `n_candidatos` alimenta a herança edital→prova e a alocação lê `prova_n_candidatos`.
+
+3. **`CadastroLote.tsx` continua lendo planilha do jeito errado** — modo objeto (perde coluna de cabeçalho repetido) e sem `raw: false` (come zero à esquerda). Não deu problema porque o template de colaboradores não tem cabeçalho repetido, mas é a mesma classe de defeito que `candidatos-import.ts` resolve. Migrar aquele fluxo para a leitura por índice é dívida conhecida.
 
 ---
 
@@ -341,6 +354,10 @@ O trabalho: varrer `information_schema.role_table_grants` por `grantee IN ('anon
 
 ---
 
+
+🔴 **A aposta subiu em 2026-07-27, com o módulo Candidatos.** A tabela `candidatos` nasce herdando os mesmos grants — verificado: `anon` tem `TRUNCATE` nela, e **`TRUNCATE` não passa por RLS**; um `TRUNCATE candidatos` como `anon` funciona no banco local. O que segura é o PostgREST não expor TRUNCATE, ou seja, um detalhe de implementação de terceiro.
+
+A diferença é o conteúdo: as outras tabelas guardam dado operacional, esta guarda **CPF, e-mail, telefone e endereço de milhares de cidadãos**. **Ao executar este item, comece por `candidatos`** — e note que o `ALTER DEFAULT PRIVILEGES` continuará dando esses grants a **toda tabela nova**, então o conserto tem de mexer nele também, não só revogar tabela a tabela.
 ## Troca de e-mail de conta confirmada (estado C) — sem caminho no app
 
 **Status:** pendente — aberto em 2026-07-16, ao fechar as Etapas 1 e 2 da edição de `colab_email`

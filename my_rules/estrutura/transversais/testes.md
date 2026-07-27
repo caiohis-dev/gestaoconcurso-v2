@@ -67,7 +67,7 @@ O mock tem **teste próprio** (`supabase-mock.test.ts`): é infraestrutura de qu
 
 ## Testar página: o harness dos guards
 
-`src/pages/guards.test.tsx` é o único teste de página hoje, e o padrão dele vale para os próximos. Três decisões que não são óbvias:
+`src/pages/guards.test.tsx` testa a AUTORIZAÇÃO de todas as páginas, e o padrão dele vale para os próximos. Três decisões que não são óbvias:
 
 **1. O `useAuth` é mockado, não o `AuthProvider`.** O objeto de teste é o guard ("dado este estado de auth, para onde vai?"), não o provider — que tem cobertura própria em `useAuth.test.tsx`. Montar o provider real obrigaria a simular sessão do Supabase para alcançar cada combinação, e a janela do `rolesLoaded` é praticamente inalcançável por ali. O mock usa `vi.hoisted` para o objeto mutável de estado, porque `vi.mock` é içado.
 
@@ -76,6 +76,26 @@ O mock tem **teste próprio** (`supabase-mock.test.ts`): é infraestrutura de qu
 **3. A bateria compõe como o `App.tsx` compõe.** Desde a centralização dos guards, cada entrada da matriz declara os papéis que a rota exige e o harness embrulha a página no `RequireAcesso` — senão a bateria testaria uma composição que não existe. É o que a manteve como especificação depois de os guards saírem das páginas.
 
 **4. Toda tabela e RPC do app devolvem lista vazia.** O default do mock é `{ data: null }`, e várias páginas chamam `.some()`/`.map()` sem coalescer — o teste mediria o TypeError, não a autorização.
+
+### Testar o COMPORTAMENTO de uma página (novo em 2026-07-27)
+
+Guard e comportamento são baterias separadas, e de propósito: a matriz de guards mede
+"quem entra", e um `.ui.test.tsx` de página mede o que a tela faz depois disso. As duas
+telas de Candidatos foram as primeiras. O que se aprendeu ali:
+
+- **Mocke `useAuth` e `useNavigate`, não o router inteiro.** `vi.importActual` + spread
+  preserva `MemoryRouter` e `Link` (de que o `Layout` depende) e troca só o `useNavigate`,
+  que é o que se quer afirmar.
+- **Não coloque espera fixa no helper que renderiza.** Uma página que troca o cabeçalho
+  inteiro no estado vazio (é o caso de `Candidatos` sem edital) trava qualquer
+  `findByRole("heading", …)` genérico. Cada teste espera pelo que ele mesmo afirma.
+- **Input de arquivo `hidden` não aceita `user.upload`** — o userEvent recusa elemento
+  invisível. Use `fireEvent.change(input, { target: { files: [arquivo] } })`, que é o que
+  dispara o `onChange` de verdade.
+- **Planilha de teste se monta com o próprio `xlsx`** (`aoa_to_sheet` + `write({type:"array"})`)
+  e se entrega como `File`. É o único jeito de exercitar o caminho real de leitura — e,
+  no caso de candidatos, as duas colunas de mesmo nome que são a origem da armadilha.
+  Redefina `arrayBuffer` no `File` se o jsdom não o trouxer.
 
 ## ⚠️ As sete armadilhas que já custaram tempo aqui
 
@@ -109,21 +129,32 @@ async function carregarEDepois(sequencia) {
 
 > Corolário para quem for medir "não aconteceu nada": só é seguro afirmar isso quando a página não tem query pendente que possa mudar a decisão depois. Caso contrário, o teste está medindo o meio do caminho.
 
-## O que está coberto (2026-07-26)
+## O que está coberto (2026-07-27)
 
-754 testes em 46 arquivos.
+808 testes em 47 arquivos.
 
-⚠️ **O que esta suíte NÃO cobre, e é preciso saber:** ela mocka o Supabase, então **não exercita RLS, constraints, triggers nem transação**. Todo o trabalho de banco de 2026-07-26 (RESTRICTs, triggers, RPCs transacionais e o recorte de RLS) foi verificado **à mão contra o banco local**, com `ROLLBACK` e controle positivo. Quem mexer nessas regras refaz a verificação manualmente — as consultas estão em [`invariantes.md`](./invariantes.md) e no [`backlog.md`](../../backlog.md).
+🔴 **Este número está DEFASADO e o próximo a mexer aqui deve refazê-lo.** Três arquivos
+entraram depois da última medição e **ainda não foram executados nenhuma vez**:
+`hooks/useCandidatos.test.tsx`, `pages/Candidatos.ui.test.tsx` e
+`pages/CandidatosImportar.ui.test.tsx`. Rode `npm test`, corrija o que cair e atualize a
+contagem — teste que nunca rodou não é cobertura, é intenção.
+
+⚠️ **O que esta suíte NÃO cobre, e é preciso saber:** ela mocka o Supabase, então **não exercita RLS, constraints, triggers nem transação**. Todo o trabalho de banco de 2026-07-26 (RESTRICTs, triggers, RPCs transacionais e o recorte de RLS) e o de 2026-07-27 (a tabela `candidatos`) foi verificado **à mão contra o banco local**, com `ROLLBACK` e controle positivo. Quem mexer nessas regras refaz a verificação manualmente — as consultas estão em [`invariantes.md`](./invariantes.md) e no [`backlog.md`](../../backlog.md).
+
+✅ **`lib/candidatos-import.test.ts` (40) é a exceção que vale imitar.** A lógica difícil da importação de candidatos — pareamento de colunas, conversão de data/hora, a distinção erro-vs-aviso, a deduplicação — foi posta num módulo **puro** (`src/lib/candidatos-import.ts`), fora do componente. Por isso tem teste de verdade, sem mock nenhum. Compare com `CadastroLote.tsx`, onde a mesma classe de lógica vive dentro de um componente de 1.100 linhas e **não tem como ser exercitada**. Ao escrever importador novo, separe primeiro a parte pura.
 
 | Área | Arquivos |
 |---|---|
 | Registro de módulos | `lib/modulos.test.ts` — inclui invariantes que rodam sobre `MODULOS` inteiro |
+| **Importação de candidatos** | `lib/candidatos-import.test.ts` (40) — **puro, sem mock**: pareamento por índice, conversores, erro-vs-aviso e deduplicação. Os casos de dado sujo são medidos no arquivo real de 7.416 inscritos |
 | Acessibilidade | `components/dialogos-acessibilidade.test.ts` — invariante **estática**: lê o fonte e exige `DialogDescription` em cada um dos 31 `DialogContent` (contando as variantes AlertDialog/Sheet) |
 | Schemas Zod (9) | `*Dialog.test.ts`, `pages/Auth.test.ts`, `pages/GerenciarUsuarios.test.ts` |
 | Auth | `useAuth.test.tsx` — hierarquia, `colaborador` paralelo, `rolesLoaded`, `signOut` |
 | Hooks de dados | `useEditais`, `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas` (+ `useSalasDistribuidasCapacidade` e `useFiscaisSala`), `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers`, `useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade`, `useBancos` — **a camada está fechada** |
 | UI | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx`, **`PasswordConfirmDialog.ui.test.tsx`** (16 — a barreira das ações destrutivas), **`CoordenadoresProvaDialog.ui.test.tsx`** (23 — a concessão de acesso de coordenador), **`ValoresFuncaoProvaDialog`** + **`MetaColaboradoresDialog`** (20 + 13 — o caminho do dinheiro), **`CorrigirEmailAcessoDialog`** (16 — a âncora de identidade), **`UnidadeProvaDialog`** · **`FuncaoColaboradorDialog`** · **`SalaProvaDialog`** · **`SalaExtraDialog`** (42 no total) |
-| **Guards de página** | `pages/guards.test.tsx` — 137 testes: a matriz **19 páginas × 5 papéis**, mais a janela do `rolesLoaded` e o `isLoggingOut` |
+| **Guards de página** | `pages/guards.test.tsx` — 151 testes: a matriz **21 páginas × 5 papéis**, mais a janela do `rolesLoaded` e o `isLoggingOut` |
+| **Hooks de candidatos** | `hooks/useCandidatos.test.tsx` — paginação com `count` do servidor, `onConflict` da chave natural, blocos de 500, parada no meio e tradução de erro 🔴 *não executada ainda* |
+| **Páginas de candidatos** | `pages/Candidatos.ui.test.tsx` e `pages/CandidatosImportar.ui.test.tsx` — os **primeiros testes de comportamento de página** do projeto (até aqui, das páginas só o guard era testado). O do assistente monta um `.xlsx` real e guarda o alerta que impede a perda silenciosa de inscritos 🔴 *não executadas ainda* |
 
 **A camada de hooks fechou em 2026-07-26** — os 20 hooks de dados têm teste (`use-mobile` e `use-toast` são utilitários do shadcn, fora da conta). **Os 12 diálogos estão cobertos.** Falta e **as 8 Edge Functions** (rodam em Deno, fora do alcance desta suíte — a autorização de duas delas é verificada pela bateria manual [`../../../docs/bateria-create-admin-autorizacao.md`](../../../docs/bateria-create-admin-autorizacao.md)).
 
