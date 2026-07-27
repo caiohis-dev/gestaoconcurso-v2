@@ -8,7 +8,6 @@ import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Plus, Loader2, FileText } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { PasswordConfirmDialog } from "@/components/PasswordConfirmDialog";
 import { useCoordenadorUnidades } from "@/hooks/useCoordenadorUnidades";
 
 
@@ -20,15 +19,11 @@ export default function Provas() {
     isLoading,
     create,
     update,
-    delete: deleteProva,
     isCreating,
     isUpdating,
-    isDeleting,
   } = useProvas();
 
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [provaToDelete, setProvaToDelete] = useState<Prova | null>(null);
 
   // For coordenadores, fetch their prova IDs
   const { data: coordenadorProvaIds = [] } = useQuery({
@@ -68,10 +63,6 @@ export default function Provas() {
     setDialogOpen(true);
   };
 
-  const handleDelete = (prova: Prova) => {
-    setProvaToDelete(prova);
-    setDeleteDialogOpen(true);
-  };
 
 
 
@@ -121,7 +112,6 @@ export default function Provas() {
               <ProvaCard
                 key={prova.id}
                 prova={prova}
-                onDelete={isSuperAdmin ? handleDelete : undefined}
                 allowedProvaUnidadeIds={isCoordenador ? coordenadorProvaUnidadeIds : null}
               />
             ))}
@@ -139,23 +129,7 @@ export default function Provas() {
         />
       )}
 
-      <PasswordConfirmDialog
-        open={deleteDialogOpen}
-        onOpenChange={(open) => {
-          setDeleteDialogOpen(open);
-          if (!open) setProvaToDelete(null);
-        }}
-        title="Excluir prova"
-        description={`Tem certeza que deseja excluir a prova "${provaToDelete?.editais?.nome ?? ""}"? Esta ação não pode ser desfeita.`}
-        confirmText={isDeleting ? "Excluindo..." : "Excluir"}
-        confirmVariant="destructive"
-        onConfirm={async () => {
-          if (provaToDelete) {
-            deleteProva(provaToDelete.id);
-            setProvaToDelete(null);
-          }
-        }}
-      />
+
 
     </Layout>
   );

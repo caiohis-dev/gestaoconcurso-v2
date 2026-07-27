@@ -55,6 +55,29 @@ Três lições que valem além dos itens:
 2. **Pré-check é para ser removido, não estendido.** "Leio e então decido" é uma corrida — o vínculo pode nascer entre o `SELECT` e o `DELETE`. Com a barreira no banco, o pré-check vira código a mais que dá a impressão de garantia.
 3. **Ao virar RPC, tire do cliente o que ele não precisa saber.** `desvincular_unidade_da_prova` deriva o `prova_id` da própria linha em vez de recebê-lo: um parâmetro a mais é uma chance de o cliente mandar um valor incoerente e apagar dado de outra prova.
 
+## 🔁 Segunda rodada da auditoria (mesmo dia) — o que a primeira deixou passar
+
+A primeira varredura olhou as FKs **das tabelas que já estavam sob investigação**. A correta é varrer o schema inteiro de uma vez (a segunda consulta em "Como auditar isto de novo"). Refeita assim, apareceram **22 FKs destrutivas**, e três lacunas que a primeira não viu:
+
+| Achado | Decisão (usuário, 26/07) | Como ficou |
+|---|---|---|
+| **Excluir prova** cascateava para 7 tabelas — 531 alocações, as 19 ocorrências, 17 valores, 172 metas, 42 salas, 10 coordenadores | **Não pode. Nem com senha.** | policy de DELETE removida **+ trigger** `check_prova_nao_excluivel`; sumiu do hook, da página e do card |
+| **Excluir unidade do catálogo** cascateava para alocações, metas e ocorrências (as 11 estão em uso; a "ICT" levaria 110 alocações e 10 ocorrências) | **Só se não tiver nenhum uso** | `RESTRICT` em `prova_unidades` e `salas_prova_distribuidas` |
+| **Desalocar colaborador**: a guarda de acesso de coordenador é client-side, e a FK é CASCADE | em aberto | — |
+
+**Por que o trigger além da policy, no caso da prova:** remover a policy faz a RLS negar por padrão, o que cobre PostgREST e cliente. Não cobre `service_role`, que é como rodam as Edge Functions e passa **por cima** da RLS. Verificado: o `DELETE` como superusuário é recusado pelo trigger.
+
+**O que continua CASCADE de propósito:** `sala_prova → unidades_prova`. As salas cadastradas são parte da unidade, não uso dela; sem isso, nenhuma unidade com sala poderia sair do catálogo. Controle positivo confirmou: unidade nova com uma sala é excluível.
+
+### ⚠️ Dois testes afirmavam cenários impossíveis
+
+Ao trocar as FKs, dois testes existentes caíram e a leitura deles foi instrutiva:
+
+- `useProvas`: *"avisa quando a exclusão esbarra em vínculo"*, com o comentário "caso real: prova com unidades/alocações vinculadas". Aquele `23503` **nunca podia acontecer** — as FKs eram CASCADE, o vínculo não barrava nada.
+- `useUnidadesProva`: *"a FK das salas/provas é quem barra"*. Mesma premissa falsa.
+
+Os dois passavam porque **o mock devolvia o erro que o próprio teste mandou devolver**. É um modo de falha específico de suíte com mock: o teste prova o *tratamento* de um erro, não que o erro seja alcançável. Quando o comentário de um teste afirma um comportamento do banco, esse comportamento precisa ser conferido no banco — e é a mesma disciplina do controle positivo, vista do outro lado.
+
 ### O que segue morando só no cliente, e é aceito
 
 - **A numeração sequencial de salas** continua sendo calculada no cliente. Movê-la para o banco (uma sequence por unidade+andar) foi considerado desproporcional; o UNIQUE já converte o pior caso em erro visível.

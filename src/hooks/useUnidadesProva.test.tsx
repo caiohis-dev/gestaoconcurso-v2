@@ -161,12 +161,21 @@ describe("useUnidadesProva", () => {
       expect(builderQueChamou("unidades_prova", "delete").eq).toHaveBeenCalledWith("id", "u-1");
     });
 
-    it("excluir unidade em uso mostra o erro do banco em vez de fingir sucesso", async () => {
-      // A FK das salas/provas é quem barra — e a mensagem precisa aparecer.
+    it("traduz a recusa do banco quando a unidade está em uso", async () => {
+      // ⚠️ Este teste dizia "a FK das salas/provas é quem barra" e afirmava a mensagem
+      // crua. A premissa era FALSA até 2026-07-26: as FKs eram CASCADE, então nada
+      // barrava — a unidade era apagada levando alocações e ocorrências junto. Passava
+      // porque o mock devolvia o 23503 que o próprio teste mandou devolver.
+      //
+      // A migration 20260726240000 pôs RESTRICT, e agora o erro é real. A mensagem crua
+      // deixou de servir: ela não diz que a regra é "só unidade sem nenhum uso".
       const { result } = await carregarEDepois([
         {
           data: null,
-          error: erroPostgrest(CODIGOS_POSTGREST.CHAVE_ESTRANGEIRA, "unidade tem salas"),
+          error: erroPostgrest(
+            CODIGOS_POSTGREST.CHAVE_ESTRANGEIRA,
+            'update or delete on table "unidades_prova" violates foreign key constraint "prova_unidades_unidade_id_fkey" on table "prova_unidades"',
+          ),
         },
         { data: [UNIDADE], error: null },
       ]);
@@ -177,11 +186,13 @@ describe("useUnidadesProva", () => {
         expect(toastMock).toHaveBeenCalledWith(
           expect.objectContaining({
             title: "Erro ao excluir unidade",
-            description: "unidade tem salas",
+            description: expect.stringContaining("vinculada a uma prova"),
             variant: "destructive",
           }),
         ),
       );
+      const ultimo = toastMock.mock.calls.at(-1)?.[0];
+      expect(ultimo.description).not.toContain("foreign key");
     });
   });
 });

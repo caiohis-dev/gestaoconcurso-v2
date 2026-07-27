@@ -24,6 +24,25 @@ export interface UnidadeProvaUpdate {
   unid_andares?: number;
 }
 
+/**
+ * Traduz a recusa do banco ao excluir uma unidade em uso (migration 20260726240000, que
+ * trocou CASCADE por RESTRICT em `prova_unidades` e `salas_prova_distribuidas`).
+ *
+ * O que existia antes era um AlertDialog genérico e uma cascata: excluir a unidade "ICT"
+ * levaria 110 alocações e 10 ocorrências, em silêncio. A decisão do usuário foi que
+ * unidade só se exclui **sem nenhum uso** — e "uso" é estar vinculada a alguma prova.
+ *
+ * ⚠️ As salas cadastradas da unidade NÃO são uso: `sala_prova` segue CASCADE de
+ * propósito, senão nenhuma unidade com sala poderia sair do catálogo.
+ */
+export function mensagemErroExclusaoUnidade(error: { message: string; code?: string }): string {
+  const emUso =
+    error.code === '23503' || /foreign key constraint|violates foreign key/i.test(error.message);
+  if (!emUso) return error.message;
+
+  return 'Esta unidade está vinculada a uma prova e não pode ser excluída. Só é possível excluir unidades que nunca foram usadas.';
+}
+
 export function useUnidadesProva() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -120,7 +139,7 @@ export function useUnidadesProva() {
     onError: (error: Error) => {
       toast({
         title: "Erro ao excluir unidade",
-        description: error.message,
+        description: mensagemErroExclusaoUnidade(error),
         variant: "destructive",
       });
     },

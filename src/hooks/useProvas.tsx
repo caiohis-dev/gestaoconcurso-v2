@@ -156,27 +156,14 @@ export function useProvas() {
     },
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from("provas").delete().eq("id", id);
-
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["provas"] });
-      toast({
-        title: "Prova excluída",
-        description: "A prova foi excluída com sucesso.",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Erro ao excluir prova",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
+  // NÃO existe exclusão de prova, por decisão de 2026-07-26. `provas` era a raiz de
+  // sete cascatas — apagar uma levava alocações, ocorrências, valores de pagamento,
+  // metas, salas e acessos de coordenador. Havia confirmação por senha, e a decisão foi
+  // que nem isso basta: o registro de uma prova é permanente.
+  //
+  // O banco também recusa (migration 20260726240000): a policy de DELETE foi removida e
+  // um trigger barra até quem passa por cima da RLS com service_role. Reabrir isto aqui
+  // não faria nada além de produzir um erro na tela.
 
   return {
     provas: query.data ?? [],
@@ -184,9 +171,7 @@ export function useProvas() {
     error: query.error,
     create: createMutation.mutate,
     update: updateMutation.mutate,
-    delete: deleteMutation.mutate,
     isCreating: createMutation.isPending,
     isUpdating: updateMutation.isPending,
-    isDeleting: deleteMutation.isPending,
   };
 }

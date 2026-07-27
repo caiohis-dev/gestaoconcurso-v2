@@ -4,7 +4,7 @@ import { Prova } from "@/hooks/useProvas";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Calendar, Clock, Trash2, Settings, Building2, ChevronDown } from "lucide-react";
+import { Calendar, Clock, Settings, Building2, ChevronDown } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,7 +13,6 @@ import { cn } from "@/lib/utils";
 
 interface ProvaCardProps {
   prova: Prova;
-  onDelete?: (prova: Prova) => void;
   /** When defined, restricts displayed units to these prova_unidade ids (coordenador scope). */
   allowedProvaUnidadeIds?: string[] | null;
 }
@@ -33,7 +32,7 @@ interface UnidadeStat {
   funcoes: FuncaoStat[];
 }
 
-export function ProvaCard({ prova, onDelete, allowedProvaUnidadeIds }: ProvaCardProps) {
+export function ProvaCard({ prova, allowedProvaUnidadeIds }: ProvaCardProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const toggle = (id: string) => setExpanded((e) => ({ ...e, [id]: !e[id] }));
   const { isAdmin } = useAuth();
@@ -126,16 +125,6 @@ export function ProvaCard({ prova, onDelete, allowedProvaUnidadeIds }: ProvaCard
                 <Settings className="h-4 w-4" />
               </Link>
             </Button>
-            {onDelete && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-destructive hover:text-destructive"
-                onClick={() => onDelete(prova)}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            )}
           </div>
         </div>
       </CardHeader>

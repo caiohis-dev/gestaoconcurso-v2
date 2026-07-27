@@ -210,35 +210,23 @@ describe("useProvas", () => {
       expect((builder.eq as any).mock.calls[0]).toEqual(["id", "p1"]);
     });
 
-    it("exclui pelo id", async () => {
+    /**
+     * Havia aqui dois testes de exclusão de prova. Caíram em 2026-07-26, quando excluir
+     * prova deixou de existir — decisão do usuário: nem com confirmação por senha.
+     * `provas` era a raiz de sete cascatas (531 alocações, as 19 ocorrências, 17 valores
+     * de pagamento, 172 metas, 42 salas e 10 acessos de coordenador, na prova principal).
+     *
+     * ⚠️ Um deles afirmava um caso IMPOSSÍVEL: "avisa quando a exclusão esbarra em
+     * vínculo", com um 23503 e o comentário "caso real: prova com unidades/alocações
+     * vinculadas". Aquele erro nunca podia acontecer — as FKs eram CASCADE, então o
+     * vínculo não barrava nada, era apagado junto. O teste passava porque o mock devolvia
+     * o erro que o teste mandou devolver. Lição: teste que injeta o erro no mock prova o
+     * tratamento, não que o erro exista.
+     */
+    it("não expõe exclusão de prova", () => {
       const { result } = renderHookWithProviders(() => useProvas());
-      await waitFor(() => expect(result.current.isLoading).toBe(false));
-
-      result.current.delete("p1");
-
-      await waitFor(() =>
-        expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ title: "Prova excluída" })),
-      );
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((builderQueChamou("provas", "delete").eq as any).mock.calls[0]).toEqual(["id", "p1"]);
-    });
-
-    it("avisa com toast destrutivo quando a exclusão esbarra em vínculo", async () => {
-      const { result } = renderHookWithProviders(() => useProvas());
-      await waitFor(() => expect(result.current.isLoading).toBe(false));
-
-      // Caso real: prova com unidades/alocações vinculadas.
-      setTableResult("provas", {
-        data: null,
-        error: erroPostgrest("23503", "violates foreign key constraint"),
-      });
-      result.current.delete("p1");
-
-      await waitFor(() =>
-        expect(toastMock).toHaveBeenCalledWith(
-          expect.objectContaining({ title: "Erro ao excluir prova", variant: "destructive" }),
-        ),
-      );
+      expect(result.current).not.toHaveProperty("delete");
+      expect(result.current).not.toHaveProperty("isDeleting");
     });
   });
 });
