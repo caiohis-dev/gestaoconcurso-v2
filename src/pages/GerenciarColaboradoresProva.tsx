@@ -8,6 +8,7 @@ import { useColaboradoresProva } from "@/hooks/useColaboradoresProva";
 import { useFuncoesColaboradores } from "@/hooks/useFuncoesColaboradores";
 import { useValoresFuncaoProva } from "@/hooks/useValoresFuncaoProva";
 import { useMetaColaboradoresUnidade } from "@/hooks/useMetaColaboradoresUnidade";
+import { useSalasDoFiscal, avisoFiscalDeSala } from "@/hooks/useSalasDistribuidas";
 import { supabase } from "@/integrations/supabase/client";
 import { useProvaLock } from "@/hooks/useProvaLock";
 import { formatDistanceToNow } from "date-fns";
@@ -62,6 +63,7 @@ export default function GerenciarColaboradoresProva() {
   const [filterText, setFilterText] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [colaboradorToDelete, setColaboradorToDelete] = useState<string | null>(null);
+  const [nomeToDelete, setNomeToDelete] = useState<string | undefined>(undefined);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editFuncao, setEditFuncao] = useState("");
   const [metaDialogOpen, setMetaDialogOpen] = useState(false);
@@ -259,8 +261,15 @@ export default function GerenciarColaboradoresProva() {
     }
   };
 
-  const handleDeleteClick = (id: string) => {
+  // As salas em que esta alocação é fiscal. `useQuery` (e não um .then no clique) para
+  // não repetir o padrão de estado fora do React Query que já é dívida nesta página.
+  const { data: salasDoFiscal = [], isLoading: carregandoSalasDoFiscal } =
+    useSalasDoFiscal(deleteDialogOpen ? colaboradorToDelete : null);
+  const avisoSalas = avisoFiscalDeSala(nomeToDelete, salasDoFiscal);
+
+  const handleDeleteClick = (id: string, nome?: string) => {
     setColaboradorToDelete(id);
+    setNomeToDelete(nome);
     setDeleteDialogOpen(true);
   };
 
@@ -269,6 +278,7 @@ export default function GerenciarColaboradoresProva() {
       deleteColaborador(colaboradorToDelete);
       setDeleteDialogOpen(false);
       setColaboradorToDelete(null);
+      setNomeToDelete(undefined);
     }
   };
 
@@ -351,8 +361,8 @@ export default function GerenciarColaboradoresProva() {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Colaboradores");
 
-      const edital = (prova?.editais?.nome || "edital").replace(/[^\w\-]+/g, "_");
-      const sigla = (unidade?.unid_sigla || "unidade").trim().replace(/[^\w\-]+/g, "_");
+      const edital = (prova?.editais?.nome || "edital").replace(/[^\w-]+/g, "_");
+      const sigla = (unidade?.unid_sigla || "unidade").trim().replace(/[^\w-]+/g, "_");
       XLSX.writeFile(wb, `colaboradores_${edital}_${sigla}.xlsx`);
     } catch (e: any) {
       toast({ title: "Erro ao exportar", description: e.message, variant: "destructive" });
@@ -789,7 +799,7 @@ export default function GerenciarColaboradoresProva() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                onClick={() => handleDeleteClick(cp.id)}
+                                onClick={() => handleDeleteClick(cp.id, cp.colaboradores?.colab_nome_completo)}
                                 className="h-8 w-8 text-destructive hover:text-destructive"
                               >
                                 <Trash2 className="h-4 w-4" />
@@ -814,12 +824,17 @@ export default function GerenciarColaboradoresProva() {
             <AlertDialogDescription>
               Tem certeza que deseja remover este colaborador desta unidade de prova? Esta ação não pode ser desfeita.
             </AlertDialogDescription>
+            {avisoSalas && (
+              <div className="mt-3 rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-foreground">
+                {avisoSalas}
+              </div>
+            )}
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmDelete}
-              disabled={isDeleting}
+              disabled={isDeleting || carregandoSalasDoFiscal}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {isDeleting ? "Removendo..." : "Remover"}

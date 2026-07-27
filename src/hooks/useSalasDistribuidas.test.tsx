@@ -23,6 +23,7 @@ import {
   useSalasDistribuidas,
   useSalasDistribuidasCapacidade,
   useFiscaisSala,
+  avisoFiscalDeSala,
 } from "@/hooks/useSalasDistribuidas";
 
 const TABELA = "salas_prova_distribuidas";
@@ -375,5 +376,32 @@ describe("useFiscaisSala", () => {
     await waitFor(() => expect(result.current.data).toHaveLength(1));
 
     expect(result.current.data?.[0].colaborador_nome).toBe("Sem nome");
+  });
+});
+
+describe("avisoFiscalDeSala", () => {
+  it("nomeia a pessoa e a sala, e diz o que vai acontecer", () => {
+    expect(avisoFiscalDeSala("Maria Silva", [201])).toBe(
+      "Maria Silva está como fiscal da sala 201. Removê-lo desta unidade vai retirá-lo dessa sala automaticamente.",
+    );
+  });
+
+  it("usa plural quando há mais de uma sala", () => {
+    // O banco NÃO impede a mesma pessoa de ser fiscal de duas salas — só a UI de
+    // distribuição evita. Confiar nessa UI aqui repetiria o erro que este aviso corrige.
+    const aviso = avisoFiscalDeSala("Maria", [201, 305]);
+    expect(aviso).toContain("das salas 201, 305");
+    expect(aviso).toContain("dessas salas");
+  });
+
+  it("devolve null quando a pessoa não é fiscal de sala nenhuma", () => {
+    // Nesse caso a confirmação segue com o texto padrão — inventar um aviso vazio seria
+    // ruído, e ruído em diálogo de confirmação treina a pessoa a ignorar avisos.
+    expect(avisoFiscalDeSala("Maria", [])).toBeNull();
+  });
+
+  it("cai num sujeito genérico se o nome não vier", () => {
+    expect(avisoFiscalDeSala(undefined, [201])).toContain("Este colaborador está como fiscal");
+    expect(avisoFiscalDeSala("   ", [201])).toContain("Este colaborador está como fiscal");
   });
 });

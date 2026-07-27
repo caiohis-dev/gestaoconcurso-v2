@@ -88,9 +88,22 @@ Ao bloquear a desalocação de quem tem acesso de coordenador, apareceu um efeit
 
 ### O que segue morando só no cliente, e é aceito
 
-- **`salas_prova_distribuidas.sala_fiscal_1/2` continua `SET NULL`** — desalocar alguém o remove em silêncio da sala em que era fiscal. Hoje são **zero linhas** (nenhum fiscal atribuído a sala), então é preventivo, e bloquear criaria atrito no dia da prova, quando trocar fiscal de sala é rotina. **Decisão em aberto**, não esquecimento.
+- **`salas_prova_distribuidas.sala_fiscal_1/2` continua `SET NULL`** — e agora por decisão fechada (26/07), com **aviso na confirmação** em vez de bloqueio. Ver abaixo.
 - **A numeração sequencial de salas** continua sendo calculada no cliente. Movê-la para o banco (uma sequence por unidade+andar) foi considerado desproporcional; o UNIQUE já converte o pior caso em erro visível.
 - **`email_atualizacao_log` continua CASCADE** ao excluir colaborador — exceção consciente, documentada na migration `20260726210000`: é log de entrega, não histórico de participação, e bloquear ali criaria beco sem saída.
+
+### ✅ Nem toda regra vira barreira — às vezes o defeito é o silêncio, não a ação
+
+Remover um colaborador da unidade esvazia o campo de fiscal da sala em que ele estava (`SET NULL`). Isso está **certo**: quem saiu da unidade não pode ser fiscal nela. O problema era outro — acontecia **em silêncio e em outra tela**, porque a atribuição de fiscal se faz em `/gerenciar-salas-distribuidas` e a remoção em `/gerenciar-colaboradores-prova`. Quem remove tipicamente não sabe que a pessoa era fiscal.
+
+Bloquear resolveria o silêncio, mas obrigaria a passar por duas telas numa operação que costuma ser urgente no dia da prova. A decisão do usuário foi **avisar**: a confirmação passa a dizer *"Fulana está como fiscal da sala 201. Removê-lo desta unidade vai retirá-lo dessa sala automaticamente."*
+
+**A regra que fica:** antes de transformar um achado em barreira, separe **o que a ação faz** do **fato de ela ser invisível**. Quando a ação está correta e só falta transparência, a resposta é informar no ponto da decisão — barrar aí só adiciona atrito sem corrigir nada.
+
+Dois detalhes de implementação que precisam sobreviver:
+
+1. **O botão de confirmar fica desabilitado enquanto a consulta das salas carrega.** Sem isso, a lista chega vazia, o aviso não aparece e a pessoa confirma antes de saber — é a armadilha do **"vazio enquanto carrega"**, que já apareceu três vezes neste repo.
+2. **O aviso trata plural.** O banco não impede a mesma pessoa de ser fiscal de duas salas; só a UI de distribuição evita. Confiar nessa UI aqui repetiria exatamente o erro que o aviso existe para corrigir.
 
 ## ✅ A lista de verificação — use ao criar ou mexer numa regra
 

@@ -18,6 +18,57 @@ export interface SalaDistribuida {
   created_by: string | null;
 }
 
+/**
+ * Salas em que uma alocação está como fiscal. Usado pela confirmação de remoção em
+ * `/gerenciar-colaboradores-prova`.
+ *
+ * POR QUE ISTO EXISTE: `salas_prova_distribuidas.sala_fiscal_1/2` aponta para
+ * `colaboradores_prova` com **ON DELETE SET NULL**. Remover alguém da unidade esvazia o
+ * fiscal da sala — o que está CERTO (quem saiu da unidade não pode ser fiscal nela), mas
+ * acontecia **em silêncio**, e em outra tela: quem remove costuma não saber que a pessoa
+ * era fiscal, porque isso se decide em `/gerenciar-salas-distribuidas`.
+ *
+ * Decisão do usuário (2026-07-26): **avisar, não bloquear**. Bloquear obrigaria a passar
+ * por duas telas numa operação que costuma ser urgente no dia da prova. O defeito real
+ * era o silêncio, não o SET NULL.
+ */
+export function useSalasDoFiscal(colaboradorProvaId: string | null) {
+  return useQuery({
+    queryKey: ["salas-do-fiscal", colaboradorProvaId],
+    enabled: !!colaboradorProvaId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("salas_prova_distribuidas")
+        .select("sala_numero")
+        .or(`sala_fiscal_1.eq.${colaboradorProvaId},sala_fiscal_2.eq.${colaboradorProvaId}`)
+        .order("sala_numero");
+
+      if (error) throw error;
+      return (data ?? []).map((s) => s.sala_numero);
+    },
+  });
+}
+
+/**
+ * Monta o aviso da confirmação de remoção. Puro de propósito — é a parte que precisa de
+ * teste, e renderizar a página inteira para checar uma frase seria desproporcional.
+ *
+ * Devolve `null` quando não há sala: nesse caso a confirmação segue com o texto padrão,
+ * sem inventar um aviso vazio.
+ */
+export function avisoFiscalDeSala(nome: string | undefined, salas: number[]): string | null {
+  if (!salas.length) return null;
+
+  const quem = nome?.trim() || 'Este colaborador';
+  // O plural existe porque o banco não impede a mesma pessoa de ser fiscal de duas salas
+  // — só a UI de distribuição evita. Confiar nessa UI aqui repetiria o erro que este
+  // aviso existe para corrigir.
+  const lista = salas.join(', ');
+  return salas.length === 1
+    ? `${quem} está como fiscal da sala ${lista}. Removê-lo desta unidade vai retirá-lo dessa sala automaticamente.`
+    : `${quem} está como fiscal das salas ${lista}. Removê-lo desta unidade vai retirá-lo dessas salas automaticamente.`;
+}
+
 export function useSalasDistribuidas(provaId: string, unidadeId?: string) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
