@@ -105,6 +105,27 @@ Dois detalhes de implementação que precisam sobreviver:
 1. **O botão de confirmar fica desabilitado enquanto a consulta das salas carrega.** Sem isso, a lista chega vazia, o aviso não aparece e a pessoa confirma antes de saber — é a armadilha do **"vazio enquanto carrega"**, que já apareceu três vezes neste repo.
 2. **O aviso trata plural.** O banco não impede a mesma pessoa de ser fiscal de duas salas; só a UI de distribuição evita. Confiar nessa UI aqui repetiria exatamente o erro que o aviso existe para corrigir.
 
+## 🔎 RLS: recorte de leitura também é regra — e estava só na UI
+
+Auditoria de 2026-07-26, disparada por uma pergunta: *o coordenador vê só as metas da unidade que coordena?* Na tela, sim. No banco, não.
+
+Quatro tabelas operacionais tinham `SELECT ... USING (true)` — **qualquer autenticado lia tudo**:
+
+| Tabela | Situação |
+|---|---|
+| `meta_colaboradores_unidade` | ✅ **corrigida** (`20260726260000`): admin tudo; coordenador só as unidades em que está alocado; mais ninguém |
+| `colaboradores_prova` | ⚠️ aberta — `USING (true)` |
+| `valores_funcao_prova` | ⚠️ aberta — `USING (true)`, e são **valores de pagamento** |
+| `salas_prova_distribuidas` | ⚠️ aberta — `USING (true)` |
+
+`ocorrencias_colaborador` já estava correta, recortada por `is_coordenador_prova`.
+
+**O ponto que generaliza:** a lista de verificação deste documento pergunta onde mora a regra de *escrita*. Recorte de **leitura** é regra do mesmo jeito, e some com a mesma facilidade — `GerenciarProva` filtra por `filteredProvaUnidades` e `Provas` passa `allowedProvaUnidadeIds`, mas os dois são conveniência. A pergunta a fazer é a mesma: *o que este usuário lê chamando o PostgREST direto?*
+
+⚠️ **Dois níveis de recorte convivem, e a diferença é real:** metas por **unidade** (`get_coordenador_prova_unidade_ids`), ocorrências por **prova** (`is_coordenador_prova`). Quem for uniformizar precisa decidir o correto para cada tabela — copiar um para o outro afrouxa ou aperta demais.
+
+⚠️ **`has_role(auth.uid(),'admin')` cobre o superadmin** — a hierarquia mora dentro da função (migration `20260725195530`). Nunca escrever `SELECT` literal em `user_roles` numa policy: é a falha que já bloqueou o superadmin três vezes aqui. Verificado nesta migration: superadmin lê as 186.
+
 ## ✅ A lista de verificação — use ao criar ou mexer numa regra
 
 Antes de considerar uma regra implementada, responda:
