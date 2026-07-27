@@ -198,6 +198,29 @@ A suíte mocka o Supabase: não exercita RLS, constraint, trigger nem transaçã
 
 ---
 
+## ⏸️ EM ESPERA — a chave natural de `candidatos`, aguardando a planilha corrigida
+
+**Status:** aberto em 2026-07-27, **bloqueado por dependência externa**: o usuário identificou que o arquivo de origem veio errado e vai corrigi-lo.
+**Área:** Candidatos (ver [`estrutura/modulos/candidatos/00-modulo.md`](./estrutura/modulos/candidatos/00-modulo.md), seção "EM REVISÃO")
+
+**Nada foi alterado** — a chave em vigor continua `(edital_id, n_inscricao, cargo_chave)`.
+
+### O problema que abriu isto
+
+O texto do cargo entra na identidade do candidato, e o texto é instável (acento quebrado na origem). Verificado no banco: mudar caixa/espaço atualiza a linha, mas **corrigir o texto cria um segundo registro e mantém o antigo**. Ou seja, a promessa "corrija a planilha e reimporte" **não vale para os campos da chave** (`n_inscricao` e `cargo`).
+
+### ⚠️ O que NÃO fazer, porque já foi medido
+
+Trocar `cargo_chave` por `cpf` **colapsaria 396 inscritos em silêncio** (7.416 → 7.020). O CPF é redundante com a inscrição no arquivo medido — zero inscrições com mais de um CPF, zero CPFs com mais de uma inscrição —, então a proposta equivale a usar só a inscrição. Some-se que os 2 CPFs inválidos viram `NULL`, e `NULL` não colide em índice único: essas linhas duplicariam a cada reimportação.
+
+### Ao receber o arquivo corrigido
+
+1. **Remedir tudo, do zero.** Todas as constraints do módulo foram dimensionadas contra o arquivo antigo; se ele estava errado, os números que as justificam também estão. Regra 5 de [`estrutura/transversais/invariantes.md`](./estrutura/transversais/invariantes.md).
+2. **Checar a pergunta que decide a chave:** a origem passou a emitir **uma inscrição por cargo**? Se sim, `(edital, inscrição)` basta e o cargo sai da chave. Se não, seguem valendo as duas saídas desenhadas: **modelo** (cargo em tabela filha, candidato único por inscrição) ou **reconciliação** (manter a chave e listar, ao fim da importação, quem está no banco e não veio no arquivo).
+3. ⚠️ **Ao medir, use a coluna `ID` como inscrição.** A coluna 0 do export **não tem cabeçalho e é só o número da linha** (1, 2, 3…). Confundi as duas na primeira medição e obtive um resultado falso — que dizia que a troca era segura.
+
+---
+
 ## O cadastro público não valida o CPF antes de consultar o banco
 
 **Status:** pendente — **achado na auditoria de `analises/`** em 2026-07-26

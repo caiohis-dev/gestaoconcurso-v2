@@ -131,13 +131,16 @@ async function carregarEDepois(sequencia) {
 
 ## O que está coberto (2026-07-27)
 
-808 testes em 47 arquivos.
+873 testes em 50 arquivos (medido em 2026-07-27, com a suíte inteira verde duas vezes).
 
-🔴 **Este número está DEFASADO e o próximo a mexer aqui deve refazê-lo.** Três arquivos
-entraram depois da última medição e **ainda não foram executados nenhuma vez**:
-`hooks/useCandidatos.test.tsx`, `pages/Candidatos.ui.test.tsx` e
-`pages/CandidatosImportar.ui.test.tsx`. Rode `npm test`, corrija o que cair e atualize a
-contagem — teste que nunca rodou não é cobertura, é intenção.
+✅ **Os três arquivos que estavam marcados como "nunca executados" rodaram.** `useCandidatos.test.tsx` (24), `Candidatos.ui.test.tsx` (23) e `CandidatosImportar.ui.test.tsx` (18) — os primeiros testes de comportamento de página do projeto.
+
+⚠️ **Dois deles estavam vermelhos, e os dois eram erro do teste, não do código.** Vale como aviso porque são modos de falha fáceis de repetir:
+
+1. **Contar caractere de escape na mão.** O teste do filtro esperava UM espaço onde há DOIS: em `"SOUZA, A (50%)"`, o `%` e o `)` viram **cada um** um espaço. Prefira montar a string esperada por composição (uma constante com o trecho normalizado) a digitá-la inteira.
+2. **Regex de substring em texto que se repete na tela.** `/7416 inscrito\(s\)/` casa tanto com o cabeçalho da lista quanto com o card `"7416 inscrito(s) importado(s)"`, e o teste morre por ambiguidade. Quando dois elementos legitimamente exibem o mesmo número, use **busca exata**.
+
+A lição geral: **teste que nunca rodou não é cobertura, é intenção** — e ao rodá-lo pela primeira vez, desconfie do teste antes do código.
 
 ⚠️ **O que esta suíte NÃO cobre, e é preciso saber:** ela mocka o Supabase, então **não exercita RLS, constraints, triggers nem transação**. Todo o trabalho de banco de 2026-07-26 (RESTRICTs, triggers, RPCs transacionais e o recorte de RLS) e o de 2026-07-27 (a tabela `candidatos`) foi verificado **à mão contra o banco local**, com `ROLLBACK` e controle positivo. Quem mexer nessas regras refaz a verificação manualmente — as consultas estão em [`invariantes.md`](./invariantes.md) e no [`backlog.md`](../../backlog.md).
 
@@ -153,8 +156,8 @@ contagem — teste que nunca rodou não é cobertura, é intenção.
 | Hooks de dados | `useEditais`, `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas` (+ `useSalasDistribuidasCapacidade` e `useFiscaisSala`), `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers`, `useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade`, `useBancos` — **a camada está fechada** |
 | UI | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx`, **`PasswordConfirmDialog.ui.test.tsx`** (16 — a barreira das ações destrutivas), **`CoordenadoresProvaDialog.ui.test.tsx`** (23 — a concessão de acesso de coordenador), **`ValoresFuncaoProvaDialog`** + **`MetaColaboradoresDialog`** (20 + 13 — o caminho do dinheiro), **`CorrigirEmailAcessoDialog`** (16 — a âncora de identidade), **`UnidadeProvaDialog`** · **`FuncaoColaboradorDialog`** · **`SalaProvaDialog`** · **`SalaExtraDialog`** (42 no total) |
 | **Guards de página** | `pages/guards.test.tsx` — 151 testes: a matriz **21 páginas × 5 papéis**, mais a janela do `rolesLoaded` e o `isLoggingOut` |
-| **Hooks de candidatos** | `hooks/useCandidatos.test.tsx` — paginação com `count` do servidor, `onConflict` da chave natural, blocos de 500, parada no meio e tradução de erro 🔴 *não executada ainda* |
-| **Páginas de candidatos** | `pages/Candidatos.ui.test.tsx` e `pages/CandidatosImportar.ui.test.tsx` — os **primeiros testes de comportamento de página** do projeto (até aqui, das páginas só o guard era testado). O do assistente monta um `.xlsx` real e guarda o alerta que impede a perda silenciosa de inscritos 🔴 *não executadas ainda* |
+| **Hooks de candidatos** | `hooks/useCandidatos.test.tsx` — paginação com `count` do servidor, `onConflict` da chave natural, blocos de 500, parada no meio e tradução de erro |
+| **Páginas de candidatos** | `pages/Candidatos.ui.test.tsx` e `pages/CandidatosImportar.ui.test.tsx` — os **primeiros testes de comportamento de página** do projeto (até aqui, das páginas só o guard era testado). O do assistente monta um `.xlsx` real e guarda o alerta que impede a perda silenciosa de inscritos |
 
 **A camada de hooks fechou em 2026-07-26** — os 20 hooks de dados têm teste (`use-mobile` e `use-toast` são utilitários do shadcn, fora da conta). **Os 12 diálogos estão cobertos.** Falta e **as 8 Edge Functions** (rodam em Deno, fora do alcance desta suíte — a autorização de duas delas é verificada pela bateria manual [`../../../docs/bateria-create-admin-autorizacao.md`](../../../docs/bateria-create-admin-autorizacao.md)).
 

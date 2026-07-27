@@ -69,6 +69,50 @@ candidatos
   created_at / updated_at / created_by
 ```
 
+### 🔴 EM REVISÃO (2026-07-27) — a planilha de origem veio errada; a chave pode mudar
+
+**Leia isto antes de usar qualquer número deste documento.** O usuário identificou que o arquivo que serviu de base para o módulo **veio errado da origem** e será corrigido. Enquanto o arquivo novo não chegar:
+
+- **Todas as medições citadas aqui são provisórias** — as 7.416 linhas, as 382 inscrições repetidas, os 2 CPFs impossíveis, os 27 e-mails, as 15 datas fora de faixa, os 36 valores de `identidade_uf`. Elas descrevem *aquele* arquivo, e as constraints do banco foram dimensionadas por elas. **Ao receber o arquivo corrigido, remeça antes de concluir qualquer coisa** (a regra 5 de [`../../transversais/invariantes.md`](../../transversais/invariantes.md) vale de novo, do zero).
+- **A chave natural está sob revisão.** Nada foi alterado no código nem no schema; a chave em vigor continua sendo `(edital_id, n_inscricao, cargo_chave)`.
+
+#### O que foi medido e vale independentemente da correção
+
+Verificado no arquivo original, com o cuidado de usar a coluna certa (⚠️ a coluna 0 **não tem cabeçalho e é apenas o número da linha do export**, 1, 2, 3…; a inscrição é a coluna `ID` — confundir as duas dá um resultado falso e tranquilizador, e foi o que aconteceu na primeira tentativa):
+
+| Fato | Número |
+|---|---|
+| Linhas | 7.416 |
+| Inscrições distintas | 7.020 |
+| CPFs distintos | 7.020 |
+| Inscrições com mais de um CPF | **0** |
+| CPFs com mais de uma inscrição | **0** |
+
+**Inscrição e CPF são a mesma informação** neste arquivo: um determina o outro. E **não existe coluna nenhuma que seja um identificador por cargo** — a única única-por-linha é o contador do export.
+
+A distribuição: 6.638 inscrições com 1 cargo, 369 com 2, 12 com 3 e 1 com 4. Os 396 excedentes (7.416 − 7.020) são exatamente as pessoas concorrendo a mais de um cargo, com **a mesma inscrição e o mesmo CPF** — por exemplo a inscrição `213946`, CPF `99528037704`, em `DOCENTE II`, `DOCENTE I ¿ LÍNGUA INGLESA` e `DOCENTE I ¿ HISTÓRIA`.
+
+#### ⚠️ A proposta que foi medida e NÃO adotada — não a ressuscite sem remedir
+
+Foi cogitado trocar `cargo_chave` por `cpf` na chave, para que corrigir o texto do cargo deixasse de duplicar registro. **Medido contra o arquivo original, isso colapsaria 396 inscritos em silêncio** (o `deduplicar()` mantém a última ocorrência e descarta as anteriores sem erro):
+
+| Chave | Linhas únicas | Colapsam |
+|---|---|---|
+| `(inscrição, cargo)` — em vigor | 7.416 | 0 |
+| `(inscrição, cpf)` — proposta | 7.020 | **396** |
+| `(inscrição)` sozinha | 7.020 | 396 |
+
+E o CPF **não acrescentaria nada**: dá o mesmo resultado que a inscrição sozinha, porque é redundante com ela. Somando: os 2 CPFs inválidos viram `NULL`, e `NULL` não colide com `NULL` num índice único — essas linhas duplicariam a cada reimportação.
+
+**Isto pode mudar com o arquivo corrigido.** Se a origem passar a emitir uma inscrição por cargo, a chave `(edital, inscrição)` passa a bastar e o cargo sai dela naturalmente. É a razão de a revisão estar aberta.
+
+#### O problema que originou a revisão, e que continua valendo
+
+O texto do cargo é instável (o `¿` é um travessão mal codificado em cp1252) e **faz parte da identidade**. Verificado no banco: mudar caixa ou espaços atualiza a linha, mas **corrigir o texto cria um segundo registro e deixa o antigo** — a doc promete "corrija a planilha e reimporte", e essa promessa **não vale para os campos da chave**. As saídas discutidas, nenhuma implementada:
+
+1. **Modelo:** `candidatos` único por `(edital, inscrição)` e cargo numa tabela filha. Realiza a intenção sem perder linha, e a identidade deixa de depender de texto instável. Muda o importador e a tela (a pessoa vira uma linha com N cargos).
+2. **Reconciliação:** manter a chave e, ao fim da importação, listar os candidatos daquele edital que **não vieram no arquivo**, para remoção. Conserta o sintoma de forma geral — inclusive quem desistiu — sem tocar na identidade.
+
 ### ⭐ A chave natural — o achado que decidiu o desenho
 
 **A unicidade é `(edital_id, n_inscricao, cargo_chave)`, e NÃO `(edital_id, n_inscricao)`.**
