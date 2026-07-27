@@ -20,7 +20,10 @@ vi.mock("@/integrations/supabase/client", async () => {
 const { toastMock } = vi.hoisted(() => ({ toastMock: vi.fn() }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: toastMock }) }));
 
-import { useProvaUnidades } from "@/hooks/useProvaUnidades";
+import {
+  useProvaUnidades,
+  mensagemErroDesvinculoUnidade,
+} from "@/hooks/useProvaUnidades";
 
 const PROVA = "prova-1";
 const UNIDADE = "unid-1";
@@ -182,5 +185,34 @@ describe("useProvaUnidades", () => {
         ),
       );
     });
+  });
+});
+
+describe("mensagemErroDesvinculoUnidade", () => {
+  // Este obstáculo é INDIRETO e nasceu em 2026-07-26: `colaboradores_prova` cascateia de
+  // `prova_unidades`, então o RESTRICT de `coordenadores_prova` faz a cascata esbarrar.
+  // A pessoa está desvinculando uma UNIDADE e o erro fala de coordenação — sem tradução,
+  // não há como ligar uma coisa à outra.
+  const MSG_COORD =
+    'update or delete on table "colaboradores_prova" violates foreign key constraint "coordenadores_prova_colaborador_prova_id_fkey" on table "coordenadores_prova"';
+
+  it("aponta a tela de acesso dos coordenadores", () => {
+    expect(mensagemErroDesvinculoUnidade({ code: "23503", message: MSG_COORD })).toContain(
+      "Acesso dos Coordenadores",
+    );
+  });
+
+  it("cai numa frase genérica para outra FK", () => {
+    const outra =
+      'update or delete on table "prova_unidades" violates foreign key constraint "tabela_nova_fkey" on table "tabela_nova"';
+    expect(mensagemErroDesvinculoUnidade({ code: "23503", message: outra })).toContain(
+      "registros vinculados",
+    );
+  });
+
+  it("não mexe em erro que não é de FK", () => {
+    expect(mensagemErroDesvinculoUnidade({ code: "42501", message: "permission denied" })).toBe(
+      "permission denied",
+    );
   });
 });

@@ -173,11 +173,19 @@ describe("useColaboradoresProva", () => {
     });
   });
 
-  describe("delete — a trava do acesso de coordenador", () => {
-    it("recusa a exclusão e NÃO chama delete quando há acesso de coordenador", async () => {
+  describe("delete — a trava do acesso de coordenador saiu do cliente", () => {
+    /**
+     * Havia aqui um teste do PRÉ-CHECK: ele fixava que a consulta a `coordenadores_prova`
+     * acontecia ANTES do DELETE. Caiu em 2026-07-26, com o pré-check, quando a FK virou
+     * RESTRICT (migration 20260726250000).
+     *
+     * ⚠️ O comentário daquele teste dizia que inverter a ordem faria "o acesso de
+     * coordenador virar órfão". Não viraria: a FK era CASCADE, então o acesso era
+     * APAGADO junto — em silêncio, que é pior que órfão. A frase descrevia um risco
+     * menos grave do que o real.
+     */
+    it("vai direto ao DELETE, sem consultar coordenadores_prova antes", async () => {
       cenarioBase();
-      // A consulta prévia em coordenadores_prova encontra vínculo.
-      setTableResult("coordenadores_prova", { data: { id: "cp-1" }, error: null });
 
       const { result } = renderHookWithProviders(() => useColaboradoresProva(PROVA_UNIDADE_ID));
       await waitFor(() => expect(result.current.isLoading).toBe(false));
@@ -187,32 +195,33 @@ describe("useColaboradoresProva", () => {
 
       await waitFor(() =>
         expect(toastMock).toHaveBeenCalledWith(
-          expect.objectContaining({
-            title: "Erro ao remover colaborador",
-            description: expect.stringContaining("possui acesso como Coordenador"),
-          }),
+          expect.objectContaining({ title: "Colaborador removido" }),
         ),
       );
-
-      // O ponto do teste: a guarda dispara ANTES do DELETE. Se alguém inverter a
-      // ordem, o registro some e o acesso de coordenador vira órfão.
-      const tabelasTocadas = supabaseMock.from.mock.calls.map((c) => c[0]);
-      expect(tabelasTocadas).toContain("coordenadores_prova");
-      expect(tabelasTocadas).not.toContain("colaboradores_prova");
+      // "Leio e então decido" é uma corrida: o acesso podia ser concedido entre o SELECT
+      // e o DELETE. Deixar de consultar é parte do conserto.
+      expect(supabaseMock.from.mock.calls.map((c) => c[0])).not.toContain("coordenadores_prova");
     });
 
-    it("exclui normalmente quando não há acesso de coordenador", async () => {
+    it("traduz a recusa do banco apontando onde se resolve", async () => {
       cenarioBase();
-      setTableResult("coordenadores_prova", { data: null, error: null });
+      setTableResult("colaboradores_prova", {
+        data: null,
+        error: erroPostgrest(
+          "23503",
+          'update or delete on table "colaboradores_prova" violates foreign key constraint "coordenadores_prova_colaborador_prova_id_fkey" on table "coordenadores_prova"',
+        ),
+      });
 
       const { result } = renderHookWithProviders(() => useColaboradoresProva(PROVA_UNIDADE_ID));
-      await waitFor(() => expect(result.current.isLoading).toBe(false));
-
       result.current.delete("alocacao-1");
 
       await waitFor(() =>
         expect(toastMock).toHaveBeenCalledWith(
-          expect.objectContaining({ title: "Colaborador removido" }),
+          expect.objectContaining({
+            title: "Erro ao remover colaborador",
+            description: expect.stringContaining("Acesso dos Coordenadores"),
+          }),
         ),
       );
     });

@@ -63,7 +63,7 @@ A primeira varredura olhou as FKs **das tabelas que já estavam sob investigaç�
 |---|---|---|
 | **Excluir prova** cascateava para 7 tabelas — 531 alocações, as 19 ocorrências, 17 valores, 172 metas, 42 salas, 10 coordenadores | **Não pode. Nem com senha.** | policy de DELETE removida **+ trigger** `check_prova_nao_excluivel`; sumiu do hook, da página e do card |
 | **Excluir unidade do catálogo** cascateava para alocações, metas e ocorrências (as 11 estão em uso; a "ICT" levaria 110 alocações e 10 ocorrências) | **Só se não tiver nenhum uso** | `RESTRICT` em `prova_unidades` e `salas_prova_distribuidas` |
-| **Desalocar colaborador**: a guarda de acesso de coordenador é client-side, e a FK é CASCADE | em aberto | — |
+| **Desalocar colaborador**: a guarda de acesso de coordenador é client-side, e a FK é CASCADE | **Bloquear no banco também** | `RESTRICT` em `coordenadores_prova.colaborador_prova_id` (`20260726250000`) |
 
 **Por que o trigger além da policy, no caso da prova:** remover a policy faz a RLS negar por padrão, o que cobre PostgREST e cliente. Não cobre `service_role`, que é como rodam as Edge Functions e passa **por cima** da RLS. Verificado: o `DELETE` como superusuário é recusado pelo trigger.
 
@@ -78,8 +78,17 @@ Ao trocar as FKs, dois testes existentes caíram e a leitura deles foi instrutiv
 
 Os dois passavam porque **o mock devolvia o erro que o próprio teste mandou devolver**. É um modo de falha específico de suíte com mock: o teste prova o *tratamento* de um erro, não que o erro seja alcançável. Quando o comentário de um teste afirma um comportamento do banco, esse comportamento precisa ser conferido no banco — e é a mesma disciplina do controle positivo, vista do outro lado.
 
+### ⚠️ Um RESTRICT pode criar obstáculo INDIRETO — o caso da desalocação
+
+Ao bloquear a desalocação de quem tem acesso de coordenador, apareceu um efeito que vale como regra geral: **`colaboradores_prova` cascateia de `prova_unidades`**, então o novo RESTRICT também faz **desvincular uma unidade** falhar quando há coordenador alocado nela.
+
+É o comportamento certo — desvincular não deve revogar coordenação em silêncio —, mas o erro chega numa tela em que a pessoa **não estava mexendo com coordenação**, falando de uma tabela que ela não citou. Por isso `useProvaUnidades` ganhou tradutor próprio (`mensagemErroDesvinculoUnidade`), separado do de desalocação.
+
+**A regra que fica:** ao pôr `RESTRICT` numa FK, verifique **quem cascateia para a tabela pai**. Cada cascata que chega ali passa a poder falhar por causa do seu RESTRICT, numa operação que parece não ter relação. Sem tradução nessas telas, o usuário leva um erro incompreensível.
+
 ### O que segue morando só no cliente, e é aceito
 
+- **`salas_prova_distribuidas.sala_fiscal_1/2` continua `SET NULL`** — desalocar alguém o remove em silêncio da sala em que era fiscal. Hoje são **zero linhas** (nenhum fiscal atribuído a sala), então é preventivo, e bloquear criaria atrito no dia da prova, quando trocar fiscal de sala é rotina. **Decisão em aberto**, não esquecimento.
 - **A numeração sequencial de salas** continua sendo calculada no cliente. Movê-la para o banco (uma sequence por unidade+andar) foi considerado desproporcional; o UNIQUE já converte o pior caso em erro visível.
 - **`email_atualizacao_log` continua CASCADE** ao excluir colaborador — exceção consciente, documentada na migration `20260726210000`: é log de entrega, não histórico de participação, e bloquear ali criaria beco sem saída.
 

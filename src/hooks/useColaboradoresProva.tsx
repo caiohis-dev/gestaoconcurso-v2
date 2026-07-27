@@ -33,6 +33,24 @@ export interface ColaboradorProvaUpdate {
   valor_pagamento?: number | null;
 }
 
+/**
+ * Traduz a recusa do banco ao desalocar quem tem acesso de coordenador (migration
+ * 20260726250000, que trocou CASCADE por RESTRICT em `coordenadores_prova`).
+ *
+ * A instrução aponta a tela onde se resolve — sem ela, a pessoa lê um erro de FK e não
+ * tem como adivinhar que o obstáculo é a coordenação, que se administra em outro lugar.
+ */
+export function mensagemErroDesalocacao(error: { message: string; code?: string }): string {
+  const temCoordenacao =
+    error.code === '23503' || /foreign key constraint|violates foreign key/i.test(error.message);
+  if (!temCoordenacao) return error.message;
+
+  if (/coordenadores_prova/.test(error.message)) {
+    return "Este colaborador possui acesso como Coordenador desta prova. Remova o acesso em 'Acesso dos Coordenadores' antes de removê-lo da unidade.";
+  }
+  return 'Este colaborador não pode ser removido da unidade porque há registros vinculados a esta alocação.';
+}
+
 export function useColaboradoresProva(provaUnidadeId: string) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -202,19 +220,10 @@ export function useColaboradoresProva(provaUnidadeId: string) {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      // Check if this colaborador_prova has coordinator access
-      const { data: hasCoordinatorAccess } = await supabase
-        .from("coordenadores_prova")
-        .select("id")
-        .eq("colaborador_prova_id", id)
-        .maybeSingle();
-
-      if (hasCoordinatorAccess) {
-        throw new Error(
-          "Este colaborador possui acesso como Coordenador. Remova o acesso em 'Acesso dos Coordenadores' antes de excluí-lo da lista."
-        );
-      }
-
+      // O pré-check que existia aqui (SELECT em coordenadores_prova e throw) saiu em
+      // 2026-07-26, junto com o RESTRICT da migration 20260726250000. Ele valia só para
+      // quem passava por esta tela, e era "leio e então decido" — o acesso podia ser
+      // concedido entre o SELECT e o DELETE. Agora quem recusa é o banco.
       const { error } = await supabase
         .from("colaboradores_prova")
         .delete()
@@ -236,7 +245,7 @@ export function useColaboradoresProva(provaUnidadeId: string) {
     onError: (error: Error) => {
       toast({
         title: "Erro ao remover colaborador",
-        description: error.message,
+        description: mensagemErroDesalocacao(error),
         variant: "destructive",
       });
     },

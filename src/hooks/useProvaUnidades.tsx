@@ -18,6 +18,28 @@ export interface ProvaUnidadeWithDetails extends ProvaUnidade {
   };
 }
 
+/**
+ * Traduz a recusa ao desvincular uma unidade da prova.
+ *
+ * ⚠️ Este caso NASCEU em 2026-07-26 como efeito colateral do RESTRICT em
+ * `coordenadores_prova` (migration 20260726250000): `colaboradores_prova` cascateia de
+ * `prova_unidades`, então desvincular uma unidade que tenha um coordenador alocado faz a
+ * cascata esbarrar no acesso de coordenador. É o comportamento certo — desvincular não
+ * deve revogar coordenação em silêncio — mas é obstáculo INDIRETO: o erro fala de uma
+ * tabela que a pessoa não estava mexendo, e sem tradução ela não teria como ligar uma
+ * coisa à outra.
+ */
+export function mensagemErroDesvinculoUnidade(error: { message: string; code?: string }): string {
+  const bloqueado =
+    error.code === '23503' || /foreign key constraint|violates foreign key/i.test(error.message);
+  if (!bloqueado) return error.message;
+
+  if (/coordenadores_prova/.test(error.message)) {
+    return "Há um coordenador com acesso vinculado a esta unidade. Remova o acesso em 'Acesso dos Coordenadores' antes de desvincular a unidade.";
+  }
+  return 'Esta unidade não pode ser desvinculada porque há registros vinculados a ela.';
+}
+
 export function useProvaUnidades(provaId: string) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -100,7 +122,7 @@ export function useProvaUnidades(provaId: string) {
     onError: (error: Error) => {
       toast({
         title: "Erro ao remover unidade",
-        description: error.message,
+        description: mensagemErroDesvinculoUnidade(error),
         variant: "destructive",
       });
     },
