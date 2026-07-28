@@ -112,9 +112,9 @@ Verificado no arquivo, com o cuidado de usar a coluna certa (⚠️ a coluna 0 �
 | Inscrições com mais de um CPF | **0** |
 | CPFs com mais de uma inscrição | **0** |
 
-**Inscrição e CPF são a mesma informação** neste arquivo: um determina o outro. E **não existe coluna nenhuma que seja um identificador por cargo** — a única única-por-linha é o contador do export.
+⚠️ **Esta tabela mede a coluna `ID`, e o rótulo dela estava errado** — ver a CORREÇÃO de 28/07 mais abaixo. O que ela mostra é que **`ID` e CPF são a mesma informação** (um determina o outro): são os dois identificadores da PESSOA. A **inscrição** de verdade é a coluna `N_INSCRICAO`, e essa é única por linha (7.416).
 
-A distribuição: 6.638 inscrições com 1 cargo, 369 com 2, 12 com 3 e 1 com 4. Os 396 excedentes (7.416 − 7.020) são exatamente as pessoas concorrendo a mais de um cargo, com **a mesma inscrição e o mesmo CPF** — por exemplo a inscrição `213946`, CPF `99528037704`, em `DOCENTE II`, `DOCENTE I ¿ LÍNGUA INGLESA` e `DOCENTE I ¿ HISTÓRIA`.
+A distribuição: 6.638 **pessoas** com 1 cargo, 369 com 2, 12 com 3 e 1 com 4. Os 396 excedentes (7.416 − 7.020) são as inscrições adicionais de quem concorre a mais de um cargo — por exemplo o `ID` `213946`, CPF `99528037704`, em `DOCENTE II`, `DOCENTE I ¿ LÍNGUA INGLESA` e `DOCENTE I ¿ HISTÓRIA`, **com três números de inscrição diferentes**.
 
 #### ⚠️ SOMAR o CPF à chave (feito) ≠ TROCAR o cargo pelo CPF (recusado)
 
@@ -122,10 +122,11 @@ A distinção é a coisa mais fácil de errar aqui, e as duas propostas se parec
 
 | Chave | Linhas únicas | Colapsam | Status |
 |---|---|---|---|
-| `(inscrição, cargo)` | 7.416 | 0 | vigorou até 27/07 |
-| **`(cpf, cargo, inscrição)`** | **7.416** | **0** | ✅ **em vigor desde 27/07** |
-| `(inscrição, cpf)` — trocar | 7.020 | **396** | ❌ recusada |
-| `(inscrição)` sozinha | 7.020 | 396 | ❌ recusada |
+| `(ID, cargo)` | 7.416 | 0 | vigorou até 27/07 — lido como "inscrição" na época |
+| **`(cpf, cargo, ID)`** | **7.416** | **0** | ✅ virou a chave em 27/07 |
+| `(ID, cpf)` — trocar | 7.020 | **396** | ❌ recusada |
+| `(ID)` sozinha | 7.020 | 396 | ❌ recusada |
+| `(n_inscricao)` — a coluna certa | **7.416** | **0** | ⚠️ nunca foi avaliada; ver a CORREÇÃO |
 
 **Somar não podia perder ninguém, e não perdeu:** acrescentar coluna a uma chave única só é capaz de *separar* linhas, nunca de fundi-las — a chave nova contém a antiga. **Trocar** o cargo pelo CPF é que colapsaria 396 inscritos em silêncio (o `deduplicar()` mantém a última ocorrência e descarta as anteriores sem erro), porque o CPF é redundante com a inscrição neste arquivo: a troca equivale a usar só a inscrição. **Não ressuscite a troca sem remedir.**
 
@@ -142,21 +143,37 @@ O texto do cargo é instável (o `¿` é um travessão mal codificado em cp1252)
 
 ### ⭐ A chave natural — o achado que decidiu o desenho
 
-**A unicidade é `(edital_id, cpf, cargo_id, n_inscricao)`** — índice `candidatos_cpf_cargo_id_inscricao_key`, `NULLS NOT DISTINCT`, migration `20260728100000`. O `cpf` entrou em 27/07; em **28/07** o cargo deixou de entrar pelo TEXTO e passou a entrar por **referência** (etapa 5 do roadmap de cargos). O que segue explica por que o **cargo** está lá, que é a parte que não pode ser mexida sem perder gente.
+**A unicidade é `(edital_id, cpf, cargo_id, n_inscricao)`** — índice `candidatos_cpf_cargo_id_inscricao_key`, `NULLS NOT DISTINCT`, migration `20260728100000`. O `cpf` entrou em 27/07; em **28/07** o cargo deixou de entrar pelo TEXTO e passou a entrar por **referência** (etapa 5 do roadmap de cargos). ⚠️ **A justificativa histórica de o cargo estar na chave caiu em 28/07** — ver a CORREÇÃO abaixo. A chave segue correta; o que mudou é o motivo.
 
 ⭐ **É a troca por referência que torna renomear cargo inofensivo.** Com o texto na identidade, corrigir `DOCENTE I ¿ HISTÓRIA` para `DOCENTE I — HISTÓRIA` criava **481 registros novos**; com `cargo_id`, é um `UPDATE` numa linha de `cargos` e nenhum candidato duplica. Verificado pelo PostgREST em 28/07.
 
-**O cargo é indispensável: a chave não pode ser `(edital_id, n_inscricao)`.**
+### 🔴 CORREÇÃO DE 2026-07-28 — a coluna lida como "inscrição" era a errada
 
-Medido no arquivo real: **382 números de inscrição aparecem mais de uma vez** (778 linhas). Não é sujeira — é a mesma pessoa concorrendo a mais de um cargo com a mesma inscrição:
+**Informado pelo usuário e remedido no arquivo real.** Tudo que este doc dizia sobre "382 inscrições que se repetem" partia de ler a inscrição na coluna **`ID`**. Está errado, e a correção muda a *justificativa* de várias decisões (embora, felizmente, não o schema).
 
-```
-213946 | CASSIA ANDREA ... | DOCENTE II
-213946 | CASSIA ANDREA ... | DOCENTE I - LÍNGUA INGLESA
-213946 | CASSIA ANDREA ... | DOCENTE I - HISTÓRIA
-```
+| Coluna | Distintos em 7.416 linhas | O que é DE VERDADE |
+|---|---|---|
+| `N_INSCRICAO` (coluna 0) | **7.416** | ⭐ **a inscrição** — uma por linha |
+| `ID` | 7.020 | **a pessoa** no sistema de origem |
+| `CPF` | 7.020 | bate exatamente com o `ID` |
 
-Tanto o trio antigo quanto o quarteto atual são únicos nas 7.416 linhas; o par sem cargo rejeitaria **396 inscritos legítimos**. Quem for "corrigir" isso para uma chave mais simples vai perder inscrito.
+Os **382** `ID` que aparecem em mais de uma linha têm **todos** o mesmo CPF e **todos** cargos distintos. A leitura correta é: `ID` identifica a **pessoa**, `N_INSCRICAO` identifica a **inscrição** — uma por pessoa-por-cargo. As **396** linhas excedentes (7.416 − 7.020) são as inscrições adicionais de quem concorre a mais de um cargo, **cada uma com seu próprio número**.
+
+**O que isso derruba:**
+
+- ❌ *"382 números de inscrição se repetem"* — **não se repetem**. O que se repete é o `ID`/CPF.
+- ❌ *"o cargo é indispensável na chave, senão 396 inscritos são descartados"* — **falso**. `(edital_id, n_inscricao)` sozinho já é único nas 7.416 linhas e não perde ninguém.
+- ❌ *"a coluna 0 é o contador do export"* — ela **é** a inscrição; o auto-pareamento estava **certo** ao casá-la (ver o backlog, item removido em 28/07).
+
+**O que NÃO muda, e é o alívio:**
+
+- A chave em vigor `(edital_id, cpf, cargo_id, n_inscricao)` **continua correta e única**. Somar colunas a uma chave única só separa linhas; com `n_inscricao` já único, as outras três são redundantes para a unicidade — **redundante não é errado**, e ninguém se perde.
+- Nada precisa ser remigrado. As migrations aplicadas seguem válidas; o que ficou desatualizado são os **comentários** de justificativa dentro delas (`20260727000000`, `20260727200000`, `20260728100000`, `20260728110000`). Como não se edita migration aplicada, a correção vale a partir daqui.
+
+**O que isso ABRE, e ainda não foi decidido:**
+
+1. **A chave poderia ser `(edital_id, n_inscricao)`** — mais simples, e resolveria de graça o custo aceito de hoje (corrigir CPF ou cargo na planilha passaria a **atualizar** em vez de criar registro novo). É a saída "modelo" que estava desenhada e engavetada, e esta correção a torna barata. ⚠️ Mas apoiar a identidade numa propriedade de **um** export é aposta: se outro edital repetir numeração, funde gente. Decidir com medição, não por elegância.
+2. **A condição do trigger `candidatos_recusa_reapontar_cargo` pode ser ALARGADA** — ver [`cargos.md`](./cargos.md).
 
 ⚠️ **A coluna gerada `cargo_chave` NÃO existe mais** — foi dropada em 28/07 junto com a troca da chave (D3 do roadmap de cargos). Ela existia porque o upsert do PostgREST (`?on_conflict=a,b,c`) só sabe nomear **colunas**, nunca expressões, e o texto do cargo precisava ser normalizado *dentro da chave*. Com `cargo_id` na chave não há mais o que normalizar ali. Deixá-la no schema seria uma coluna terminada em `_chave` sem chave nenhuma apontando para ela. O texto cru segue em `cargo`, como procedência.
 

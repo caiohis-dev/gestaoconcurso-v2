@@ -232,23 +232,25 @@ Os cargos chegam sujos da origem: **7 dos 9** trazem `¿`, um travessão mal dec
 
 ---
 
-## 🔴 O auto-pareamento da importação de candidatos casa a coluna ERRADA no arquivo atual
+## ❌ RETIRADO 2026-07-28 — o auto-pareamento estava CERTO; a leitura da planilha é que estava errada
 
-**Status:** pendente — **achado ao medir a planilha em 2026-07-27**. É o item mais urgente do módulo: erra em silêncio.
 **Área:** Candidatos (ver [`estrutura/modulos/candidatos/00-modulo.md`](./estrutura/modulos/candidatos/00-modulo.md))
 
-O arquivo `docs/temp/todos inscritos concurso 002-2026-SMA cabeçalho.xls` foi mexido em 27/07 e **a coluna 0 ganhou o cabeçalho `N_INSCRICAO`** — mas o conteúdo dela **continua sendo o contador de linha do export** (medido: é exatamente 1, 2, 3… 7416). O nº de inscrição real segue na coluna `ID`.
+O item aberto em 27/07 dizia que `autoMapear` casava `N_INSCRICAO` com "o contador de linha do export" e mandava, enquanto não houvesse conserto, **conferir à mão que "Nº de Inscrição" aponta para a coluna `ID`**.
 
-**Por que isso é grave.** `normalizarTexto('N_INSCRICAO')` dá `ninscricao`, o **primeiro sinônimo** do campo `n_inscricao` em `CAMPOS_CANDIDATO`, e `autoMapear` fica com a primeira coluna que casa. Antes a coluna 0 era anônima e era pulada, então o palpite acertava a `ID`. Agora ele casa com o contador — e **nada acusa o erro**, porque o contador é perfeitamente único: a importação gravaria 7.416 candidatos com inscrição de 1 a 7416, sem erro, sem aviso e sem colisão de chave.
+🔴 **Aquela instrução fazia a coisa errada, e é por isso que o item fica registrado em vez de sumir.** Informado pelo usuário e remedido em 28/07 contra o arquivo real:
 
-É a mesma classe de defeito que motivou tirar `'tipoprova'` dos sinônimos de `cargo`: **palpite que erra em silêncio é pior que palpite nenhum.**
+| Coluna | Distintos em 7.416 linhas | O que é |
+|---|---|---|
+| `N_INSCRICAO` (coluna 0) | **7.416** | **a inscrição** — uma por linha |
+| `ID` | 7.020 | **a pessoa** no sistema de origem |
+| `CPF` | 7.020 | bate exatamente com o `ID` |
 
-**Saídas possíveis, nenhuma decidida:**
-1. Tirar `'ninscricao'` dos sinônimos e deixar o campo em branco, obrigando a escolha — mesmo tratamento dado ao `cargo`. Simples, mas piora o caso de um arquivo cujo `N_INSCRICAO` seja legítimo.
-2. Desempatar por **conteúdo**, não por cabeçalho: uma coluna que é exatamente `1..N` na ordem das linhas é um contador de export, não uma inscrição — dá para recusá-la como palpite.
-3. Só avisar na tela quando a coluna escolhida parecer um contador, deixando a decisão com o usuário.
+Os 382 `ID` repetidos têm todos o mesmo CPF e todos cargos distintos: `ID` é a pessoa, `N_INSCRICAO` é a inscrição — uma por pessoa-por-cargo. Seguir a instrução antiga gravaria o **identificador da pessoa** no campo de inscrição, repetido em até 4 linhas.
 
-⚠️ **Enquanto não houver conserto, quem importar precisa conferir à mão que "Nº de Inscrição" aponta para a coluna `ID`.**
+**Nada a fazer no código:** `autoMapear` já casa `N_INSCRICAO` corretamente, e é o comportamento desejado. As três "saídas" propostas no item antigo (tirar o sinônimo, desempatar por conteúdo, avisar na tela) estão **todas descartadas** — resolveriam um problema que não existe, e a saída 2 (recusar coluna que seja `1..N`) recusaria justamente a coluna certa.
+
+⚠️ **O que a correção deixou em aberto está no módulo, não aqui:** a justificativa de o cargo estar na chave natural caiu junto (a inscrição não se repete, então `(edital, n_inscricao)` já seria único). A chave em vigor continua correta — ver a seção "CORREÇÃO DE 2026-07-28" em [`estrutura/modulos/candidatos/00-modulo.md`](./estrutura/modulos/candidatos/00-modulo.md), com as duas decisões que ela abre.
 
 ---
 

@@ -280,13 +280,25 @@ Trigger `BEFORE INSERT` em `candidatos`, migration `20260728110000`, SQLSTATE **
 2. **`salvarApelidos` manda os ~9 pares num upsert único e atômico.** Barrar um par derrubaria os nove.
 3. **O chamador engole o erro de propósito** (`.catch(() => undefined)`) — apelido é conveniência, a importação é o objetivo. A guarda falharia **em silêncio** e a importação seguiria gravando o `cargo_id` novo.
 
-### ⚠️ Por que a condição é ESTREITA
+### 🔴 A condição é ESTREITA — e a razão disso CAIU em 2026-07-28
 
-Exigir o **texto do cargo igual** não é zelo. "Mesma inscrição, `cargo_id` diferente" sozinho bloquearia o caso legítimo mais comum do arquivo: **382 pessoas concorrem a mais de um cargo com a mesma inscrição** — é justamente por isso que o cargo está na chave. Só com o texto igual dá para afirmar *"esta é a mesma linha da planilha, apontada para outro cargo"*.
+**A justificativa original era:** exigir o texto do cargo igual porque *"382 pessoas concorrem a mais de um cargo com a mesma inscrição"*, e uma condição mais larga as bloquearia.
 
-O **CONTROLE POSITIVO 1** da bateria (`docs/bateria-cargos.sql`, caso 7.5) é o que prova a estreiteza: se ele falhar, a guarda passou a descartar inscrito legítimo.
+**Isso estava errado.** A inscrição foi lida na coluna `ID`, que é a **pessoa**; a inscrição de verdade é a coluna `N_INSCRICAO`, e ela é **única por linha** (7.416 em 7.416). Ninguém compartilha número de inscrição. Ver a "CORREÇÃO DE 2026-07-28" em [`00-modulo.md`](./00-modulo.md).
 
-**O que fica de fora, e é irredutível:** se a origem mudar a grafia **e** o usuário reclassificar no mesmo gesto, o texto difere e o trigger não vê. O arquivo não tem identificador por cargo (a única coluna única por linha é um contador), então banco nenhum distingue "reclassificaram esta pessoa" de "esta pessoa tem um segundo cargo". Quem pegaria esse resíduo é a **reconciliação**, ainda não implementada.
+**O que a condição estreita continua sendo:** correta, porém **mais restrita do que precisa**. Ela não bloqueia nada de legítimo — só deixa passar mais do que deveria.
+
+⚠️ **O buraco que a estreiteza abre.** Se a origem mudar a **grafia** do cargo e o usuário reclassificar no mesmo gesto, o texto difere, o trigger não dispara e os inscritos antigos ficam **órfãos em silêncio** — exatamente o que a etapa 5b existe para impedir. Antes eu registrei isso como *"irredutível, porque o arquivo não tem identificador por cargo"*. **Não é irredutível:** com `n_inscricao` único, `(edital_id, cpf, n_inscricao)` já identifica a linha, e a comparação do texto pode simplesmente sair da condição.
+
+**O conserto proposto (não feito):** remover do trigger a linha
+
+```sql
+AND lower(btrim(coalesce(c.cargo,''))) = lower(btrim(coalesce(NEW.cargo,'')))
+```
+
+⚠️ **Antes de fazer isso, MEDIR:** o alargamento só é seguro enquanto `n_inscricao` for único por linha. Se algum edital repetir numeração entre cargos, a condição larga passa a bloquear inscrito legítimo — que é precisamente o risco que a versão estreita foi desenhada para evitar, ainda que pelo motivo errado. E o **CONTROLE POSITIVO 1** da bateria (`docs/bateria-cargos.sql`, caso 7.5) **vai falhar** com a condição larga, porque ele foi escrito com CPF e inscrição iguais nos dois cargos — ele precisa ser reescrito com inscrições diferentes, que é o dado real.
+
+Enquanto isso não for decidido, quem pegaria o resíduo é a **reconciliação**, ainda não implementada.
 
 ### O que a guarda deliberadamente NÃO bloqueia
 
