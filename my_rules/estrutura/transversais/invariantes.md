@@ -38,7 +38,10 @@ Não repita esforço: isto está coberto e não precisa de barreira no cliente p
 | Valor não se remove com meta > 0 pendente | trigger `check_valor_sem_meta` (26/07) |
 | Revogação de coordenador é atômica | RPC `revogar_coordenador` |
 | Hierarquia de papéis (`superadmin ⇒ admin`) | dentro do `has_role` |
-| Inscrição de candidato única por (edital, nº, cargo); formato de CPF/CEP/e-mail/raça do candidato | `candidatos_inscricao_cargo_key` + **6 CHECKs** (27/07) — ver [`../modulos/candidatos/00-modulo.md`](../modulos/candidatos/00-modulo.md) |
+| Inscrição de candidato única por (edital, **CPF**, **cargo_id**, nº); formato de CPF/CEP/e-mail/raça do candidato | `candidatos_cpf_cargo_id_inscricao_key` (`NULLS NOT DISTINCT`, 28/07) + **6 CHECKs** (27/07) — ver [`../modulos/candidatos/00-modulo.md`](../modulos/candidatos/00-modulo.md) |
+| Reapontar para outro cargo uma linha JÁ importada é recusado (senão os inscritos antigos ficam órfãos) | trigger `candidatos_recusa_reapontar_cargo` (28/07), SQLSTATE `RC001` — condição ESTREITA de propósito, ver [`../modulos/candidatos/cargos.md`](../modulos/candidatos/cargos.md) |
+| Nome de cargo único (caixa/espaço normalizados); um texto de planilha aponta para um cargo só | `cargos_nome_chave_key`, `cargo_apelidos_texto_chave_key` + 2 CHECKs de não-branco (27/07) |
+| Cargo em uso por candidato não se exclui; apagar cargo leva os apelidos dele | `candidatos.cargo_id` **RESTRICT**, `cargo_apelidos.cargo_id` **CASCADE** — opostos de propósito, ver [`../modulos/candidatos/cargos.md`](../modulos/candidatos/cargos.md) |
 
 ## ✅ As três lacunas da auditoria foram fechadas no mesmo dia
 

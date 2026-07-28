@@ -56,7 +56,7 @@ export type Database = {
         Row: {
           bairro: string | null
           cargo: string | null
-          cargo_chave: string | null
+          cargo_id: string | null
           celular: string | null
           cep: string | null
           cidade: string | null
@@ -89,7 +89,7 @@ export type Database = {
         Insert: {
           bairro?: string | null
           cargo?: string | null
-          cargo_chave?: string | null
+          cargo_id?: string | null
           celular?: string | null
           cep?: string | null
           cidade?: string | null
@@ -122,7 +122,7 @@ export type Database = {
         Update: {
           bairro?: string | null
           cargo?: string | null
-          cargo_chave?: string | null
+          cargo_id?: string | null
           celular?: string | null
           cep?: string | null
           cidade?: string | null
@@ -154,6 +154,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "candidatos_cargo_id_fkey"
+            columns: ["cargo_id"]
+            isOneToOne: false
+            referencedRelation: "cargos"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "candidatos_edital_id_fkey"
             columns: ["edital_id"]
             isOneToOne: false
@@ -161,6 +168,71 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      cargo_apelidos: {
+        Row: {
+          cargo_id: string
+          created_at: string | null
+          created_by: string | null
+          id: string
+          texto_chave: string | null
+          texto_origem: string
+        }
+        Insert: {
+          cargo_id: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          texto_chave?: string | null
+          texto_origem: string
+        }
+        Update: {
+          cargo_id?: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          texto_chave?: string | null
+          texto_origem?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cargo_apelidos_cargo_id_fkey"
+            columns: ["cargo_id"]
+            isOneToOne: false
+            referencedRelation: "cargos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cargos: {
+        Row: {
+          ativo: boolean
+          created_at: string | null
+          created_by: string | null
+          id: string
+          nome: string
+          nome_chave: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          ativo?: boolean
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          nome: string
+          nome_chave?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          ativo?: boolean
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          nome?: string
+          nome_chave?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       colaboradores: {
         Row: {

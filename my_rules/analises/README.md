@@ -9,7 +9,7 @@
 | **`analises/*.md`** (raiz) | **Vivo.** Desenho ainda não executado, ou dívida ainda em aberto. | Pode guiar implementação. Confira contra o código mesmo assim. |
 | **`analises/concluidos/*`** | **Histórico.** Registro do desenho e das decisões de um tema já entregue. | **Não é plano.** Serve para entender *por que* algo é como é — não *o que fazer*. |
 
-Hoje, vivos: [`dividas-auth-colaborador.md`](./dividas-auth-colaborador.md) e [`roadmap-edicao-email-colaborador.md`](./roadmap-edicao-email-colaborador.md).
+Hoje, vivos: [`dividas-auth-colaborador.md`](./dividas-auth-colaborador.md), [`roadmap-edicao-email-colaborador.md`](./roadmap-edicao-email-colaborador.md) e [`roadmap-cargos.yaml`](./roadmap-cargos.yaml) — este último **quase todo executado**: etapas 1 a 5b concluídas em 27–28/07, falta só a 6 (cosmética). D1, D4 e D11 confirmados pelo usuário.
 
 ## O estado atual NÃO mora aqui
 

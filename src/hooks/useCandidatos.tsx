@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { CandidatoImportado, mensagemErroImportacao } from "@/lib/candidatos-import";
+import { CandidatoResolvido, mensagemErroImportacao } from "@/lib/candidatos-import";
 
 export interface Candidato {
   id: string;
@@ -140,8 +140,19 @@ export interface ProgressoImportacao {
  * corrigida e mandada de novo. Com `insert`, a segunda importação bateria no índice único
  * e falharia inteira; com `upsert` sobre a chave natural, ela ATUALIZA os mesmos inscritos.
  *
- * `onConflict` nomeia as três colunas do índice `candidatos_inscricao_cargo_key`, incluindo
- * a gerada `cargo_chave` — ver o comentário dela na migration 20260727000000.
+ * `onConflict` nomeia as quatro colunas do índice `candidatos_cpf_cargo_id_inscricao_key`
+ * — ver a migration 20260728100000 (etapa 5 do roadmap-cargos), que trocou o TEXTO do
+ * cargo pela REFERÊNCIA a ele. É essa troca que faz corrigir o nome de um cargo deixar de
+ * duplicar inscrito.
+ *
+ * ⚠️ QUATRO coisas precisam concordar, e mexer numa obriga a mexer nas quatro:
+ *   1. o índice único do banco;
+ *   2. esta string de `onConflict`;
+ *   3. `chaveNatural()` de `candidatos-import.ts`, que deduplica o lote ANTES de enviar;
+ *   4. a ORDEM do pipeline — o dedup roda DEPOIS de resolver o cargo (`resolverLinhas`).
+ * Se qualquer par discordar, uma chave repetida escapa da deduplicação e o Postgres recusa
+ * o bloco inteiro de 500 com "ON CONFLICT DO UPDATE command cannot affect row a second
+ * time".
  *
  * ⚠️ Cada bloco é uma transação SUA. Um bloco que falha não desfaz os anteriores, e é por
  * isso que o relatório mostra quantos entraram: dizer só "falhou" deixaria o usuário sem
@@ -157,7 +168,11 @@ export function useImportarCandidatos() {
       onProgresso,
       deveParar,
     }: {
-      candidatos: CandidatoImportado[];
+      // ⭐ `CandidatoResolvido`, e não `CandidatoImportado`: o tipo é o que impede um lote
+      // SEM `cargo_id` de chegar aqui. A partir da etapa 5 do roadmap de cargos, esse
+      // campo compõe a chave natural — mandar o lote não-resolvido gravaria milhares de
+      // linhas com a identidade incompleta, e o TypeScript recusa antes disso.
+      candidatos: CandidatoResolvido[];
       onProgresso?: (p: ProgressoImportacao) => void;
       deveParar?: () => boolean;
     }): Promise<ResultadoBloco[]> => {
@@ -173,7 +188,7 @@ export function useImportarCandidatos() {
           .from("candidatos")
           .upsert(
             bloco.map((c) => ({ ...c, created_by: createdBy })),
-            { onConflict: "edital_id,n_inscricao,cargo_chave" },
+            { onConflict: "edital_id,cpf,cargo_id,n_inscricao" },
           );
 
         resultados.push({

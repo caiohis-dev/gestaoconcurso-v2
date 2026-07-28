@@ -198,26 +198,101 @@ A suíte mocka o Supabase: não exercita RLS, constraint, trigger nem transaçã
 
 ---
 
-## ⏸️ EM ESPERA — a chave natural de `candidatos`, aguardando a planilha corrigida
+## Cargos como entidade — o cargo do candidato deixa de ser texto sujo
 
-**Status:** aberto em 2026-07-27, **bloqueado por dependência externa**: o usuário identificou que o arquivo de origem veio errado e vai corrigi-lo.
-**Área:** Candidatos (ver [`estrutura/modulos/candidatos/00-modulo.md`](./estrutura/modulos/candidatos/00-modulo.md), seção "EM REVISÃO")
+**Status:** **etapas 1 a 5b concluídas** (2026-07-28) — falta só a **6**, cosmética. Roadmap em [`analises/roadmap-cargos.yaml`](./analises/roadmap-cargos.yaml); doc da feature em [`estrutura/modulos/candidatos/cargos.md`](./estrutura/modulos/candidatos/cargos.md).
 
-**Nada foi alterado** — a chave em vigor continua `(edital_id, n_inscricao, cargo_chave)`.
+✅ **Etapa 1 (schema):** migration `20260727210000` criou `cargos` e `cargo_apelidos`, acrescentou `candidatos.cargo_id` e os dois índices de apoio a FK. Verificada por [`../docs/bateria-cargos.sql`](../docs/bateria-cargos.sql), verde.
 
-### O problema que abriu isto
+✅ **Etapa 2 (lib pura):** `cargosDaPlanilha`, `pareceSujo` e `aplicarResolucoes` em `candidatos-import.ts`, mais o tipo `CandidatoResolvido` — 22 testes novos.
 
-O texto do cargo entra na identidade do candidato, e o texto é instável (acento quebrado na origem). Verificado no banco: mudar caixa/espaço atualiza a linha, mas **corrigir o texto cria um segundo registro e mantém o antigo**. Ou seja, a promessa "corrija a planilha e reimporte" **não vale para os campos da chave** (`n_inscricao` e `cargo`).
+✅ **Etapa 3 (hooks):** `useCargos.tsx` — catálogo, apelidos, criação e gravação — 26 testes. **Fecha a janela A.**
 
-### ⚠️ O que NÃO fazer, porque já foi medido
+✅ **Etapa 4 (a tela):** o assistente passou de 4 para 5 passos, com o passo **Cargos** entre pareamento e importação — associação, criação inline partindo do texto sujo, memória de apelidos com selo "lembrado", e o cargo virou **obrigatório** (D4 + D9). 20 testes novos. **Fecha a janela B.**
 
-Trocar `cargo_chave` por `cpf` **colapsaria 396 inscritos em silêncio** (7.416 → 7.020). O CPF é redundante com a inscrição no arquivo medido — zero inscrições com mais de um CPF, zero CPFs com mais de uma inscrição —, então a proposta equivale a usar só a inscrição. Some-se que os 2 CPFs inválidos viram `NULL`, e `NULL` não colide em índice único: essas linhas duplicariam a cada reimportação.
+✅ **Etapa 5 (a chave):** migration `20260728100000` — a chave natural trocou `cargo_chave` por `cargo_id` e a coluna gerada foi dropada (D3). **Renomear um cargo deixou de duplicar candidato**, verificado pelo PostgREST. O dedup mudou de lugar no pipeline, e a ordem agora é garantida pelo TypeScript, não por disciplina.
 
-### Ao receber o arquivo corrigido
+✅ **Etapa 5b (a guarda):** migration `20260728110000` — trigger `candidatos_recusa_reapontar_cargo` (SQLSTATE `RC001`). A etapa 5 **inverteu qual erro é fatal**: o perigo deixou de ser a origem mudar a grafia e passou a ser o usuário **reapontar** um texto já importado para outro cargo, o que criaria linhas novas e deixaria as antigas órfãs em silêncio. A guarda fica em `candidatos`, **não** em `cargo_apelidos`.
 
-1. **Remedir tudo, do zero.** Todas as constraints do módulo foram dimensionadas contra o arquivo antigo; se ele estava errado, os números que as justificam também estão. Regra 5 de [`estrutura/transversais/invariantes.md`](./estrutura/transversais/invariantes.md).
-2. **Checar a pergunta que decide a chave:** a origem passou a emitir **uma inscrição por cargo**? Se sim, `(edital, inscrição)` basta e o cargo sai da chave. Se não, seguem valendo as duas saídas desenhadas: **modelo** (cargo em tabela filha, candidato único por inscrição) ou **reconciliação** (manter a chave e listar, ao fim da importação, quem está no banco e não veio no arquivo).
-3. ⚠️ **Ao medir, use a coluna `ID` como inscrição.** A coluna 0 do export **não tem cabeçalho e é só o número da linha** (1, 2, 3…). Confundi as duas na primeira medição e obtive um resultado falso — que dizia que a troca era segura.
+⏭️ **Falta a etapa 6**, cosmética: a lista e a ficha ainda mostram o texto CRU da planilha, não o nome canônico do catálogo. Nada quebra por isso — o dado está certo, só a exibição é a da procedência. Inclui também um filtro por cargo no cabeçalho da lista.
+
+
+**Área:** Candidatos (ver [`estrutura/modulos/candidatos/00-modulo.md`](./estrutura/modulos/candidatos/00-modulo.md))
+
+Os cargos chegam sujos da origem: **7 dos 9** trazem `¿`, um travessão mal decodificado (em dash cp1252 lido como latin-1). Como o cargo compõe a **identidade** do candidato, corrigir o texto e reimportar **cria registro novo em vez de atualizar** — é o problema que abriu a revisão da chave natural, e que a inclusão do CPF nela **não** resolveu.
+
+**O desenho:** tabelas `cargos` (catálogo canônico) e `cargo_apelidos` (memória de "texto sujo → cargo"), mais um **passo novo no assistente de importação, entre o pareamento e a importação**, onde o usuário associa cada cargo lido a um existente ou cria um novo redigitando o nome. Depois, a chave natural troca `cargo_chave` por `cargo_id` — e renomear cargo passa a ser inofensivo.
+
+**Medido antes de desenhar:** 9 cargos distintos em 7.416 linhas; normalizar por caixa e espaço **não colapsa nenhum** (9 → 9), ou seja, não existe limpeza automática que resolva. E `ARTE` (195 linhas) foge do padrão dos outros sete — só o usuário sabe se é `DOCENTE I — ARTE` ou outro cargo.
+
+**Decidido pelo usuário em 2026-07-27**, e são as duas escolhas que moldam o resto:
+
+- **D1 — catálogo GLOBAL.** `cargos` e `cargo_apelidos` não têm `edital_id`; o apelido aprendido numa importação vale para todas as seguintes, de qualquer edital. É o que faz o passo novo virar conferência a partir da segunda vez.
+- **D4 — pareamento OBRIGATÓRIO.** `cargo` passa a `obrigatorio: true` em `CAMPOS_CANDIDATO`, e o passo novo só libera a importação com todos os cargos resolvidos. Planilha sem coluna de cargo deixa de ser importável — pretendido, porque com `cargo_id` na chave deixá-la vazia ressuscita a perda dos 396 inscritos. A saída alternativa (um cargo `(não informado)` no catálogo) fica **descartada**, registrada no roadmap caso a operação venha a precisar.
+
+---
+
+## 🔴 O auto-pareamento da importação de candidatos casa a coluna ERRADA no arquivo atual
+
+**Status:** pendente — **achado ao medir a planilha em 2026-07-27**. É o item mais urgente do módulo: erra em silêncio.
+**Área:** Candidatos (ver [`estrutura/modulos/candidatos/00-modulo.md`](./estrutura/modulos/candidatos/00-modulo.md))
+
+O arquivo `docs/temp/todos inscritos concurso 002-2026-SMA cabeçalho.xls` foi mexido em 27/07 e **a coluna 0 ganhou o cabeçalho `N_INSCRICAO`** — mas o conteúdo dela **continua sendo o contador de linha do export** (medido: é exatamente 1, 2, 3… 7416). O nº de inscrição real segue na coluna `ID`.
+
+**Por que isso é grave.** `normalizarTexto('N_INSCRICAO')` dá `ninscricao`, o **primeiro sinônimo** do campo `n_inscricao` em `CAMPOS_CANDIDATO`, e `autoMapear` fica com a primeira coluna que casa. Antes a coluna 0 era anônima e era pulada, então o palpite acertava a `ID`. Agora ele casa com o contador — e **nada acusa o erro**, porque o contador é perfeitamente único: a importação gravaria 7.416 candidatos com inscrição de 1 a 7416, sem erro, sem aviso e sem colisão de chave.
+
+É a mesma classe de defeito que motivou tirar `'tipoprova'` dos sinônimos de `cargo`: **palpite que erra em silêncio é pior que palpite nenhum.**
+
+**Saídas possíveis, nenhuma decidida:**
+1. Tirar `'ninscricao'` dos sinônimos e deixar o campo em branco, obrigando a escolha — mesmo tratamento dado ao `cargo`. Simples, mas piora o caso de um arquivo cujo `N_INSCRICAO` seja legítimo.
+2. Desempatar por **conteúdo**, não por cabeçalho: uma coluna que é exatamente `1..N` na ordem das linhas é um contador de export, não uma inscrição — dá para recusá-la como palpite.
+3. Só avisar na tela quando a coluna escolhida parecer um contador, deixando a decisão com o usuário.
+
+⚠️ **Enquanto não houver conserto, quem importar precisa conferir à mão que "Nº de Inscrição" aponta para a coluna `ID`.**
+
+---
+
+## ✅ CONCLUÍDO 2026-07-27 — a chave natural de `candidatos` passou a incluir o CPF
+
+**Área:** Candidatos (ver [`estrutura/modulos/candidatos/00-modulo.md`](./estrutura/modulos/candidatos/00-modulo.md)). Registro mantido porque **deixou consequências em aberto** (no fim) e porque a verificação não é automatizável.
+
+**Decisão do usuário:** a chave passa de `(edital_id, n_inscricao, cargo_chave)` para **`(edital_id, cpf, cargo_chave, n_inscricao)`** — migration `20260727200000`, índice `candidatos_cpf_cargo_inscricao_key`.
+
+⚠️ **A chave mudou DE NOVO em 2026-07-28**, e este registro é histórico: `cargo_chave` deu lugar a `cargo_id`. A chave em vigor é **`(edital_id, cpf, cargo_id, n_inscricao)`**, índice `candidatos_cpf_cargo_id_inscricao_key`. Tudo que segue sobre o CPF e o `NULLS NOT DISTINCT` continua valendo.
+
+### Medido antes, contra o arquivo real (regra 5 de invariantes)
+
+| Chave | Grupos distintos em 7.416 linhas |
+|---|---|
+| `(n_inscricao, cargo)` — antiga | 7.416 |
+| `(cpf, cargo, n_inscricao)` — nova | 7.416 |
+
+**Ninguém se perde, e não podia perder:** a chave nova **contém** a antiga, e acrescentar coluna a uma chave única só separa linhas, nunca as funde. ⚠️ **Não confundir com a proposta recusada em 27/07**, que era *trocar* `cargo_chave` **por** `cpf` — essa sim colapsaria 396 inscritos em silêncio.
+
+### ⚠️ `NULLS NOT DISTINCT` é a parte que não pode ser removida
+
+2 das 7.416 linhas têm CPF impossível (`8631309761`, 10 dígitos; `1O778817709`, letra O) e o importador grava `NULL`. No padrão do Postgres dois `NULL` são **distintos**, então essas linhas se inseririam de novo **a cada reimportação**, multiplicando em silêncio. O índice é `NULLS NOT DISTINCT` por causa disso, e `chaveNatural()` espelha o mesmo com `cpf ?? ''`.
+
+O CPF **não ganhou coluna gerada** como o cargo, e a assimetria é deliberada: o cargo precisa de coluna porque precisa de *normalização* e o PostgREST não sabe nomear expressão; o CPF já é forçado a 11 dígitos pela CHECK, então uma `cpf_chave` seria cópia inútil.
+
+### Verificado à mão, contra o banco local (a suíte mocka o Supabase)
+
+Via PostgREST, que é o caminho real — o teste do Vitest só afirma a string do `onConflict`:
+
+| Caso | Esperado | Obtido |
+|---|---|---|
+| Importar 3 linhas, reimportar 2× | 3, 3, 3 | ✅ |
+| Linha **sem CPF** após 3 reimportações | 1 | ✅ |
+| **Controle positivo:** reimportar com nome novo | atualiza | ✅ |
+| Mesma inscrição+cargo, CPF diferente | linha nova (4) | ✅ |
+
+O terceiro caso é o que prova que o índice está sendo *inferido* pelo PostgREST — sem isso, "não duplicou" poderia ser só o insert falhando.
+
+### ⏭️ O que a decisão deixou em aberto
+
+1. **Corrigir CPF na planilha agora cria registro novo**, em vez de atualizar — o mesmo defeito que o texto do cargo já tinha, agora em três campos. As duas saídas desenhadas em 27/07 seguem sem implementação: **modelo** (cargo em tabela filha, candidato único por inscrição) ou **reconciliação** (ao fim da importação, listar quem está no banco e não veio no arquivo). A reconciliação resolve o sintoma para os três campos de uma vez.
+2. **Afrouxamento aceito:** duas linhas com a mesma inscrição e o mesmo cargo passam a coexistir se tiverem CPF diferente. Não ocorre no arquivo medido.
+3. ~~**A instabilidade do texto do cargo continua**~~ — **RESOLVIDO em 2026-07-28** pela etapa 5 do tema Cargos: a chave trocou `cargo_chave` por `cargo_id` (migration `20260728100000`) e o texto saiu da identidade. Renomear cargo virou um `UPDATE` numa linha.
 
 ---
 
@@ -372,6 +447,8 @@ Ao escrever o backfill do `seed.pos.sql`, a varredura das 15 contas do `auth.use
 **Área:** Auth e Permissões (ver [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md))
 
 Ao fazer a RLS de verdade em `colaboradores` apareceu que **`anon` tem `GRANT SELECT/INSERT/UPDATE/DELETE/TRUNCATE`** na tabela (e `authenticated` idem) — o padrão "tudo para todo mundo" que o dashboard do Lovable aplicou, provavelmente **em todas as tabelas de `public`**. Hoje só a **RLS** impede o estrago: `anon` não tem policy, então SELECT/INSERT/UPDATE/DELETE caem em *default deny*. **Mas `TRUNCATE` não passa por RLS** — um `GRANT TRUNCATE ... TO anon` é, no papel, poder de esvaziar a tabela. O que salva na prática é o PostgREST **não expor** TRUNCATE pela API; ainda assim é privilégio a mais, contra o princípio do menor privilégio.
+
+✅ **Existe agora um precedente a copiar:** `cargos` e `cargo_apelidos` (migration `20260727210000`) são as **primeiras tabelas do repo a nascer com grants enxutos** — `REVOKE ALL ... FROM anon` e `REVOKE TRUNCATE, REFERENCES, TRIGGER ... FROM authenticated`, na própria migration de criação. Medido: `anon` com **zero** privilégios nelas e TRUNCATE recusado, enquanto `candidatos` segue com os sete. Quem for executar este item tem o padrão pronto e a bateria (`docs/bateria-cargos.sql`, caso 2) mostrando como provar que a revogação pegou.
 
 O trabalho: varrer `information_schema.role_table_grants` por `grantee IN ('anon','authenticated')` e **revogar o que não se justifica** — no mínimo `TRUNCATE`, `REFERENCES`, `TRIGGER` de `anon` em toda tabela; possivelmente reduzir `anon` a só o que os fluxos públicos realmente usam (que hoje passam por Edge Functions com `service_role`, não pela anon key direta). É sistêmico (não só `colaboradores`), então merece um passo próprio e um `db reset` de validação. **Atenção:** casa com a migration `20260712010000_grant_api_roles_table_privileges.sql`, que registrou os grants que faltavam em migration e ajustou `ALTER DEFAULT PRIVILEGES` — o enxugamento tem que conversar com ela, não brigar.
 

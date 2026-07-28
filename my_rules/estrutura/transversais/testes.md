@@ -131,7 +131,7 @@ async function carregarEDepois(sequencia) {
 
 ## O que está coberto (2026-07-27)
 
-873 testes em 50 arquivos (medido em 2026-07-27, com a suíte inteira verde duas vezes).
+**950 testes em 51 arquivos** (medido em 2026-07-28, ao fim do tema Cargos). O módulo Candidatos sozinho responde por **182** deles.
 
 ✅ **Os três arquivos que estavam marcados como "nunca executados" rodaram.** `useCandidatos.test.tsx` (24), `Candidatos.ui.test.tsx` (23) e `CandidatosImportar.ui.test.tsx` (18) — os primeiros testes de comportamento de página do projeto.
 
@@ -142,7 +142,29 @@ async function carregarEDepois(sequencia) {
 
 A lição geral: **teste que nunca rodou não é cobertura, é intenção** — e ao rodá-lo pela primeira vez, desconfie do teste antes do código.
 
-⚠️ **O que esta suíte NÃO cobre, e é preciso saber:** ela mocka o Supabase, então **não exercita RLS, constraints, triggers nem transação**. Todo o trabalho de banco de 2026-07-26 (RESTRICTs, triggers, RPCs transacionais e o recorte de RLS) e o de 2026-07-27 (a tabela `candidatos`) foi verificado **à mão contra o banco local**, com `ROLLBACK` e controle positivo. Quem mexer nessas regras refaz a verificação manualmente — as consultas estão em [`invariantes.md`](./invariantes.md) e no [`backlog.md`](../../backlog.md).
+⚠️ **O que esta suíte NÃO cobre, e é preciso saber:** ela mocka o Supabase, então **não exercita RLS, constraints, triggers nem transação**. Todo o trabalho de banco de 2026-07-26 (RESTRICTs, triggers, RPCs transacionais e o recorte de RLS) e o de 2026-07-27/28 (`candidatos`, `cargos`, `cargo_apelidos`, a troca da chave natural e o trigger de reapontamento) foi verificado **à mão contra o banco local**, com `ROLLBACK` e controle positivo. Quem mexer nessas regras refaz a verificação manualmente — as consultas estão em [`invariantes.md`](./invariantes.md), em [`../../../docs/bateria-cargos.sql`](../../../docs/bateria-cargos.sql) e no [`backlog.md`](../../backlog.md).
+
+### ⭐ Verificar pelo POSTGREST, não só por SQL
+
+Quando a regra depende de o **app** acertar (upsert com `on_conflict`, tradução de erro), SQL direto no psql **não prova nada**: ele passaria mesmo com o app quebrado. O caso real é o índice único da importação — é o PostgREST que precisa *inferir* o índice a partir do `on_conflict`, e o jeito de provar que inferiu é o **controle positivo**: reimportar com um campo mudado e ver que **atualizou**. Sem ele, "não duplicou" pode ser só o insert falhando em silêncio.
+
+Foi assim que as chaves de 27/07 e 28/07 foram verificadas, e é assim que se repete.
+
+⚠️ Um achado que só apareceu por aí: o **SQLSTATE customizado de um trigger chega em `error.code`, nunca dentro de `error.message`**. Um tradutor de erro que case por `includes('<codigo>')` na mensagem é guarda que não pode disparar.
+
+### ⭐ Duas práticas que 2026-07-27 consolidou
+
+**1. Falsificar antes de aceitar.** Teste que passa de primeira sobre um mock pode estar afirmando o mock. A cada asserção central, sabote o código e confira que cai *exatamente* o teste esperado — e nada além. No tema Cargos isso rodou nove vezes; a que mais valeu foi trocar `ignoreDuplicates` de `true` para `false`, porque o defeito que ela guarda (criar um cargo renomeando outro) é invisível na tela.
+
+**2. `npm test` sozinho NÃO é o gate.** `CODIGOS_POSTGREST.RLS` não existe — a constante só tem `DUPLICADO` e `CHAVE_ESTRANGEIRA`, e os ~10 arquivos que precisam do 42501 usam o literal. O vitest passou **verde** com a chave inexistente (`undefined` em runtime não quebra o mock); quem pegou foi o `tsc`. Fechar tema exige os três comandos, sempre.
+
+### ⚠️ Endurecer uma regra transforma o teste que a guardava
+
+Quando uma regra passa de *aviso* para *impedimento*, o teste que a protegia não "quebra": ele **muda de objeto**. Aconteceu com o mais importante do módulo Candidatos — era *"ALERTA EM VERMELHO quando o cargo está sem parear"* (aviso ignorável, única barreira contra a perda de 396 inscritos) e virou *"sem o cargo pareado NÃO DÁ para avançar"*.
+
+Duas coisas a fazer nesse momento, e as duas são fáceis de esquecer:
+- **manter a exigência de que a tela EXPLIQUE** — barrar sem orientar só troca um problema por outro;
+- **procurar o código morto que o endurecimento criou.** Ali, dois trechos ficaram inalcançáveis (um alerta dentro de uma prévia que só aparece depois da condição, e um ramo de "nenhum cargo lido" que virou impossível). **Guarda que não pode disparar é armadilha, não segurança.**
 
 ✅ **`lib/candidatos-import.test.ts` (40) é a exceção que vale imitar.** A lógica difícil da importação de candidatos — pareamento de colunas, conversão de data/hora, a distinção erro-vs-aviso, a deduplicação — foi posta num módulo **puro** (`src/lib/candidatos-import.ts`), fora do componente. Por isso tem teste de verdade, sem mock nenhum. Compare com `CadastroLote.tsx`, onde a mesma classe de lógica vive dentro de um componente de 1.100 linhas e **não tem como ser exercitada**. Ao escrever importador novo, separe primeiro a parte pura.
 
@@ -157,6 +179,7 @@ A lição geral: **teste que nunca rodou não é cobertura, é intenção** — 
 | UI | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx`, **`PasswordConfirmDialog.ui.test.tsx`** (16 — a barreira das ações destrutivas), **`CoordenadoresProvaDialog.ui.test.tsx`** (23 — a concessão de acesso de coordenador), **`ValoresFuncaoProvaDialog`** + **`MetaColaboradoresDialog`** (20 + 13 — o caminho do dinheiro), **`CorrigirEmailAcessoDialog`** (16 — a âncora de identidade), **`UnidadeProvaDialog`** · **`FuncaoColaboradorDialog`** · **`SalaProvaDialog`** · **`SalaExtraDialog`** (42 no total) |
 | **Guards de página** | `pages/guards.test.tsx` — 151 testes: a matriz **21 páginas × 5 papéis**, mais a janela do `rolesLoaded` e o `isLoggingOut` |
 | **Hooks de candidatos** | `hooks/useCandidatos.test.tsx` — paginação com `count` do servidor, `onConflict` da chave natural, blocos de 500, parada no meio e tradução de erro |
+| **Hooks de cargos** | `hooks/useCargos.test.tsx` — a **assimetria dos dois upserts** (`ignoreDuplicates` em `cargos`, `merge` em `cargo_apelidos`), o `isLoading` distinguível de lista vazia, e o nome repetido que vira associação em vez de erro |
 | **Páginas de candidatos** | `pages/Candidatos.ui.test.tsx` e `pages/CandidatosImportar.ui.test.tsx` — os **primeiros testes de comportamento de página** do projeto (até aqui, das páginas só o guard era testado). O do assistente monta um `.xlsx` real e guarda o alerta que impede a perda silenciosa de inscritos |
 
 **A camada de hooks fechou em 2026-07-26** — os 20 hooks de dados têm teste (`use-mobile` e `use-toast` são utilitários do shadcn, fora da conta). **Os 12 diálogos estão cobertos.** Falta e **as 8 Edge Functions** (rodam em Deno, fora do alcance desta suíte — a autorização de duas delas é verificada pela bateria manual [`../../../docs/bateria-create-admin-autorizacao.md`](../../../docs/bateria-create-admin-autorizacao.md)).

@@ -9,7 +9,10 @@
  *    erro, o que parece ter funcionado. Há teste separado para isso.
  *  - **O `onConflict` do upsert.** É o que faz reimportar ATUALIZAR em vez de duplicar.
  *    Trocar aquela string por `edital_id,n_inscricao` (o que parece certo) faria a
- *    importação perder os 396 inscritos que concorrem a mais de um cargo.
+ *    importação perder os 396 inscritos que concorrem a mais de um cargo. Desde
+ *    2026-07-27 a chave também leva o `cpf` (migration 20260727200000), e desde
+ *    2026-07-28 o cargo entra por `cargo_id` e não pelo texto (migration 20260728100000)
+ *    — é essa troca que fez corrigir o nome de um cargo parar de duplicar inscrito.
  *  - **A divisão em blocos.** Sem ela seriam 7.416 requisições.
  *
  * A lógica de CONVERSÃO da planilha não está aqui: ela é pura e tem bateria própria em
@@ -30,7 +33,7 @@ import {
   type QueryResult,
 } from "@/test/supabase-mock";
 import { renderHookWithProviders } from "@/test/utils";
-import type { CandidatoImportado } from "@/lib/candidatos-import";
+import type { CandidatoResolvido } from "@/lib/candidatos-import";
 
 vi.mock("@/integrations/supabase/client", async () => {
   const { supabaseMock } = await import("@/test/supabase-mock");
@@ -113,12 +116,20 @@ const ultimoBuilder = (tabela: string): QueryBuilderMock => {
 const buildersQueChamaram = (tabela: string, metodo: "upsert" | "delete") =>
   buildersDaTabela(tabela).filter((b) => b[metodo].mock.calls.length > 0);
 
-/** Um candidato convertido, pronto para gravar. Só o que o upsert precisa. */
-function paraImportar(n: number): CandidatoImportado {
+/**
+ * Um candidato convertido E RESOLVIDO, pronto para gravar.
+ *
+ * ⭐ O tipo é `CandidatoResolvido` desde 2026-07-27: `useImportarCandidatos` passou a
+ * exigir o lote com `cargo_id` já carimbado, e o TypeScript recusa o não-resolvido. Foi
+ * este helper que a mudança de assinatura pegou primeiro — a prova de que o guarda de
+ * tipo funciona fora do arquivo onde foi desenhado.
+ */
+function paraImportar(n: number): CandidatoResolvido {
   return {
     edital_id: EDITAL_ID,
     n_inscricao: String(200000 + n),
     cargo: "DOCENTE II",
+    cargo_id: "cargo-docente-ii",
     nome: `INSCRITO ${n}`,
     cpf: null,
     email: null,
@@ -317,10 +328,16 @@ describe("useCandidatos", () => {
   });
 
   describe("useImportarCandidatos", () => {
-    it("⭐ faz UPSERT sobre a chave natural, com o cargo dentro", async () => {
+    it("⭐ faz UPSERT sobre a chave natural, com o cargo e o CPF dentro", async () => {
       // A string do `onConflict` é o que separa "reimportar atualiza" de "reimportar
-      // duplica". E ela precisa dos TRÊS campos: sem `cargo_chave`, as inscrições de
-      // quem concorre a mais de um cargo colidiriam entre si — 396 sumiriam.
+      // duplica". E ela precisa dos QUATRO campos: sem o cargo, as inscrições de quem
+      // concorre a mais de um cargo colidiriam entre si — 396 sumiriam; e o `cpf` entrou
+      // na chave por decisão do usuário em 2026-07-27 (migration 20260727200000).
+      //
+      // ⭐ O cargo entra por `cargo_id`, e NÃO por `cargo_chave`, desde a etapa 5
+      // (migration 20260728100000). É a troca que faz corrigir o nome de um cargo deixar
+      // de criar 481 registros novos. Se esta string voltar ao texto, o índice do banco
+      // não é mais inferido e o upsert passa a inserir em vez de atualizar.
       setTableResult("candidatos", { data: null, error: null });
       const { result } = renderHookWithProviders(() => useImportarCandidatos());
 
@@ -330,7 +347,7 @@ describe("useCandidatos", () => {
 
       expect(builderQueChamou("candidatos", "upsert").upsert).toHaveBeenCalledWith(
         expect.any(Array),
-        { onConflict: "edital_id,n_inscricao,cargo_chave" },
+        { onConflict: "edital_id,cpf,cargo_id,n_inscricao" },
       );
     });
 
@@ -432,7 +449,7 @@ describe("useCandidatos", () => {
         data: null,
         error: erroPostgrest(
           CODIGOS_POSTGREST.DUPLICADO,
-          'duplicate key value violates unique constraint "candidatos_inscricao_cargo_key"',
+          'duplicate key value violates unique constraint "candidatos_cpf_cargo_id_inscricao_key"',
         ),
       });
       const { result } = renderHookWithProviders(() => useImportarCandidatos());

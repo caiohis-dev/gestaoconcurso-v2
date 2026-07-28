@@ -1,0 +1,1301 @@
+# Roadmap — Cargos como entidade (o cargo do candidato deixa de ser texto sujo da origem)
+# Criado em 2026-07-27. VIVO: nada aqui foi implementado ainda.
+# Revisado em 2026-07-27 (mesmo dia) a pedido do usuário, em quatro eixos:
+#   UX · higidez/correção do código · RLS+GRANTS/Supabase · fatiamento das etapas.
+# Leia my_rules/analises/README.md antes de usar este arquivo como guia.
+
+roadmap:
+  titulo: "Cargos — o texto sujo da planilha vira referência a um cargo cadastrado, sanitizado pelo usuário"
+  criado: "2026-07-27"
+  status: >
+    ✅ JANELAS A, B e C FECHADAS — etapas 1 a 5b concluídas. Falta só a 6 (janela D,
+    cosmética). O tema ENTREGOU o que prometia: renomear cargo não duplica candidato.
+    ---- etapas 5 e 5b, 2026-07-28 ----
+    (5) migration 20260728100000: pré-check medido (0 candidatos, 0 cargos, 0 apelidos no
+    local), backfill defensivo + guarda de colisão, DROP/CREATE do índice único e DROP da
+    coluna cargo_chave. (5b) migration 20260728110000: trigger BEFORE INSERT com SQLSTATE
+    RC001. As quatro coisas concordam, e a ORDEM do pipeline virou erro de compilação em
+    vez de disciplina (deduplicar só aceita LinhaResolvida).
+    Suíte 950/950 em 51 arquivos, tsc e build limpos. Bateria SQL verde nos 7 casos novos,
+    e a verificação PELO POSTGREST passou nos 7 (inclusive os dois controles positivos).
+    ⚠️ A guarda da 5b NÃO ficou em cargo_apelidos — ver ajuste_2 de D11, verificado no
+    código: aquela tabela não é o caminho do dado, o lote é atômico e o erro é engolido.
+    ---- histórico ----
+    ✅ JANELAS A e B — etapas 1 a 4 concluídas em 2026-07-27.
+    (4) o passo "Cargos" no assistente, nas três subetapas 4a/4b/4c — 20 testes novos.
+    O usuário JÁ VÊ o passo, e `candidatos.cargo_id` já é gravado.
+    ⚠️ Mas a chave natural AINDA é o texto: renomear cargo ainda duplica candidato, que é
+    o sintoma que motivou o tema. A etapa 5 é o que fecha isso — não deixar o estado
+    atual no ar por tempo indeterminado.
+    Suíte 946/946 em 51 arquivos, tsc e build limpos, lint em 86 (baseline 90).
+    ---- histórico ----
+    ✅ JANELA A — etapas 1, 2 e 3 concluídas em 2026-07-27.
+    (1) migration 20260727210000: as duas tabelas, candidatos.cargo_id, os índices de
+    apoio, os GRANTS enxutos e a RLS — verificados por docs/bateria-cargos.sql, verde.
+    (2) lib pura em candidatos-import.ts: cargosDaPlanilha, pareceSujo, aplicarResolucoes
+    e o tipo CandidatoResolvido — 22 testes.
+    (3) hooks em useCargos.tsx: catálogo, apelidos, criação e gravação — 26 testes.
+    Suíte 925/925 em 51 arquivos, tsc e build limpos, lint em 86 (baseline 90).
+    D1 (catálogo global) e D4 (pareamento obrigatório) CONFIRMADOS pelo usuário em
+    2026-07-27. D8 (RLS/grants) CONFIRMADO na execução da etapa 1.
+    ⚠️ D10 foi CORRIGIDA na execução da etapa 3 — ver o status de lá.
+    As demais (D2, D3, D5, D6, D7, D9) seguem como proposta do desenho.
+  origem: >
+    Pedido do usuário em 2026-07-27: "os cargos vêm como nome sujo". Criar uma tabela de
+    cargos no Supabase e um passo novo no assistente de importação, entre o pareamento e a
+    importação, que mostre os cargos lidos e deixe o usuário associá-los a cargos existentes
+    ou criar novos — redigitando o nome para sanitizá-lo ao critério dele.
+
+  branch:
+    nome: feat/cargos
+    base: dev
+    lembrete: >
+      Regra do projeto: tema sai de dev e volta para dev com merge --no-ff, e a branch é
+      apagada quando o tema fecha. main segue congelada na v1.0.0.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  medicao_previa: |
+    MEDIDO em 2026-07-27 contra o arquivo real (docs/temp/todos inscritos concurso
+    002-2026-SMA cabeçalho.xls), coluna AC — a SEGUNDA coluna chamada NOME.
+    Regra 5 de estrutura/transversais/invariantes.md: medir antes de dimensionar.
+
+      linhas de dado ............. 7.416
+      cargos DISTINTOS ............... 9      ← o número que torna a UI trivial
+      cargos com caractere sujo ...... 7 de 9
+      linhas com a célula de cargo VAZIA ... 0   ← relevante para D9
+
+      3.756  "DOCENTE II"
+        730  "DOCENTE I ¿ EDUCAÇÃO FÍSICA"      ← sujo
+        650  "DOCENTE I ¿ MATEMÁTICA"           ← sujo
+        639  "DOCENTE I ¿ LÍNGUA PORTUGUESA"    ← sujo
+        481  "DOCENTE I ¿ HISTÓRIA"             ← sujo
+        386  "DOCENTE I ¿ CIÊNCIAS"             ← sujo
+        331  "DOCENTE I ¿ GEOGRAFIA"            ← sujo
+        248  "DOCENTE I ¿ LÍNGUA INGLESA"       ← sujo
+        195  "ARTE"
+
+    TRÊS CONCLUSÕES QUE O DESENHO INTEIRO SE APOIA:
+
+    1. São NOVE, não centenas. A tela do passo novo é uma tabela de 9 linhas, não uma
+       ferramenta de mapeamento em massa. Paginação, busca e "aplicar a todos" são
+       desnecessários — e acrescentá-los seria complexidade sem uso.
+
+    2. O `¿` é um travessão mal decodificado (em dash em cp1252 lido como latin-1). NÃO é
+       corrigível por algoritmo com segurança: trocar `¿` por `—` acerta nestes 7 casos,
+       mas é um palpite sobre o que a origem quis dizer. Medido: normalizar por
+       lower + colapso de espaços deixa 9 distintos, ou seja, NÃO COLAPSA NADA — não há
+       limpeza automática que resolva. É a justificativa de o passo ser manual.
+
+    3. "ARTE" é o caso que prova a necessidade de julgamento humano. Foge do padrão
+       `DOCENTE I ¿ <disciplina>` dos outros sete. É "DOCENTE I — ARTE" escrito de outro
+       jeito? É um cargo diferente de verdade? Nenhuma regra sabe; o usuário sabe. Uma
+       heurística que "consertasse" isso sozinha erraria em silêncio — o defeito que este
+       repo já pagou caro (ver o `TIPOPROVA` em 00-modulo.md). É também por "ARTE" que a
+       tela mostra EXEMPLOS de inscritos por cargo (ver etapa 4b): ver três nomes e a
+       contagem ajuda a decidir o que o rótulo sozinho não diz.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  contexto: |
+    HOJE (depois da migration 20260727200000):
+
+      candidatos.cargo        text                        -- o texto CRU da planilha
+      candidatos.cargo_chave  text GENERATED STORED       -- lower(btrim(coalesce(cargo,'')))
+      índice único: (edital_id, cpf, cargo_chave, n_inscricao) NULLS NOT DISTINCT
+
+    O cargo é TEXTO e faz parte da IDENTIDADE do candidato. As duas coisas juntas são o
+    problema que este roadmap resolve, e que abriu a revisão de 27/07:
+
+      corrigir o texto do cargo e reimportar CRIA UM SEGUNDO REGISTRO e mantém o antigo.
+
+    Verificado no banco: caixa e espaço são normalizados por `cargo_chave` e atualizam a
+    linha, mas trocar `¿` por `—` produz outra `cargo_chave` — logo, outra linha. A
+    promessa "corrija a planilha e reimporte" NÃO VALE para os campos da chave. Com o
+    texto sujo dentro da identidade, ela nunca vai valer.
+
+    O assistente de importação (src/pages/CandidatosImportar.tsx) tem HOJE 4 passos:
+      1. Arquivo   (edital + upload)
+      2. Pareamento (coluna da planilha → campo da tabela)
+      3. Importação (barra de progresso, blocos de 500)
+      4. Relatório
+
+    O passo pedido entra ENTRE o 2 e o 3. A numeração dos posteriores anda:
+
+      1. Arquivo   2. Pareamento   3. CARGOS ←novo   4. Importação   5. Relatório
+
+    DADO EXISTENTE (medido em 2026-07-27): a tabela `candidatos` está VAZIA no banco
+    local (o dump do v1 não a tem; as 7.416 linhas de verificação foram apagadas). Isso
+    importa para a etapa 5 — ver o pré-check de lá. Se alguém importar de verdade entre
+    as fatias, o pré-check deixa de ser formalidade.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # A ordem do fluxo de dados — o contrato que as etapas 2, 4 e 5 têm de respeitar.
+  # Errar esta ordem é defeito SILENCIOSO, por isso ela está aqui e não dentro de uma etapa.
+  pipeline_da_importacao: |
+    A partir da etapa 4, a importação passa a ter QUATRO estágios, nesta ordem:
+
+      1. converterLinha   planilha → CandidatoImportado (cargo = texto CRU; erro/aviso)
+      2. aplicarResolucoes  texto_chave do cargo → cargo_id decidido no passo 3
+      3. deduplicar       sobre a chave RESOLVIDA (com cargo_id a partir da etapa 5)
+      4. blocos de 500    upsert com onConflict
+
+    ⚠️ O DEDUP MUDA DE LUGAR: hoje ele roda num useMemo sobre as linhas convertidas
+    (CandidatosImportar.tsx:110), ANTES de existir resolução. A partir da etapa 5 isso
+    fica ERRADO: dois textos sujos mapeados para o MESMO cargo são a MESMA chave no
+    banco, e um dedup sobre o texto os deixaria passar como distintos — o bloco de 500
+    falharia inteiro com "cannot affect row a second time". O dedup tem de rodar DEPOIS
+    de aplicarResolucoes.
+
+    Consequências concretas, para não descobrir na marra:
+      - O contador do botão "Importar N candidato(s)" passa a vir do lote PÓS-resolução
+        e PÓS-dedup — no passo 3, não no 2. Mostrar N no passo 2 e importar N-k no passo
+        4 confundiria; o passo 2 mostra "linhas lidas", o passo 3 mostra o N final.
+      - `chaveNatural()` muda de assinatura na etapa 5: passa a operar sobre o candidato
+        RESOLVIDO (com cargo_id). Até lá (etapas 1-4), continua sobre o texto — e isso é
+        CORRETO nesse intervalo, porque a chave do banco ainda é o texto.
+      - `repetidas` (o relatório de linhas substituídas) muda de significado junto: a
+        partir da etapa 5, "repetida" inclui duas grafias do mesmo cargo. O texto do
+        relatório tem de dizer isso ("mesmo cargo após a associação"), senão o usuário
+        procura uma repetição literal que não existe na planilha.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  modelo_de_dados: |
+    DUAS tabelas novas. A segunda é o que faz o passo novo não ser trabalho repetido a
+    cada importação — sem ela, o usuário remapeia os 9 cargos toda vez.
+
+    cargos (NOVA) — o catálogo canônico, com o nome que o usuário definiu
+      id           uuid PK DEFAULT gen_random_uuid()
+      nome         text NOT NULL              -- o nome LIMPO, digitado pelo usuário
+      nome_chave   text GENERATED STORED      -- lower(btrim(nome)), para a unicidade
+      ativo        boolean NOT NULL DEFAULT true
+      created_at / updated_at (timestamptz DEFAULT now())
+      created_by   uuid REFERENCES auth.users(id)      -- padrão de candidatos
+      UNIQUE (nome_chave)
+      CHECK (btrim(nome) <> '')
+
+    cargo_apelidos (NOVA) — memória de "este texto sujo significa aquele cargo"
+      id            uuid PK DEFAULT gen_random_uuid()
+      texto_origem  text NOT NULL             -- o texto CRU, como veio da planilha
+      texto_chave   text GENERATED STORED     -- lower(btrim(texto_origem))
+      cargo_id      uuid NOT NULL REFERENCES cargos(id) ON DELETE CASCADE
+      created_at / created_by
+      UNIQUE (texto_chave)
+      CHECK (btrim(texto_origem) <> '')
+      INDEX (cargo_id)          -- apoio ao CASCADE; sem ele, apagar cargo varre a tabela
+
+    candidatos (ALTERADA)
+      + cargo_id  uuid REFERENCES cargos(id) ON DELETE RESTRICT
+      + INDEX (cargo_id)        -- ⚠️ apoio ao RESTRICT e ao join da listagem. O índice
+                                --   único novo começa por edital_id, então NÃO serve
+                                --   para "quem usa este cargo?" — sem índice próprio,
+                                --   cada DELETE em cargos faria seq scan em candidatos.
+        MANTÉM cargo (texto cru) — ver D2
+        DROPA  cargo_chave junto com a troca da chave — ver D3
+
+    A chave natural passa de
+        (edital_id, cpf, cargo_chave,  n_inscricao)
+    para
+        (edital_id, cpf, cargo_id,     n_inscricao)     NULLS NOT DISTINCT
+
+    ⚠️ CASCADE no apelido é de propósito: apelido não é histórico, é um atalho de
+    digitação. Apagar o cargo deve levar os apelidos dele. Já `candidatos.cargo_id` é
+    RESTRICT pelo motivo oposto — apagar um cargo não pode sumir com inscrito.
+
+    ⚠️ `cargo_id` fica NULLABLE no banco mesmo depois da etapa 5, obrigatório só no app —
+    o MESMO desenho de provas.edital_id (D5 do roadmap-editais): a ordem migration →
+    seed/dado impede um NOT NULL honesto, e a obrigatoriedade real é imposta por D4 na
+    UI + a colisão do NULLS NOT DISTINCT no índice.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  supabase_grants_e_rls: |
+    A parte que NÃO pode ser herdada por omissão. Contexto: o ALTER DEFAULT PRIVILEGES
+    da era Lovable (registrado na migration 20260712010000) dá a TODA TABELA NOVA de
+    public o pacote completo — SELECT/INSERT/UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER
+    para anon E authenticated. Foi assim que `candidatos` nasceu com `anon` podendo
+    TRUNCATE (verificado: funciona, porque TRUNCATE NÃO PASSA POR RLS). O item sistêmico
+    de enxugar tudo segue no backlog; estas DUAS tabelas não nascem repetindo o erro.
+
+    Na MESMA migration que cria as tabelas (não numa segunda — tabela nunca fica exposta
+    entre migrations):
+
+      REVOKE ALL ON public.cargos, public.cargo_apelidos FROM anon;
+      REVOKE TRUNCATE, REFERENCES, TRIGGER ON public.cargos, public.cargo_apelidos
+        FROM authenticated;
+
+    O que sobra: authenticated com SELECT/INSERT/UPDATE/DELETE — o mínimo para o
+    PostgREST chegar a avaliar a RLS, que é quem barra de verdade. anon fica com NADA:
+    nenhum fluxo público lê cargo (os fluxos públicos passam por Edge Function com
+    service_role, não pela anon key).
+
+    ⚠️ Isto CONVERSA com a 20260712010000, não briga: aquela migration registrou o
+    estado herdado; esta revoga pontualmente nas tabelas novas. Quando o item sistêmico
+    do backlog rodar, ele encontra estas duas já enxutas.
+
+    RLS (D8): leitura para authenticated, escrita só admin.
+      SELECT  TO authenticated USING (true)
+      INSERT/UPDATE/DELETE  TO authenticated  USING/WITH CHECK has_role(auth.uid(),'admin')
+      - `TO authenticated` explícito nas quatro: sem role alvo, a policy avalia também
+        para anon — hoje inócuo (sem GRANT não chega lá), mas custa nada ser exato.
+      - has_role cobre o superadmin (hierarquia DENTRO da função, migration
+        20260725195530). NUNCA SELECT literal em user_roles — já bloqueou o superadmin
+        3 vezes neste repo.
+      - Sem SECURITY DEFINER em lugar nenhum: não há função nova nesta entrega. Se a
+        etapa 7 (fusão de cargos) um dia existir, a RPC dela nasce SECURITY INVOKER e
+        com SET search_path, como contar_candidatos_por_edital.
+
+    Por que leitura aberta a authenticated e não fechada em admin como `candidatos`:
+    nome de cargo não é dado de ninguém (como `editais`); fechar custaria uma policy a
+    mais sem proteger nada. A tabela sensível continua sendo `candidatos`, que já é
+    fechada — e o join da listagem (etapa 6) roda com o papel de quem já pode ler
+    candidatos, então nada vaza por transitividade.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  decisoes:
+    - id: D1
+      titulo: "`cargos` é catálogo GLOBAL, não por edital"
+      decidido: "sim — CONFIRMADO pelo usuário em 2026-07-27"
+      racional: |
+        "DOCENTE II" é o mesmo cargo no edital 001 e no 002. Um catálogo por edital
+        obrigaria a recriar os 9 cargos a cada concurso e mataria o ganho do
+        `cargo_apelidos`, que só compensa se atravessar importações.
+      consequencia: |
+        `cargos` NÃO tem edital_id, e `cargo_apelidos` também não: o apelido aprendido
+        numa importação vale para todas as seguintes, de qualquer edital. É justamente
+        isso que faz o passo novo virar conferência a partir da segunda importação.
+      risco_aceito: >
+        Se dois editais usarem o MESMO nome para cargos diferentes, o global os funde.
+        Não ocorre no dado atual (um único edital com candidatos). Se vier a ocorrer, a
+        saída é acrescentar edital_id a `cargos` — que é aditivo e não perde dado, então
+        a decisão de hoje não fecha essa porta.
+
+    - id: D2
+      titulo: "`candidatos.cargo` (texto cru) PERMANECE, como procedência"
+      decidido: "PROPOSTO — recomendado"
+      racional: |
+        Guardar o que a origem afirmou, ao lado do que o usuário decidiu, é o mesmo
+        padrão de `concurso_id_origem`. Serve para três coisas concretas:
+          - refazer o mapeamento depois, se o usuário mudar de ideia sobre "ARTE";
+          - auditar de onde veio cada linha quando a lista divergir da planilha;
+          - permitir que o `cargo_apelidos` seja reconstruído a partir do dado.
+        Custo: uma coluna de texto por linha. Barato perto de perder a procedência.
+
+    - id: D3
+      titulo: "A chave natural troca `cargo_chave` por `cargo_id`, e `cargo_chave` é DROPADA"
+      decidido: "PROPOSTO — é a decisão central do roadmap"
+      racional: |
+        É ISTO que conserta o problema de 27/07. Com `cargo_id` na identidade, o nome do
+        cargo vira ATRIBUTO: renomear "DOCENTE I ¿ HISTÓRIA" para "DOCENTE I — HISTÓRIA"
+        passa a ser um UPDATE numa linha de `cargos`, e NENHUM candidato duplica. Hoje
+        essa mesma correção cria 481 registros novos.
+
+        `cargo_chave` é dropada na MESMA migration que troca a chave, e não depois:
+        deixar no schema uma coluna gerada cujo nome termina em `_chave`, sem chave
+        nenhuma apontando para ela, é a definição de armadilha neste repo. O texto cru
+        segue em `cargo` (D2), então nada se perde.
+      nao_confundir: |
+        ⚠️ Isto NÃO reverte a migration 20260727200000. O `cpf` continua na chave, e
+        `n_inscricao` também. O que sai é só a coluna gerada do TEXTO do cargo, trocada
+        pela REFERÊNCIA ao cargo. Continua valendo o que foi medido ontem: somar coluna
+        a uma chave única separa linhas, nunca as funde.
+      atencao_medir: >
+        Trocar texto por referência PODE fundir linhas, ao contrário de somar. Se dois
+        textos sujos diferentes forem mapeados para o MESMO cargo, as linhas daquela
+        pessoa nos dois textos passam a ter a mesma chave. Está correto (é a mesma
+        pessoa no mesmo cargo), e o `deduplicar()` resolve mantendo a última — mas
+        PRECISA ser medido na etapa 5 antes de aplicar, não presumido. E precisa ficar
+        VISÍVEL na tela do passo 3 quando acontecer (etapa 4b).
+      o_drop_foi_confirmado: >
+        ⚠️ D11 quase reabriu isto: o trigger da etapa 5b compara o texto normalizado do
+        cargo, e a leitura apressada seria "então `cargo_chave` tem de sobreviver".
+        DECIDIDO pelo usuário em 2026-07-28: o DROP fica, e o trigger calcula
+        lower(btrim(coalesce(cargo,''))) inline. Manter a coluna gerada sem chave nenhuma
+        apontando para ela é a armadilha que este D3 existe para eliminar — e o custo do
+        inline é zero, porque a busca do trigger é por (edital_id, cpf, n_inscricao) e
+        compara no máximo 4 linhas. NÃO ressuscitar `cargo_chave`.
+
+    - id: D4
+      titulo: "Parear a coluna de cargo é OBRIGATÓRIO, e resolver TODOS os cargos lidos também"
+      decidido: "sim — CONFIRMADO pelo usuário em 2026-07-27"
+      racional: |
+        Com `cargo_id` na chave e `NULLS NOT DISTINCT`, deixar um cargo sem associação faz
+        todas as linhas dele terem cargo_id NULL — e as inscrições da mesma pessoa em
+        cargos diferentes colidem, ressuscitando a perda silenciosa de 396 inscritos que o
+        aviso do passo 2 hoje combate. Não há meio-termo seguro: ou resolve, ou perde gente.
+      consequencia: |
+        Duas mudanças concretas, e a primeira é do passo 2, não do passo novo:
+
+        1. O campo `cargo` passa de `obrigatorio: false` para `obrigatorio: true` em
+           CAMPOS_CANDIDATO (src/lib/candidatos-import.ts). Efeito em cadeia:
+           `mapeamentoCompleto()` passa a exigi-lo, e o botão do passo 2 fica desabilitado
+           enquanto o cargo não for pareado. Uma planilha sem coluna de cargo deixa de ser
+           importável — e é o comportamento pretendido.
+           ⚠️ O campo NÃO ganha sinônimo automático: `'tipoprova'` continua fora, de
+           propósito (a coluna existe e é 100% vazia; adivinhá-la zeraria o cargo). Passar
+           a ser obrigatório é o oposto de passar a ser adivinhado — a pessoa PRECISA
+           escolher a coluna, e agora não tem como seguir sem escolher.
+        2. No passo 3, o botão Importar fica desabilitado enquanto houver qualquer cargo
+           lido sem associação.
+
+        A alternativa de um cargo "(não informado)" no catálogo foi DESCARTADA por esta
+        decisão. Registrada aqui porque, se a operação vier a precisar importar planilha
+        sem cargo, é a saída que preserva a identidade estável — e não reabrir o nulo.
+      atencao_testes: >
+        Tornar `cargo` obrigatório muda o comportamento de testes já existentes que montam
+        mapeamento sem cargo. Em candidatos-import.test.ts há casos com
+        `mapa({ n_inscricao: 0, nome: 1 })`, e em CandidatosImportar.ui.test.tsx o fluxo de
+        importação. Quebra esperada e desejada: conferir um a um se cada quebra é a
+        mudança pretendida, e não ajustar em bloco.
+
+    - id: D5
+      titulo: "`cargo_apelidos` memoriza o texto sujo; a próxima importação vem pré-preenchida"
+      decidido: "PROPOSTO — é o que evita retrabalho"
+      racional: |
+        Sem memória, o usuário refaz os 9 mapeamentos a cada reimportação — e reimportar
+        é o FLUXO NORMAL deste módulo, não a exceção. Com ela, a segunda importação do
+        mesmo arquivo chega com tudo resolvido e o passo vira uma conferência.
+        O apelido é gravado quando o usuário confirma o passo, não quando ele digita.
+      atencao: >
+        O apelido casa por `texto_chave` = lower(btrim(texto_origem)). Se a origem mudar
+        a grafia, o apelido não casa e o cargo volta a aparecer sem associação — que é o
+        comportamento certo: grafia nova merece decisão nova.
+
+    - id: D6
+      titulo: "⚠️ `cargos` NÃO tem relação nenhuma com `funcoes_colaboradores`"
+      decidido: "constatação, não escolha — mas precisa estar escrita"
+      racional: |
+        A tabela `funcoes_colaboradores` tem uma coluna chamada `cargo_editavel`, e o
+        vocabulário vai colidir na cabeça de quem ler. São coisas opostas:
+          - `funcoes_colaboradores` = o que o COLABORADOR faz (fiscal, coordenador) —
+            quem APLICA a prova. Tem valor de pagamento, meta por unidade, alocação.
+          - `cargos` (nova)         = a vaga a que o CANDIDATO concorre — quem FAZ a prova.
+            Não tem pagamento, não tem alocação, não tem meta.
+        Nunca unificar as duas. Nunca reaproveitar `funcoes_colaboradores` "porque já
+        existe uma tabela de cargos".
+
+    - id: D7
+      titulo: "Sem página /cargos própria nesta entrega; a gestão vive no assistente"
+      decidido: "PROPOSTO — recomendado adiar"
+      racional: |
+        O pedido do usuário descreve criação e associação DENTRO do fluxo de importação.
+        Uma rota nova custa entrada no RequireAcesso, no App.tsx e 5 combinações novas na
+        matriz de guards (hoje 19 páginas × 5 papéis) — trabalho real por um CRUD que
+        ninguém pediu. Renomear cargo já é possível pelo próprio passo (D3 torna renomear
+        inofensivo). Se depois fizer falta, entra como etapa 7, desenhada abaixo.
+
+    - id: D8
+      titulo: "RLS de `cargos` e `cargo_apelidos`: leitura para autenticado, escrita só admin"
+      decidido: "PROPOSTO — detalhado na seção supabase_grants_e_rls"
+      racional: |
+        Nome de cargo não é dado pessoal — é como `editais`, não como `candidatos` (que é
+        fechada em admin nas 4 operações porque cada linha é CPF e endereço de cidadão).
+        Escrita só admin porque só admin importa. Grants enxutos NA CRIAÇÃO (a lição do
+        TRUNCATE de candidatos), policies com TO authenticated explícito, has_role sempre.
+
+    - id: D9
+      titulo: "Célula de cargo VAZIA numa linha → a linha vira ERRO (descarta e acusa)"
+      decidido: "PROPOSTO — novo na revisão de 27/07"
+      racional: |
+        Hoje `converterLinha` aceita cargo null (o campo era opcional). Com D4 o cargo é
+        identidade: uma linha sem cargo não tem o que associar no passo 3 — e criar um
+        grupo "(em branco)" para o usuário apontar a um cargo seria decisão EM MASSA
+        sobre linhas que ele não viu, o palpite invisível que este módulo evita.
+        Tratar como as outras faltas de identidade (inscrição, nome): a linha não entra,
+        o relatório diz qual e por quê.
+      custo_medido: "0 linhas no arquivo real têm a célula vazia — a regra não descarta ninguém hoje."
+      onde_entra: "Etapa 4c, junto com o resto de D4 — é a mesma migração de 'opcional' para 'identidade'."
+
+    - id: D10
+      titulo: "Criar cargo com nome que já existe NÃO é erro — vira associação"
+      decidido: >
+        sim, mas ⚠️ CORRIGIDA NA EXECUÇÃO (etapa 3, 2026-07-27): a INTENÇÃO abaixo vale
+        inteira; o MEIO proposto (`ignoreDuplicates: false`) estava errado e renomearia o
+        cargo existente. Implementado com `ignoreDuplicates: true` + busca em dois passos.
+        Ler o status da etapa 3 antes de mexer nisto.
+      racional: |
+        Dois caminhos chegam ao mesmo lugar: o usuário digita "DOCENTE II" no input de
+        criar sem ver que já está no catálogo; ou dois admins importam ao mesmo tempo e
+        os dois criam (corrida real, sem lock possível no cliente). Nos dois casos a
+        intenção é "quero ESTE cargo" — devolver 'duplicate key' crua trata intenção
+        certa como erro.
+        ⚠️ A implementação abaixo é a PROPOSTA ORIGINAL, e ela NUNCA CHEGOU A SER VERDADE:
+        "criarCargo faz upsert com onConflict 'nome_chave' + select do id
+        (ignoreDuplicates: false, para devolver a linha existente)."
+        MEDIDO e descartado — com `false` o ON CONFLICT DO UPDATE renomeia a linha
+        existente para a grafia que o usuário digitou. O que valeu foi `true` (DO NOTHING,
+        que preserva o nome e devolve `[]`) mais um segundo passo buscando por nome_chave.
+        O resto do parágrafo continua valendo: o chamador recebe o id nos dois casos e nem
+        distingue; a UI, se quiser, informa "associado ao cargo já existente" — informação,
+        não erro.
+      limite: >
+        Isso NÃO tenta resolver quase-duplicata ("Docente 2" vs "DOCENTE II") — só a
+        colisão exata por nome_chave. Quase-duplicata é exatamente o julgamento humano
+        que o passo 3 existe para exercer.
+
+    - id: D11
+      titulo: "⭐ Reapontar um texto JÁ IMPORTADO para outro cargo é bloqueado — e a guarda fica em `candidatos`, NÃO em `cargo_apelidos`"
+      decidido: >
+        sim — CONFIRMADO pelo usuário em 2026-07-28. Proposta dele ("depois da importação
+        de candidatos de um edital, os cargos não podem ser modificados; exceção para
+        cargos novos numa nova importação"), aceita com DOIS ajustes de alvo que ele
+        confirmou no mesmo dia: o objeto protegido NÃO é o nome do cargo (ajuste 1,
+        confirmado explicitamente — `cargos.nome` fica LIVRE), e a guarda NÃO é na tabela
+        de apelidos (ajuste 2). Está no mesmo nível de D1 e D4: decisão do usuário, não
+        proposta do desenho.
+      racional: |
+        ⭐ A ETAPA 5 INVERTE QUAL ERRO É FATAL. Isto não estava escrito em lugar nenhum e
+        é a razão de existir a etapa 5b:
+
+                                            | hoje (chave = texto) | pós-etapa 5 (chave = cargo_id)
+          origem muda a grafia do cargo      | 🔴 DUPLICA           | ✅ re-resolve → mesma chave → UPDATE
+          usuário reaponta um texto p/ outro | ✅ cargo_id fora da  | 🔴 DUPLICA e ÓRFÃ as linhas antigas
+          cargo                              |    chave → UPDATE    |
+
+        O caso concreto, e ele NÃO é hipotético — é o que a medicao_previa antecipou:
+        "ARTE" é resolvido para o cargo A na primeira importação (195 inscritos, cargo_id
+        = A). Depois de ver os dados, o usuário conclui que ARTE é o cargo B e troca a
+        associação no passo 3. O upsert grava a chave (edital, cpf, B, inscrição), que não
+        casa com nada → INSERT de 195 linhas novas. As 195 antigas com A FICAM LÁ.
+        390 linhas, metade órfã, e NADA acusa.
+
+        Mudar de ideia sobre "ARTE" é o comportamento ESPERADO deste passo, não o
+        desviante — a conclusão 3 da medicao_previa diz que só o usuário sabe, e ele só
+        sabe depois de ver. Deixar o gesto esperado produzir perda silenciosa é o defeito
+        que o módulo inteiro foi desenhado para não ter.
+      ajuste_1_o_objeto: |
+        A proposta original congelava o CARGO ("os cargos não podem ser modificados"). Mas
+        pós-etapa 5 o `cargos.nome` saiu da chave — renomear é cosmético e NÃO duplica
+        ninguém. Congelá-lo proibiria justamente a operação que a etapa 5 existe para
+        tornar segura, e faria de um erro de digitação na PRIMEIRA importação uma cicatriz
+        permanente em toda ficha (o catálogo nasce vazio; os nomes canônicos são criados
+        no passo 3 da primeira importação real).
+
+          cargos.nome ............. LIVRE. Com aviso nomeando o alcance ("este nome vale
+                                    para N inscritos em M editais"), porque por D1 o
+                                    catálogo é GLOBAL e o rename atravessa editais.
+          cargo em uso, DELETE .... já recusado pelo RESTRICT da etapa 1. Nada a fazer.
+          cargo NOVO .............. INSERT, sempre livre. A exceção que o usuário pediu
+                                    sai de graça: ela é o comportamento padrão.
+          reapontamento ........... 🔒 BLOQUEADO. É o único gesto que órfã inscrito.
+      ajuste_2_a_tabela: |
+        ⚠️ A guarda ÓBVIA seria um trigger em `cargo_apelidos` bloqueando o UPDATE de
+        `cargo_id`. Ela guardaria a TABELA ERRADA, e as três razões foram verificadas no
+        código em 2026-07-28:
+
+        1. O apelido NÃO é o caminho do dado, é a memória de PRÉ-PREENCHIMENTO. Quem
+           decide o cargo_id do lote é `aplicarResolucoes(candidatos, resolucoes)`
+           (CandidatosImportar.tsx), e `resolucoes` é estado da UI — o Map que o usuário
+           acabou de editar na tela. Bloquear a tabela não impede a gravação errada.
+        2. `salvarApelidos` manda os ~9 pares num upsert ÚNICO e atômico ("ou entram
+           todos, ou nenhum" — está no comentário do hook). Barrar UM par derrubaria os
+           NOVE, perdendo atalhos que não têm nada a ver com o problema.
+        3. O chamador ENGOLE o erro de propósito: `await salvarApelidos(pares).catch(() =>
+           undefined)`, com a assimetria deliberada da etapa 4 (apelido é conveniência, a
+           importação é o objetivo). Ou seja, a guarda falharia em SILÊNCIO e a importação
+           seguiria gravando o cargo_id novo assim mesmo.
+
+        A guarda tem de ficar onde o dano acontece: em `candidatos`.
+      onde_a_guarda_funciona: |
+        Trigger BEFORE INSERT em `candidatos`, com condição ESTREITA:
+
+          já existe linha com (edital_id, cpf, n_inscricao, cargo_chave) IGUAIS
+          e cargo_id DIFERENTE  →  RAISE
+
+        ⚠️ A estreiteza é obrigatória, não zelo. "Mesma inscrição, cargo_id diferente"
+        SOZINHO bloquearia o caso legítimo mais comum do arquivo real: 382 pessoas
+        concorrem a mais de um cargo COM A MESMA INSCRIÇÃO (é por isso que o cargo está na
+        chave). É só o `cargo_chave` IGUAL que permite afirmar "esta é a MESMA linha da
+        planilha, apontada para outro cargo" — reapontamento, e não segundo cargo.
+
+        O `cargo_chave` continua servindo a isto DEPOIS de sair da chave natural — ver a
+        ressalva em D3, que manda dropá-lo. As duas coisas conflitam: resolver na etapa 5b.
+      o_que_fica_de_fora: |
+        Se a origem mudar a GRAFIA e o usuário reclassificar para outro cargo no mesmo
+        gesto, o `cargo_chave` difere e o trigger não vê. Fica órfão do mesmo jeito.
+        É irredutível: o arquivo NÃO TEM identificador por cargo (medido — a única coluna
+        única por linha é o contador), então banco nenhum distingue "reclassificaram esta
+        pessoa" de "esta pessoa tem um segundo cargo". Quem pega este resíduo é a
+        RECONCILIAÇÃO, não um trigger.
+      alternativa_que_cobre_mais: |
+        A **reconciliação** já está desenhada (00-modulo.md, saída 2 do custo aceito da
+        chave natural): ao fim da importação, listar quem está no BANCO e não veio no
+        ARQUIVO. Ela pega os 195 órfãos DEPOIS do fato — e pega junto os órfãos de CPF
+        corrigido e de inscrição corrigida, os três com um mecanismo só.
+        NÃO substitui D11: reconciliação é DETECÇÃO, D11 é PREVENÇÃO, e prevenir o gesto
+        esperado é mais barato que limpar depois. Mas se a reconciliação for feita, o
+        resíduo de `o_que_fica_de_fora` deixa de ser resíduo.
+      barrar_sem_orientar: >
+        ⚠️ A lição da etapa 4 vale inteira aqui: barrar sem orientar só troca um problema
+        por outro. Bloquear é DOWNGRADE de gravidade — converte perda silenciosa em "ainda
+        não dá" explícito. A mensagem tem de dizer QUAL texto, para QUAL cargo ele já foi
+        importado, e que a mudança exige migrar os inscritos (etapa 7). Erro cru de trigger
+        na cara do usuário não fecha esta decisão.
+      o_certo_que_nao_cabe_agora: >
+        O comportamento HONESTO seria o reapontamento MOVER os 195 inscritos de A para B,
+        não duplicá-los — mudar de ideia deveria simplesmente funcionar. Isso é a fusão de
+        cargos da etapa 7 (RPC transacional SECURITY INVOKER com SET search_path), e
+        trazê-la para a janela C dobraria o tamanho da etapa mais arriscada do tema.
+        D11 é a versão barata: ~1 trigger em vez de 1 RPC + UI de migração.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # FATIAMENTO — como as etapas viram trabalho mergeável.
+  # Cada fatia fecha VERDE: npm test + npx tsc --noEmit -p tsconfig.app.json + npm run
+  # build (não há CI, por decisão de 25/07 — rodar à mão é parte de fechar a fatia).
+  fatiamento: |
+    JANELA A — inerte (etapas 1, 2, 3). Nenhum comportamento visível muda; o app nem
+      referencia o que foi criado. As três podem ser mergeadas juntas ou uma a uma, em
+      qualquer ordem entre 2 e 3 (ambas dependem só da 1 para os tipos). Risco de merge
+      ~zero; é a parte que dá para fazer em sessões curtas.
+
+    JANELA B — o comportamento novo (etapa 4, em três subetapas 4a→4b→4c). O usuário
+      passa a ver o passo Cargos. As subetapas são fatias de IMPLEMENTAÇÃO (cada uma
+      verde), mas a janela é UM tema: mergear 4a sozinha entregaria um passo sem criar
+      cargo — beco sem saída quando o catálogo está vazio. Mergear B completa.
+
+    JANELA C — a troca de identidade (etapas 5 e 5b). Pode ir no MESMO merge de B (ideal)
+      ou logo depois. O estado B-sem-C é funcional e não corrompe nada (cargo_id gravado,
+      chave ainda no texto), mas o ganho central — renomear sem duplicar — só existe com
+      C. Não deixar B no ar por tempo indeterminado sem C: nesse intervalo, corrigir
+      nome de cargo na planilha ainda duplica candidato, e alguém vai concluir que o
+      tema "não funcionou".
+      ⚠️ Se houver importação real entre B e C, o pré-check da etapa 5 deixa de ser
+      formalidade — ler lá antes de aplicar a migration.
+
+      ⭐ 5 e 5b são INSEPARÁVEIS, em MIGRATIONS SEPARADAS. O buraco que a 5b tapa abre no
+      exato instante em que o índice da 5 troca (ver a tabela de inversão em D11): antes
+      disso a guarda seria inócua, depois disso a ausência dela é perda silenciosa. Não
+      existe intervalo em que faça sentido ter uma sem a outra — por isso, mesmo merge.
+      Migrations separadas porque a da etapa 5 já carrega pré-check e backfill
+      condicional: misturar um trigger ali torna ambíguo O QUE falhou quando ela falhar.
+      Ordem: 5 primeiro (o índice), 5b depois (a guarda sobre o índice novo).
+
+    JANELA D — cosmética (etapa 6). Qualquer momento depois de C. Pode inclusive vir
+      depois do merge do tema, como melhoria isolada.
+
+    A etapa 7 está FORA das janelas: não é desta entrega (D7).
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  etapas:
+
+    - id: 1
+      titulo: "Banco — tabelas `cargos` e `cargo_apelidos` + `candidatos.cargo_id` (sem tocar na chave)"
+      janela: "A"
+      status: |
+        ✅ CONCLUÍDA em 2026-07-27 — migration `20260727210000_create_cargos.sql`.
+        Entregue conforme o desenho, sem desvio. Verificação em docs/bateria-cargos.sql
+        (verde); doc da feature em estrutura/modulos/candidatos/cargos.md.
+
+        Confirmado na execução, e vale para a etapa 7 e para tabela nova futura:
+        - `anon` ficou com ZERO privilégios nas duas tabelas, e TRUNCATE é recusado —
+          enquanto `candidatos` segue com o pacote herdado (o contraste está na bateria,
+          caso 2.3, e é o que prova que a revogação pegou). São as PRIMEIRAS tabelas do
+          repo com grants enxutos; o padrão está registrado em auth-e-permissoes.md.
+        - O teste do superadmin só vale se o superadmin for PURO: a conta do banco local
+          tem TAMBÉM a linha `admin`, então usá-la passaria até com SELECT literal em
+          user_roles. A bateria fabrica um superadmin sem `admin` dentro da transação e
+          confere `has_role(...,'admin') = t` com `tem_linha_admin_literal = f`.
+        - `EXPLAIN` confirmou que os dois índices de apoio a FK são usados (Index Scan e
+          Bitmap Index Scan) — sem eles o RESTRICT varreria `candidatos`.
+        - `supabase gen types typescript --local` produziu diff PURAMENTE ADITIVO
+          (+75, −0), o que também prova que não havia drift entre o types.ts e o banco.
+
+        ⚠️ Correção feita no mesmo passe, não prevista no roadmap: o trabalho do dia
+        anterior estava datado 2026-07-28 quando a data real era 2026-07-27. Corrigido em
+        9 arquivos, e a migration da chave natural foi renomeada de `20260728000000` para
+        `20260727200000` — se alguma anotação antiga citar o nome velho, é isto.
+      objetivo: >
+        Deixar o schema pronto sem mudar comportamento nenhum. Ao fim desta etapa a
+        importação continua funcionando exatamente como hoje.
+      acoes:
+        - acao: "Migration NOVA — schema apenas"
+          detalhe: |
+            - CREATE TABLE public.cargos e public.cargo_apelidos, como no modelo_de_dados
+              (colunas geradas para normalização — padrão de candidatos.cargo_chave, que
+              existe porque o upsert do PostgREST só sabe nomear COLUNAS).
+            - ALTER TABLE public.candidatos ADD COLUMN cargo_id uuid
+              REFERENCES public.cargos(id) ON DELETE RESTRICT;   (NULLABLE — e fica)
+            - Os DOIS índices de apoio a FK: candidatos(cargo_id) e cargo_apelidos(cargo_id).
+              Sem eles, RESTRICT e CASCADE varrem as tabelas a cada DELETE em cargos.
+            - CHECKs de não-branco nas duas tabelas novas.
+            - GRANTS: os REVOKEs da seção supabase_grants_e_rls, NA MESMA migration.
+            - RLS: as 4 policies com TO authenticated explícito, escrita via has_role.
+            - TRIGGER update_cargos_updated_at, reusando update_updated_at_column().
+            - COMMENT ON TABLE nas duas, com a distinção de D6 — é onde quem abrir o
+              schema vai ler.
+          nao_faca: |
+            - NÃO tocar no índice candidatos_cpf_cargo_inscricao_key. A troca é a etapa 5,
+              depois de o fluxo gravar cargo_id de verdade — trocar agora deixaria todo
+              mundo com cargo_id NULL dentro da chave.
+            - NÃO criar NOT NULL em candidatos.cargo_id, nem agora nem na etapa 5 (ver
+              modelo_de_dados).
+            - NÃO semear cargos "óbvios" em seed: o catálogo nasce vazio de propósito —
+              os nomes canônicos são decisão do usuário no passo 3, não nossa.
+        - acao: "Regenerar src/integrations/supabase/types.ts"
+          detalhe: "Duas tabelas novas + uma coluna nova. Sem isso o TS não conhece cargo_id."
+      testes:
+        - "Não há teste automatizado para schema: a suíte mocka o Supabase e não exercita constraint, RLS nem trigger. Decisão registrada, não esquecimento."
+        - "Bateria SQL manual em docs/bateria-cargos.sql, no padrão de docs/bateria-db-constraints.sql: cada caso em transação com ROLLBACK, e cada recusa acompanhada do controle positivo."
+      verificacao:
+        - "supabase db reset limpo, com todas as migrations aplicando na ordem"
+        - "UNIQUE(nome_chave) recusa 'DOCENTE II' e ' docente ii ' — e o CONTROLE POSITIVO: nome de fato diferente entra"
+        - "RLS medida POR PAPEL: admin lê e escreve; coordenador lê e NÃO escreve; anon não lê"
+        - "⚠️ superadmin passa nas 4 operações — a verificação que já falhou 3 vezes neste repo"
+        - "⚠️ TRUNCATE como anon e como authenticated: RECUSADO nas duas tabelas novas (é o que a herança de grants daria; provar que a revogação pegou). Em candidatos segue passando — registrar, é o item do backlog"
+        - "ON DELETE RESTRICT: apagar cargo com candidato é recusado. CASCADE: apagar cargo leva os apelidos. E o plano do DELETE usa os índices novos (EXPLAIN), não seq scan"
+      documentacao:
+        - "CRIAR my_rules/estrutura/modulos/candidatos/cargos.md — o doc da feature, no padrão de docs por módulo (feedback-docs-por-modulo: tem que bastar para refatorar sem reler o código)"
+        - "estrutura/modulos/candidatos/00-modulo.md — o bloco de modelo de dados ganha as duas tabelas e cargo_id"
+        - "estrutura/transversais/invariantes.md — as constraints novas entram no mapa"
+        - "estrutura/transversais/auth-e-permissoes.md — a RLS das duas tabelas E a nota de que elas nascem com grants enxutos (primeiras do repo)"
+
+    - id: 2
+      titulo: "Lib pura — cargos da planilha, resolução e a nova ordem do pipeline"
+      janela: "A"
+      status: |
+        ✅ CONCLUÍDA em 2026-07-27, em `src/lib/candidatos-import.ts`. Entregue conforme o
+        desenho: `cargosDaPlanilha`, `pareceSujo`, `aplicarResolucoes`, `ResumoCargo`,
+        `CandidatoResolvido` e `ResolucaoCargos`. 22 testes novos (arquivo com 66).
+
+        Decisões pequenas tomadas na execução, que o desenho não fixava:
+        - `textoOrigem` é o texto da PRIMEIRA ocorrência, não o mais frequente. É
+          determinístico e é o que a pessoa encontra ao rolar a planilha; eleger o mais
+          frequente mudaria o rótulo conforme o arquivo, sem ganho.
+        - `cargosDaPlanilha` PULA cargo vazio em vez de criar um grupo "(em branco)".
+          Aquele grupo convidaria a apontar um cargo para milhares de linhas não vistas —
+          decisão em massa às cegas. Célula vazia é problema da LINHA (D9, na 4c).
+          Consequência a lembrar na 4a: enquanto D9 não entrar, uma linha com cargo vazio
+          não aparece na tabela de resolução E sai marcada de aplicarResolucoes — ou seja,
+          bloquearia a importação sem oferecer onde resolver. É a 4c que fecha isso.
+        - `pareceSujo` ganhou um teste que guarda a ASSINATURA (`typeof === 'boolean'`):
+          se alguém a transformar num sanitizador, o teste cai. A limpeza automática foi
+          medida e descartada, e a marca precisa continuar sendo só sinalização.
+
+        ⭐ A separação de tipo foi VERIFICADA, não presumida: com um arquivo temporário,
+        `CandidatoResolvido[] → CandidatoImportado[]` compila e o inverso dá TS2322. É o
+        que impede um lote não-resolvido de chegar ao hook por engano na etapa 5.
+      objetivo: >
+        Toda a decisão difícil fica PURA e testável sem mock, como candidatos-import.ts já
+        faz. É o que separa este fluxo do CadastroLote, onde a mesma lógica vive dentro de
+        um componente de 1.100 linhas e não tem como ser exercitada.
+      acoes:
+        - acao: "`cargosDaPlanilha(convertidas): ResumoCargo[]`"
+          detalhe: |
+            Opera sobre as LINHAS JÁ CONVERTIDAS (não sobre a planilha crua): linha com
+            erro não conta para cargo nenhum, e a soma dos grupos bate com o total
+            importável — dois invariantes testáveis.
+            Devolve, por cargo distinto:
+              { textoOrigem, textoChave, linhas: number, exemplos: string[] }
+            - ordenado por `linhas` decrescente (o de 3.756 primeiro);
+            - `exemplos` = até 3 nomes de inscritos daquele cargo. É UX barata e pura, e
+              é o que ajuda a decidir "ARTE" (ver medicao_previa, conclusão 3);
+            - textoChave = lower(btrim(...)), a MESMA normalização de
+              cargo_apelidos.texto_chave — se divergirem, o pré-preenchimento erra.
+        - acao: "`pareceSujo(texto): boolean`"
+          detalhe: |
+            Detecta caractere de mojibake ('¿', '�') para a tela DESTACAR — nunca para
+            corrigir sozinha. Sinalização visual; consertar automaticamente é o palpite
+            que a medição desaconselha.
+        - acao: "`aplicarResolucoes(candidatos, resolucoes): CandidatoResolvido[]`"
+          detalhe: |
+            resolucoes: Map<texto_chave, cargo_id>. Devolve o candidato com cargo_id.
+            É o estágio 2 do pipeline_da_importacao — função separada, não um detalhe
+            dentro da página, porque o dedup da etapa 5 depende de rodar DEPOIS dela.
+            Comportamento com resolução faltante: devolve a linha marcada (não lança e
+            não silencia) — a UI decide bloquear, e D4 garante que bloqueia.
+        - acao: "Tipos"
+          detalhe: |
+            CandidatoImportado NÃO ganha cargo_id — quem tem cargo_id é CandidatoResolvido
+            (extends). A distinção de tipo torna impossível mandar lote não-resolvido
+            para o hook por engano: o TS acusa. Higidez por assinatura, não por disciplina.
+      testes:
+        - arquivo: "src/lib/candidatos-import.test.ts (estender — hoje 44 testes, puros, sem mock)"
+          casos: |
+            - agrupa por texto normalizado: 'DOCENTE II' e ' docente ii ' são UM cargo
+            - a SOMA das contagens bate com o total de linhas convertíveis (invariante)
+            - linha descartada por erro não conta para nenhum cargo
+            - ordena por contagem decrescente; exemplos traz até 3 nomes, sem repetir
+            - cargo não pareado (mapeamento.cargo === null) → lista VAZIA, sem lançar
+            - pareceSujo pega '¿' e '�' e NÃO pega acento legítimo ('CIÊNCIAS' é limpo)
+            - aplicarResolucoes: resolve todos; faltante sai MARCADO, não silenciado
+            - ⭐ o texto exato dos 9 cargos medidos, como regressão da medição
+      documentacao:
+        - "cargos.md — a seção de como a planilha é lida, os 9 cargos medidos, a razão de a limpeza não ser automática e o pipeline em 4 estágios"
+
+    - id: 3
+      titulo: "Hook `useCargos` — catálogo, apelidos e criação"
+      janela: "A"
+      status: |
+        ✅ CONCLUÍDA em 2026-07-27, em `src/hooks/useCargos.tsx` — 26 testes em
+        `useCargos.test.tsx`. **A janela A está fechada.**
+        Entregue: useCargos, useCargoApelidos, useCriarCargo, useSalvarApelidos e
+        mensagemErroCargo.
+
+        ⚠️ D10 FOI CORRIGIDA NA EXECUÇÃO — o desenho tinha um defeito.
+        O roadmap dizia `ignoreDuplicates: false` (merge-duplicates) para "nome repetido
+        devolve o existente". Medido contra o banco real via PostgREST: com merge, criar
+        "docente ii" quando existe "DOCENTE II" faz o ON CONFLICT DO UPDATE **RENOMEAR a
+        linha existente** — o catálogo inteiro passa a exibir a grafia nova e o cargo de
+        milhares de inscritos muda de nome sem nada indicar isso na tela. O usuário quis
+        criar e acabou renomeando.
+        Implementado com `ignoreDuplicates: true` (DO NOTHING), que PRESERVA o nome e
+        devolve `[]`, mais um segundo passo que busca o dono do nome por `nome_chave`.
+        Os dois passos continuam resolvendo a corrida de dois admins (a intenção de D10).
+        Em `cargo_apelidos` o merge CONTINUA certo: ali sobrescrever é o desejado.
+        A assimetria entre os dois upserts é, portanto, deliberada — e tem teste.
+
+        Outras decisões da execução:
+        - `useCargos` NÃO filtra por `ativo`. Filtrar esconderia o cargo de inscritos já
+          gravados; a coluna serve à etapa 7 e não tem consumidor hoje. Tem teste.
+        - Violação de `cargos_nome_chave_key` NÃO é traduzida em mensagemErroCargo, de
+          propósito: criarCargo a transforma em sucesso. Um teste guarda isso — se aquela
+          mensagem chegar ao usuário, o caminho de D10 quebrou.
+
+        ⭐ As três asserções centrais foram FALSIFICADAS antes de aceitas, sabotando o
+        hook: `ignoreDuplicates` → false derruba 1 teste; `onConflict` dos apelidos →
+        'texto_origem' derruba 1; remover o fallback de busca derruba 2. Sem isso, teste
+        sobre mock só afirma o mock.
+
+        ⚠️ Achado de processo: `CODIGOS_POSTGREST` NÃO tem a chave `RLS` — os 10 arquivos
+        de teste que precisam do 42501 usam o literal. O vitest passou verde com
+        `CODIGOS_POSTGREST.RLS` (undefined em runtime não quebra o mock) e quem pegou foi
+        o `tsc`. Confirma que rodar os três comandos é o gate, não só `npm test`.
+      objetivo: "A camada de dados do passo novo, no padrão dos outros 20 hooks do repo."
+      acoes:
+        - acao: "src/hooks/useCargos.tsx"
+          detalhe: |
+            - useCargos()          → catálogo (React Query, queryKey ['cargos'], só ativos? — não: lista tudo; `ativo` só entra em jogo se a etapa 7 existir)
+            - useCargoApelidos()   → o mapa texto_chave → cargo_id, para pré-preencher
+            - criarCargo(nome)     → UPSERT onConflict 'nome_chave' + select (D10: nome
+                                     repetido devolve o existente, não erro), invalidando ['cargos']
+            - salvarApelidos(pares)→ UPSERT em cargo_apelidos, onConflict 'texto_chave'
+                                     (reassociar uma grafia a outro cargo ATUALIZA o
+                                     apelido — decisão nova vence a antiga)
+          atencao: |
+            ⚠️ "Vazio enquanto carrega" é o padrão de defeito mais repetido deste repo
+            (3 ocorrências no mesmo dia em 26/07). O consumidor PRECISA distinguir "ainda
+            não sei os cargos" de "não há cargos" — senão o passo mostra tudo como
+            não-associado durante o carregamento e o usuário cria duplicatas do que já
+            existe. Expor isLoading das DUAS queries e a tela respeitá-los.
+            ⚠️ Mensagem de erro vinda do banco PASSA ADIANTE; texto próprio é só fallback.
+            Descartar a mensagem do banco já foi corrigido duas vezes aqui.
+        - acao: "Tradução de erros (mensagemErroImportacao ou irmã própria de cargos)"
+          detalhe: |
+            - 23503 em cargos com candidatos → "Este cargo está em uso por candidatos" —
+              nomeia o obstáculo, como mensagemErroExclusaoFuncao faz
+            - RLS/permission denied → "É necessário ser administrador"
+            - unique nome_chave NÃO precisa de tradução: D10 o transforma em sucesso
+      testes:
+        - arquivo: "src/hooks/useCargos.test.tsx (NOVO, padrão de useCandidatos.test.tsx)"
+          casos: |
+            - lista o catálogo e ordena por nome
+            - o onConflict de criarCargo é 'nome_chave' e o de apelidos é 'texto_chave' — as strings exatas
+            - ⭐ criarCargo com nome já existente devolve o id EXISTENTE (D10), sem erro
+            - criarCargo invalida ['cargos'] (senão o Select não mostra o recém-criado)
+            - salvarApelidos reassociando uma grafia ATUALIZA, não duplica
+            - erro do banco chega à UI com a mensagem do banco, não com texto genérico
+            - ⚠️ isLoading é distinguível de lista vazia
+          armadilhas: >
+            Ler estrutura/transversais/testes.md ANTES — as 7 armadilhas. Em especial a
+            sequência do mock consumida pela listagem e o .at(-1) pegando o refetch em vez
+            da mutation, que é exatamente a forma deste hook.
+
+    - id: 4
+      titulo: "⭐ UI — o passo 3 'Cargos' no assistente (em TRÊS subetapas, cada uma verde)"
+      janela: "B"
+      status: |
+        ✅ CONCLUÍDA em 2026-07-27, nas três subetapas, cada uma fechada verde.
+        20 testes novos em CandidatosImportar.ui.test.tsx (18 → 38).
+
+        Duas remoções de CÓDIGO MORTO que D4 provocou, e que não estavam previstas:
+        1. O aviso "cargo não foi pareado" vivia DENTRO da prévia do passo 2 — mas a
+           prévia só aparece com o mapeamento completo, que agora inclui o cargo. O ramo
+           virou inalcançável; subiu para o nível do passo 2.
+        2. O ramo "nenhum cargo lido" do passo 3 foi REMOVIDO: desde D9, candidato sem
+           cargo não existe, logo `cargosLidos` só é vazio quando `candidatos` também é —
+           e o passo 2 já barra isso. Guarda que não pode disparar é armadilha.
+
+        ⭐ O TESTE MAIS IMPORTANTE DO MÓDULO MUDOU DE FORMA, e a mudança é a entrega:
+        era "ALERTA EM VERMELHO quando as chaves colidem e o cargo está sem parear" —
+        um aviso ignorável, sendo a única coisa entre o usuário e a perda de 396
+        inscritos. Virou "sem o cargo pareado NÃO DÁ para avançar": a perda deixou de ser
+        improvável e passou a ser impossível. O teste continua exigindo a EXPLICAÇÃO e o
+        "onde o cargo está" — barrar sem orientar troca um problema por outro.
+
+        Outras decisões da execução:
+        - O botão de voltar do passo 3 diz "Voltar ao pareamento". O cabeçalho da página
+          já tem um "Voltar" que sai da importação inteira; dois botões de mesmo nome na
+          mesma tela obrigam o leitor de tela a adivinhar. Descoberto por ambiguidade num
+          teste, mas o conserto é de produto.
+        - A criação inline usa `criarCargo` na hora (não ao fim do passo). Falha NÃO
+          avança e mostra a mensagem do banco junto do campo.
+        - Falhar ao gravar APELIDO não barra a importação — assimetria deliberada com a
+          criação de cargo: o apelido é atalho para a próxima vez, a importação é o
+          objetivo. Perder o atalho não pode custar 7.416 linhas.
+        - `useImportarCandidatos` passou a exigir `CandidatoResolvido[]`. A mudança
+          quebrou o helper de useCandidatos.test.tsx na hora — o guarda de tipo provado
+          fora do arquivo onde foi desenhado.
+
+        ⭐ As asserções centrais das três subetapas foram FALSIFICADAS por sabotagem do
+        código (bloqueio de D4, pré-preenchimento, cargo_id no lote, gravação de apelido,
+        aviso de unificação, preservação ao voltar, D9): cada uma derruba exatamente os
+        testes esperados.
+      objetivo: "O coração do pedido. É aqui que o usuário sanitiza."
+      subetapas:
+
+        - id: "4a"
+          titulo: "A renumeração + o passo com ASSOCIAÇÃO a cargos existentes"
+          acoes:
+            - acao: "src/pages/CandidatosImportar.tsx — a trilha e o tipo"
+              detalhe: |
+                - `type Passo = 1 | 2 | 3 | 4 | 5`
+                - A trilha lista: Arquivo, Pareamento, Cargos, Importação, Relatório
+                - O botão do passo 2 deixa de chamar executarImportacao() e vira
+                  "Continuar" → setPasso(3); executarImportacao() → setPasso(4); fim → 5
+                ⚠️ Os passos 3 e 4 ATUAIS viram 4 e 5. Renumeração em três lugares
+                (trilha, blocos {passo === n}, transições) — errar um deixa um passo
+                inalcançável. O teste da trilha cobre os 5.
+            - acao: "O bloco do passo 3 — tabela de resolução (associação apenas)"
+              detalhe: |
+                Uma tabela de ~9 linhas (medido), sem paginação nem busca:
+
+                  | Texto na planilha           | Linhas | Exemplos          | Cargo do sistema  |
+                  | DOCENTE II                  |  3.756 | AGATHA, SARAH, …  | [Select ▾]        |
+                  | DOCENTE I ¿ EDUCAÇÃO FÍSICA |    730 | …                 | [— selecione —] ⚠ |
+                  | ARTE                        |    195 | …                 | [— selecione —] ⚠ |
+
+                - O Select lista o catálogo (nesta subetapa, SEM "Criar novo…" — vem na 4b).
+                - O caractere sujo aparece DESTACADO (pareceSujo) — ver a sujeira, não caçá-la.
+                - Coluna Exemplos: os até-3 nomes de cargosDaPlanilha — é o que decide "ARTE".
+                - Enquanto useCargos().isLoading, a tabela mostra o esqueleto de carregamento
+                  do padrão do repo — NUNCA "nenhum cargo" (o defeito 'vazio enquanto carrega').
+                - Rodapé: o botão desabilitado DIZ POR QUÊ — "Resolva N cargo(s) para
+                  importar", não um botão cinza mudo. Contagem ao vivo.
+                - Quando 2+ textos apontam para o MESMO cargo: aviso INFORMATIVO no rodapé
+                  ("'X' e 'Y' serão tratados como o mesmo cargo — as inscrições repetidas
+                  entre eles serão unificadas"). É o efeito de D3 visível ANTES de importar.
+                - Voltar ao passo 2 PRESERVA as resoluções já feitas; trocar o pareamento
+                  da coluna de cargo RECALCULA os grupos, mantendo as resoluções cujos
+                  texto_chave continuam existindo. Trocar o ARQUIVO zera tudo.
+                ⚠️ Radix não aceita value="" em SelectItem — sentinela, como o NAO_MAPEADO
+                do passo 2.
+                Acessibilidade: a tabela com caption; o ⚠ de "sem associação" com texto
+                para leitor de tela, não só cor — padrão de dialogos-acessibilidade.
+          verificacao_da_fatia: "Suíte verde com a trilha de 5; associar tudo e importar funciona contra o banco local com catálogo pré-criado à mão."
+
+        - id: "4b"
+          titulo: "Criar cargo inline + a memória de apelidos"
+          acoes:
+            - acao: "'Criar novo…' no Select"
+              detalhe: |
+                - Abre um input INLINE já preenchido com o texto da planilha, para o
+                  usuário EDITAR — é o "redigitar para sanitizar" do pedido. Não é campo
+                  em branco: partir do sujo é o que torna a correção rápida.
+                - O foco vai para o input ao abrir (teclado, não só mouse); Esc cancela e
+                  volta ao Select; o input tem label associada (acessibilidade).
+                - Confirmar cria via criarCargo — que, por D10, também resolve o caso de
+                  o nome já existir: o usuário é associado ao existente e informado, sem
+                  tela de erro.
+            - acao: "Pré-preenchimento e o selo"
+              detalhe: |
+                Ordem, e ela importa:
+                  1. apelido gravado (useCargoApelidos) → selecionado com selo "lembrado";
+                  2. casamento EXATO por nome_chave contra o catálogo → selecionado sem selo;
+                  3. nada casou → VAZIO. Nunca um palpite.
+                O selo diz de onde veio ("associado numa importação anterior") — o usuário
+                pode discordar e trocar; trocar atualiza o apelido ao confirmar.
+            - acao: "Gravação ao confirmar o passo"
+              detalhe: |
+                Ordem: criar os cargos novos → salvarApelidos (TODAS as resoluções, novas
+                e lembradas-alteradas) → aplicarResolucoes → seguir ao passo 4.
+                Se criar cargo falhar, o passo NÃO avança e a mensagem do banco aparece.
+                ⚠️ Vários passos sem transação — o segundo padrão de defeito recorrente
+                do repo. Risco contido (cargo criado a mais é inofensivo e reaproveitável;
+                apelido é upsert idempotente), mas o toast de erro NÃO pode dizer "nada
+                aconteceu": diz o que já foi criado e que repetir é seguro.
+          verificacao_da_fatia: "Suíte verde; primeira importação com catálogo VAZIO flui de ponta a ponta; segunda importação chega toda 'lembrada'."
+
+        - id: "4c"
+          titulo: "D4 + D9 — o cargo vira obrigatório, e o relatório aprende sobre cargos"
+          acoes:
+            - acao: "D4 no passo 2"
+              detalhe: |
+                - `cargo` passa a `obrigatorio: true` em CAMPOS_CANDIDATO. É aqui que
+                  entra — não antes: obrigatório sem o passo 3 existir bloquearia a
+                  importação sem oferecer a saída.
+                - `mapeamentoCompleto()` já desabilita o botão sozinho — conferir, em vez
+                  de duplicar a regra na tela.
+                - O aviso "o campo Cargo não foi pareado" atualiza o texto: impedimento,
+                  não risco. E aponta onde o cargo costuma estar (a segunda coluna NOME).
+            - acao: "D9 em converterLinha"
+              detalhe: |
+                Célula de cargo vazia → erro de linha ('Cargo vazio'), como inscrição e
+                nome. 0 linhas afetadas no arquivo real (medido).
+            - acao: "Relatório (passo 5) e o xlsx"
+              detalhe: |
+                - O card de resumo ganha a linha de cargos: "9 cargos: 7 lembrados,
+                  1 criado, 1 associado manualmente".
+                - O xlsx baixável ganha a aba "Cargos": texto da planilha → cargo final,
+                  com a contagem. É o registro do de-para daquela importação — auditável
+                  fora do sistema.
+                - As linhas 'Substituída por linha posterior' explicam quando a repetição
+                  veio de duas grafias do MESMO cargo (ver pipeline_da_importacao).
+          verificacao_da_fatia: "Suíte verde com as quebras de D4 conferidas uma a uma; planilha sem coluna de cargo é barrada no passo 2 com a mensagem certa."
+
+      testes:
+        - arquivo: "src/pages/CandidatosImportar.ui.test.tsx (estender — hoje 18 testes)"
+          casos: |
+            4a:
+            - ⭐ o passo 3 lista UM item por cargo distinto, com contagem e exemplos
+            - ⭐ o botão Importar desabilitado enquanto houver cargo sem associação, e o
+              rodapé DIZ quantos faltam
+            - a trilha mostra 5 passos; o relatório continua alcançável (renumeração)
+            - voltar ao passo 2 e retornar PRESERVA as resoluções
+            - dois textos no mesmo cargo → aviso informativo de unificação aparece
+            - enquanto o catálogo carrega, não se mostra "nenhum cargo" (isLoading)
+            4b:
+            - "Criar novo…" abre input PRÉ-PREENCHIDO com o texto da planilha, focado
+            - editar o nome e confirmar cria com o nome EDITADO, não com o sujo
+            - nome já existente → associa ao existente e informa, sem erro (D10)
+            - apelido anterior chega pré-selecionado com o selo; trocar atualiza ao confirmar
+            - o lote enviado leva cargo_id, e é o do cargo escolhido
+            - falha ao criar cargo NÃO avança o passo e mostra a mensagem do banco
+            4c:
+            - ⭐ (D4) o passo 2 não deixa avançar sem a coluna de cargo pareada
+            - (D9) linha com célula de cargo vazia vira erro no relatório, não candidato
+            - o resumo do relatório conta lembrados/criados/manuais corretamente
+          armadilhas: >
+            Radix Select em jsdom pede o padrão já usado nos 12 .ui.test.tsx do repo.
+            E cuidado com regex de substring em contadores: "9 cargo(s)" casa também com
+            "9 cargo(s) associado(s)" — foi exatamente o falso vermelho de 27/07.
+      documentacao:
+        - "cargos.md — o desenho da tela, a ordem do pré-preenchimento, por que não há palpite, e o comportamento de voltar/trocar arquivo"
+        - "00-modulo.md — a seção 'A importação' ganha o passo 3; a trilha de 4 passos vira 5; D9 entra na tabela de erro vs. aviso"
+        - "docs/teste-frontend-candidatos.md — bateria manual do fluxo novo, no padrão dos outros teste-frontend-*.md (incluir: catálogo vazio, tudo lembrado, e o caminho do erro ao criar)"
+
+    - id: 5
+      titulo: "⭐ A chave natural passa a usar `cargo_id`"
+      janela: "C"
+      status: |
+        ✅ CONCLUÍDA em 2026-07-28 — migration `20260728100000_candidatos_chave_cargo_id.sql`.
+
+        PRÉ-CHECK MEDIDO NA HORA (não presumido da anotação de 27/07): candidatos 0 linhas,
+        0 com cargo_id nulo; cargos 0; cargo_apelidos 0. Logo não havia o que preencher nem
+        o que fundir, e a medição da fusão legítima ficou vacuosa.
+
+        ⚠️ O backfill e a guarda FICARAM na migration mesmo assim, porque ela vai rodar
+        noutros bancos (produção no dia do deploy). E a GUARDA FICOU MAIS PRECISA do que o
+        desenho pedia: o roadmap mandava levantar erro se restasse qualquer cargo_id NULL,
+        mas NULL sozinho não é problema — o problema é COLISÃO. A guarda conta os grupos
+        colidentes com GROUP BY (que agrupa NULLs juntos, a mesma semântica de NULLS NOT
+        DISTINCT), o que cobre aquele caso E qualquer outro, sem falhar à toa quando existe
+        UMA linha sem cargo, que o índice aceitaria numa boa.
+
+        ⭐ A ORDEM DO PIPELINE DEIXOU DE DEPENDER DE DISCIPLINA. `deduplicar()` passou a
+        aceitar só `LinhaResolvida[]`, que só sai de `resolverLinhas()`. Verificado por
+        sabotagem: voltar a `deduplicar(convertidas)` dá TS2345 — erro de compilação, não
+        defeito silencioso. É o mesmo padrão de `CandidatoResolvido` da etapa 2.
+
+        Duas consequências na TELA que o desenho previu e que precisaram de texto novo:
+        - O passo 2 não pode mais anunciar o número final (sem cargo resolvido todos os
+          cargo_id são null e as inscrições da mesma pessoa colapsariam — anunciaria 396 a
+          menos). Passou a mostrar "N linha(s) lida(s)", e o número real é afirmado no
+          passo 3. O teste ⭐⭐ da colisão foi REESCRITO para ler no passo 3, já resolvido:
+          trocar só a string teria enfraquecido em silêncio o teste mais importante do
+          módulo, porque o badge do passo 2 não passa mais pelo dedup.
+        - `repetidas` mudou de significado e o aviso mudou de lugar (passo 2 → passo 3),
+          dizendo explicitamente "o mesmo cargo DEPOIS DA ASSOCIAÇÃO".
+
+        VERIFICADO PELO POSTGREST (não só por SQL): idempotência 3→3→3, controle positivo
+        de UPDATE, linha sem CPF segue 1, e renomear o cargo mantém 3 com o nome novo no
+        join. O controle positivo é o que prova que o índice está sendo INFERIDO.
+      objetivo: >
+        Fechar o problema que abriu a revisão de 27/07: tornar a identidade do candidato
+        independente do texto. Só depois que a etapa 4 garante cargo_id preenchido.
+      pre_requisito: "Etapa 4 concluída e verificada. Sem ela, todos os cargo_id são NULL."
+      acoes:
+        - acao: "PRÉ-CHECK do dado existente — a migration pode ser IMPOSSÍVEL de aplicar"
+          detalhe: |
+            ⚠️ Descoberto na revisão de 27/07, e é o risco mais sério da etapa: com
+            NULLS NOT DISTINCT, linhas existentes com cargo_id NULL COLIDEM ENTRE SI —
+            a mesma pessoa em dois cargos (382 casos no arquivo real) tem cpf e inscrição
+            iguais, e com os dois cargo_id NULL o CREATE UNIQUE INDEX simplesmente FALHA.
+            Não é fusão silenciosa: é migration que não aplica.
+
+            Antes de escrever a migration, medir no banco alvo:
+              SELECT count(*) FROM candidatos WHERE cargo_id IS NULL;
+            - 0 linhas (tabela vazia ou tudo importado pós-etapa-4): seguir direto.
+              Estado local em 27/07: tabela VAZIA — mas conferir na hora, não confiar.
+            - >0: preencher ANTES, dentro da própria migration, com o UPDATE
+              determinístico a partir dos apelidos:
+                UPDATE candidatos c SET cargo_id = a.cargo_id
+                FROM cargo_apelidos a
+                WHERE c.cargo_id IS NULL
+                  AND a.texto_chave = lower(btrim(coalesce(c.cargo,'')));
+              e em seguida um DO $$ ... $$ que LEVANTA ERRO com contagem se restar NULL —
+              melhor a migration falhar com mensagem nossa do que com 'duplicate key'.
+            ⚠️ Sobre a regra "dado não vai em migration": ela separa schema de carga; este
+            UPDATE é regra genérica idempotente derivada do próprio banco, sem dado
+            inventado, e PRECISA rodar entre dois comandos de schema da mesma migration
+            (antes do índice, depois de nada) — seed.pos não alcança esse ponto. Registrar
+            o porquê no cabeçalho da migration, citando esta seção.
+        - acao: "MEDIR a fusão legítima (regra 5 de invariantes)"
+          detalhe: |
+            Contar, contra o mapeamento real que o usuário fez:
+              (edital, cpf, cargo_id, inscrição) distintos  =?  linhas
+            Diferença = pessoas fundidas por dois textos → mesmo cargo. Fundir é correto
+            quando o mapeamento diz que é o mesmo cargo; olhar QUAIS antes de seguir.
+        - acao: "Migration NOVA (a troca em si)"
+          detalhe: |
+            - (o pré-check/backfill acima, se necessário)
+            - DROP INDEX candidatos_cpf_cargo_inscricao_key
+            - CREATE UNIQUE INDEX candidatos_cpf_cargo_id_inscricao_key
+                ON candidatos (edital_id, cpf, cargo_id, n_inscricao) NULLS NOT DISTINCT
+            - ALTER TABLE candidatos DROP COLUMN cargo_chave   (D3)
+            - COMMENT no índice, apontando para este roadmap
+            ⚠️ NULLS NOT DISTINCT continua obrigatório pelos 2 CPFs impossíveis (viram
+            NULL e se reinseririam a cada reimportação sem a cláusula).
+        - acao: "As QUATRO coisas que têm de concordar (eram três; o dedup entrou)"
+          detalhe: |
+            Mexeu numa, mexe nas quatro — senão o bloco de 500 falha inteiro:
+            - o índice (acima)
+            - useCandidatos.tsx: onConflict → "edital_id,cpf,cargo_id,n_inscricao"
+            - candidatos-import.ts: chaveNatural passa a operar sobre CandidatoResolvido,
+              usando cargo_id — NÃO o texto
+            - o DEDUP roda depois de aplicarResolucoes (ver pipeline_da_importacao) — é
+              nesta etapa que a ordem antiga vira bug real
+            E mensagemErroImportacao aprende o nome novo do índice.
+        - acao: "Renomear cargo passa a ser inofensivo — provar"
+          detalhe: >
+            O ganho concreto desta etapa. UPDATE cargos SET nome = 'DOCENTE I — HISTÓRIA'
+            e conferir que os 481 candidatos continuam 481, com o nome novo na tela.
+            Hoje a mesma correção criaria 481 registros.
+      testes:
+        - "Atualizar as asserções de onConflict (useCandidatos.test.tsx, CandidatosImportar.ui.test.tsx) e as de chaveNatural/mensagemErroImportacao em candidatos-import.test.ts"
+        - "NOVO em candidatos-import.test.ts: dedup pós-resolução funde dois textos do mesmo cargo (o caso que a ordem antiga deixaria passar)"
+        - "⚠️ Testes que quebrarem aqui são a especificação mudando de propósito — conferir um a um, não silenciar em bloco"
+        - arquivo: "verificação manual, docs/bateria-cargos.sql + PostgREST"
+          casos: |
+            - importar, reimportar 2× → contagem estável (idempotência)
+            - CONTROLE POSITIVO: reimportar com nome de candidato mudado ATUALIZA a linha
+            - renomear o cargo NÃO duplica candidato — o ponto inteiro da etapa
+            - linha sem CPF continua sendo uma só depois de 3 reimportações
+            - duas grafias mapeadas ao mesmo cargo → reimportar não cria segunda linha
+          atencao: >
+            Verificar pelo PostgREST, não só por SQL: é o PostgREST que precisa INFERIR o
+            índice novo a partir do on_conflict. SQL direto passaria mesmo se o app
+            falhasse. (Foi assim que a chave de 27/07 foi verificada — repetir o método.)
+      documentacao:
+        - "00-modulo.md — a seção da chave natural, que hoje descreve (edital,cpf,cargo_chave,inscrição); e a regra das QUATRO coisas que concordam"
+        - "cargos.md — registrar que renomear virou seguro, com o número medido"
+        - "backlog.md — FECHAR o item de 27/07 sobre a instabilidade do texto do cargo; a regra do arquivo é REMOVER o item concluído, não marcá-lo ✅"
+        - "memória: project-gestaoconcurso-candidatos precisa deixar de dizer que a chave usa cargo_chave"
+
+    - id: "5b"
+      titulo: "⭐ A guarda que a etapa 5 exige — reapontar cargo de linha já importada é recusado pelo banco"
+      janela: "C"
+      status: |
+        ✅ CONCLUÍDA em 2026-07-28 — migration `20260728110000`, SQLSTATE `RC001`.
+        Entregue conforme o desenho, com o conflito de D3 resolvido como decidido: o drop
+        de `cargo_chave` FICOU e o trigger calcula a normalização inline. EXPLAIN confirmou
+        Index Scan pelo prefixo (edital_id, n_inscricao) — nenhum índice novo foi preciso.
+
+        ⭐ ACHADO NA VERIFICAÇÃO, e valeu remoção de código: eu tinha escrito um ramo em
+        `mensagemErroImportacao` casando `includes('rc001')`. O PostgREST devolve o código
+        em `error.code` e NUNCA dentro de `error.message` — aquele ramo JAMAIS dispararia,
+        e o resto dele só repetia o `return mensagem` do fim. Removido, com o porquê no
+        lugar. É a armadilha de sempre: guarda que não pode disparar. O teste ficou, agora
+        com o texto EXATO que o PostgREST devolveu, para pegar quem acrescentar um ramo
+        largo antes do fallback.
+
+        Bateria (docs/bateria-cargos.sql, seção 7) e PostgREST, os dois verdes:
+        reapontamento recusado com a mensagem nossa; CONTROLE POSITIVO 1 (mesma pessoa em
+        dois cargos com textos diferentes ENTRA — os 382 casos) e CONTROLE POSITIVO 2
+        (reimportar igual atualiza, o caminho feliz não foi pego).
+      objetivo: >
+        Fechar o buraco que a etapa 5 ABRE. Com cargo_id na chave, mudar de ideia sobre a
+        associação de um texto passa a INSERIR linhas novas e deixar as antigas órfãs, sem
+        nada acusar. Ver a tabela de inversão em D11 — é a etapa inteira num quadro.
+      pre_requisito: >
+        Etapa 5 aplicada. ANTES dela esta guarda é inócua (o cargo_id não está na chave, o
+        reapontamento atualiza a linha no lugar) — e um trigger que não pode disparar é
+        armadilha, não segurança. Mesma lição da etapa 4.
+      acoes:
+        - acao: "O conflito com D3 — RESOLVIDO pelo usuário em 2026-07-28"
+          detalhe: |
+            D3 manda DROPAR `candidatos.cargo_chave` na migration da etapa 5, e a condição
+            do trigger compara justamente o texto normalizado do cargo. As duas não podiam
+            valer como escritas.
+
+            DECIDIDO: MANTER o drop de D3, e o trigger calcula a expressão inline
+              lower(btrim(coalesce(NEW.cargo, '')))  =  lower(btrim(coalesce(c.cargo, '')))
+            Não custa índice: a busca é por (edital_id, cpf, n_inscricao), que o índice
+            único novo cobre pelo PREFIXO (edital_id, cpf) e é seletiva por natureza — a
+            distribuição medida é 6.638 inscrições com 1 cargo, 369 com 2, 12 com 3 e 1
+            com 4, ou seja, no MÁXIMO 4 linhas comparadas por candidato.
+            Ressuscitar `cargo_chave` só para o trigger seria reintroduzir a coluna cujo
+            nome termina em `_chave` sem chave nenhuma apontando para ela — exatamente a
+            armadilha que D3 quis eliminar.
+            ⚠️ CONFIRMAR com EXPLAIN que o prefixo é usado, no método da etapa 1. Trigger
+            BEFORE INSERT roda por LINHA, e o caminho quente aqui é 7.416 delas.
+        - acao: "Migration NOVA (separada da etapa 5) — o trigger"
+          detalhe: |
+            - FUNCTION em plpgsql, SECURITY INVOKER com SET search_path (o padrão do repo;
+              ver contar_candidatos_por_edital). Não precisa de DEFINER: quem importa já é
+              admin e já lê candidatos.
+            - TRIGGER BEFORE INSERT ON candidatos FOR EACH ROW.
+              ⚠️ INSERT, não UPDATE: no upsert, a linha que CASA a chave vira UPDATE e é o
+              caminho correto (mesma pessoa, mesmo cargo, dados atualizados). O dano mora
+              no INSERT que não casou porque o cargo_id mudou.
+            - Condição ESTREITA, conforme D11:
+                EXISTS (SELECT 1 FROM candidatos c
+                        WHERE c.edital_id = NEW.edital_id
+                          AND c.cpf IS NOT DISTINCT FROM NEW.cpf
+                          AND c.n_inscricao = NEW.n_inscricao
+                          AND lower(btrim(coalesce(c.cargo,''))) = lower(btrim(coalesce(NEW.cargo,'')))
+                          AND c.cargo_id IS DISTINCT FROM NEW.cargo_id)
+              ⚠️ `IS NOT DISTINCT FROM` no cpf: são 2 CPFs impossíveis que viram NULL, e
+              `=` os deixaria escapar da guarda — o mesmo motivo do NULLS NOT DISTINCT.
+            - RAISE com mensagem NOSSA, nomeando o texto e o cargo de destino atual, e
+              com ERRCODE próprio para mensagemErroImportacao poder traduzir sem parsear
+              texto livre.
+            - COMMENT ON FUNCTION apontando para D11.
+          nao_faca: |
+            - NÃO pôr a guarda em `cargo_apelidos`: é a tabela errada, pelas 3 razões
+              verificadas em D11 (não é o caminho do dado, o lote é atômico, e o chamador
+              engole o erro de propósito).
+            - NÃO bloquear UPDATE de `cargos.nome`: pós-etapa 5 é cosmético e é o ganho
+              central do tema. Ver ajuste_1 de D11.
+            - NÃO condicionar a "o edital terminou de importar": esse momento NÃO EXISTE no
+              modelo — reimportar é o fluxo normal, não há evento de fim. A condição
+              durável é "existe linha já importada", que é a mesma do RESTRICT da etapa 1.
+        - acao: "A tela AVISA antes de o banco recusar"
+          detalhe: |
+            Barrar sem orientar troca um problema por outro (lição da etapa 4). No passo 3,
+            quando o usuário troca a associação de um texto que JÁ tem inscritos gravados
+            com outro cargo_id, mostrar o aviso ali — no padrão do aviso de unificação de
+            4a, que já mostra o efeito de D3 ANTES de importar.
+            ⚠️ Isto é UX, NÃO é a regra. A regra é o trigger. Regra de negócio só no
+            cliente não é regra — ela não vale para PostgREST, Edge Function nem script.
+            O aviso precisa de uma consulta ao banco (quais cargo_id já existem para
+            aqueles textos naquele edital); se ela complicar, o aviso pode ficar para
+            depois SEM segurar a migration — o trigger sozinho já impede a perda.
+        - acao: "mensagemErroImportacao aprende o ERRCODE novo"
+          detalhe: >
+            O bloco de 500 falha inteiro quando o trigger dispara, e hoje o relatório
+            mostraria a mensagem crua. Traduzir nomeando o obstáculo, no padrão de
+            mensagemErroExclusaoFuncao: qual texto, para qual cargo ele já foi importado,
+            e que migrar os inscritos é a etapa 7.
+      testes:
+        - "candidatos-import.test.ts / useCandidatos.test.tsx: mensagemErroImportacao traduz o ERRCODE novo — é o que a suíte ALCANÇA. O trigger em si ela não exercita (mocka o Supabase)."
+        - arquivo: "docs/bateria-cargos.sql — é aqui que a etapa 5b é de fato verificada"
+          casos: |
+            - reapontar texto já importado para outro cargo → RECUSADO, com a mensagem nossa
+            - ⭐ CONTROLE POSITIVO 1: a mesma pessoa com a mesma inscrição num SEGUNDO cargo
+              (texto diferente) → ENTRA. É o caso dos 382, e é o que prova que a condição é
+              estreita o bastante. Sem ele, "recusou" não distingue guarda de bug.
+            - ⭐ CONTROLE POSITIVO 2: reimportar igual (mesmo texto, mesmo cargo_id) →
+              UPDATE normal, contagem estável. Prova que a guarda não pegou o caminho feliz.
+            - renomear cargos.nome com inscritos gravados → PERMITIDO (ajuste_1 de D11)
+            - apagar cargo em uso → segue recusado pelo RESTRICT (não regrediu)
+            - EXPLAIN do lookup do trigger usa o prefixo do índice, não seq scan
+          atencao: >
+            Verificar TAMBÉM pelo PostgREST, não só por SQL: é o caminho real do upsert em
+            blocos de 500, e é onde a mensagem chega ao usuário. Mesmo método da etapa 5.
+      documentacao:
+        - "cargos.md — a tabela de inversão de D11 (qual erro é fatal antes e depois da etapa 5) e por que a guarda não fica em cargo_apelidos"
+        - "00-modulo.md — a regra entra no mapa de invariantes do módulo; e a seção da chave natural ganha o que o trigger protege"
+        - "estrutura/transversais/invariantes.md — trigger novo entra no mapa"
+        - "backlog.md — ABRIR o item da reconciliação (alternativa_que_cobre_mais de D11): ela pega o resíduo que o trigger não alcança, e junto os órfãos de CPF e inscrição corrigidos"
+
+    - id: 6
+      titulo: "UI existente — a lista e a ficha passam a mostrar o cargo canônico"
+      janela: "D"
+      objetivo: "Fazer o ganho aparecer para quem só olha as telas."
+      acoes:
+        - acao: "src/hooks/useCandidatos.tsx — o select embutido"
+          detalhe: |
+            Trazer o nome do cargo junto: `cargos ( id, nome )` no select, no padrão que
+            useColaboradoresProva já usa com funcoes_colaboradores. Evita N+1 e mantém a
+            paginação de 1.000 do PostgREST intacta. A RLS de cargos (SELECT p/
+            authenticated) garante que o join não esbarra em policy para quem já lê
+            candidatos.
+        - acao: "src/pages/Candidatos.tsx"
+          detalhe: |
+            - A coluna Cargo (linha ~264) passa a mostrar o nome canônico
+            - A ficha (linha ~348) idem, e ganha o texto CRU como informação secundária
+              ("como veio na planilha: DOCENTE I ¿ HISTÓRIA") — é procedência (D2), e é o
+              que explica ao usuário por que ele viu aquilo antes
+            - UX: um FILTRO por cargo no cabeçalho da lista (Select, ao lado da busca) —
+              filtra por cargo_id no servidor, então a contagem continua a do servidor.
+              É a primeira pergunta real da operação ("quantos inscritos de DOCENTE II?")
+              e custa um .eq() na query.
+            - A busca textual passa a alcançar o nome do cargo?
+              ⚠️ A busca hoje é `.or()` de ilike em colunas próprias — busca em tabela
+              relacionada tem sintaxe própria no PostgREST e NÃO entra no mesmo `.or()`.
+              Com o FILTRO acima, a busca textual por cargo perde a urgência: se a
+              sintaxe complicar, deixar fora e registrar. NÃO improvisar filtro no
+              cliente, que quebraria a contagem do servidor.
+      testes:
+        - "Candidatos.ui.test.tsx (hoje 23): a lista mostra o nome canônico; a ficha mostra os dois; candidato sem cargo_id mostra '—' e não quebra; o filtro por cargo restringe E mantém o count"
+        - "useCandidatos.test.tsx: o select inclui a relação; o filtro vira .eq('cargo_id', …); a paginação e o count do servidor seguem intactos (o teste que protege o '1000 inscritos para sempre')"
+      documentacao:
+        - "00-modulo.md — a seção das telas"
+
+    - id: 7
+      titulo: "(OPCIONAL, fora das janelas — só se fizer falta) Página /cargos"
+      status: "NÃO planejada para esta entrega — ver D7"
+      detalhe: |
+        Se a gestão fora do assistente vier a fazer falta, o trabalho é:
+          - rota em App.tsx dentro de RequireAcesso, papéis admin/superadmin
+          - +5 combinações na matriz de src/pages/guards.test.tsx (19 páginas × 5 papéis)
+          - CRUD com exclusão bloqueada por RESTRICT, e a mensagem 23503 traduzida
+            nomeando quantos candidatos usam o cargo (o índice de apoio da etapa 1 é o
+            que torna essa contagem barata)
+          - desativar (coluna `ativo`) como alternativa à exclusão — a coluna já existe
+            desde a etapa 1 justamente para isto
+          - fusão de cargos duplicados (reapontar candidatos e apelidos, e só então
+            apagar) — operação de dados, precisa de RPC transacional SECURITY INVOKER
+            com SET search_path, não de 3 passos soltos no cliente
+        ⚠️ NÃO alimentar guard a partir de src/lib/modulos.ts. O registro de módulos é UX
+        e não autorização; ler papéis de lá afrouxaria 7 rotas. Já foi proposto e rejeitado.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  fechamento_do_tema: |
+    Enquanto não houver CI (adiado por decisão do usuário em 25/07), fechar CADA FATIA
+    inclui rodar À MÃO:
+      npm test
+      npx tsc --noEmit -p tsconfig.app.json
+      npm run build
+    Baseline de lint a não piorar: 93 problemas por `npm run lint` (90 por `npx eslint src`).
+
+    E a verificação que a suíte NÃO faz: a bateria manual contra o banco local, porque o
+    mock do Supabase não exercita RLS, constraint, trigger nem transação. Cada caso com
+    ROLLBACK e com CONTROLE POSITIVO — provar que passou a recusar é só metade.
+
+  riscos:
+    - risco: "⚠️ O CREATE UNIQUE INDEX da etapa 5 FALHA sobre linhas com cargo_id NULL (NULLS NOT DISTINCT faz os NULLs colidirem entre si — 382 pessoas têm cpf+inscrição repetidos entre cargos)"
+      mitigacao: "O pré-check da etapa 5: medir, backfill determinístico via apelidos dentro da migration, e um guard que falha com mensagem nossa se restar NULL."
+    - risco: "Dedup na ordem antiga (sobre o texto) deixa passar duas grafias do mesmo cargo e o bloco de 500 falha inteiro"
+      mitigacao: "pipeline_da_importacao é o contrato; a etapa 5 muda o dedup de lugar e há teste novo cobrindo exatamente esse caso."
+    - risco: "As tabelas novas herdarem os grants da era Lovable (anon com TRUNCATE, como aconteceu com candidatos)"
+      mitigacao: "REVOKE na MESMA migration que cria (seção supabase_grants_e_rls), e a bateria prova a revogação."
+    - risco: "Renumerar os passos do assistente deixa um passo inalcançável"
+      mitigacao: "A renumeração toca 3 lugares. O teste da trilha (4a) cobre os 5 passos."
+    - risco: "O usuário mapeia dois cargos distintos para o mesmo e funde gente sem querer"
+      mitigacao: "O aviso de unificação na própria tela (4a) mostra ANTES; a medição da etapa 5 confere DEPOIS; e o texto cru guardado (D2) torna o mapeamento refazível."
+    - risco: >
+        ⭐ A etapa 5 INVERTE qual erro é fatal: reapontar um texto já importado para outro
+        cargo passa a INSERIR linhas novas e órfãr as antigas, em silêncio. O gesto é o
+        ESPERADO do passo 3 ("ARTE é o mesmo cargo ou não?"), não o desviante.
+      mitigacao: "Etapa 5b, no mesmo merge da 5 — ver D11. A reconciliação (backlog) pega o resíduo."
+    - risco: >
+        Pôr essa guarda em `cargo_apelidos`, que é o alvo intuitivo e é o ERRADO: não é o
+        caminho do dado (quem grava é o Map da UI), derrubaria os 9 apelidos juntos pelo
+        lote atômico, e o chamador engole o erro de propósito — falharia em silêncio.
+      mitigacao: "ajuste_2 de D11: a guarda é trigger BEFORE INSERT em `candidatos`, com o `nao_faca` explícito na etapa 5b."
+    - risco: "A condição do trigger ficar larga e bloquear os 382 legítimos (mesma inscrição em cargos diferentes)"
+      mitigacao: "Condição estreita exigindo o cargo_chave IGUAL, e o CONTROLE POSITIVO 1 da bateria, que só passa se a estreiteza estiver certa."
+    - risco: "Ficar com metade: cargo_id existindo mas a chave ainda no texto"
+      mitigacao: "Janelas B e C do fatiamento: idealmente o mesmo merge; se separar, não deixar B no ar por tempo indeterminado — nesse intervalo renomear ainda duplica e o tema parece 'não ter funcionado'."
+    - risco: "Dois admins importando ao mesmo tempo criam o mesmo cargo"
+      mitigacao: "D10: criarCargo é upsert por nome_chave — a corrida termina com os dois usando a mesma linha."
+    - risco: "Alguém tratar `cargos` como `funcoes_colaboradores`"
+      mitigacao: "D6, o COMMENT ON TABLE e a seção própria em cargos.md."

@@ -12,20 +12,27 @@
 import { describe, it, expect } from "vitest";
 import {
   CAMPOS_CANDIDATO,
+  aplicarResolucoes,
   autoMapear,
+  cargosDaPlanilha,
+  chaveDeCargo,
   chaveNatural,
   converterLinha,
   deduplicar,
   letraDaColuna,
   mapeamentoCompleto,
   mensagemErroImportacao,
+  pareceSujo,
   parseBooleano,
   parseDataBr,
   parseHora,
+  resolverLinhas,
   rotulosDeColunas,
   soDigitos,
   type CandidatoImportado,
+  type CandidatoResolvido,
   type Mapeamento,
+  type ResolucaoCargos,
 } from "./candidatos-import";
 
 const EDITAL = "11111111-1111-1111-1111-111111111111";
@@ -107,8 +114,18 @@ describe("autoMapear", () => {
     expect(mapeamento.cargo).toBeNull();
   });
 
-  it("completa os dois campos obrigatórios sozinho neste arquivo", () => {
-    expect(mapeamentoCompleto(mapeamento)).toBe(true);
+  it("⭐ NÃO completa sozinho: o Cargo é obrigatório e não é adivinhável", () => {
+    // Desde D4 (2026-07-27) são TRÊS obrigatórios — inscrição, nome e cargo. Os dois
+    // primeiros o auto-pareamento acerta neste arquivo; o cargo, não, porque ele mora na
+    // segunda coluna `NOME` e nenhum heurístico sabe disso. O resultado é deliberado:
+    // a pessoa PRECISA escolher a coluna, e agora não consegue seguir sem escolher.
+    expect(mapeamento.n_inscricao).toBe(1);
+    expect(mapeamento.nome).toBe(2);
+    expect(mapeamento.cargo).toBeNull();
+    expect(mapeamentoCompleto(mapeamento)).toBe(false);
+
+    // E com o cargo apontado à mão, fecha.
+    expect(mapeamentoCompleto({ ...mapeamento, cargo: 28 })).toBe(true);
   });
 
   it("deixa em branco o que não reconhece, em vez de chutar", () => {
@@ -250,14 +267,26 @@ describe("converterLinha — erro descarta a linha", () => {
 });
 
 describe("converterLinha — aviso mantém o inscrito na lista", () => {
-  const m = mapa({ n_inscricao: 0, nome: 1, cpf: 2, email: 3, data_nascimento: 4, cep: 5, raca: 6 });
+  // O cargo entra no mapeamento porque, desde D9, linha sem cargo é descartada — e o que
+  // este bloco mede é justamente o oposto: campo secundário ruim NÃO descarta o inscrito.
+  const m = mapa({
+    n_inscricao: 0, nome: 1, cpf: 2, email: 3, data_nascimento: 4, cep: 5, raca: 6, cargo: 7,
+  });
+
+  /** Preenche o cargo (posição 7) sem obrigar cada caso a carregar sete `null`. */
+  const comCargo = (linha: (string | null)[]) => {
+    const l: (string | null)[] = [...linha];
+    while (l.length < 7) l.push(null);
+    l[7] = "DOCENTE II";
+    return l;
+  };
 
   it("os 2 CPFs impossíveis do arquivo entram sem CPF, não somem", () => {
     // ' 8631309761' (10 dígitos) e '1O778817709' (letra O no lugar do zero). A identidade
     // do candidato é a INSCRIÇÃO — descartar o inscrito por causa do CPF deixaria a
     // lista de inscritos incompleta, que é o único erro grave possível nesta tabela.
     for (const cpfRuim of [" 8631309761", "1O778817709"]) {
-      const r = converterLinha(["214274", "FULANO", cpfRuim], m, EDITAL, 5);
+      const r = converterLinha(comCargo(["214274", "FULANO", cpfRuim]), m, EDITAL, 5);
       expect(r.candidato).not.toBeNull();
       expect(r.candidato?.nome).toBe("FULANO");
       expect(r.candidato?.cpf).toBeNull();
@@ -267,62 +296,84 @@ describe("converterLinha — aviso mantém o inscrito na lista", () => {
 
   it("os 27 e-mails inválidos entram sem e-mail", () => {
     for (const ruim of ["andi.gmail", "marcia2manoel@ gmail.com", "a@b.com / c@d.com"]) {
-      const r = converterLinha(["214274", "FULANO", "22940161739", ruim], m, EDITAL, 5);
+      const r = converterLinha(comCargo(["214274", "FULANO", "22940161739", ruim]), m, EDITAL, 5);
       expect(r.candidato?.email).toBeNull();
       expect(r.avisos.join(" ")).toMatch(/mail/i);
     }
   });
 
   it("normaliza o e-mail válido para minúsculas", () => {
-    const r = converterLinha(["1", "F", null, "Fulano@Gmail.COM"], m, EDITAL, 5);
+    const r = converterLinha(comCargo(["1", "F", null, "Fulano@Gmail.COM"]), m, EDITAL, 5);
     expect(r.candidato?.email).toBe("fulano@gmail.com");
     expect(r.avisos).toEqual([]);
   });
 
   it("avisa quando a data não foi entendida, mas só se havia data", () => {
-    const comLixo = converterLinha(["1", "F", null, null, "não sei"], m, EDITAL, 5);
+    const comLixo = converterLinha(comCargo(["1", "F", null, null, "não sei"]), m, EDITAL, 5);
     expect(comLixo.candidato?.data_nascimento).toBeNull();
     expect(comLixo.avisos.join(" ")).toMatch(/nascimento/i);
 
     // CONTROLE POSITIVO: célula vazia não é problema e não pode virar ruído no relatório.
-    const semData = converterLinha(["1", "F", null, null, null], m, EDITAL, 5);
+    const semData = converterLinha(comCargo(["1", "F", null, null, null]), m, EDITAL, 5);
     expect(semData.avisos).toEqual([]);
   });
 
   it("recusa código de raça fora do dicionário e mantém a linha", () => {
-    const r = converterLinha(["1", "F", null, null, null, null, "7"], m, EDITAL, 5);
+    const r = converterLinha(comCargo(["1", "F", null, null, null, null, "7"]), m, EDITAL, 5);
     expect(r.candidato?.raca).toBeNull();
     expect(r.avisos.join(" ")).toMatch(/[Rr]aça/);
 
     // CONTROLE POSITIVO: o código 2 (Branca) é o único que aparece no arquivo real.
-    const valido = converterLinha(["1", "F", null, null, null, null, "2"], m, EDITAL, 5);
+    const valido = converterLinha(comCargo(["1", "F", null, null, null, null, "2"]), m, EDITAL, 5);
     expect(valido.candidato?.raca).toBe(2);
     expect(valido.avisos).toEqual([]);
   });
 
   it("corta a UF em 2 caracteres em vez de estourar a coluna", () => {
-    const mUf = mapa({ n_inscricao: 0, nome: 1, identidade_uf: 2 });
+    const mUf = mapa({ n_inscricao: 0, nome: 1, identidade_uf: 2, cargo: 3 });
     // 'BR', 'UF' e '13' aparecem de verdade como UF de identidade — não são estados, mas
     // são o que a origem afirma, e cabem nos 2 caracteres.
-    expect(converterLinha(["1", "F", "br"], mUf, EDITAL, 5).candidato?.identidade_uf).toBe("BR");
-    expect(converterLinha(["1", "F", "RIO"], mUf, EDITAL, 5).candidato?.identidade_uf).toBe("RI");
+    expect(converterLinha(["1", "F", "br", "DOCENTE II"], mUf, EDITAL, 5).candidato?.identidade_uf).toBe("BR");
+    expect(converterLinha(["1", "F", "RIO", "DOCENTE II"], mUf, EDITAL, 5).candidato?.identidade_uf).toBe("RI");
   });
 });
 
+/**
+ * ⚠️ Desde a etapa 5 do roadmap-cargos, `deduplicar` roda DEPOIS de resolver o cargo e
+ * opera sobre `cargo_id`, não sobre o texto. Estes testes passaram a montar o pipeline
+ * inteiro — converter → resolver → deduplicar — porque é a ORDEM que eles protegem.
+ * Deduplicar antes de resolver não é mais só "menos preciso": deixa passar duas grafias
+ * do mesmo cargo e o Postgres recusa o bloco de 500 inteiro.
+ */
+const ID_DOCENTE_II = "aaaaaaaa-0000-0000-0000-000000000001";
+const ID_INGLES = "aaaaaaaa-0000-0000-0000-000000000002";
+const ID_HISTORIA = "aaaaaaaa-0000-0000-0000-000000000003";
+
 describe("deduplicar", () => {
   const m = mapa({ n_inscricao: 0, nome: 1, cargo: 2 });
-  const converter = (linhas: string[][]) =>
-    linhas.map((l, i) => converterLinha(l, m, EDITAL, i + 2));
+  /** Monta os três estágios na ordem do contrato. */
+  const pipeline = (linhas: string[][], resolucoes: ResolucaoCargos) =>
+    deduplicar(
+      resolverLinhas(
+        linhas.map((l, i) => converterLinha(l, m, EDITAL, i + 2)),
+        resolucoes,
+      ),
+    );
 
   it("mantém a MESMA inscrição em cargos diferentes — 382 casos reais", () => {
     // O achado que decidiu a chave natural: no arquivo real, 382 números de inscrição
     // aparecem mais de uma vez porque a pessoa concorre a mais de um cargo. Se a chave
     // fosse só a inscrição, 396 inscritos legítimos seriam descartados aqui.
-    const { candidatos, repetidas } = deduplicar(
-      converter([
+    const { candidatos, repetidas } = pipeline(
+      [
         ["213946", "CASSIA ANDREA", "DOCENTE II"],
         ["213946", "CASSIA ANDREA", "DOCENTE I - LÍNGUA INGLESA"],
         ["213946", "CASSIA ANDREA", "DOCENTE I - HISTÓRIA"],
+      ],
+      new Map([
+        ["docente ii", ID_DOCENTE_II],
+        ["docente i - língua inglesa", ID_INGLES],
+        ["docente i - história", ID_HISTORIA],
       ]),
     );
     expect(candidatos).toHaveLength(3);
@@ -333,39 +384,162 @@ describe("deduplicar", () => {
     // Obrigatório, não zelo: o Postgres recusa o upsert inteiro com 'ON CONFLICT DO
     // UPDATE command cannot affect row a second time' se a chave repetir no mesmo lote.
     // Sem esta passagem, uma linha duplicada faria o bloco de 500 não gravar NADA.
-    const { candidatos, repetidas } = deduplicar(
-      converter([
+    const { candidatos, repetidas } = pipeline(
+      [
         ["214274", "NOME ANTIGO", "DOCENTE II"],
         ["214274", "NOME CORRIGIDO", "DOCENTE II"],
-      ]),
+      ],
+      new Map([["docente ii", ID_DOCENTE_II]]),
     );
     expect(candidatos).toHaveLength(1);
     expect(candidatos[0].nome).toBe("NOME CORRIGIDO");
-    expect(repetidas).toEqual([{ linhaPlanilha: 2, chave: "214274||docente ii" }]);
+    expect(repetidas).toEqual([{ linhaPlanilha: 2, chave: `||${ID_DOCENTE_II}||214274` }]);
   });
 
-  it("trata caixa e espaço no cargo como o mesmo cargo, igual ao índice do banco", () => {
-    const { candidatos } = deduplicar(
-      converter([
-        ["214274", "FULANO", "DOCENTE II"],
-        ["214274", "FULANO", " docente ii "],
+  it("⭐ funde DUAS GRAFIAS apontadas ao mesmo cargo — o caso que a ordem antiga deixava passar", () => {
+    // É a razão de o dedup ter mudado de lugar na etapa 5. `DOCENTE I ¿ HISTÓRIA` e
+    // `DOCENTE I — HISTÓRIA` são textos DIFERENTES, então o dedup antigo (sobre o texto)
+    // mandaria as duas linhas ao banco como distintas. Com `cargo_id` na chave elas são a
+    // MESMA linha lá — e o Postgres recusaria o bloco de 500 inteiro com "cannot affect
+    // row a second time". Aqui elas têm de virar UMA, e a repetida tem de ser relatada.
+    const { candidatos, repetidas } = pipeline(
+      [
+        ["213946", "CASSIA ANDREA", "DOCENTE I ¿ HISTÓRIA"],
+        ["213946", "CASSIA ANDREA", "DOCENTE I — HISTÓRIA"],
+      ],
+      new Map([
+        ["docente i ¿ história", ID_HISTORIA],
+        ["docente i — história", ID_HISTORIA],
       ]),
     );
-    // Se isto passasse a 2, o banco recusaria o lote: `cargo_chave` normaliza igual.
+    expect(candidatos).toHaveLength(1);
+    expect(repetidas).toHaveLength(1);
+    expect(candidatos[0].cargo_id).toBe(ID_HISTORIA);
+    // ⚠️ O texto CRU preservado é o da ÚLTIMA linha (D2, procedência) — o cargo_id é que
+    // unifica, e o texto continua contando de onde a linha veio.
+    expect(candidatos[0].cargo).toBe("DOCENTE I — HISTÓRIA");
+  });
+
+  it("trata caixa e espaço no cargo como o mesmo cargo, igual ao banco", () => {
+    // A normalização vive em `chaveDeCargo`, e é ela que faz as duas grafias caírem na
+    // MESMA entrada do mapa de resoluções — e portanto no mesmo cargo_id.
+    const { candidatos } = pipeline(
+      [
+        ["214274", "FULANO", "DOCENTE II"],
+        ["214274", "FULANO", " docente ii "],
+      ],
+      new Map([["docente ii", ID_DOCENTE_II]]),
+    );
     expect(candidatos).toHaveLength(1);
   });
 
   it("não leva para o banco a linha que já foi descartada por erro", () => {
-    const { candidatos } = deduplicar(converter([["", "SEM INSCRIÇÃO", "X"]]));
+    const { candidatos } = pipeline([["", "SEM INSCRIÇÃO", "X"]], new Map());
     expect(candidatos).toHaveLength(0);
+  });
+
+  it("⚠️ cargo NÃO resolvido vira UM valor só, e não infinitos distintos", () => {
+    // D4 impede que isto chegue ao banco (o passo Cargos não libera). Mas se chegasse, o
+    // `NULLS NOT DISTINCT` do índice trataria os nulos como iguais — a chave em JS precisa
+    // concordar, senão o lote passa no dedup e o banco recusa o bloco inteiro.
+    const { candidatos, repetidas } = pipeline(
+      [
+        ["214274", "FULANO", "DOCENTE II"],
+        ["214274", "FULANO", "DOCENTE II"],
+      ],
+      new Map(),
+    );
+    expect(candidatos).toHaveLength(1);
+    expect(repetidas).toHaveLength(1);
+    expect(candidatos[0].cargo_id).toBeNull();
+  });
+
+  describe("com o CPF dentro da chave (2026-07-27)", () => {
+    const mCpf = mapa({ n_inscricao: 0, nome: 1, cargo: 2, cpf: 3 });
+    const pipelineCpf = (linhas: string[][]) =>
+      deduplicar(
+        resolverLinhas(
+          linhas.map((l, i) => converterLinha(l, mCpf, EDITAL, i + 2)),
+          new Map([["docente ii", ID_DOCENTE_II]]),
+        ),
+      );
+
+    it("⚠️ CPF diferente separa o que antes era a MESMA linha — o afrouxamento aceito", () => {
+      // Consequência direta de somar o CPF à chave: mesma inscrição + mesmo cargo com
+      // CPFs diferentes deixam de colidir. Não ocorre no arquivo medido (o quarteto e o
+      // par contam 7.416 iguais), mas passa a ser possível — e é também o motivo de
+      // corrigir um CPF na planilha criar registro novo em vez de atualizar o antigo.
+      const { candidatos, repetidas } = pipelineCpf([
+        ["214274", "FULANO", "DOCENTE II", "22940161739"],
+        ["214274", "FULANO", "DOCENTE II", "14781065732"],
+      ]);
+      expect(candidatos).toHaveLength(2);
+      expect(repetidas).toHaveLength(0);
+    });
+
+    it("o mesmo CPF, cargo e inscrição continuam sendo uma linha só", () => {
+      const { candidatos } = pipelineCpf([
+        ["214274", "NOME ANTIGO", "DOCENTE II", "22940161739"],
+        ["214274", "NOME CORRIGIDO", "DOCENTE II", "229.401.617-39"],
+      ]);
+      // O segundo CPF vem pontuado: `soDigitos` normaliza antes de a chave se formar.
+      expect(candidatos).toHaveLength(1);
+      expect(candidatos[0].nome).toBe("NOME CORRIGIDO");
+    });
+
+    it("duas linhas com CPF impossível não viram duas: o CPF vira NULL e a chave é a mesma", () => {
+      // As 2 linhas do arquivo real ('8631309761' com 10 dígitos, '1O778817709' com a
+      // letra O). Ambas viram cpf NULL; se a chave as tratasse como distintas, cada
+      // reimportação as multiplicaria.
+      const { candidatos, repetidas } = pipelineCpf([
+        ["214274", "FULANO", "DOCENTE II", "8631309761"],
+        ["214274", "FULANO", "DOCENTE II", "1O778817709"],
+      ]);
+      expect(candidatos).toHaveLength(1);
+      expect(repetidas).toHaveLength(1);
+      expect(candidatos[0].cpf).toBeNull();
+    });
   });
 });
 
 describe("chaveNatural", () => {
-  it("normaliza igual ao índice candidatos_inscricao_cargo_key", () => {
-    const base = { n_inscricao: "214274" } as CandidatoImportado;
-    expect(chaveNatural({ ...base, cargo: " Docente II " })).toBe("214274||docente ii");
-    expect(chaveNatural({ ...base, cargo: null })).toBe("214274||");
+  it("⭐ usa o cargo_id, e NÃO o texto — é a etapa 5 inteira", () => {
+    // O ganho do tema: o texto do cargo saiu da identidade. Renomear o cargo passou a ser
+    // um UPDATE numa linha de `cargos`, em vez de criar 481 registros novos.
+    const base = { n_inscricao: "214274", cpf: "22940161739" } as CandidatoResolvido;
+    expect(chaveNatural({ ...base, cargo: " Docente II ", cargo_id: ID_DOCENTE_II })).toBe(
+      `22940161739||${ID_DOCENTE_II}||214274`,
+    );
+    // O MESMO cargo_id com o texto cru diferente é a MESMA chave. Se este expect cair, o
+    // texto voltou para a identidade e renomear cargo volta a duplicar candidato.
+    expect(chaveNatural({ ...base, cargo: "DOCENTE I ¿ HISTÓRIA", cargo_id: ID_HISTORIA })).toBe(
+      chaveNatural({ ...base, cargo: "DOCENTE I — HISTÓRIA", cargo_id: ID_HISTORIA }),
+    );
+  });
+
+  it("⭐ trata 'sem CPF' e 'sem cargo' como UM valor, espelhando o NULLS NOT DISTINCT", () => {
+    // No padrão do Postgres dois NULLs são DISTINTOS, e as 2 linhas do arquivo real com
+    // CPF impossível se inseririam de novo a cada reimportação. O índice usa NULLS NOT
+    // DISTINCT justamente para evitar isso, e aqui a chave precisa concordar com ele.
+    // Desde a etapa 5 vale para os DOIS campos nulos, porque cargo_id também é nullable.
+    const base = { n_inscricao: "214274", cargo: "DOCENTE II" } as CandidatoResolvido;
+    expect(chaveNatural({ ...base, cpf: null, cargo_id: ID_DOCENTE_II })).toBe(
+      `||${ID_DOCENTE_II}||214274`,
+    );
+    expect(chaveNatural({ ...base, cpf: null, cargo_id: null })).toBe("||||214274");
+  });
+});
+
+describe("chaveDeCargo", () => {
+  it("⚠️ espelha o lower(btrim(coalesce(...))) que o banco usa em TRÊS lugares", () => {
+    // `cargo_apelidos.texto_chave` (coluna gerada) e o trigger
+    // `candidatos_recusa_reapontar_cargo` dependem desta mesma normalização. Divergir aqui
+    // faz o pré-preenchimento parar de casar E afrouxa a guarda do reapontamento.
+    expect(chaveDeCargo(" Docente II ")).toBe("docente ii");
+    expect(chaveDeCargo(null)).toBe("");
+    expect(chaveDeCargo(undefined)).toBe("");
+    // NÃO mexe em acento nem em caractere sujo: a limpeza foi medida e descartada.
+    expect(chaveDeCargo("DOCENTE I ¿ CIÊNCIAS")).toBe("docente i ¿ ciências");
   });
 });
 
@@ -375,10 +549,27 @@ describe("mensagemErroImportacao", () => {
     expect(mensagemErroImportacao('violates check constraint "chk_candidato_cpf_formato"')).toMatch(
       /CPF/,
     );
-    expect(mensagemErroImportacao('duplicate key value violates "candidatos_inscricao_cargo_key"')).toMatch(
-      /repetid/i,
-    );
+    // ⚠️ O nome do índice mudou na etapa 5 (`..._cargo_id_...`). Se alguém reverter o
+    // índice sem reverter isto, o usuário volta a ver 'duplicate key value violates' cru.
+    expect(
+      mensagemErroImportacao('duplicate key value violates "candidatos_cpf_cargo_id_inscricao_key"'),
+    ).toMatch(/repetid/i);
     expect(mensagemErroImportacao("value too long for type character varying(8)")).toMatch(/8/);
+  });
+
+  it("⭐ passa adiante INTEIRA a mensagem do trigger de reapontamento (etapa 5b)", () => {
+    // A mensagem do banco já nomeia o cargo e o destino atual — é exatamente o que o
+    // usuário precisa para decidir. Trocá-la por um texto genérico tiraria a informação
+    // útil, e descartar a mensagem do banco já foi corrigido duas vezes neste repo.
+    //
+    // ⚠️ Ela passa pelo FALLBACK, sem ramo próprio — este teste existe para que, se
+    // alguém acrescentar um ramo largo antes do fim (um `includes('violates')`, por
+    // exemplo), a regressão apareça aqui. O texto é o que o PostgREST devolveu de
+    // verdade em 2026-07-28, copiado da verificação, e não uma aproximação.
+    const doBanco =
+      'O cargo "ARTE" já foi importado neste edital associado a "ARTE (CORRIGIDO)". ' +
+      "Mudar a associação criaria inscritos duplicados e deixaria os antigos órfãos.";
+    expect(mensagemErroImportacao(doBanco)).toBe(doBanco);
   });
 
   it("explica o bloqueio de permissão em vez de repetir 'RLS'", () => {
@@ -389,5 +580,257 @@ describe("mensagemErroImportacao", () => {
 
   it("devolve a mensagem original quando não conhece o erro", () => {
     expect(mensagemErroImportacao("erro esquisito")).toBe("erro esquisito");
+  });
+});
+
+// ── Cargos (etapa 2 do roadmap-cargos.yaml) ──────────────────────────────────────────
+
+/** Os 9 cargos do arquivo real, com a contagem medida. 7 dos 9 trazem o '¿'. */
+const CARGOS_REAIS: [string, number][] = [
+  ["DOCENTE II", 3756],
+  ["DOCENTE I ¿ EDUCAÇÃO FÍSICA", 730],
+  ["DOCENTE I ¿ MATEMÁTICA", 650],
+  ["DOCENTE I ¿ LÍNGUA PORTUGUESA", 639],
+  ["DOCENTE I ¿ HISTÓRIA", 481],
+  ["DOCENTE I ¿ CIÊNCIAS", 386],
+  ["DOCENTE I ¿ GEOGRAFIA", 331],
+  ["DOCENTE I ¿ LÍNGUA INGLESA", 248],
+  ["ARTE", 195],
+];
+
+describe("cargosDaPlanilha", () => {
+  const m = mapa({ n_inscricao: 0, nome: 1, cargo: 2 });
+  const converter = (linhas: (string | null)[][]) =>
+    linhas.map((l, i) => converterLinha(l, m, EDITAL, i + 2));
+
+  it("agrupa por texto normalizado: caixa e espaço são o MESMO cargo", () => {
+    // Precisa casar com o `lower(btrim(...))` de cargo_apelidos.texto_chave. Se divergir,
+    // o pré-preenchimento da próxima importação erra o alvo.
+    const cargos = cargosDaPlanilha(
+      converter([
+        ["1", "A", "DOCENTE II"],
+        ["2", "B", "  docente ii  "],
+        ["3", "C", "Docente II"],
+      ]),
+    );
+    expect(cargos).toHaveLength(1);
+    expect(cargos[0].textoChave).toBe("docente ii");
+    expect(cargos[0].linhas).toBe(3);
+  });
+
+  it("mostra o texto da PRIMEIRA ocorrência, não o normalizado", () => {
+    // O usuário precisa reconhecer o que está na planilha dele; 'docente ii' minúsculo
+    // não é o que ele vê no Excel.
+    const cargos = cargosDaPlanilha(
+      converter([
+        ["1", "A", "DOCENTE II"],
+        ["2", "B", "docente ii"],
+      ]),
+    );
+    expect(cargos[0].textoOrigem).toBe("DOCENTE II");
+  });
+
+  it("ordena por contagem DECRESCENTE — o que pesa mais vem primeiro", () => {
+    const cargos = cargosDaPlanilha(
+      converter([
+        ["1", "A", "ARTE"],
+        ["2", "B", "DOCENTE II"],
+        ["3", "C", "DOCENTE II"],
+        ["4", "D", "DOCENTE II"],
+      ]),
+    );
+    expect(cargos.map((c) => c.textoOrigem)).toEqual(["DOCENTE II", "ARTE"]);
+  });
+
+  it("⭐ a SOMA das contagens bate com o total de linhas importáveis", () => {
+    // O invariante que impede a tela de prometer um número que a importação não entrega.
+    const linhas = converter([
+      ["1", "A", "DOCENTE II"],
+      ["2", "B", "ARTE"],
+      ["", "SEM INSCRIÇÃO", "DOCENTE II"],
+      ["4", "D", "ARTE"],
+    ]);
+    const importaveis = linhas.filter((l) => l.candidato !== null).length;
+    const soma = cargosDaPlanilha(linhas).reduce((s, c) => s + c.linhas, 0);
+    expect(importaveis).toBe(3);
+    expect(soma).toBe(importaveis);
+  });
+
+  it("linha descartada por erro não conta para cargo nenhum", () => {
+    const cargos = cargosDaPlanilha(
+      converter([
+        ["1", "A", "DOCENTE II"],
+        ["", "SEM INSCRIÇÃO", "DOCENTE II"],
+      ]),
+    );
+    expect(cargos[0].linhas).toBe(1);
+  });
+
+  it("traz até 3 exemplos de inscritos, sem repetir nome", () => {
+    // É o que ajuda a decidir 'ARTE': o rótulo sozinho não diz se é o mesmo cargo.
+    const cargos = cargosDaPlanilha(
+      converter([
+        ["1", "AGATHA", "ARTE"],
+        ["2", "SARAH", "ARTE"],
+        ["3", "SARAH", "ARTE"],
+        ["4", "FERNANDA", "ARTE"],
+        ["5", "MARCIA", "ARTE"],
+      ]),
+    );
+    expect(cargos[0].exemplos).toEqual(["AGATHA", "SARAH", "FERNANDA"]);
+    expect(cargos[0].linhas).toBe(5);
+  });
+
+  it("⭐ cargo NÃO pareado → lista VAZIA, e não um grupo '(em branco)'", () => {
+    // Um grupo em branco convidaria o usuário a apontar um cargo para milhares de linhas
+    // que ele não viu — decisão em massa às cegas.
+    //
+    // ⚠️ Desde D9 (2026-07-27) as linhas sem cargo nem chegam a virar candidato: a linha
+    // é DESCARTADA, como acontece com inscrição e nome. As duas defesas coexistem de
+    // propósito — esta função continua tendo de devolver lista vazia mesmo que a de cima
+    // mude, porque é ela que alimenta a tela de resolução.
+    const semCargo = mapa({ n_inscricao: 0, nome: 1 });
+    const linhas = [
+      ["1", "AGATHA", "DOCENTE II"],
+      ["2", "SARAH", "ARTE"],
+    ].map((l, i) => converterLinha(l, semCargo, EDITAL, i + 2));
+
+    expect(linhas.every((l) => l.erro === "Cargo vazio")).toBe(true);
+    expect(cargosDaPlanilha(linhas)).toEqual([]);
+  });
+
+  it("⭐ (D9) célula de cargo vazia DESCARTA a linha, como inscrição e nome", () => {
+    // 0 das 7.416 linhas do arquivo real caem aqui — a regra é preventiva. O cargo virou
+    // identidade, e uma linha sem ele não tem o que associar no passo Cargos.
+    const comCargo = mapa({ n_inscricao: 0, nome: 1, cargo: 2 });
+    const r = converterLinha(["214274", "AGATHA", "   "], comCargo, EDITAL, 5);
+    expect(r.candidato).toBeNull();
+    expect(r.erro).toBe("Cargo vazio");
+  });
+
+  it("célula de cargo vazia também não vira grupo", () => {
+    const cargos = cargosDaPlanilha(
+      converter([
+        ["1", "A", "DOCENTE II"],
+        ["2", "B", "   "],
+        ["3", "C", null],
+      ]),
+    );
+    expect(cargos).toHaveLength(1);
+    expect(cargos[0].linhas).toBe(1);
+  });
+
+  it("planilha sem linha nenhuma não quebra", () => {
+    expect(cargosDaPlanilha([])).toEqual([]);
+  });
+
+  it("⭐ os 9 cargos do arquivo real, como regressão da medição", () => {
+    // 9 distintos em 7.416 linhas — é este número que torna a tela uma tabela simples,
+    // sem paginação nem busca. Se virar centenas, o desenho do passo precisa mudar.
+    const linhas = CARGOS_REAIS.flatMap(([cargo, n], iCargo) =>
+      Array.from({ length: Math.min(n, 5) }, (_, i) =>
+        converterLinha([`${iCargo}${i}`, `INSCRITO ${iCargo}${i}`, cargo], m, EDITAL, i + 2),
+      ),
+    );
+    const cargos = cargosDaPlanilha(linhas);
+    expect(cargos).toHaveLength(9);
+    expect(cargos.map((c) => c.textoOrigem).sort()).toEqual(
+      CARGOS_REAIS.map(([c]) => c).sort(),
+    );
+  });
+});
+
+describe("pareceSujo", () => {
+  it("⭐ pega o '¿' dos 7 cargos quebrados do arquivo real", () => {
+    const sujos = CARGOS_REAIS.filter(([c]) => pareceSujo(c));
+    expect(sujos).toHaveLength(7);
+    expect(sujos.map(([c]) => c)).toContain("DOCENTE I ¿ HISTÓRIA");
+  });
+
+  it("pega o caractere de substituição (U+FFFD)", () => {
+    expect(pareceSujo("DOCENTE I � HISTÓRIA")).toBe(true);
+  });
+
+  it("⭐ acento legítimo NÃO é sujeira", () => {
+    // O erro que tornaria a marca inútil: metade dos cargos tem acento correto, e marcar
+    // todos eles como sujos faria o usuário parar de olhar para o aviso.
+    expect(pareceSujo("DOCENTE II")).toBe(false);
+    expect(pareceSujo("ARTE")).toBe(false);
+    expect(pareceSujo("CIÊNCIAS")).toBe(false);
+    expect(pareceSujo("EDUCAÇÃO FÍSICA")).toBe(false);
+    expect(pareceSujo("DOCENTE I — HISTÓRIA")).toBe(false);
+  });
+
+  it("não quebra com null", () => {
+    expect(pareceSujo(null)).toBe(false);
+  });
+
+  it("NÃO corrige o texto — só responde sim ou não", () => {
+    // Guarda a decisão: se alguém transformar isto num sanitizador, a assinatura muda e
+    // este teste cai. A limpeza automática foi medida e descartada.
+    expect(typeof pareceSujo("DOCENTE I ¿ HISTÓRIA")).toBe("boolean");
+  });
+});
+
+describe("aplicarResolucoes", () => {
+  const ID_DOCENTE = "aaaaaaaa-0000-0000-0000-000000000001";
+  const ID_ARTE = "aaaaaaaa-0000-0000-0000-000000000002";
+  const candidato = (cargo: string | null): CandidatoImportado =>
+    ({ n_inscricao: "214274", nome: "AGATHA", cargo }) as CandidatoImportado;
+
+  const resolucoes: ResolucaoCargos = new Map([
+    ["docente ii", ID_DOCENTE],
+    ["arte", ID_ARTE],
+  ]);
+
+  it("carimba o cargo_id que o usuário escolheu", () => {
+    const [a, b] = aplicarResolucoes([candidato("DOCENTE II"), candidato("ARTE")], resolucoes);
+    expect(a.cargo_id).toBe(ID_DOCENTE);
+    expect(b.cargo_id).toBe(ID_ARTE);
+  });
+
+  it("casa pela chave normalizada, igual ao agrupamento", () => {
+    const [r] = aplicarResolucoes([candidato("  Docente II  ")], resolucoes);
+    expect(r.cargo_id).toBe(ID_DOCENTE);
+  });
+
+  it("⭐ resolução faltante MARCA a linha com null — não lança e não silencia", () => {
+    // A marca é o que a tela usa para bloquear a importação (decisão D4). Lançar aqui
+    // perderia o lote inteiro; silenciar gravaria milhares de linhas com a chave incompleta.
+    const [r] = aplicarResolucoes([candidato("CARGO DESCONHECIDO")], resolucoes);
+    expect(r.cargo_id).toBeNull();
+  });
+
+  it("candidato sem cargo também sai marcado", () => {
+    const [r] = aplicarResolucoes([candidato(null)], resolucoes);
+    expect(r.cargo_id).toBeNull();
+  });
+
+  it("preserva todo o resto do candidato, sem mutar o original", () => {
+    const original = candidato("DOCENTE II");
+    const [r] = aplicarResolucoes([original], resolucoes);
+    expect(r.nome).toBe("AGATHA");
+    expect(r.n_inscricao).toBe("214274");
+    expect(r.cargo).toBe("DOCENTE II"); // o texto CRU permanece, como procedência
+    expect("cargo_id" in original).toBe(false);
+  });
+
+  it("⭐ dois textos sujos para o MESMO cargo produzem o MESMO cargo_id", () => {
+    // O caso que a etapa 5 transforma em fusão de linhas: com cargo_id na chave natural,
+    // estas duas passam a ser a mesma pessoa no mesmo cargo. É por isso que o dedup tem
+    // de rodar DEPOIS desta função, e não antes.
+    const comDuasGrafias: ResolucaoCargos = new Map([
+      ["docente i ¿ história", ID_DOCENTE],
+      ["docente i — história", ID_DOCENTE],
+    ]);
+    const [a, b] = aplicarResolucoes(
+      [candidato("DOCENTE I ¿ HISTÓRIA"), candidato("DOCENTE I — HISTÓRIA")],
+      comDuasGrafias,
+    );
+    expect(a.cargo_id).toBe(b.cargo_id);
+  });
+
+  it("lote vazio devolve lote vazio", () => {
+    expect(aplicarResolucoes([], resolucoes)).toEqual([]);
   });
 });

@@ -211,3 +211,27 @@ Agora é uma transação só, pela RPC **`revogar_coordenador(p_user_id)`** (mig
 Toda tabela de `public` tem RLS ativa e policies — mas o Postgres checa o **privilégio de tabela antes** da RLS. Se `authenticated` não tiver `GRANT SELECT`, o PostgREST devolve `42501 permission denied` e a policy nunca roda. Foi exatamente isso que quebrou o login em dev local até 2026-07-12: os `GRANT`s existiam em produção (criados implicitamente pelo dashboard do Lovable) mas nunca tinham sido registrados em migration. A migration `20260712010000_grant_api_roles_table_privileges.sql` corrigiu isso e ajustou o `ALTER DEFAULT PRIVILEGES` para que tabelas futuras já nasçam certas. Detalhes em [`desenvolvimento-local.md`](./desenvolvimento-local.md).
 
 Consequência prática ao criar uma tabela nova: RLS ativa + policy correta **não basta** se o role não tiver GRANT.
+
+#### ⚠️ …e o inverso também morde: o `ALTER DEFAULT PRIVILEGES` dá DEMAIS
+
+O mesmo ajuste que resolveu o login deixou `ALTER DEFAULT PRIVILEGES ... GRANT ALL ON TABLES TO anon, authenticated, service_role`. **`ALL` inclui TRUNCATE — e TRUNCATE não passa por RLS.** Ou seja, toda tabela nova de `public` nasce com `anon` podendo esvaziá-la; o que segura na prática é o PostgREST não expor TRUNCATE, que é um detalhe de implementação de terceiro.
+
+Foi assim que `candidatos` nasceu — a tabela com CPF, endereço e telefone de milhares de cidadãos. O enxugamento das 23 tabelas afetadas é item aberto do [`backlog`](../../backlog.md).
+
+**As primeiras tabelas do repo a NÃO herdar isso são `cargos` e `cargo_apelidos`** (migration `20260727210000`), que revogam na própria migration de criação:
+
+```sql
+REVOKE ALL ON public.cargos, public.cargo_apelidos FROM anon;
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON ... FROM authenticated;
+```
+
+Sobra para `authenticated` só o DML, que é o mínimo para o PostgREST **chegar** a avaliar a RLS. **É o padrão a seguir em tabela nova daqui em diante.** Ver [`../modulos/candidatos/cargos.md`](../modulos/candidatos/cargos.md).
+
+#### RLS de `cargos` e `cargo_apelidos`
+
+| | `anon` | `authenticated` (não-admin) | admin / superadmin |
+|---|---|---|---|
+| Ler | ❌ (barrado no GRANT) | ✅ | ✅ |
+| Escrever | ❌ | ❌ (RLS) | ✅ |
+
+Leitura aberta a autenticado **de propósito**: nome de cargo não é dado de ninguém, como em `editais`. Contrasta com `candidatos`, fechada em admin nas 4 operações. As oito policies usam `TO authenticated` explícito e `has_role(auth.uid(), 'admin')` — que cobre o superadmin pela hierarquia interna da função.
