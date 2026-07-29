@@ -192,9 +192,12 @@ export default function CandidatosImportar() {
    * ⚠️ Não usar `candidatos.length` aqui: aquele lote já passou pela deduplicação, que
    * desde a etapa 5 depende do `cargo_id`. No passo 2 nenhum cargo foi resolvido ainda,
    * então todos os `cargo_id` são null e as inscrições da MESMA pessoa em cargos
-   * diferentes colapsariam numa só — o passo 2 anunciaria 396 inscritos a menos do que
-   * vai importar. É a mesma perda dos 396 que D4 existe para impedir, aparecendo como
-   * mentira no contador.
+   * diferentes colapsariam numa só — o passo 2 anunciaria menos do que vai importar.
+   *
+   * ⚠️ Este comentário citava "396 inscritos a menos". No arquivo de referência o número é
+   * ZERO, porque `N_INSCRICAO` é única por linha (correção de 2026-07-28). A precaução
+   * continua valendo: ela não depende de QUANTOS colapsam, e sim de o contador do passo 2
+   * não poder ser calculado antes da resolução.
    */
   const linhasValidas = useMemo(() => convertidas.filter((l) => l.candidato !== null), [convertidas]);
 
@@ -669,20 +672,24 @@ export default function CandidatosImportar() {
                   propósito: desde que o Cargo virou obrigatório (D4), a prévia só aparece
                   DEPOIS de ele estar pareado — um aviso lá dentro seria código morto.
 
-                  O que está em jogo: o cargo compõe a identidade do candidato. Sem ele, as
-                  inscrições da mesma pessoa em cargos diferentes colidem e viram uma só —
-                  396 inscritos somem no arquivo de referência. Era perda silenciosa (a
-                  importação terminava em verde com a lista menor); hoje é impedimento. */}
+                  ⚠️ O TEXTO FOI CORRIGIDO EM 2026-07-28. Ele afirmava que sem o cargo "396
+                  inscritos somem", o que vinha de ler o nº de inscrição na coluna `ID`.
+                  MEDIDO com a coluna certa (`N_INSCRICAO`, única por linha): não pareando o
+                  cargo, as 7.416 linhas seguem 7.416 — perda ZERO. A regra D4 continua de
+                  pé, mas pelo motivo real, não por um número falso: o cargo é o dado que
+                  este módulo existe para organizar, e sem ele a importação entrega uma
+                  lista que não responde "quantos inscritos por cargo". Prometer ao usuário
+                  uma perda que não acontece é o mesmo defeito que a regra combate. */}
               {mapeamento.cargo === null && (
                 <Alert variant="destructive">
                   <AlertTriangle className="h-4 w-4" />
                   <AlertTitle>O campo Cargo precisa ser pareado</AlertTitle>
                   <AlertDescription>
-                    O cargo faz parte da identidade do inscrito: sem ele, quem concorre a mais de
-                    um cargo com a mesma inscrição vira um registro só e desaparece da lista. Não
-                    dá para seguir sem escolher a coluna — no arquivo de referência o cargo está na{" "}
-                    <strong>segunda coluna chamada NOME</strong>, e não em <code>TIPOPROVA</code>,
-                    que existe e está vazia.
+                    O cargo é a vaga a que o inscrito concorre, e é o que organiza a lista: sem
+                    ele, ninguém sabe quantos inscritos há em cada cargo nem como distribuí-los.
+                    Não dá para seguir sem escolher a coluna — no arquivo de referência o cargo
+                    está na <strong>segunda coluna chamada NOME</strong>, e não em{" "}
+                    <code>TIPOPROVA</code>, que existe e está vazia.
                   </AlertDescription>
                 </Alert>
               )}

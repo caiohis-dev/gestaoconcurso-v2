@@ -175,6 +175,16 @@ Os **382** `ID` que aparecem em mais de uma linha têm **todos** o mesmo CPF e *
 1. **A chave poderia ser `(edital_id, n_inscricao)`** — mais simples, e resolveria de graça o custo aceito de hoje (corrigir CPF ou cargo na planilha passaria a **atualizar** em vez de criar registro novo). É a saída "modelo" que estava desenhada e engavetada, e esta correção a torna barata. ⚠️ Mas apoiar a identidade numa propriedade de **um** export é aposta: se outro edital repetir numeração, funde gente. Decidir com medição, não por elegância.
 2. **A condição do trigger `candidatos_recusa_reapontar_cargo` pode ser ALARGADA** — ver [`cargos.md`](./cargos.md).
 
+**O que a correção JÁ mudou no código (2026-07-28):**
+
+- 🔴 **Texto de tela corrigido.** O alerta do passo 2 afirmava que sem o cargo pareado "quem concorre a mais de um cargo com a mesma inscrição vira um registro só e desaparece da lista". **Medido: perda ZERO** — sem parear o cargo, as 7.416 linhas seguem 7.416, porque a inscrição já separa. A regra D4 continua de pé, mas o texto agora dá o motivo real (sem cargo a lista não responde "quantos inscritos por cargo") em vez de uma perda que não acontece.
+- Comentários de `candidatos-import.ts`, `CandidatosImportar.tsx` e `candidatos-import.test.ts` corrigidos no mesmo passe.
+
+**Pendências que a correção deixou, e que NÃO foram feitas:**
+
+1. ⚠️ **O fixture `CABECALHO_REAL` dos testes é o cabeçalho ANTIGO** (coluna 0 sem título). Com o arquivo atual, `autoMapear` casaria `n_inscricao` com a coluna **0**, e não com a **1** — que é o comportamento certo. Atualizar mexe em 3 asserções, e a de "coluna sem título" precisa de fixture próprio para não perder cobertura.
+2. Os comentários **dentro das 4 migrations aplicadas** guardam a justificativa velha. Não se edita migration aplicada — a correção vale a partir daqui.
+
 ⚠️ **A coluna gerada `cargo_chave` NÃO existe mais** — foi dropada em 28/07 junto com a troca da chave (D3 do roadmap de cargos). Ela existia porque o upsert do PostgREST (`?on_conflict=a,b,c`) só sabe nomear **colunas**, nunca expressões, e o texto do cargo precisava ser normalizado *dentro da chave*. Com `cargo_id` na chave não há mais o que normalizar ali. Deixá-la no schema seria uma coluna terminada em `_chave` sem chave nenhuma apontando para ela. O texto cru segue em `cargo`, como procedência.
 
 ⚠️ **A normalização do texto do cargo continua existindo, mas em outros lugares** — `cargo_apelidos.texto_chave` (coluna gerada), `chaveDeCargo()` em `candidatos-import.ts` e o trigger `candidatos_recusa_reapontar_cargo`, que a calcula inline. **Os três têm de produzir o mesmo resultado**: se divergirem, o pré-preenchimento do passo Cargos para de casar e a guarda do reapontamento afrouxa em silêncio.

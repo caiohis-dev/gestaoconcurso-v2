@@ -37,7 +37,21 @@ import {
 
 const EDITAL = "11111111-1111-1111-1111-111111111111";
 
-/** O cabeçalho exato do arquivo real, incluindo o `NOME` repetido e a coluna sem título. */
+/**
+ * O cabeçalho do arquivo real **como ele era até 2026-07-26**, com o `NOME` repetido e a
+ * coluna 0 sem título.
+ *
+ * ⚠️ ESTE FIXTURE ESTÁ DEFASADO, e de propósito por ora: em 27/07 a origem passou a
+ * nomear a coluna 0 de `N_INSCRICAO`. Com o cabeçalho atual, `autoMapear` casaria
+ * `n_inscricao` com a coluna **0** (a inscrição de verdade) em vez da **1** (o `ID`, que é
+ * a PESSOA) — e isso é o comportamento CERTO, ver a correção de 2026-07-28 em
+ * `estrutura/modulos/candidatos/00-modulo.md`.
+ *
+ * Consequência a saber antes de mexer: as asserções de `autoMapear` abaixo descrevem o
+ * arquivo ANTIGO. Atualizar o fixture é trabalho pendente e mexe em 3 asserções — a de
+ * `n_inscricao` (1 → 0) e a da coluna sem título, que precisa de fixture próprio para
+ * continuar cobrindo aquele caso.
+ */
 const CABECALHO_REAL = [
   "   ", "ID", "NOME", "CPF", "LOGRADOURO", "NUMERO", "COMPLEMENTO", "BAIRRO", "CIDADE",
   "UF", "CEP", "IDENTIDADE_NUMERO", "IDENTIDADE_ORGAO", "IDENTIDADE_EMISSAO",
@@ -108,9 +122,11 @@ describe("autoMapear", () => {
   it("deixa o CARGO em branco neste arquivo — é o usuário que sabe onde ele está", () => {
     // O cargo do arquivo real mora na segunda coluna `NOME` (AC), coisa que nenhum
     // heurístico adivinha. A tentação era casar com `TIPOPROVA`, que existe e está 100%
-    // vazia: o palpite pareceria certo e zeraria o cargo de todas as linhas — e como o
-    // cargo compõe a chave natural, as 382 inscrições repetidas colidiriam e 396
-    // inscritos sumiriam sem erro. Ficar em branco obriga a escolha consciente.
+    // vazia: o palpite pareceria certo e zeraria o cargo de todas as linhas, sem erro
+    // nenhum. Ficar em branco obriga a escolha consciente.
+    // ⚠️ Este comentário citava "396 inscritos sumiriam". Corrigido em 2026-07-28: aquilo
+    // vinha de ler a inscrição na coluna `ID`. Zerar o cargo não perde linha — o problema
+    // é a lista ficar sem o dado que organiza o concurso, e o erro ser silencioso.
     expect(mapeamento.cargo).toBeNull();
   });
 
@@ -360,10 +376,17 @@ describe("deduplicar", () => {
       ),
     );
 
-  it("mantém a MESMA inscrição em cargos diferentes — 382 casos reais", () => {
-    // O achado que decidiu a chave natural: no arquivo real, 382 números de inscrição
-    // aparecem mais de uma vez porque a pessoa concorre a mais de um cargo. Se a chave
-    // fosse só a inscrição, 396 inscritos legítimos seriam descartados aqui.
+  it("mantém a MESMA pessoa em cargos diferentes", () => {
+    // ⚠️ O NOME DESTE TESTE MUDOU EM 2026-07-28, e o dado dele é HIPOTÉTICO de propósito.
+    // Ele se chamava "a MESMA inscrição em cargos diferentes — 382 casos reais", o que
+    // vinha de ler a inscrição na coluna `ID` (que é a PESSOA). No arquivo real a mesma
+    // pessoa em 3 cargos tem TRÊS números de inscrição diferentes, então este cenário —
+    // inscrição repetida entre cargos — não ocorre lá.
+    // O teste FICA porque o comportamento que ele fixa é o que importa e não depende do
+    // arquivo: cargo_id distinto ⇒ linhas distintas. Se um edital futuro repetir numeração
+    // entre cargos, é ele que impede a perda.
+    // ⚠️ É também o cenário que a condição LARGA do trigger da etapa 5b bloquearia — ver
+    // a discussão em estrutura/modulos/candidatos/cargos.md antes de alargá-la.
     const { candidatos, repetidas } = pipeline(
       [
         ["213946", "CASSIA ANDREA", "DOCENTE II"],

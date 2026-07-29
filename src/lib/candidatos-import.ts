@@ -40,15 +40,19 @@ export const CAMPOS_CANDIDATO: CampoCandidato[] = [
   // ⚠️ 'tipoprova' NÃO está entre os sinônimos, e a ausência é deliberada. No arquivo real
   // o cargo está na SEGUNDA coluna `NOME` (a AC, com 'DOCENTE II'), enquanto `TIPOPROVA`
   // existe e está 100% vazia. Adivinhar TIPOPROVA pareceria acertar e deixaria o cargo
-  // nulo em todas as linhas — e como o cargo faz parte da chave natural, as 382 inscrições
-  // que se repetem por concorrerem a mais de um cargo colidiriam entre si e 396 inscritos
-  // sumiriam sem erro nenhum. Palpite que erra em silêncio é pior que palpite nenhum:
+  // nulo em todas as linhas. Palpite que erra em silêncio é pior que palpite nenhum:
   // sem sinônimo, o campo fica em branco e o usuário PRECISA escolher a coluna.
+  // ⚠️ Este comentário dizia que zerar o cargo faria "396 inscritos sumirem". CORRIGIDO em
+  // 2026-07-28: aquilo vinha de ler o nº de inscrição na coluna `ID` (que é a PESSOA). Com
+  // a coluna certa (`N_INSCRICAO`, única por linha), medido: não parear o cargo mantém as
+  // 7.416 linhas. A perda é ZERO — o motivo de o campo não ser adivinhado continua sendo o
+  // silêncio do erro, não um número de inscritos perdidos.
   // OBRIGATÓRIO desde 2026-07-27 (decisão D4 do roadmap de cargos). Antes era opcional.
   // O motivo: o cargo compõe a identidade do candidato, e a partir do passo "Cargos" ele
   // vira uma referência (`cargo_id`). Planilha sem coluna de cargo deixaria todos os
-  // `cargo_id` nulos, e as inscrições da mesma pessoa em cargos diferentes colidiriam
-  // entre si — a perda silenciosa de 396 inscritos que o aviso desta tela combate.
+  // `cargo_id` nulos, e a lista importada não responderia "quantos inscritos por cargo",
+  // que é a pergunta que este módulo existe para responder. (Não há perda de linha: ver a
+  // correção de 2026-07-28 acima.)
   // ⚠️ Obrigatório NÃO é adivinhado: `'tipoprova'` continua fora dos sinônimos (ver acima).
   // A pessoa PRECISA escolher a coluna, e agora não consegue seguir sem escolher.
   { key: 'cargo', label: 'Cargo', obrigatorio: true, sinonimos: ['cargo', 'vaga'] },
