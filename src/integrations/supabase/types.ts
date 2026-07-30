@@ -169,6 +169,41 @@ export type Database = {
           },
         ]
       }
+      candidatos_importacao: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          edital_id: string
+          id: number
+          importacao_id: string
+          linha: Json
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          edital_id: string
+          id?: never
+          importacao_id: string
+          linha: Json
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          edital_id?: string
+          id?: never
+          importacao_id?: string
+          linha?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidatos_importacao_edital_id_fkey"
+            columns: ["edital_id"]
+            isOneToOne: false
+            referencedRelation: "editais"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cargo_apelidos: {
         Row: {
           cargo_id: string
@@ -1217,6 +1252,13 @@ export type Database = {
         Returns: boolean
       }
       revogar_coordenador: { Args: { p_user_id: string }; Returns: undefined }
+      trocar_candidatos_do_edital: {
+        Args: { p_edital_id: string; p_importacao_id: string }
+        Returns: {
+          inseridos: number
+          removidos: number
+        }[]
+      }
       update_meu_colaborador: {
         Args: {
           p_bairro: string

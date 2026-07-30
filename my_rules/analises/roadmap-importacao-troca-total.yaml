@@ -1,0 +1,505 @@
+# Roadmap — a importação de candidatos passa a ser TROCA TOTAL da lista do edital
+# Criado em 2026-07-30. VIVO — etapa 1 CONCLUÍDA, etapas 2 a 4 pendentes.
+# Leia my_rules/analises/README.md antes de usar este arquivo como guia.
+#
+# ⚠️ REESCRITO em 2026-07-30, no mesmo dia em que nasceu. A primeira versão desenhava um
+# fluxo DIFERENTE (upsert + exclusão do resíduo por marca de lote). O usuário avaliou e
+# ESCOLHEU a troca total. A alternativa e o motivo da recusa estão preservados em D0 — não
+# para reabrir a discussão, mas porque o README desta pasta manda distinguir "proposta
+# rejeitada com motivo" de "plano original a restaurar".
+#
+# Substitui também o rascunho `docs/temp/roadmap-importacao-reinsercao.md`, que fica
+# OBSOLETO: ele propunha a mesma decisão, mas com uma forma que a medição inviabilizou (D2).
+
+roadmap:
+  titulo: "Troca total — importar passa a APAGAR a lista do edital e reinserir a planilha inteira"
+  criado: "2026-07-30"
+  status: >
+    🟢 ETAPA 1 CONCLUÍDA em 2026-07-30 (migration 20260730120000): a tabela de preparo e o
+    RPC transacional existem e estão verificados por docs/bateria-troca-total-candidatos.sql,
+    verde nos 7 casos. ⚠️ NADA MUDOU DE COMPORTAMENTO AINDA — ninguém chama o RPC; a
+    importação continua sendo o upsert. As etapas 2, 3 e 4 seguem pendentes.
+
+  origem: >
+    Levantado em 2026-07-29 como "corrigir CPF ou cargo na origem cria registro novo e
+    deixa o antigo órfão, em silêncio" — o item ⏭️ PRÓXIMA do backlog. Em 30/07 o usuário
+    trouxe um rascunho propondo DELETE total + INSERT total, avaliou a contraproposta e
+    manteve a decisão dele. Este roadmap executa a decisão dele.
+
+  branch:
+    nome: feat/importacao-troca-total
+    base: dev
+    lembrete: >
+      Regra do projeto: tema sai de dev e volta para dev com merge --no-ff, e a branch é
+      apagada quando o tema fecha. main segue congelada na v1.0.0.
+      ⚠️ Empurrar `dev` é decisão do usuário — nunca automática.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  premissas_confirmadas: |
+    CONFIRMADAS pelo usuário em 2026-07-30, e o desenho inteiro se apoia nelas. Se
+    qualquer uma deixar de valer, este roadmap tem de ser reaberto ANTES de continuar.
+
+    P1. "Sempre planilhas inteiras. Nunca planilhas de adição."
+        → o arquivo é a lista COMPLETA do edital, sempre. É o que autoriza apagar tudo
+          antes de reinserir.
+        🔴 SE UM DIA existir importação parcial, este fluxo APAGA todo mundo que ficou de
+          fora do arquivo. Não é um risco a mitigar — é a semântica da troca total.
+
+    P2. "Podemos corrigir manualmente tudo na planilha de origem."
+        → a planilha é a fonte de verdade. O banco não guarda decisão que a planilha não
+          saiba reproduzir.
+        🔴 SE UM DIA `candidatos` guardar algo que NÃO vem da planilha (nota, alocação de
+          sala, presença, isenção), P2 cai e a troca total passa a destruir esse dado a
+          cada importação. Ver `riscos`.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  medicao_previa: |
+    MEDIDO em 2026-07-30. Regra 5 de estrutura/transversais/invariantes.md.
+
+    1. QUEM DEPENDE DE `candidatos` — FKs apontando para a tabela: **0 linhas.**
+       ⭐ NENHUMA tabela a referencia. É o número que torna a troca total barata AGORA:
+       o risco de cascade que o rascunho tratava como crítico não existe hoje. E é o
+       mesmo número que a torna cara depois — ver P2 nos riscos.
+
+    2. 🔴 O PAYLOAD, que era a dúvida em aberto do rascunho e MUDOU A FORMA DA SOLUÇÃO:
+
+         7.416 registros, JSON completo ......... 5,40 MB
+         idem, omitindo as chaves nulas ......... 5,11 MB   (economiza só 5%)
+         limite padrão do Kong/PostgREST ........ 5 MB      → NÃO CABE
+         bloco de 500 de hoje ................... 372 KB
+
+       Projeção: 10.000 inscritos → 6,9 MB; 15.000 → 10,3 MB. Não é falta de folga, é
+       falta de escala: mandar o lote inteiro numa requisição não funciona. É POR ISSO
+       que existe a tabela de preparo — ver D2.
+
+    3. ESTADO DO BANCO LOCAL: 0 candidatos. A etapa 1 pôde ser verificada sem risco.
+
+    4. TOLERÂNCIA A FALHA DE HOJE (useCandidatos.tsx:233-247): cada bloco é uma transação
+       SUA, um bloco falho NÃO desfaz os anteriores, e o laço CONTINUA. Existe também
+       `deveParar()`. ⚠️ Isto MUDA com a troca total — ver D4.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  contexto: |
+    HOJE a importação é um UPSERT sobre a chave natural `(edital_id, cpf, cargo_id,
+    n_inscricao)`. Reimportar o mesmo arquivo é idempotente (7.416 → 7.416, verificado).
+
+    O defeito: corrigir CPF, cargo OU inscrição na planilha e reimportar NÃO casa a linha
+    antiga. Entra um registro NOVO e o antigo FICA LÁ, órfão, sem aviso. É o pior formato
+    de erro segundo o próprio repo: PARECE TER FUNCIONADO. O trigger RC001 cobre UM caso
+    (reapontar cargo) e não cobre CPF nem inscrição corrigidos.
+
+    A troca total resolve os três de uma vez, porque não existe "casar linha": a lista
+    velha some inteira e a nova entra inteira.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  fluxo_alvo: |
+    Os quatro estágios de conversão ficam INTOCADOS. O que muda é o destino e o fecho:
+
+      1. converterLinha      planilha → CandidatoImportado      (INTOCADO)
+      2. aplicarResolucoes   texto do cargo → cargo_id          (INTOCADO)
+      3. deduplicar          sobre a chave resolvida            (INTOCADO — ver D5)
+      4. blocos de 500       → tabela de PREPARO, não candidatos          ←MUDA
+      5. UMA chamada ao RPC  DELETE tudo + INSERT tudo, uma transação      ←NOVO
+      6. relatório           "N removidos, M inseridos"                    ←NOVO
+
+    A MARCA DO LOTE: cada importação gera um `importacao_id` (uuid, no cliente) que
+    identifica as linhas de preparo daquela importação. Não é identidade de candidato —
+    é só o recorte que a troca consome.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  decisoes:
+
+    - id: D0
+      titulo: "⚠️ A alternativa avaliada e RECUSADA pelo usuário — registro, não convite"
+      decidido: "RECUSADA pelo usuário em 2026-07-30, com os trade-offs à vista"
+      o_que_era: |
+        Manter o upsert e acrescentar, no fim, a exclusão do que não veio no arquivo
+        (marca de lote + um DELETE do resíduo). Estado final idêntico ao da troca total.
+      o_que_ela_oferecia: |
+        - falha no bloco 3 não destruía nada (o dado antigo permanecia);
+        - conseguia CONTAR o que ia sumir e AVISAR antes ("7.366 não vieram — confirma?");
+        - preservava `created_at`/`created_by` de quem permanecia.
+      por_que_registrar: >
+        O README desta pasta manda distinguir "era verdade e mudou" de "nunca chegou a ser
+        verdade". Isto é o segundo caso: uma proposta que a decisão rejeitou com motivo.
+        ⚠️ NÃO "restaurar o plano original" achando que é isto — o plano é a troca total.
+      o_que_sobreviveu_dela: >
+        As duas guardas do RPC (D3) e o gate de preparo completo (D4) são a resposta da
+        troca total aos mesmos riscos que aquela alternativa evitava por construção.
+
+    - id: D1
+      titulo: "⭐ A importação vira TROCA TOTAL: apaga a lista do edital e reinsere a planilha"
+      decidido: "sim — DECIDIDO pelo usuário em 2026-07-30"
+      racional: |
+        Dadas P1 e P2, a tabela é um espelho da planilha, e o upsert modela isso errado —
+        ele se comporta como alvo de mesclagem. A troca total alinha o comportamento ao
+        modelo real e mata a classe inteira de deriva: não há órfão possível quando não há
+        "casar linha".
+      consequencia: |
+        Resolve os TRÊS campos de uma vez (CPF, cargo e inscrição corrigidos), coisa que
+        nem a troca de chave natural nem o RC001 alcançam.
+      risco_aceito: >
+        `created_at` e `created_by` de TODOS os inscritos são reescritos a cada
+        importação: a data de entrada de cada pessoa passa a ser a do último reimport, e
+        o rastro anterior se perde. É consequência direta de "apaga e reinsere", não tem
+        mitigação dentro deste desenho, e foi aceita ao escolhê-lo.
+
+    - id: D2
+      titulo: "🔴 O lote NÃO vai em JSON numa chamada — sobe em blocos para uma tabela de PREPARO"
+      decidido: "sim — imposto pela MEDIÇÃO, não é preferência"
+      racional: |
+        O rascunho propunha um RPC recebendo `(edital_id, jsonb com todos os candidatos)`.
+        MEDIDO: 5,40 MB para 7.416 registros (5,11 MB sem as chaves nulas), contra um
+        limite padrão de 5 MB no Kong. Não cabe hoje e piora com o edital.
+
+        A saída preserva o que já funciona: os blocos de 500 continuam subindo — só que
+        para `candidatos_importacao` em vez de `candidatos`. Depois, UMA chamada ao RPC
+        faz DELETE + INSERT dentro de uma transação, no servidor, sem payload nenhum.
+      consequencia: >
+        É EXATAMENTE delete total + insert total, atômico, sem teto de tamanho. O custo é
+        uma tabela a mais e um passo a mais no fluxo.
+
+    - id: D3
+      titulo: "🔴 O RPC recusa lote VAZIO (IM001) e lote de outro edital (IM002)"
+      decidido: "sim — implementado na etapa 1"
+      racional: |
+        São as duas formas de a troca total apagar sem repor, e as duas são silenciosas:
+
+        IM001 — lote vazio (ou já consumido): o DELETE roda, o INSERT não insere ninguém,
+          e NÃO HÁ ERRO. A lista some e parece ter funcionado. É o modo de falha mais
+          grave que a troca total introduz, e a única defesa em nível de banco é recusar.
+
+        IM002 — preparo com edital divergente: um `edital_id` trocado por engano apagaria
+          a lista de A e poria a de B no lugar. Duas listas perdidas num gesto.
+      consequencia: >
+        O RPC é a última linha de defesa e não confia no chamador. As guardas valem para
+        qualquer caminho — cliente, script ou chamada manual.
+
+    - id: D4
+      titulo: "🔴 A troca só é disparada se TODOS os blocos de preparo subiram"
+      decidido: "PROPOSTO — etapa 2. É o gate do lado do cliente"
+      racional: |
+        A GUARDA 1 do RPC (D3) pega o lote vazio, mas NÃO pega o lote INCOMPLETO: 6.000
+        das 7.416 linhas no preparo é um lote perfeitamente válido aos olhos dele, e a
+        troca aconteceria apagando 7.416 e inserindo 6.000. **1.416 pessoas somem e o
+        relatório diz sucesso.**
+
+        Quem sabe quantas linhas deveriam subir é o cliente, e só ele. Por isso o gate é
+        lá: conferir que o número preparado bate com o do lote antes de chamar.
+      consequencia: |
+        Bloco falho ou `deveParar()` acionado → a troca NÃO é chamada, o preparo daquele
+        lote é descartado, e o relatório diz que a lista do edital NÃO mudou.
+      nota: >
+        ⚠️ Isto INVERTE a semântica de falha parcial de hoje. Hoje um bloco falho deixa a
+        importação pela metade e reimportar conserta. Com a troca total, um bloco falho
+        deixa a lista INTACTA — o que é melhor, mas é diferente, e o relatório precisa
+        dizer com todas as letras que nada mudou.
+
+    - id: D5
+      titulo: "`deduplicar()` e `chaveNatural()` permanecem — e a chave natural NÃO muda"
+      decidido: "PROPOSTO"
+      racional: |
+        Continuam necessários: se a planilha trouxer duas linhas com a mesma chave, o
+        índice único recusa o INSERT — e agora o INSERT é a troca INTEIRA, então uma
+        duplicata no arquivo derruba tudo. O dedup em memória é o que impede isso.
+        Esta é a parte do rascunho original (Passo 4) que está certa.
+
+        A chave natural em si NÃO muda. Ela deixa de ser identidade entre importações e
+        vira detector de duplicata dentro de um arquivo — papel em que a chave atual serve
+        bem. O item do backlog sobre trocá-la deve ser REESCRITO como opcional de baixo
+        valor, não fechado.
+
+    - id: D6
+      titulo: "🔴 O trigger `RC001` é DROPADO na mesma migration que liga a troca"
+      decidido: "PROPOSTO — acoplamento obrigatório, etapa 4"
+      racional: |
+        `candidatos_recusa_reapontar_cargo` é `BEFORE INSERT` e recusa inserir quando já
+        existe linha com mesma (edital, cpf, inscrição) e mesmo TEXTO de cargo, mas
+        `cargo_id` diferente. Ele existe porque, hoje, reapontar cargo cria linha nova e
+        órfã a antiga.
+
+        Na troca total o DELETE roda ANTES do INSERT, na mesma transação: quando o trigger
+        dispara, não há mais nenhuma linha daquele edital para ele encontrar. Ele vira
+        guarda que NÃO PODE DISPARAR — e o repo já catalogou três vezes, no tema Cargos,
+        que guarda que não dispara é armadilha, não segurança.
+      consequencia: |
+        A migration da etapa 4 dropa trigger e função. ⚠️ O CONTROLE POSITIVO 1 de
+        `docs/bateria-cargos.sql` exercita o RC001 e precisa ser REESCRITO, não reajustado.
+      nao_faca: >
+        NÃO dropar antes da etapa 4. Enquanto a importação for o upsert, o RC001 ainda
+        protege de verdade.
+
+    - id: D7
+      titulo: "A confirmação destrutiva é obrigatória e mostra o CONTRASTE de números"
+      decidido: "PROPOSTO — etapa 3"
+      racional: |
+        P1 diz que a planilha é sempre inteira, e eu acredito. Mas arquivo truncado,
+        exportação pela metade ou edital errado continuam possíveis — e aí a troca apaga
+        milhares de pessoas.
+
+        ⚠️ Diferente da alternativa de D0, a troca total NÃO consegue dizer "estes 5 vão
+        sumir": para ela todo mundo é sempre apagado. O que dá para mostrar é o CONTRASTE
+        — "o edital tem 7.416 inscritos hoje; a planilha traz 12" —, e um usuário que lê
+        isso para na hora. É a proteção possível dentro deste desenho.
+      consequencia: >
+        O passo Importação ganha uma confirmação destrutiva ANTES de subir o preparo, com
+        os dois números lado a lado. ⚠️ Decidir na etapa 3 se pede senha, no padrão do
+        "limpar edital". Aqui o diálogo aparece SEMPRE por natureza — então quem protege
+        não é a existência dele, é o conteúdo.
+
+    - id: D8
+      titulo: "Os textos errados do relatório (30/07) são corrigidos À PARTE"
+      decidido: "PROPOSTO"
+      racional: >
+        Três textos do relatório ainda descrevem o comportamento anterior a 30/07 ("com
+        campo descartado", "entraram com algum campo em branco", "não pôde ser
+        aproveitado"). São defeito de HOJE e independem deste roadmap. Corrigi-los aqui
+        dentro faria parecer que a troca total os causou.
+      consequencia: >
+        Este roadmap só ACRESCENTA "N removidos / M inseridos" e a variante "a lista NÃO
+        foi alterada porque ..." de D4.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # ⭐ EXIGÊNCIA NOMINAL DO USUÁRIO (2026-07-30): "cuide para que não se modifiquem
+  # nenhum outro fluxo de lógica". Esta seção é o contrato disso.
+  fora_de_escopo: |
+    NADA nesta lista é tocado. Se uma etapa precisar mexer em algo daqui, ela está errada.
+
+    NO PIPELINE
+      - `converterLinha` e as regras de dado inválido de 30/07 (valor cru + avisos).
+      - As quatro regras de nome/hora de 30/07 e `PALAVRAS_DE_MOCK`.
+      - `aplicarResolucoes`, `resolverLinhas`, o passo Cargos e `useCargos`.
+      - `deduplicar()` e `chaveNatural()` — ver D5.
+      - `TAMANHO_BLOCO` e a estrutura do laço. A etapa 2 muda o DESTINO do bloco, não o laço.
+      - A chave natural e a string de `onConflict` que a nomeia.
+        ⚠️ O `onConflict` some na etapa 2 porque o UPSERT some — não porque a chave mudou.
+        São coisas diferentes, e confundi-las abriria um tema que ninguém pediu.
+
+    NO MÓDULO
+      - `excluirDoEdital` / "limpar edital". ⚠️ NÃO reaproveitar: ela apaga o edital por
+        decisão direta do usuário, com senha, e não conhece preparo nem lote. A troca tem
+        o DELETE dela própria, dentro do RPC.
+      - `excluirUm`, a listagem paginada, o filtro por cargo, a ficha do candidato.
+      - `useContagemCandidatosPorEdital` e a RPC `contar_candidatos_por_edital`.
+
+    NO BANCO
+      - Os CHECKs remanescentes e os tipos `text` de 30/07.
+      - RLS e GRANTS de `candidatos` — nenhuma policy nova é necessária.
+        ⚠️ O `TRUNCATE` do `anon` em `candidatos` é item SEPARADO do backlog, e a bateria
+        da etapa 1 registra o contraste. NÃO aproveitar a carona.
+      - `cargos`, `cargo_apelidos` e o tema Cargos, exceto o RC001 (D6).
+
+    OBSERVADO E DELIBERADAMENTE NÃO CORRIGIDO
+      - O upsert grava `created_by` em TODA linha, inclusive nas que ATUALIZA
+        (useCandidatos.tsx:239). Vira discutível com a troca total (tudo é INSERT agora),
+        mas a etapa 2 NÃO deve "arrumar" nada aqui: só levar o campo para o preparo.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  fatiamento: |
+    QUATRO etapas em três janelas, cortadas por RISCO.
+
+      Janela A (etapa 1) — INVISÍVEL. ✅ FEITA. A tabela e o RPC existem, ninguém chama.
+        Pode ficar no ar indefinidamente: código que ninguém chama não muda comportamento.
+
+      Janela B (etapas 2 e 3) — A TROCA LIGA. É onde o comportamento muda, e as duas TÊM
+        de ir no mesmo merge: a etapa 2 sem a 3 deixa a troca acontecendo sem confirmação
+        destrutiva, que é exatamente o que ninguém quer no ar.
+
+      Janela C (etapa 4) — LIMPEZA. O RC001 sai e a documentação fecha.
+        ⚠️ Não antes da B: enquanto o upsert existir, o trigger ainda protege.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  etapas:
+
+    - id: 1
+      titulo: "Banco — tabela de preparo `candidatos_importacao` + RPC `trocar_candidatos_do_edital`"
+      janela: "A"
+      status: |
+        ✅ CONCLUÍDA em 2026-07-30 — migration
+        `20260730120000_candidatos_troca_total_preparo_e_rpc.sql`.
+        Verificada por `docs/bateria-troca-total-candidatos.sql`, VERDE nos 7 casos.
+        `types.ts` regenerado: diff PURAMENTE ADITIVO (+42, −0) — o que também prova que
+        não havia drift entre o arquivo e o banco, inclusive na coluna `raca` que virou
+        `text` mais cedo no mesmo dia.
+        Gates: 974 testes, tsc limpo, build limpo, lint 110 (= baseline), db reset com as
+        102 migrations.
+
+        🔴 A BATERIA ACHOU UM DEFEITO MEU, no que era para ser o controle positivo trivial
+        (caso 3): `portador_deficiencia` e `confirmado` são NOT NULL DEFAULT false, e
+        `jsonb_populate_record` devolve NULL para chave ausente — o DEFAULT da coluna NÃO
+        se aplica quando o INSERT fornece valor explícito, que é o caso aqui. A troca
+        inteira quebrava no NOT NULL. Corrigido com um bloco de defaults ANTES do
+        `|| linha`, e a ORDEM dos três `||` virou a regra documentada dentro da função.
+
+        ⚠️ O CASO 4 (atomicidade) teve de SAIR de dentro da transação da bateria: num
+        BEGIN, o erro aborta o bloco e toda consulta seguinte é ignorada — o que se
+        mediria depois do ROLLBACK seria o efeito DELE, não o da função. O caso provaria
+        a si mesmo. Roda em autocommit, com limpeza explícita. É a lição que vale para
+        qualquer bateria futura que precise observar estado APÓS um erro.
+      objetivo: >
+        Deixar a base pronta sem mudar comportamento nenhum. Ao fim, a importação funciona
+        exatamente como hoje.
+      testes:
+        - "Sem teste automatizado: a suíte mocka o Supabase e não exercita schema, RLS nem função. Decisão registrada."
+      verificacao:
+        - "✅ CASO 1 — lote vazio recusado (IM001) e a lista de 3 sobreviveu"
+        - "✅ CASO 2 — preparo com edital divergente recusado (IM002) e a lista sobreviveu"
+        - "✅ CASO 3 — CONTROLE POSITIVO: removidos=3, inseridos=2, preparo consumido, id/created_at gerados por nós"
+        - "✅ CASO 4 — ⭐ ATOMICIDADE: INSERT sabotado por CHECK → ninguém apagado (3) e preparo intacto (2)"
+        - "✅ CASO 5 — CONTROLE POSITIVO: o outro edital ficou intocado (2)"
+        - "✅ CASO 6 — ⭐ coluna nova em candidatos viajou sozinha (é a razão de a linha ser jsonb)"
+        - "✅ CASO 7 — anon com ZERO privilégios na tabela nova e sem EXECUTE no RPC; candidatos segue com os 7 (contraste registrado)"
+
+    - id: 2
+      titulo: "O cliente sobe o preparo e dispara a troca"
+      janela: "B"
+      status: "🟡 NÃO INICIADA"
+      objetivo: >
+        A importação passa a ser troca total de fato. É a etapa que muda comportamento.
+      acoes:
+        - acao: "`useImportarCandidatos` passa a alimentar o preparo"
+          detalhe: |
+            - Gerar UM `importacao_id` no início da mutation. ⚠️ Um por importação, não
+              por bloco: é o recorte que o RPC consome.
+            - Os blocos de 500 passam a fazer `insert` em `candidatos_importacao`, cada
+              linha como `{ importacao_id, edital_id, linha: <o candidato>, created_by }`.
+            - ⚠️ Limpar o preparo daquele lote ANTES de começar, para o caso de uma
+              tentativa anterior ter deixado resto — senão a segunda tentativa envia o
+              dobro e a duplicata derruba a troca no índice único.
+        - acao: "O gate de D4 e a chamada ao RPC"
+          detalhe: |
+            - Só chamar `trocar_candidatos_do_edital` se TODO bloco entrou sem erro E
+              `deveParar()` nunca foi acionado E o total preparado bate com o do lote.
+            - Se o gate não passar: NÃO chamar, apagar o preparo do lote, e informar ao
+              relatório que a lista NÃO foi alterada.
+            - Traduzir IM001 e IM002 em `mensagemErroImportacao`, no padrão que já existe
+              para os erros do Postgres.
+          nao_faca: |
+            - NÃO mexer em TAMANHO_BLOCO, no laço, nem em `deveParar`.
+            - NÃO reaproveitar `excluirDoEdital` — ver `fora_de_escopo`.
+            - NÃO chamar o RPC "otimisticamente" e tratar o erro depois: a GUARDA 1 do
+              banco existe como último recurso, não como fluxo normal.
+      testes:
+        - "O preparo recebe as linhas com o mesmo `importacao_id` em todos os blocos"
+        - "⭐ Bloco falho → o RPC NÃO é chamado e o preparo é limpo (o teste que guarda D4)"
+        - "⭐ `deveParar` acionado → idem"
+        - "Todos os blocos ok → o RPC é chamado UMA vez, com edital e lote corretos"
+        - "IM001 e IM002 viram mensagem legível"
+      verificacao:
+        - "Contra o banco local, com o arquivo real: 7.416 sobem ao preparo e a troca devolve (0, 7.416) na primeira vez"
+        - "⭐ Corrigir um CPF na planilha e reimportar: 7.416 → 7.416, e a linha antiga NÃO sobra (é o defeito que abriu o tema)"
+        - "⭐ Sabotar um bloco: a lista do edital fica IDÊNTICA e o preparo não sobra"
+      documentacao:
+        - "estrutura/modulos/candidatos/00-modulo.md — o fluxo novo substitui a descrição do upsert"
+
+    - id: 3
+      titulo: "A confirmação destrutiva e o relatório"
+      janela: "B"
+      status: "🟡 NÃO INICIADA"
+      objetivo: >
+        O usuário não pode trocar a lista inteira sem ver o que está trocando.
+      acoes:
+        - acao: "Confirmação antes de subir o preparo (D7)"
+          detalhe: |
+            - Mostrar os dois números lado a lado: quantos o edital tem HOJE e quantos a
+              planilha traz. É o contraste que denuncia arquivo truncado.
+            - Decidir NESTE momento se pede senha, no padrão do "limpar edital", e
+              registrar a decisão tomada.
+        - acao: "Relatório"
+          detalhe: |
+            - "N removidos / M inseridos", vindos do retorno do RPC — números reais do
+              banco, não contagem do cliente.
+            - Quando o gate de D4 barra: dizer que a lista NÃO foi alterada e por quê.
+          nao_faca: |
+            - NÃO corrigir aqui os três textos errados de 30/07 (D8) — commit próprio.
+      testes:
+        - "A confirmação mostra os dois números"
+        - "Recusar a confirmação não sobe preparo nenhum"
+        - "O relatório mostra os números vindos do RPC"
+        - "⭐ Gate barrado → o relatório diz que a lista não mudou"
+      documentacao:
+        - "estrutura/modulos/candidatos/00-modulo.md — a seção do relatório"
+
+    - id: 4
+      titulo: "Limpeza — o RC001 sai e a documentação fecha"
+      janela: "C"
+      status: "🟡 NÃO INICIADA"
+      objetivo: "Tirar a guarda que a troca total tornou incapaz de disparar."
+      acoes:
+        - acao: "Migration — DROP do trigger e da função (D6)"
+          detalhe: |
+            - Cabeçalho explicando POR QUE ele sai. ⚠️ A migration que o criou
+              (20260728110000) está aplicada e não se edita: este arquivo passa a ser o
+              registro corrente.
+        - acao: "Reescrever o CONTROLE POSITIVO 1 de docs/bateria-cargos.sql"
+          detalhe: "Ele exercita o RC001. Reescrito, não reajustado."
+      verificacao:
+        - "⭐ Reapontar um cargo já importado e reimportar: converge para uma linha, sem RC001"
+        - "db reset limpo"
+      documentacao:
+        - "estrutura/transversais/invariantes.md — o RC001 sai do mapa, com a razão"
+        - "backlog.md — o item ⏭️ PRÓXIMA fecha; o item da troca de chave é REESCRITO como opcional de baixo valor (D5)"
+        - "Mover ESTE arquivo para analises/concluidos/ e atualizar analises/README.md"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  riscos:
+    - risco: "🔴 Preparo INCOMPLETO disparar a troca — apaga 7.416 e insere 6.000, e o relatório diz sucesso"
+      mitigacao: >
+        D4, o gate do cliente. ⚠️ A GUARDA 1 do banco NÃO pega este caso: 6.000 linhas são
+        um lote válido para ela. É o risco nº 1 do desenho e o único sem defesa no banco.
+
+    - risco: "🔴 Lote vazio ou já consumido apagar a lista sem repor, em silêncio"
+      mitigacao: "GUARDA 1 do RPC (IM001), verificada no caso 1 da bateria."
+
+    - risco: "🔴 Arquivo truncado — a troca apaga milhares e insere poucos"
+      mitigacao: >
+        D7: a confirmação com os dois números. ⚠️ É proteção MAIS FRACA que a da
+        alternativa de D0, que sabia dizer quem exatamente sumiria. Aqui o usuário compara
+        7.416 com 12 e decide. Registrado como custo aceito da escolha.
+
+    - risco: "Edital errado no preparo — apagar a lista de A e pôr a de B"
+      mitigacao: "GUARDA 2 do RPC (IM002), verificada no caso 2."
+
+    - risco: "INSERT falhar no meio e deixar o edital vazio"
+      mitigacao: "A função é uma transação: verificado no caso 4, com sabotagem por CHECK e ninguém apagado."
+
+    - risco: "Coluna nova em `candidatos` deixar de ser transportada, em silêncio, no meio de uma troca total"
+      mitigacao: "A linha é jsonb e o INSERT usa jsonb_populate_record — mapeamento por nome. Caso 6 da bateria guarda isso."
+
+    - risco: "RC001 barrar a troca depois que ela ligar"
+      mitigacao: >
+        Não barra — o DELETE roda antes do INSERT na mesma transação, então o trigger não
+        acha nada. Ele fica INERTE, e sai na etapa 4 por ser guarda que não dispara.
+
+    - risco: "Duas importações simultâneas no mesmo edital"
+      mitigacao: >
+        Cada uma tem seu `importacao_id`, então os preparos não se misturam. As trocas
+        serializam no banco e a última vence — e, dadas P1 e P2, ambas trazem a lista
+        inteira. Não vale um lock AGORA (escopo novo); registrar no módulo.
+
+    - risco: "⚠️ P2 cair — `candidatos` passar a guardar algo que a planilha não sabe"
+      mitigacao: >
+        Aí a troca total DESTRÓI esse dado a cada importação, e o tema tem de ser reaberto
+        ANTES da feature nova. Registrar como pré-condição no contrato do módulo, junto do
+        item que já prevê essa evolução ("se um dia for preciso saber em que sala cada
+        inscrito faz prova"). Hoje há 0 FKs apontando para `candidatos` — é o que torna
+        isto seguro AGORA e o que deixará de valer depois.
+
+    - risco: "Preparo abandonado acumular na tabela"
+      mitigacao: >
+        A troca consome o lote. Sobra apenas de importação que falhou antes da troca, e a
+        etapa 2 limpa o lote no gate. Linha antiga ali é rascunho e pode ser apagada — está
+        no COMMENT da tabela.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  criterio_de_pronto: |
+    O tema fecha quando, contra o banco local:
+
+      1. corrigir CPF, cargo OU inscrição na planilha e reimportar deixa UMA linha —
+         os três campos, não só o cargo;
+      2. um bloco sabotado deixa a lista do edital IDÊNTICA, e o relatório diz isso;
+      3. a confirmação mostra os dois números antes de qualquer destruição;
+      4. outro edital no mesmo banco fica intocado;
+      5. suíte verde, `tsc` limpo, `build` limpo, lint no baseline, `db reset` completo.
+
+    ⚠️ Sem CI, isto é rodado à mão. O item do CI segue como o de maior alavancagem do backlog.
