@@ -2,7 +2,21 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
 import { useEditais } from "@/hooks/useEditais";
-import { useImportarCandidatos, ResultadoBloco } from "@/hooks/useCandidatos";
+import {
+  useImportarCandidatos,
+  useContagemCandidatosPorEdital,
+  ResultadoImportacao,
+} from "@/hooks/useCandidatos";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   CAMPOS_CANDIDATO,
   ColunaPlanilha,
@@ -126,10 +140,22 @@ export default function CandidatosImportar() {
   const [erroAoCriar, setErroAoCriar] = useState<string | null>(null);
 
   const [progresso, setProgresso] = useState({ enviados: 0, total: 0 });
-  const [resultados, setResultados] = useState<ResultadoBloco[]>([]);
+  const [resultado, setResultado] = useState<ResultadoImportacao | null>(null);
+  const [confirmacaoAberta, setConfirmacaoAberta] = useState(false);
   const pararRef = useRef(false);
 
   const editalSelecionado = editais.find((e) => e.id === editalId) ?? null;
+
+  /**
+   * Quantos inscritos o edital tem HOJE — o número que a importação vai APAGAR.
+   *
+   * É metade do contraste que protege contra arquivo truncado (a outra metade é
+   * `candidatos.length`). Vem da mesma RPC que alimenta os cards da listagem, então não
+   * custa consulta nova.
+   */
+  const { contagem } = useContagemCandidatosPorEdital();
+  const inscritosHoje = editalId ? (contagem[editalId] ?? 0) : 0;
+
 
   // ── Leitura do arquivo ──────────────────────────────────────────────────────────
   const handleArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -219,6 +245,19 @@ export default function CandidatosImportar() {
   );
   const comErro = convertidas.filter((l) => l.erro !== null);
   const comAviso = convertidas.filter((l) => l.candidato !== null && l.avisos.length > 0);
+
+  /**
+   * ⚠️ O sinal de arquivo truncado: a planilha traz menos da METADE do que já existe.
+   *
+   * Não bloqueia — pode ser legítimo (edital que teve indeferimentos em massa). Mas muda
+   * o tom da confirmação de "confirme" para "confira antes". O limiar é arbitrário de
+   * propósito: qualquer número aqui é palpite, e o valor está em separar o caso comum do
+   * caso que merece um segundo olhar, não em acertar a fronteira.
+   *
+   * Mora AQUI, e não junto de `inscritosHoje`, porque depende de `candidatos` — que só
+   * existe depois do dedup.
+   */
+  const quedaSuspeita = inscritosHoje > 0 && candidatos.length < inscritosHoje / 2;
 
   const trocarMapeamento = (campoKey: string, valor: string) => {
     setMapeamento((prev) => ({
@@ -404,26 +443,30 @@ export default function CandidatosImportar() {
     await salvarApelidos(pares).catch(() => undefined);
 
     pararRef.current = false;
-    setResultados([]);
+    setResultado(null);
     setProgresso({ enviados: 0, total: candidatos.length });
     setPasso(4);
 
     // `candidatos` JÁ vem resolvido e deduplicado na ordem certa (ver o useMemo lá em
     // cima). A resolução deixou de acontecer aqui na etapa 5: fazê-la depois do dedup
     // deixaria duas grafias do mesmo cargo passarem como distintas, e o Postgres recusaria
-    // o bloco de 500 inteiro com "cannot affect row a second time".
+    // o bloco inteiro com "cannot affect row a second time".
+    //
+    // ⚠️ `editalId` vai EXPLÍCITO: é o edital cuja lista será apagada, e uma operação
+    // destrutiva não deve deduzir seu alvo de `candidatos[0]`.
     const res = await importar({
+      editalId,
       candidatos,
       onProgresso: setProgresso,
       deveParar: () => pararRef.current,
     });
 
-    setResultados(res);
+    setResultado(res);
     setPasso(5);
   };
 
-  const gravados = resultados.reduce((s, r) => s + r.gravados, 0);
-  const blocosComErro = resultados.filter((r) => r.erro !== null);
+  const blocos = resultado?.blocos ?? [];
+  const blocosComErro = blocos.filter((r) => r.erro !== null);
 
   /** De-para daquela importação: texto da planilha → cargo final, com a contagem. */
   const deParaCargos = useMemo(
@@ -1024,10 +1067,12 @@ export default function CandidatosImportar() {
                       Resolva {cargosPendentes.length} cargo(s) para importar
                     </span>
                   )}
+                  {/* ⚠️ NÃO chama a importação direto: ela SUBSTITUI a lista do edital.
+                      A confirmação é obrigatória e mostra o contraste de números. */}
                   <Button
                     className="gap-2"
                     disabled={cargosPendentes.length > 0}
-                    onClick={executarImportacao}
+                    onClick={() => setConfirmacaoAberta(true)}
                   >
                     Importar {candidatos.length.toLocaleString("pt-BR")} candidato(s)
                     <ArrowRight className="h-4 w-4" />
@@ -1078,19 +1123,51 @@ export default function CandidatosImportar() {
                 ) : (
                   <AlertTriangle className="h-5 w-5 text-destructive" />
                 )}
-                Importação concluída
+                {resultado?.trocou ? "Lista do edital substituída" : "A lista NÃO foi alterada"}
               </CardTitle>
               <CardDescription>
-                {gravados} candidato(s) gravados em <strong>{editalSelecionado?.nome}</strong>.
+                {resultado?.trocou ? (
+                  <>
+                    <strong>{editalSelecionado?.nome}</strong> agora tem{" "}
+                    <strong>{resultado.inseridos}</strong> inscrito(s).{" "}
+                    {resultado.removidos > 0
+                      ? `Os ${resultado.removidos} da lista anterior foram removidos.`
+                      : "A lista estava vazia antes desta importação."}
+                  </>
+                ) : (
+                  <>
+                    Nenhum inscrito de <strong>{editalSelecionado?.nome}</strong> foi removido ou
+                    alterado.
+                  </>
+                )}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* ⭐ O AVISO MAIS IMPORTANTE DO FLUXO NOVO, e por isso vem antes dos números.
+                  A troca total inverteu o significado de falha: antes, um bloco falho deixava
+                  a importação pela metade e reimportar consertava. Agora ela deixa a lista
+                  INTACTA. Sem dizer isso com todas as letras, o usuário assume o pior e pode
+                  ir "consertar" à mão uma lista que não foi tocada. */}
+              {resultado && !resultado.trocou && (
+                <Alert variant="destructive">
+                  <XCircle className="h-4 w-4" />
+                  <AlertTitle>A troca não foi executada — ninguém foi removido</AlertTitle>
+                  <AlertDescription>
+                    <p>{resultado.motivoNaoTrocou}</p>
+                    <p className="mt-2">
+                      A lista do edital continua exatamente como estava. Importar de novo é
+                      seguro.
+                    </p>
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                 {[
-                  ["Gravados", gravados, "text-foreground"],
+                  ["Inseridos", resultado?.inseridos ?? 0, "text-foreground"],
+                  ["Removidos", resultado?.removidos ?? 0, "text-foreground"],
                   ["Não importados", comErro.length, "text-destructive"],
                   ["Com ressalva", comAviso.length, "text-foreground"],
-                  ["Repetidos no arquivo", repetidas.length, "text-foreground"],
                 ].map(([rotulo, valor, cor]) => (
                   <div key={rotulo as string} className="rounded-lg border p-4">
                     <div className={`text-2xl font-bold ${cor as string}`}>{valor as number}</div>
@@ -1116,16 +1193,21 @@ export default function CandidatosImportar() {
               {blocosComErro.length > 0 && (
                 <Alert variant="destructive">
                   <XCircle className="h-4 w-4" />
-                  <AlertTitle>{blocosComErro.length} bloco(s) falharam</AlertTitle>
+                  <AlertTitle>{blocosComErro.length} bloco(s) falharam no envio</AlertTitle>
                   <AlertDescription>
                     {blocosComErro.map((b) => (
                       <div key={b.bloco}>
                         Bloco {b.bloco}: {b.erro}
                       </div>
                     ))}
+                    {/* ⚠️ O texto antigo dizia "o que já entrou será atualizado, não
+                        duplicado" — verdade no upsert, MENTIRA na troca total: quando um
+                        bloco falha, nada entra. O envio vai para uma área de preparo que é
+                        descartada, e a lista do edital nem chega a ser tocada. */}
                     <p className="mt-2">
-                      Corrija a planilha e importe de novo — o que já entrou será atualizado, não
-                      duplicado.
+                      Nada foi gravado na lista do edital: o envio é preparado à parte e só
+                      substitui a lista quando chega inteiro. Corrija a planilha e importe de
+                      novo.
                     </p>
                   </AlertDescription>
                 </Alert>
@@ -1156,6 +1238,67 @@ export default function CandidatosImportar() {
             </CardContent>
           </Card>
         )}
+
+        {/* ── A confirmação destrutiva ────────────────────────────────────────────
+            Importar SUBSTITUI a lista inteira do edital. O usuário precisa ver isso
+            antes, e o que protege não é o diálogo existir — ele aparece sempre, e
+            diálogo que sempre aparece vira clique automático. O que protege é o
+            CONTRASTE de números: quem esperava trocar 7.416 por 7.416 e lê "por 12"
+            para na hora.
+
+            ⚠️ DECISÃO REGISTRADA (2026-07-30): NÃO pede senha, ao contrário do
+            "limpar edital". Lá a destruição é um clique só, partindo de uma listagem;
+            aqui o usuário já atravessou três passos deliberados (arquivo, pareamento,
+            cargos) e está olhando o que vai entrar. Uma senha no fim de um assistente
+            de cinco passos vira memória muscular, e memória muscular não confere nada. */}
+        <AlertDialog open={confirmacaoAberta} onOpenChange={setConfirmacaoAberta}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Substituir a lista de inscritos de {editalSelecionado?.nome}?
+              </AlertDialogTitle>
+              <AlertDialogDescription asChild>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3 rounded-lg border p-3 text-center">
+                    <div className="flex-1">
+                      <div className="text-2xl font-bold">
+                        {inscritosHoje.toLocaleString("pt-BR")}
+                      </div>
+                      <div className="text-xs text-muted-foreground">no edital hoje</div>
+                    </div>
+                    <ArrowRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+                    <div className="flex-1">
+                      <div className="text-2xl font-bold">
+                        {candidatos.length.toLocaleString("pt-BR")}
+                      </div>
+                      <div className="text-xs text-muted-foreground">nesta planilha</div>
+                    </div>
+                  </div>
+
+                  <p>
+                    Os <strong>{inscritosHoje.toLocaleString("pt-BR")}</strong> inscritos atuais
+                    serão <strong>apagados</strong> e substituídos pelos desta planilha. A
+                    operação é feita de uma vez só: ou a lista inteira é trocada, ou nada muda.
+                  </p>
+
+                  {quedaSuspeita && (
+                    <p className="rounded-md border border-destructive p-3 font-medium text-destructive">
+                      A planilha tem menos da metade dos inscritos que o edital tem hoje. Se o
+                      arquivo não estiver completo, esta operação remove quem ficou de fora —
+                      confira o arquivo antes de continuar.
+                    </p>
+                  )}
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={executarImportacao}>
+                Substituir os inscritos
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </Layout>
   );

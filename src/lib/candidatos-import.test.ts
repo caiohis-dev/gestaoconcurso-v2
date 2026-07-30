@@ -722,10 +722,15 @@ describe("chaveDeCargo", () => {
 });
 
 describe("mensagemErroImportacao", () => {
-  it("traduz as CHECKs do banco para o que corrigir na planilha", () => {
+  it("traduz as recusas do banco para o que corrigir na planilha", () => {
     // Regra 4 de invariantes.md: barreira que devolve erro cru transfere o problema.
-    expect(mensagemErroImportacao('violates check constraint "chk_candidato_cpf_formato"')).toMatch(
-      /CPF/,
+    //
+    // ⚠️ Os ramos de chk_candidato_cpf_formato, _cep_, _email_ e _raca_valida SAÍRAM em
+    // 2026-07-30: as quatro CHECKs foram removidas do banco (dado inválido passou a
+    // entrar cru), então eram guardas que não podiam mais disparar. Não os ressuscite
+    // sem antes conferir que a CHECK voltou.
+    expect(mensagemErroImportacao('violates check constraint "chk_candidato_nome_preenchido"')).toMatch(
+      /[Nn]ome/,
     );
     // ⚠️ O nome do índice mudou na etapa 5 (`..._cargo_id_...`). Se alguém reverter o
     // índice sem reverter isto, o usuário volta a ver 'duplicate key value violates' cru.
@@ -733,6 +738,20 @@ describe("mensagemErroImportacao", () => {
       mensagemErroImportacao('duplicate key value violates "candidatos_cpf_cargo_id_inscricao_key"'),
     ).toMatch(/repetid/i);
     expect(mensagemErroImportacao("value too long for type character varying(8)")).toMatch(/8/);
+  });
+
+  it("⭐ as três recusas da TROCA TOTAL dizem que a lista foi MANTIDA", () => {
+    // O que o usuário precisa saber ao ver uma recusa não é o código: é que ninguém foi
+    // removido. Sem isso, ele assume o pior e vai conferir a lista à mão.
+    expect(
+      mensagemErroImportacao("Nenhuma linha preparada para esta importação."),
+    ).toMatch(/mantida/i);
+    expect(
+      mensagemErroImportacao("O preparo desta importação tem 3 linha(s) de outro edital."),
+    ).toMatch(/mantida/i);
+    expect(
+      mensagemErroImportacao("O preparo tem 6000 linha(s), mas a importação declarou 7416."),
+    ).toMatch(/MANTIDA/);
   });
 
   it("⭐ passa adiante INTEIRA a mensagem do trigger de reapontamento (etapa 5b)", () => {

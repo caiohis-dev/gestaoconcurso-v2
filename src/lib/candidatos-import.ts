@@ -809,10 +809,24 @@ export function mensagemErroImportacao(mensagem: string): string {
   // chega em `error.code`, NUNCA dentro de `error.message` — um `includes('rc001')` aqui
   // seria uma guarda que não pode disparar. Se algum dia esta função precisar do código,
   // ela tem de receber o objeto de erro, não a string.
-  if (m.includes('chk_candidato_cpf_formato')) return 'CPF fora do formato de 11 dígitos.';
-  if (m.includes('chk_candidato_cep_formato')) return 'CEP fora do formato de 8 dígitos.';
-  if (m.includes('chk_candidato_email_formato')) return 'E-mail em formato inválido.';
-  if (m.includes('chk_candidato_raca_valida')) return 'Código de raça desconhecido.';
+  // ── As recusas da TROCA TOTAL (2026-07-30) ─────────────────────────────────────────
+  // As três mensagens do banco já são específicas e em português, então o papel aqui é
+  // só acrescentar o que fazer — o `return mensagem` do fim perderia essa metade.
+  if (m.includes('nenhuma linha preparada')) {
+    return 'Nada foi preparado para esta importação, então a lista atual do edital foi mantida. Tente importar de novo.';
+  }
+  if (m.includes('de outro edital')) {
+    return 'O preparo desta importação tem linhas de outro edital. A lista foi mantida. Recomece a importação.';
+  }
+  if (m.includes('mas a importação declarou')) {
+    return 'O envio chegou incompleto ao servidor, então a lista atual do edital foi MANTIDA — ninguém foi removido. Importe de novo.';
+  }
+
+  // ⚠️ Os ramos de chk_candidato_cpf_formato, _cep_, _email_ e _raca_valida foram
+  // REMOVIDOS em 2026-07-30: as quatro CHECKs saíram do banco na migration
+  // 20260730100000 (dado inválido passou a entrar cru), então eram guardas que não
+  // podiam mais disparar. Guarda que não dispara é armadilha — ela faz o próximo leitor
+  // acreditar que a regra ainda existe.
   if (m.includes('chk_candidato_nome_preenchido')) return 'Nome em branco.';
   if (m.includes('chk_candidato_n_inscricao_preenchido')) return 'Nº de inscrição em branco.';
   if (m.includes('value too long')) {

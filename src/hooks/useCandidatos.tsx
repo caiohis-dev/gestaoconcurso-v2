@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 import { useToast } from "@/hooks/use-toast";
 import { CandidatoResolvido, mensagemErroImportacao } from "@/lib/candidatos-import";
 
@@ -59,15 +60,27 @@ export interface Candidato {
 }
 
 /**
- * Tamanho do bloco enviado por requisição.
+ * Tamanho do bloco enviado por requisição, para a área de preparo.
  *
  * O arquivo real tem 7.416 linhas. Uma requisição por linha — que é como `CadastroLote`
- * importa colaboradores — daria 7.416 idas ao servidor e uns 20 minutos de espera. Em
- * blocos de 500 são 15 requisições. O número não é mágico: é grande o bastante para o
- * custo por linha sumir e pequeno o bastante para o relatório dizer ONDE parou quando um
- * bloco falha, e para a barra de progresso se mover.
+ * importa colaboradores — daria 7.416 idas ao servidor e uns 20 minutos de espera.
+ *
+ * MEDIDO em 2026-07-30, para o shape do preparo:
+ *
+ *     bloco    payload    requisições p/ 7.416    folga em 5 MB
+ *       500    0,44 MB                     15          4,56 MB
+ *      1000    0,89 MB                      8          4,11 MB   ← aqui
+ *      5000    4,44 MB                      2          0,56 MB
+ *      7416    6,59 MB                      1          🔴 ESTOURA
+ *
+ * ⭐ O bloco NÃO cresce com o edital, só o número de requisições: 50.000 inscritos são
+ * 50 requisições de 0,89 MB. É o que faz o fluxo escalar sem teto.
+ *
+ * ⚠️ Fatiar mais grosso reduz as CHANCES de um bloco falhar, mas NÃO elimina o risco de
+ * preparo incompleto — quem elimina é a GUARDA 3 da RPC (`p_total_esperado`). São coisas
+ * diferentes, e confundi-las levaria alguém a "resolver" o problema mexendo neste número.
  */
-export const TAMANHO_BLOCO = 500;
+export const TAMANHO_BLOCO = 1000;
 
 export interface FiltroCandidatos {
   editalId: string | null;
@@ -178,36 +191,121 @@ export interface ResultadoBloco {
   bloco: number;
 }
 
+/**
+ * O resultado da importação inteira. Existe desde a troca total (2026-07-30) porque
+ * "quantos blocos entraram" deixou de ser a resposta: o que interessa é se a LISTA foi
+ * trocada, e por quanto.
+ */
+export interface ResultadoImportacao {
+  blocos: ResultadoBloco[];
+  /**
+   * ⚠️ `false` significa que a lista do edital continua EXATAMENTE como estava — nada
+   * foi apagado. É a informação mais importante do relatório quando algo falha, e o
+   * oposto do que valia no fluxo antigo (onde falha parcial deixava a lista pela metade).
+   */
+  trocou: boolean;
+  /** Quantos inscritos a troca REMOVEU. Vem do banco, não de contagem do cliente. */
+  removidos: number;
+  /** Quantos inscritos a troca INSERIU. Vem do banco. */
+  inseridos: number;
+  /** Preenchido quando `trocou` é false: por que a troca não aconteceu. */
+  motivoNaoTrocou: string | null;
+}
+
 export interface ProgressoImportacao {
   enviados: number;
   total: number;
 }
 
 /**
- * Grava os candidatos convertidos, em blocos, por UPSERT.
+ * Sobe o lote para a área de preparo, em blocos. Devolve `true` se o usuário interrompeu.
  *
- * POR QUE UPSERT E NÃO INSERT — o usuário definiu que candidato SEMPRE chega por
- * importação. Isso significa que reimportar é o fluxo normal, não a exceção: a planilha é
- * corrigida e mandada de novo. Com `insert`, a segunda importação bateria no índice único
- * e falharia inteira; com `upsert` sobre a chave natural, ela ATUALIZA os mesmos inscritos.
+ * Só ENVIA e RELATA — não decide nada. Quem decide se a troca acontece é o gate na
+ * `mutationFn`, e manter as duas coisas separadas é o que impede um `return` daqui de
+ * virar, sem querer, uma autorização para apagar a lista.
+ */
+async function subirPreparo({
+  candidatos,
+  editalId,
+  importacaoId,
+  createdBy,
+  blocos,
+  onProgresso,
+  deveParar,
+}: {
+  candidatos: CandidatoResolvido[];
+  editalId: string;
+  importacaoId: string;
+  createdBy: string | null;
+  /** Preenchido AQUI, para o chamador ler o relatório mesmo quando interrompemos no meio. */
+  blocos: ResultadoBloco[];
+  onProgresso?: (p: ProgressoImportacao) => void;
+  deveParar?: () => boolean;
+}): Promise<boolean> {
+  for (let i = 0; i < candidatos.length; i += TAMANHO_BLOCO) {
+    if (deveParar?.()) return true;
+
+    const bloco = candidatos.slice(i, i + TAMANHO_BLOCO);
+    const { error } = await supabase.from("candidatos_importacao").insert(
+      bloco.map((c) => ({
+        importacao_id: importacaoId,
+        edital_id: editalId,
+        // O candidato inteiro vai como jsonb. A RPC reidrata com
+        // `jsonb_populate_record`, então coluna nova viaja sem ninguém mexer aqui.
+        linha: c as unknown as Json,
+        created_by: createdBy,
+      })),
+    );
+
+    blocos.push({
+      bloco: Math.floor(i / TAMANHO_BLOCO) + 1,
+      gravados: error ? 0 : bloco.length,
+      erro: error ? mensagemErroImportacao(error.message) : null,
+    });
+
+    onProgresso?.({
+      enviados: Math.min(i + TAMANHO_BLOCO, candidatos.length),
+      total: candidatos.length,
+    });
+  }
+  return false;
+}
+
+/**
+ * Importa a planilha TROCANDO a lista de inscritos do edital.
  *
- * `onConflict` nomeia as quatro colunas do índice `candidatos_cpf_cargo_id_inscricao_key`
- * — ver a migration 20260728100000 (etapa 5 do roadmap-cargos), que trocou o TEXTO do
- * cargo pela REFERÊNCIA a ele. É essa troca que faz corrigir o nome de um cargo deixar de
- * duplicar inscrito.
+ * ⭐ O QUE ESTE HOOK FAZ, EM UMA FRASE: sobe a planilha para uma área de PREPARO, em
+ * blocos, e então manda o banco apagar a lista atual do edital e reinserir o preparo —
+ * tudo numa transação só. Decisão do usuário em 2026-07-30, roadmap
+ * `my_rules/analises/roadmap-importacao-troca-total.yaml`.
  *
- * ⚠️ QUATRO coisas precisam concordar, e mexer numa obriga a mexer nas quatro:
- *   1. o índice único do banco;
- *   2. esta string de `onConflict`;
- *   3. `chaveNatural()` de `candidatos-import.ts`, que deduplica o lote ANTES de enviar;
- *   4. a ORDEM do pipeline — o dedup roda DEPOIS de resolver o cargo (`resolverLinhas`).
- * Se qualquer par discordar, uma chave repetida escapa da deduplicação e o Postgres recusa
- * o bloco inteiro de 500 com "ON CONFLICT DO UPDATE command cannot affect row a second
- * time".
+ * ── POR QUE DEIXOU DE SER UPSERT ────────────────────────────────────────────────────
  *
- * ⚠️ Cada bloco é uma transação SUA. Um bloco que falha não desfaz os anteriores, e é por
- * isso que o relatório mostra quantos entraram: dizer só "falhou" deixaria o usuário sem
- * saber se pode reimportar (pode — o upsert é idempotente).
+ * O upsert casava a linha pela chave natural. Como CPF, cargo e inscrição COMPÕEM essa
+ * chave, corrigir qualquer um deles na planilha e reimportar NÃO casava: entrava um
+ * registro novo e o antigo ficava lá, órfão, sem ninguém ser avisado. A troca total mata
+ * a classe inteira, porque não existe "casar linha" — a lista velha sai inteira.
+ *
+ * A premissa que autoriza isso, confirmada pelo usuário: a planilha é SEMPRE a lista
+ * completa do edital, nunca um lote de adição.
+ *
+ * ── POR QUE O PREPARO EXISTE ────────────────────────────────────────────────────────
+ *
+ * MEDIDO: o lote inteiro em JSON dá 5,40 MB para 7.416 inscritos, contra o limite padrão
+ * de 5 MB do Kong. Mandar tudo numa chamada não cabe hoje e piora com o edital. Por isso
+ * os blocos continuam — só que o destino é `candidatos_importacao`, e a atomicidade
+ * mudou de lugar: ela agora vive na RPC, no servidor, e não mais em "cada bloco é uma
+ * transação sua".
+ *
+ * ── ⚠️ A INVERSÃO QUE PRECISA ESTAR CLARA PARA QUEM LÊ O RELATÓRIO ─────────────────
+ *
+ * Antes, um bloco falho deixava a importação PELA METADE e reimportar consertava.
+ * Agora, um bloco falho deixa a lista INTACTA: o preparo é descartado e a troca não
+ * acontece. É melhor, mas é diferente — e por isso `ResultadoImportacao.trocou` existe.
+ *
+ * ⚠️ `deduplicar()` e `chaveNatural()` continuam necessários e NÃO mudaram: se a planilha
+ * trouxer duas linhas com a mesma chave, o índice único recusa o INSERT — e agora o
+ * INSERT é a troca INTEIRA, então uma duplicata no arquivo derruba tudo.
  */
 export function useImportarCandidatos() {
   const queryClient = useQueryClient();
@@ -215,43 +313,100 @@ export function useImportarCandidatos() {
 
   const mutation = useMutation({
     mutationFn: async ({
+      editalId,
       candidatos,
       onProgresso,
       deveParar,
     }: {
+      /**
+       * ⚠️ Explícito, e não deduzido de `candidatos[0].edital_id`: é o edital cuja lista
+       * será APAGADA. Um valor implícito numa operação destrutiva é o tipo de coisa que
+       * ninguém confere. A GUARDA 2 da RPC recusa se o preparo não for todo dele.
+       */
+      editalId: string;
       // ⭐ `CandidatoResolvido`, e não `CandidatoImportado`: o tipo é o que impede um lote
-      // SEM `cargo_id` de chegar aqui. A partir da etapa 5 do roadmap de cargos, esse
-      // campo compõe a chave natural — mandar o lote não-resolvido gravaria milhares de
-      // linhas com a identidade incompleta, e o TypeScript recusa antes disso.
+      // SEM `cargo_id` de chegar aqui. Esse campo compõe a chave natural — mandar o lote
+      // não-resolvido gravaria linhas com a identidade incompleta, e o TS recusa antes.
       candidatos: CandidatoResolvido[];
       onProgresso?: (p: ProgressoImportacao) => void;
       deveParar?: () => boolean;
-    }): Promise<ResultadoBloco[]> => {
+    }): Promise<ResultadoImportacao> => {
       const { data: userData } = await supabase.auth.getUser();
       const createdBy = userData.user?.id ?? null;
-      const resultados: ResultadoBloco[] = [];
+      const importacaoId = crypto.randomUUID();
+      const blocos: ResultadoBloco[] = [];
 
-      for (let i = 0; i < candidatos.length; i += TAMANHO_BLOCO) {
-        if (deveParar?.()) break;
+      const semTroca = (motivo: string): ResultadoImportacao => ({
+        blocos,
+        trocou: false,
+        removidos: 0,
+        inseridos: 0,
+        motivoNaoTrocou: motivo,
+      });
 
-        const bloco = candidatos.slice(i, i + TAMANHO_BLOCO);
-        const { error } = await supabase
-          .from("candidatos")
-          .upsert(
-            bloco.map((c) => ({ ...c, created_by: createdBy })),
-            { onConflict: "edital_id,cpf,cargo_id,n_inscricao" },
-          );
+      // Preparo abandonado de uma tentativa anterior faria a contagem passar do esperado
+      // e a GUARDA 3 recusaria a troca. Como o `importacaoId` é novo a cada chamada, isto
+      // é defesa contra um uuid repetido — improvável, mas barato de descartar.
+      await supabase.from("candidatos_importacao").delete().eq("importacao_id", importacaoId);
 
-        resultados.push({
-          bloco: Math.floor(i / TAMANHO_BLOCO) + 1,
-          gravados: error ? 0 : bloco.length,
-          erro: error ? mensagemErroImportacao(error.message) : null,
-        });
+      const interrompida = await subirPreparo({
+        candidatos,
+        editalId,
+        importacaoId,
+        createdBy,
+        blocos,
+        onProgresso,
+        deveParar,
+      });
 
-        onProgresso?.({ enviados: Math.min(i + TAMANHO_BLOCO, candidatos.length), total: candidatos.length });
+      // ── 🔴 O GATE: só troca a lista se o preparo estiver COMPLETO ──────────────────
+      // Chamar a RPC aqui com o preparo pela metade apagaria a lista inteira e reporia só
+      // uma parte. A GUARDA 3 do banco recusaria (é ela a rede de segurança), mas mandar
+      // um pedido que se SABE inválido é pedir para o banco decidir o que já está
+      // decidido aqui — e o usuário receberia um erro de banco em vez de uma explicação.
+      const limparPreparo = async () => {
+        await supabase.from("candidatos_importacao").delete().eq("importacao_id", importacaoId);
+      };
+
+      if (interrompida) {
+        await limparPreparo();
+        return semTroca("A importação foi interrompida antes de terminar de enviar.");
       }
 
-      return resultados;
+      const blocoComErro = blocos.find((b) => b.erro !== null);
+      if (blocoComErro) {
+        await limparPreparo();
+        return semTroca(`O envio falhou no bloco ${blocoComErro.bloco}: ${blocoComErro.erro}`);
+      }
+
+      // ── A troca ────────────────────────────────────────────────────────────────────
+      // `p_total_esperado` é a conferência que o banco faz contra o preparo. Ela NÃO é
+      // redundante com o gate acima: o gate garante que ESTE cliente enviou tudo; a
+      // guarda garante que o que CHEGOU é tudo — bloco aceito mas não persistido, uuid
+      // colidido ou escrita concorrente não passam por ela.
+      const { data, error } = await supabase.rpc("trocar_candidatos_do_edital", {
+        p_edital_id: editalId,
+        p_importacao_id: importacaoId,
+        p_total_esperado: candidatos.length,
+      });
+
+      if (error) {
+        await limparPreparo();
+        return semTroca(mensagemErroImportacao(error.message));
+      }
+
+      // A RPC devolve UMA linha; o PostgREST entrega como array por ser RETURNS TABLE.
+      const troca = (Array.isArray(data) ? data[0] : data) as
+        | { removidos: number; inseridos: number }
+        | undefined;
+
+      return {
+        blocos,
+        trocou: true,
+        removidos: Number(troca?.removidos ?? 0),
+        inseridos: Number(troca?.inseridos ?? 0),
+        motivoNaoTrocou: null,
+      };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["candidatos"] });

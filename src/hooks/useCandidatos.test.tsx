@@ -55,7 +55,7 @@ import {
   useExcluirCandidatos,
   TAMANHO_BLOCO,
   type Candidato,
-  type ResultadoBloco,
+  type ResultadoImportacao,
 } from "@/hooks/useCandidatos";
 
 const EDITAL_ID = "edital-1";
@@ -122,7 +122,7 @@ const ultimoBuilder = (tabela: string): QueryBuilderMock => {
 };
 
 /** Todos os builders em que o método foi chamado — o `builderQueChamou` só dá o 1º. */
-const buildersQueChamaram = (tabela: string, metodo: "upsert" | "delete") =>
+const buildersQueChamaram = (tabela: string, metodo: "upsert" | "delete" | "insert") =>
   buildersDaTabela(tabela).filter((b) => b[metodo].mock.calls.length > 0);
 
 /**
@@ -393,83 +393,142 @@ describe("useCandidatos", () => {
     });
   });
 
-  describe("useImportarCandidatos", () => {
-    it("⭐ faz UPSERT sobre a chave natural, com o cargo e o CPF dentro", async () => {
-      // A string do `onConflict` é o que separa "reimportar atualiza" de "reimportar
-      // duplica". E ela precisa dos QUATRO campos: sem o cargo, as inscrições de quem
-      // concorre a mais de um cargo colidiriam entre si — 396 sumiriam; e o `cpf` entrou
-      // na chave por decisão do usuário em 2026-07-27 (migration 20260727200000).
-      //
-      // ⭐ O cargo entra por `cargo_id`, e NÃO por `cargo_chave`, desde a etapa 5
-      // (migration 20260728100000). É a troca que faz corrigir o nome de um cargo deixar
-      // de criar 481 registros novos. Se esta string voltar ao texto, o índice do banco
-      // não é mais inferido e o upsert passa a inserir em vez de atualizar.
-      setTableResult("candidatos", { data: null, error: null });
+  describe("useImportarCandidatos — a TROCA TOTAL", () => {
+    const EDITAL = "edital-1";
+
+    /** A troca bem-sucedida, no formato que o PostgREST devolve para RETURNS TABLE. */
+    const trocaOk = (removidos: number, inseridos: number) =>
+      setRpcResult("trocar_candidatos_do_edital", {
+        data: [{ removidos, inseridos }],
+        error: null,
+      });
+
+    it("⭐ sobe para o PREPARO, não para `candidatos` — a lista só é tocada pela RPC", async () => {
+      // É o coração da etapa 2. Se algum dia isto voltar a escrever direto em
+      // `candidatos`, a atomicidade da troca some: metade da lista trocada e metade não.
+      setTableResult("candidatos_importacao", { data: null, error: null });
+      trocaOk(3, 2);
       const { result } = renderHookWithProviders(() => useImportarCandidatos());
 
       await act(async () => {
-        await result.current.importar({ candidatos: lote(2) });
+        await result.current.importar({ editalId: EDITAL, candidatos: lote(2) });
       });
 
-      expect(builderQueChamou("candidatos", "upsert").upsert).toHaveBeenCalledWith(
-        expect.any(Array),
-        { onConflict: "edital_id,cpf,cargo_id,n_inscricao" },
+      expect(buildersQueChamaram("candidatos_importacao", "insert").length).toBeGreaterThan(0);
+      expect(buildersQueChamaram("candidatos", "upsert")).toHaveLength(0);
+      expect(buildersQueChamaram("candidatos", "delete")).toHaveLength(0);
+    });
+
+    it("⭐ chama a RPC UMA vez, com o total esperado — a guarda contra preparo incompleto", async () => {
+      // `p_total_esperado` é o que faz o banco recusar um preparo que chegou pela metade.
+      // Mandar o número errado aqui desarmaria a GUARDA 3 sem ninguém perceber.
+      setTableResult("candidatos_importacao", { data: null, error: null });
+      trocaOk(7, 3);
+      const { result } = renderHookWithProviders(() => useImportarCandidatos());
+
+      await act(async () => {
+        await result.current.importar({ editalId: EDITAL, candidatos: lote(3) });
+      });
+
+      const chamadas = supabaseMock.rpc.mock.calls.filter(
+        ([nome]) => nome === "trocar_candidatos_do_edital",
+      );
+      expect(chamadas).toHaveLength(1);
+      expect(chamadas[0][1]).toMatchObject({
+        p_edital_id: EDITAL,
+        p_total_esperado: 3,
+      });
+      expect((chamadas[0][1] as { p_importacao_id: string }).p_importacao_id).toEqual(
+        expect.any(String),
       );
     });
 
-    it("carimba created_by com o usuário da sessão", async () => {
-      setTableResult("candidatos", { data: null, error: null });
+    it("devolve os números vindos do BANCO, não contagem do cliente", async () => {
+      setTableResult("candidatos_importacao", { data: null, error: null });
+      trocaOk(7416, 7413);
+      const { result } = renderHookWithProviders(() => useImportarCandidatos());
+
+      let res!: ResultadoImportacao;
+      await act(async () => {
+        res = await result.current.importar({ editalId: EDITAL, candidatos: lote(2) });
+      });
+
+      expect(res.trocou).toBe(true);
+      expect(res.removidos).toBe(7416);
+      expect(res.inseridos).toBe(7413);
+      expect(res.motivoNaoTrocou).toBeNull();
+    });
+
+    it("o mesmo `importacao_id` vai em TODOS os blocos", async () => {
+      // Um uuid por bloco tornaria a troca impossível: a RPC consome um lote só.
+      setTableResult("candidatos_importacao", { data: null, error: null });
+      trocaOk(0, TAMANHO_BLOCO + 1);
       const { result } = renderHookWithProviders(() => useImportarCandidatos());
 
       await act(async () => {
-        await result.current.importar({ candidatos: lote(1) });
+        await result.current.importar({
+          editalId: EDITAL,
+          candidatos: lote(TAMANHO_BLOCO + 1),
+        });
       });
 
-      expect(supabaseMock.auth.getUser).toHaveBeenCalled();
-      const [linhas] = builderQueChamou("candidatos", "upsert").upsert.mock.calls[0] as [
-        Record<string, unknown>[],
-      ];
-      expect(linhas[0]).toMatchObject({ n_inscricao: "200000", created_by: "user-teste-1" });
+      const envios = buildersQueChamaram("candidatos_importacao", "insert");
+      expect(envios).toHaveLength(2);
+      const marcas = envios.flatMap((b) =>
+        (b.insert.mock.calls[0] as [{ importacao_id: string }[]])[0].map((l) => l.importacao_id),
+      );
+      expect(new Set(marcas).size).toBe(1);
     });
 
     it("⭐ divide em blocos em vez de mandar uma requisição por linha", async () => {
-      // 7.416 requisições contra 15. É a diferença entre 20 minutos e meio segundo —
-      // medido: 7.416 candidatos em 0,4 s no banco local.
-      setTableResult("candidatos", { data: null, error: null });
+      // 7.416 requisições contra 8. E o bloco NÃO cresce com o edital — é o que faz o
+      // fluxo escalar sem esbarrar no limite de payload.
+      setTableResult("candidatos_importacao", { data: null, error: null });
+      trocaOk(0, TAMANHO_BLOCO + 1);
       const { result } = renderHookWithProviders(() => useImportarCandidatos());
 
       await act(async () => {
-        await result.current.importar({ candidatos: lote(TAMANHO_BLOCO + 1) });
+        await result.current.importar({
+          editalId: EDITAL,
+          candidatos: lote(TAMANHO_BLOCO + 1),
+        });
       });
 
-      const envios = buildersQueChamaram("candidatos", "upsert");
+      const envios = buildersQueChamaram("candidatos_importacao", "insert");
       expect(envios).toHaveLength(2);
-      expect((envios[0].upsert.mock.calls[0] as [unknown[]])[0]).toHaveLength(TAMANHO_BLOCO);
-      expect((envios[1].upsert.mock.calls[0] as [unknown[]])[0]).toHaveLength(1);
+      expect((envios[0].insert.mock.calls[0] as [unknown[]])[0]).toHaveLength(TAMANHO_BLOCO);
+      expect((envios[1].insert.mock.calls[0] as [unknown[]])[0]).toHaveLength(1);
     });
 
-    it("relata quantos entraram em cada bloco", async () => {
-      setTableResult("candidatos", { data: null, error: null });
+    it("carimba created_by e o edital em cada linha do preparo", async () => {
+      setTableResult("candidatos_importacao", { data: null, error: null });
+      trocaOk(0, 1);
       const { result } = renderHookWithProviders(() => useImportarCandidatos());
 
-      let resultados: ResultadoBloco[] = [];
       await act(async () => {
-        resultados = await result.current.importar({ candidatos: lote(TAMANHO_BLOCO + 3) });
+        await result.current.importar({ editalId: EDITAL, candidatos: lote(1) });
       });
 
-      expect(resultados).toEqual([
-        { bloco: 1, gravados: TAMANHO_BLOCO, erro: null },
-        { bloco: 2, gravados: 3, erro: null },
-      ]);
+      expect(supabaseMock.auth.getUser).toHaveBeenCalled();
+      const [linhas] = builderQueChamou("candidatos_importacao", "insert").insert.mock.calls[0] as [
+        Record<string, unknown>[],
+      ];
+      expect(linhas[0]).toMatchObject({ edital_id: EDITAL, created_by: "user-teste-1" });
+      expect(linhas[0].linha).toMatchObject({ n_inscricao: "200000" });
     });
 
     it("informa o progresso a cada bloco", async () => {
-      setTableResult("candidatos", { data: null, error: null });
+      setTableResult("candidatos_importacao", { data: null, error: null });
+      trocaOk(0, TAMANHO_BLOCO + 1);
       const { result } = renderHookWithProviders(() => useImportarCandidatos());
       const onProgresso = vi.fn();
 
       await act(async () => {
-        await result.current.importar({ candidatos: lote(TAMANHO_BLOCO + 1), onProgresso });
+        await result.current.importar({
+          editalId: EDITAL,
+          candidatos: lote(TAMANHO_BLOCO + 1),
+          onProgresso,
+        });
       });
 
       expect(onProgresso).toHaveBeenNthCalledWith(1, {
@@ -483,20 +542,44 @@ describe("useCandidatos", () => {
       });
     });
 
-    it("para no bloco seguinte quando o usuário manda parar, sem desfazer o que entrou", async () => {
-      // "Parar" mantém o que já foi gravado — e isso é seguro justamente porque o
-      // upsert é idempotente: reimportar depois atualiza, não duplica.
-      setTableResult("candidatos", { data: null, error: null });
+    it("🔴 bloco que falha NÃO troca a lista — e o preparo é descartado", async () => {
+      // ⭐ O TESTE MAIS IMPORTANTE DESTA ETAPA. Sem este gate, a RPC seria chamada com o
+      // preparo pela metade: a lista inteira apagada e só parte reposta. A GUARDA 3 do
+      // banco recusaria, mas o usuário receberia um erro de banco em vez de explicação.
+      setTableResult("candidatos_importacao", {
+        data: null,
+        error: erroPostgrest("23505", "duplicate key value violates unique constraint"),
+      });
+      trocaOk(999, 999);
       const { result } = renderHookWithProviders(() => useImportarCandidatos());
 
-      // O contador tem de ser incrementado DE FORA da chamada: `deveParar` é avaliado
-      // no início de cada volta, então uma variável que só recebe valor quando
-      // `importar` resolve continuaria valendo `[]` durante o laço inteiro — e o teste
-      // passaria sem nunca ter mandado parar nada.
-      let blocosEnviados = 0;
-      let resultados: ResultadoBloco[] = [];
+      let res!: ResultadoImportacao;
       await act(async () => {
-        resultados = await result.current.importar({
+        res = await result.current.importar({ editalId: EDITAL, candidatos: lote(1) });
+      });
+
+      expect(res.trocou).toBe(false);
+      expect(res.removidos).toBe(0);
+      expect(res.motivoNaoTrocou).toMatch(/bloco 1/i);
+      expect(
+        supabaseMock.rpc.mock.calls.filter(([n]) => n === "trocar_candidatos_do_edital"),
+      ).toHaveLength(0);
+      // O preparo do lote é limpo, senão ele sobra e atrapalha a próxima tentativa.
+      expect(buildersQueChamaram("candidatos_importacao", "delete").length).toBeGreaterThan(0);
+    });
+
+    it("🔴 parar no meio NÃO troca a lista", async () => {
+      // ⚠️ INVERSÃO em relação ao fluxo antigo: antes, parar mantinha o que já tinha
+      // entrado. Agora não entrou nada — e é melhor assim, mas o relatório precisa dizer.
+      setTableResult("candidatos_importacao", { data: null, error: null });
+      trocaOk(999, 999);
+      const { result } = renderHookWithProviders(() => useImportarCandidatos());
+
+      let blocosEnviados = 0;
+      let res!: ResultadoImportacao;
+      await act(async () => {
+        res = await result.current.importar({
+          editalId: EDITAL,
           candidatos: lote(TAMANHO_BLOCO * 3),
           onProgresso: () => {
             blocosEnviados += 1;
@@ -505,46 +588,33 @@ describe("useCandidatos", () => {
         });
       });
 
-      expect(resultados).toHaveLength(1);
-      expect(buildersQueChamaram("candidatos", "upsert")).toHaveLength(1);
+      expect(res.trocou).toBe(false);
+      expect(res.motivoNaoTrocou).toMatch(/interrompida/i);
+      expect(
+        supabaseMock.rpc.mock.calls.filter(([n]) => n === "trocar_candidatos_do_edital"),
+      ).toHaveLength(0);
     });
 
-    it("traduz o erro do bloco para o que corrigir na planilha", async () => {
+    it("traduz a recusa da RPC para o que fazer, e diz que a lista foi mantida", async () => {
       // Regra 4 de invariantes.md: barreira que devolve erro cru transfere o problema.
-      setTableResult("candidatos", {
+      setTableResult("candidatos_importacao", { data: null, error: null });
+      setRpcResult("trocar_candidatos_do_edital", {
         data: null,
         error: erroPostgrest(
-          CODIGOS_POSTGREST.DUPLICADO,
-          'duplicate key value violates unique constraint "candidatos_cpf_cargo_id_inscricao_key"',
+          "IM003",
+          "O preparo tem 6000 linha(s), mas a importação declarou 7416.",
         ),
       });
       const { result } = renderHookWithProviders(() => useImportarCandidatos());
 
-      let resultados: ResultadoBloco[] = [];
+      let res!: ResultadoImportacao;
       await act(async () => {
-        resultados = await result.current.importar({ candidatos: lote(1) });
+        res = await result.current.importar({ editalId: EDITAL, candidatos: lote(1) });
       });
 
-      expect(resultados[0].gravados).toBe(0);
-      expect(resultados[0].erro).toMatch(/inscrições repetidas/i);
-    });
-
-    it("não interrompe a importação porque um bloco falhou", async () => {
-      // Cada bloco é uma transação sua. Abortar tudo no primeiro erro faria a pessoa
-      // perder milhares de linhas boas por causa de uma ruim.
-      setTableResult("candidatos", {
-        data: null,
-        error: erroPostgrest("23514", 'violates check constraint "chk_candidato_cpf_formato"'),
-      });
-      const { result } = renderHookWithProviders(() => useImportarCandidatos());
-
-      let resultados: ResultadoBloco[] = [];
-      await act(async () => {
-        resultados = await result.current.importar({ candidatos: lote(TAMANHO_BLOCO + 1) });
-      });
-
-      expect(resultados).toHaveLength(2);
-      expect(resultados.every((r) => r.erro !== null)).toBe(true);
+      expect(res.trocou).toBe(false);
+      expect(res.motivoNaoTrocou).toMatch(/MANTIDA|mantida/);
+      expect(res.motivoNaoTrocou).toMatch(/incompleto/i);
     });
   });
 

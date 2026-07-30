@@ -15,10 +15,15 @@ roadmap:
   titulo: "Troca total — importar passa a APAGAR a lista do edital e reinserir a planilha inteira"
   criado: "2026-07-30"
   status: >
-    🟢 ETAPA 1 CONCLUÍDA em 2026-07-30 (migration 20260730120000): a tabela de preparo e o
-    RPC transacional existem e estão verificados por docs/bateria-troca-total-candidatos.sql,
-    verde nos 10 casos. ⚠️ NADA MUDOU DE COMPORTAMENTO AINDA — ninguém chama o RPC; a
-    importação continua sendo o upsert. As etapas 2, 3 e 4 seguem pendentes.
+    🟢 ETAPAS 1, 2 e 3 CONCLUÍDAS em 2026-07-30 — as janelas A e B estão fechadas e a
+    TROCA TOTAL ESTÁ NO AR. A importação deixou de fazer upsert: ela sobe o lote para a
+    área de preparo, em blocos de 1.000, e chama trocar_candidatos_do_edital, que apaga a
+    lista do edital e reinsere numa transação só. Confirmação destrutiva com contraste de
+    números antes de qualquer envio. Verificado PELO POSTGREST: corrigir o CPF na origem
+    e reimportar deixa 2 linhas, não 3 — o defeito que abriu o tema. Suíte 978, tsc,
+    build e lint (110, = baseline) limpos; bateria SQL verde nos 10 casos.
+    ⏭️ Falta a ETAPA 4 (janela C): dropar o trigger RC001, que a troca total tornou
+    incapaz de disparar, e reescrever o controle positivo 1 de docs/bateria-cargos.sql.
 
   origem: >
     Levantado em 2026-07-29 como "corrigir CPF ou cargo na origem cria registro novo e
@@ -405,7 +410,20 @@ roadmap:
     - id: 2
       titulo: "O cliente sobe o preparo e dispara a troca"
       janela: "B"
-      status: "🟡 NÃO INICIADA"
+      status: |
+        ✅ CONCLUÍDA em 2026-07-30. `useImportarCandidatos` foi reescrito: gera UM
+        `importacao_id`, sobe os blocos para `candidatos_importacao` e chama a RPC.
+        `TAMANHO_BLOCO` passou de 500 para 1.000 (D4b) — a etapa em que isso era seguro,
+        porque o destino do bloco mudou de qualquer jeito.
+        `ResultadoBloco[]` deu lugar a `ResultadoImportacao`, que carrega o campo que
+        importa: `trocou`. O laço de envio saiu para `subirPreparo()` — a `mutationFn`
+        tinha estourado o limite de complexidade em 2 pontos, e separar "envia" de
+        "decide se troca" é o que impede um return de virar autorização para apagar.
+
+        ⚠️ LIMPEZA FEITA JUNTO, e é dívida que eu mesmo criei de manhã: quatro ramos de
+        `mensagemErroImportacao` (chk_candidato_cpf_formato, _cep_, _email_, _raca_valida)
+        viraram CÓDIGO MORTO quando a migration 20260730100000 dropou aquelas CHECKs.
+        Guarda que não pode disparar faz o próximo leitor acreditar que a regra existe."
       objetivo: >
         A importação passa a ser troca total de fato. É a etapa que muda comportamento.
       acoes:
@@ -447,7 +465,23 @@ roadmap:
     - id: 3
       titulo: "A confirmação destrutiva e o relatório"
       janela: "B"
-      status: "🟡 NÃO INICIADA"
+      status: |
+        ✅ CONCLUÍDA em 2026-07-30, no mesmo merge da etapa 2 (as duas são a janela B).
+
+        DECISÃO REGISTRADA (D7): a confirmação NÃO pede senha, ao contrário do "limpar
+        edital". Lá a destruição é um clique só partindo de uma listagem; aqui o usuário
+        já atravessou três passos deliberados e está olhando o que vai entrar. Senha no
+        fim de um assistente de cinco passos vira memória muscular, e memória muscular
+        não confere nada. O que protege é o CONTRASTE de números.
+
+        ACRESCENTADO ALÉM DO DESENHO: quando a planilha traz menos da METADE do que o
+        edital tem hoje, a confirmação ganha um aviso de arquivo possivelmente
+        incompleto. Não bloqueia (pode ser legítimo), mas muda o tom de "confirme" para
+        "confira antes". O limiar é arbitrário de propósito.
+
+        O relatório passou a abrir com "A lista NÃO foi alterada" quando a troca não
+        acontece — é a informação mais importante do fluxo novo, porque INVERTE o que
+        valia antes."
       objetivo: >
         O usuário não pode trocar a lista inteira sem ver o que está trocando.
       acoes:

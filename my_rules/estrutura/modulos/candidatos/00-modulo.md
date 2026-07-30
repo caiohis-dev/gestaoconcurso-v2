@@ -24,8 +24,8 @@ O **candidato** é o **inscrito** num edital: a pessoa que vai **fazer** a prova
 
 Duas consequências que precisam sobreviver a qualquer refatoração:
 
-1. **A tabela precisa de uma chave natural**, senão "sempre importado" vira "duplica a cada importação". É o índice `candidatos_cpf_cargo_id_inscricao_key`, e o app faz **UPSERT** sobre ele.
-2. **Reimportar é o fluxo normal, não a exceção.** Toda mensagem de erro da importação deve terminar em "corrija e importe de novo" — é sempre seguro, porque o upsert é idempotente (verificado: reimportar as 7.416 linhas mantém 7.416).
+1. 🔵 **Importar é TROCAR A LISTA INTEIRA do edital** desde 2026-07-30 — apaga todos os candidatos daquele edital e insere os da planilha, numa transação só. A planilha é a fonte de verdade, sempre completa, nunca de adição (premissa confirmada pelo usuário). ⚠️ Até 29/07 era **upsert** sobre a chave natural; a mudança está em [`../../../analises/roadmap-importacao-troca-total.yaml`](../../../analises/roadmap-importacao-troca-total.yaml).
+2. **Reimportar é o fluxo normal, não a exceção.** Toda mensagem de erro da importação deve terminar em "corrija e importe de novo" — é sempre seguro. ⚠️ **O motivo MUDOU:** antes era a idempotência do upsert; agora é que a troca só acontece inteira. Falha no meio deixa a lista **intacta**, não pela metade.
 
 ## Arquivos
 
@@ -39,7 +39,9 @@ Duas consequências que precisam sobreviver a qualquer refatoração:
 | `src/pages/CandidatosImportar.ui.test.tsx` (38 testes) | Bateria do assistente. Monta um `.xlsx` de verdade (com as duas colunas `NOME`) e o lê pelo caminho real da página; guarda o **impedimento quando o cargo não é pareado** |
 | `src/pages/Candidatos.tsx` (553 l.) | Listagem: escolha do edital por card, busca, **filtro por cargo**, paginação, ficha em diálogo, exclusão de um e "limpar edital" |
 | `src/pages/CandidatosImportar.tsx` (1.155 l.) | O assistente de **5 passos**: arquivo → pareamento → **cargos** → importação → relatório |
-| `src/hooks/useCandidatos.tsx` (323 l.) | React Query: `useCandidatos` (paginada, com o cargo embutido e o recorte por cargo), `useContagemCandidatosPorEdital`, `useImportarCandidatos` (upsert em blocos), `useExcluirCandidatos` |
+| `src/hooks/useCandidatos.tsx` | React Query: `useCandidatos` (paginada, com o cargo embutido e o recorte por cargo), `useContagemCandidatosPorEdital`, `useImportarCandidatos` (**preparo em blocos + a RPC de troca**), `useExcluirCandidatos` |
+| `supabase/migrations/20260730120000_*` e `20260730130000_*` | A tabela de preparo `candidatos_importacao` e a RPC `trocar_candidatos_do_edital`, com as três guardas |
+| `docs/bateria-troca-total-candidatos.sql` | A bateria da troca, 10 casos — inclui a prova de ATOMICIDADE, que roda fora de transação de propósito |
 | `src/hooks/useCargos.tsx` (258 l.) | React Query dos cargos: catálogo, apelidos, criação e gravação da memória — ver [`cargos.md`](./cargos.md) |
 | `supabase/migrations/20260727000000_create_candidatos.sql` | O schema da tabela — coluna gerada, índices, 6 CHECKs, RLS, trigger e a RPC de contagem. ⚠️ **Os comentários de coluna dela sobre CPF e e-mail descrevem o comportamento ANTIGO** (gravar `NULL`); a `20260730100000` é que manda |
 | `supabase/migrations/20260727200000_candidatos_chave_cpf_cargo_inscricao.sql` | A chave natural ganhou o CPF, com `NULLS NOT DISTINCT` |
@@ -357,7 +359,9 @@ O auto-pareamento em geral é mais rígido que o de `CadastroLote`: casa por **i
 
 ### ⚠️ Deduplicar dentro do arquivo é obrigatório, não zelo
 
-O Postgres recusa o lote inteiro com *"ON CONFLICT DO UPDATE command cannot affect row a second time"* se a mesma chave aparecer duas vezes no mesmo upsert. Sem `deduplicar()`, **um arquivo com uma linha duplicada não importa nada** — falha o bloco de 500 inteiro e a pessoa não tem como saber por quê. Mantém-se a **última** ocorrência (quem corrige uma linha costuma reescrevê-la abaixo).
+O Postgres recusa o lote se a mesma chave aparecer duas vezes. Sem `deduplicar()`, **um arquivo com uma linha duplicada não importa nada**, e a pessoa não tem como saber por quê. Mantém-se a **última** ocorrência (quem corrige uma linha costuma reescrevê-la abaixo).
+
+⚠️ **Com a troca total o custo de errar isto SUBIU:** o INSERT deixou de ser um bloco de 500 e passou a ser a lista INTEIRA, dentro da transação da RPC. Uma duplicata no arquivo agora derruba a troca toda — o que é seguro (nada é apagado), mas significa que `deduplicar()` deixou de ser conveniência e virou pré-requisito.
 
 ⚠️ **`chaveNatural()` tem de espelhar o índice, campo a campo** — é ela que a deduplicação usa. Hoje isso inclui o `cpf ?? ''`, que reproduz em JS o `NULLS NOT DISTINCT` do banco: sem ele, duas linhas sem CPF passariam pela deduplicação como distintas e o banco recusaria o bloco.
 

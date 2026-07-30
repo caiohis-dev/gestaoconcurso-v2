@@ -26,6 +26,7 @@ import userEvent from "@testing-library/user-event";
 import * as XLSX from "xlsx";
 import {
   setTableResult,
+  setRpcResult,
   resetSupabaseMock,
   erroPostgrest,
   buildersDaTabela,
@@ -216,13 +217,32 @@ async function associarTodos(user: ReturnType<typeof userEvent.setup>) {
   await associar(user, "DOCENTE I - HISTÓRIA", "DOCENTE I — HISTÓRIA");
 }
 
+/**
+ * Clica em "Importar" E confirma a substituição.
+ *
+ * ⚠️ Desde a TROCA TOTAL (2026-07-30) o botão NÃO importa: ele abre a confirmação
+ * destrutiva, porque importar apaga a lista atual do edital. Um teste que só clique no
+ * botão passa a não importar nada — e é exatamente o que se quer que aconteça se alguém
+ * remover a confirmação sem querer.
+ */
+async function importarEConfirmar(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole("button", { name: /Importar 3 candidato\(s\)/i }));
+  await user.click(await screen.findByRole("button", { name: /Substituir os inscritos/i }));
+}
+
 describe("CandidatosImportar (interação)", () => {
   beforeEach(() => {
     resetSupabaseMock();
     navigateMock.mockClear();
     setTableResult("editais", { data: [EDITAL], error: null });
     setTableResult("candidatos", { data: null, error: null });
+    setTableResult("candidatos_importacao", { data: null, error: null });
     setTableResult("cargos", { data: CATALOGO, error: null });
+    setRpcResult("contar_candidatos_por_edital", { data: [], error: null });
+    setRpcResult("trocar_candidatos_do_edital", {
+      data: [{ removidos: 0, inseridos: 3 }],
+      error: null,
+    });
   });
 
   describe("passo 1 — edital e arquivo", () => {
@@ -694,8 +714,8 @@ describe("CandidatosImportar (interação)", () => {
       const user = await abrir();
       await irParaCargos(user);
       await associarTodos(user);
-      await user.click(await screen.findByRole("button", { name: /Importar 3 candidato\(s\)/i }));
-      await screen.findByText("Importação concluída");
+      await importarEConfirmar(user);
+      await screen.findByText("Lista do edital substituída");
 
       const upsert = buildersDaTabela("cargo_apelidos").find(
         (b) => b.upsert.mock.calls.length > 0,
@@ -719,11 +739,16 @@ describe("CandidatosImportar (interação)", () => {
       const user = await abrir();
       await irParaCargos(user);
       await associarTodos(user);
-      await user.click(await screen.findByRole("button", { name: /Importar 3 candidato\(s\)/i }));
-      await screen.findByText("Importação concluída");
+      await importarEConfirmar(user);
+      await screen.findByText("Lista do edital substituída");
 
-      const upsert = buildersDaTabela("candidatos").find((b) => b.upsert.mock.calls.length > 0);
-      const linhas = upsert?.upsert.mock.calls[0][0];
+      // ⚠️ O lote vai para o PREPARO, e o candidato viaja dentro de `linha` (jsonb).
+      const envio = buildersDaTabela("candidatos_importacao").find(
+        (b) => b.insert.mock.calls.length > 0,
+      );
+      const linhas = (envio?.insert.mock.calls[0][0] as { linha: Record<string, unknown> }[]).map(
+        (l) => l.linha,
+      );
       expect(linhas).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ cargo: "DOCENTE II", cargo_id: "cargo-docente-ii" }),
@@ -751,8 +776,8 @@ describe("CandidatosImportar (interação)", () => {
       await waitFor(() =>
         expect(screen.queryByText(/Resolva .* cargo\(s\)/i)).not.toBeInTheDocument(),
       );
-      await user.click(await screen.findByRole("button", { name: /Importar 3 candidato\(s\)/i }));
-      await screen.findByText("Importação concluída");
+      await importarEConfirmar(user);
+      await screen.findByText("Lista do edital substituída");
 
       // "DOCENTE II" veio do casamento exato com o catálogo (definido agora);
       // "DOCENTE I - HISTÓRIA" veio do apelido guardado (lembrado).
@@ -772,9 +797,9 @@ describe("CandidatosImportar (interação)", () => {
       const user = await abrir();
       await irParaCargos(user);
       await associarTodos(user);
-      await user.click(await screen.findByRole("button", { name: /Importar 3 candidato\(s\)/i }));
+      await importarEConfirmar(user);
 
-      expect(await screen.findByText("Importação concluída")).toBeInTheDocument();
+      expect(await screen.findByText("Lista do edital substituída")).toBeInTheDocument();
     });
   });
 
@@ -782,40 +807,82 @@ describe("CandidatosImportar (interação)", () => {
     async function importar(user: ReturnType<typeof userEvent.setup>) {
       await irParaCargos(user);
       await associarTodos(user);
-      await user.click(await screen.findByRole("button", { name: /Importar 3 candidato\(s\)/i }));
-      await screen.findByText("Importação concluída");
+      await importarEConfirmar(user);
+      await screen.findByText("Lista do edital substituída");
     }
 
-    it("grava e relata quantos entraram", async () => {
-      const user = await abrir();
-      await importar(user);
-
-      expect(screen.getByText("Gravados").previousElementSibling).toHaveTextContent("3");
-    });
-
-    it("manda tudo num bloco só, com o onConflict da chave natural", async () => {
-      const user = await abrir();
-      await importar(user);
-
-      const envio = buildersDaTabela("candidatos").find((b) => b.upsert.mock.calls.length > 0);
-      expect(envio?.upsert).toHaveBeenCalledWith(expect.any(Array), {
-        onConflict: "edital_id,cpf,cargo_id,n_inscricao",
+    it("relata os números vindos do BANCO, não contagem do cliente", async () => {
+      setRpcResult("trocar_candidatos_do_edital", {
+        data: [{ removidos: 12, inseridos: 3 }],
+        error: null,
       });
+      const user = await abrir();
+      await importar(user);
+
+      expect(screen.getByText("Inseridos").previousElementSibling).toHaveTextContent("3");
+      expect(screen.getByText("Removidos").previousElementSibling).toHaveTextContent("12");
     });
 
-    it("traduz a falha do bloco e diz que dá para reimportar", async () => {
-      // Reimportar é sempre seguro porque o upsert é idempotente — a mensagem precisa
-      // dizer isso, senão a pessoa fica sem saber se vai duplicar tudo ao tentar de novo.
-      setTableResult("candidatos", {
+    it("⭐ sobe para o preparo e chama a troca com o total esperado", async () => {
+      // A lista do edital NÃO é escrita pelo cliente: quem a troca é a RPC, numa
+      // transação. Se algum dia voltar a haver escrita direta em `candidatos` aqui, a
+      // atomicidade da troca some.
+      const user = await abrir();
+      await importar(user);
+
+      const envio = buildersDaTabela("candidatos_importacao").find(
+        (b) => b.insert.mock.calls.length > 0,
+      );
+      expect(envio?.insert).toHaveBeenCalled();
+      expect(buildersDaTabela("candidatos").filter((b) => b.upsert.mock.calls.length > 0)).toEqual(
+        [],
+      );
+    });
+
+    it("🔴 bloco que falha: a tela diz que NINGUÉM foi removido", async () => {
+      // ⚠️ A INVERSÃO da troca total. Antes, um bloco falho deixava a importação pela
+      // metade; agora a lista fica INTACTA. Sem dizer isso, o usuário assume o pior e
+      // pode ir "consertar" à mão uma lista que ninguém tocou.
+      setTableResult("candidatos_importacao", {
         data: null,
-        error: erroPostgrest("23514", 'violates check constraint "chk_candidato_cpf_formato"'),
+        error: erroPostgrest("23505", "duplicate key value violates unique constraint"),
       });
       const user = await abrir();
-      await importar(user);
+      await irParaCargos(user);
+      await associarTodos(user);
+      await importarEConfirmar(user);
 
-      expect(screen.getByText(/1 bloco\(s\) falharam/i)).toBeInTheDocument();
-      expect(screen.getByText(/CPF fora do formato de 11 dígitos/i)).toBeInTheDocument();
-      expect(screen.getByText(/o que já entrou será atualizado, não/i)).toBeInTheDocument();
+      expect(await screen.findByText("A lista NÃO foi alterada")).toBeInTheDocument();
+      expect(
+        screen.getByText(/A troca não foi executada — ninguém foi removido/i),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/continua exatamente como estava/i)).toBeInTheDocument();
+    });
+
+    it("⭐ a confirmação mostra o CONTRASTE, e cancelar não importa nada", async () => {
+      // É a proteção contra arquivo truncado: quem esperava trocar 7.416 por 7.416 e lê
+      // "por 3" para na hora. E o diálogo tem de ser cancelável de verdade.
+      setRpcResult("contar_candidatos_por_edital", {
+        data: [{ edital_id: EDITAL.id, total: 7416 }],
+        error: null,
+      });
+      const user = await abrir();
+      await irParaCargos(user);
+      await associarTodos(user);
+      await user.click(await screen.findByRole("button", { name: /Importar 3 candidato\(s\)/i }));
+
+      expect(await screen.findByText(/no edital hoje/i)).toBeInTheDocument();
+      // O número aparece duas vezes de propósito: no contraste e na frase que diz o que
+      // vai acontecer com ele. `getAllByText` em vez de `getByText` por isso.
+      expect(screen.getAllByText("7.416").length).toBeGreaterThan(0);
+      expect(screen.getByText(/nesta planilha/i)).toBeInTheDocument();
+      // A planilha traz menos da metade: o aviso de arquivo possivelmente incompleto.
+      expect(screen.getByText(/menos da metade dos inscritos/i)).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /Cancelar/i }));
+      expect(
+        buildersDaTabela("candidatos_importacao").filter((b) => b.insert.mock.calls.length > 0),
+      ).toEqual([]);
     });
 
     it("leva de volta à listagem no fim", async () => {
