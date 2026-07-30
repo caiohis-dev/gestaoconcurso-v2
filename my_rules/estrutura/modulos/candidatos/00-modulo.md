@@ -41,11 +41,13 @@ Duas consequências que precisam sobreviver a qualquer refatoração:
 | `src/pages/CandidatosImportar.tsx` (1.155 l.) | O assistente de **5 passos**: arquivo → pareamento → **cargos** → importação → relatório |
 | `src/hooks/useCandidatos.tsx` (323 l.) | React Query: `useCandidatos` (paginada, com o cargo embutido e o recorte por cargo), `useContagemCandidatosPorEdital`, `useImportarCandidatos` (upsert em blocos), `useExcluirCandidatos` |
 | `src/hooks/useCargos.tsx` (258 l.) | React Query dos cargos: catálogo, apelidos, criação e gravação da memória — ver [`cargos.md`](./cargos.md) |
-| `supabase/migrations/20260727000000_create_candidatos.sql` | O schema da tabela — coluna gerada, índices, 6 CHECKs, RLS, trigger e a RPC de contagem |
+| `supabase/migrations/20260727000000_create_candidatos.sql` | O schema da tabela — coluna gerada, índices, 6 CHECKs, RLS, trigger e a RPC de contagem. ⚠️ **Os comentários de coluna dela sobre CPF e e-mail descrevem o comportamento ANTIGO** (gravar `NULL`); a `20260730100000` é que manda |
 | `supabase/migrations/20260727200000_candidatos_chave_cpf_cargo_inscricao.sql` | A chave natural ganhou o CPF, com `NULLS NOT DISTINCT` |
 | `supabase/migrations/20260728100000_candidatos_chave_cargo_id.sql` | A chave trocou o TEXTO do cargo pela REFERÊNCIA; `cargo_chave` dropada |
 | `supabase/migrations/20260728110000_candidatos_recusa_reapontar_cargo.sql` | Trigger que recusa reapontar cargo de linha já importada (D11) |
 | `supabase/migrations/20260727210000_create_cargos.sql` | `cargos` e `cargo_apelidos` + `candidatos.cargo_id` — ver [`cargos.md`](./cargos.md) |
+| `supabase/migrations/20260730100000_candidatos_dado_invalido_entra_cru.sql` | 🔵 As 4 CHECKs de formato saíram e `raca`/`data_nascimento` viraram `text`: **dado inválido entra como veio** |
+| `supabase/migrations/20260730110000_candidatos_hora_nascimento_text.sql` | `hora_nascimento` virou `text` pela mesma regra — era o único campo secundário que anulava **sem nem avisar** |
 
 Não há Edge Function neste módulo. A única RPC é `contar_candidatos_por_edital`, e ela é **SECURITY INVOKER** de propósito.
 
@@ -65,14 +67,15 @@ candidatos
   cargo                 text                     -- texto CRU da planilha; PROCEDÊNCIA (D2), fora da chave
   cargo_id              uuid → cargos(id) ON DELETE RESTRICT   -- ⭐ COMPÕE A CHAVE NATURAL
   nome                  text NOT NULL
-  cpf                   text        -- 11 dígitos ou NULL; compõe a chave desde 27/07
+  cpf                   text        -- SEM CHECK desde 30/07: valor impossível entra CRU; compõe a chave desde 27/07
   identidade_numero / identidade_orgao / identidade_uf(2) / identidade_emissao(date)
   email / telefone / celular         -- os três TEXT
   logradouro / numero / complemento / bairro / cidade / uf(2) / cep
-  data_nascimento       date
-  hora_nascimento       time         -- desempate legal em concurso
+  data_nascimento       text         -- ⚠️ TEXT desde 30/07 (era date): data irreconhecível entra CRUA
+  hora_nascimento       text         -- ⚠️ TEXT desde 30/07 (era time): hora irreconhecível entra CRUA
+                                     --    e é critério LEGAL de desempate — ver o aviso na migration
   sexo                  text         -- '0'/'1' na origem, guardado cru
-  raca                  smallint     -- códigos de RACA_MAP
+  raca                  text         -- ⚠️ TEXT desde 30/07 (era smallint): código desconhecido entra CRU
   portador_deficiencia  boolean NOT NULL DEFAULT false
   confirmado            boolean NOT NULL DEFAULT false
   concurso_id_origem    text         -- rastro da procedência ('242')
@@ -132,7 +135,9 @@ A distinção é a coisa mais fácil de errar aqui, e as duas propostas se parec
 
 O que somar o CPF **custa**, e está aceito: o CPF entra na identidade, então corrigir um CPF errado e reimportar cria um segundo registro. É o mesmo defeito que o texto do cargo já tinha, agora valendo para três campos. E abre um afrouxamento: duas linhas com a mesma inscrição e o mesmo cargo passam a coexistir se tiverem CPF diferente — não ocorre no arquivo medido, mas passa a ser possível.
 
-⚠️ **Os 2 CPFs impossíveis viram `NULL`, e no padrão do Postgres `NULL` não colide com `NULL`** — essas linhas se inseririam de novo a cada reimportação. É por isso que o índice é `NULLS NOT DISTINCT`, e não um índice comum. Ver a migration `20260727200000`, e o espelho disso em `chaveNatural()`.
+⚠️ **No padrão do Postgres `NULL` não colide com `NULL`** — linhas com CPF nulo se inseririam de novo a cada reimportação. É por isso que o índice é `NULLS NOT DISTINCT`, e não um índice comum. Ver a migration `20260727200000`, e o espelho disso em `chaveNatural()`.
+
+> 🔵 **ATUALIZADO EM 2026-07-30 — quem cai nesse caso mudou.** Este parágrafo dizia "os 2 CPFs impossíveis viram `NULL`". Não viram mais: desde a migration `20260730100000` eles entram **crus**, e o `NULLS NOT DISTINCT` passou a guardar apenas a célula **VAZIA**. O motivo do índice continua de pé; o exemplo é que trocou. **Vazio ≠ impossível.**
 
 #### O problema que originou a revisão, e que continua valendo
 
@@ -189,7 +194,9 @@ Os **382** `ID` que aparecem em mais de uma linha têm **todos** o mesmo CPF e *
 
 ⚠️ **A normalização do texto do cargo continua existindo, mas em outros lugares** — `cargo_apelidos.texto_chave` (coluna gerada), `chaveDeCargo()` em `candidatos-import.ts` e o trigger `candidatos_recusa_reapontar_cargo`, que a calcula inline. **Os três têm de produzir o mesmo resultado**: se divergirem, o pré-preenchimento do passo Cargos para de casar e a guarda do reapontamento afrouxa em silêncio.
 
-⚠️ **E por que o CPF NÃO ganhou coluna gerada.** A assimetria era deliberada: o cargo precisava de coluna porque precisava ser *normalizado*. O CPF não precisa de normalização nenhuma — `chk_candidato_cpf_formato` já o obriga a ser exatamente 11 dígitos ou `NULL` —, então uma `cpf_chave` seria só uma cópia da coluna ocupando espaço. O único problema dele era o `NULL`, e quem resolve isso é o `NULLS NOT DISTINCT` do índice.
+⚠️ **E por que o CPF NÃO ganhou coluna gerada.** A assimetria era deliberada: o cargo precisava de coluna porque precisava ser *normalizado*. O CPF não precisava de normalização nenhuma — `chk_candidato_cpf_formato` o obrigava a ser exatamente 11 dígitos ou `NULL` —, então uma `cpf_chave` seria só uma cópia da coluna ocupando espaço. O único problema dele era o `NULL`, e quem resolve isso é o `NULLS NOT DISTINCT` do índice.
+
+> ⚠️ **A CHECK citada acima NÃO EXISTE MAIS** (removida em 30/07). A conclusão — não criar `cpf_chave` — segue valendo, mas por outro motivo: a normalização passou a morar no `converterLinha`, que grava só os dígitos no caminho feliz e o texto cru quando não cabe. **Uma coluna gerada aqui seria pior que inútil**, porque normalizar um CPF impossível é justamente o que a decisão de 30/07 proíbe.
 
 **As QUATRO coisas que precisam concordar entre si** (eram três até 28/07; o dedup entrou), sob pena de a importação falhar o bloco de 500 inteiro com *"ON CONFLICT DO UPDATE command cannot affect row a second time"*:
 
@@ -207,10 +214,12 @@ Todas foram **contadas contra as 7.416 linhas antes de existir** (regra 5 de [`.
 | CHECK | O que barra |
 |---|---|
 | `chk_candidato_n_inscricao_preenchido` / `chk_candidato_nome_preenchido` | branco no que identifica |
-| `chk_candidato_cpf_formato` | CPF que não seja 11 dígitos (ou NULL) |
-| `chk_candidato_cep_formato` | CEP que não seja 8 dígitos (ou NULL) |
-| `chk_candidato_email_formato` | e-mail sem `@`/domínio (formato mínimo, frouxo de propósito) |
-| `chk_candidato_raca_valida` | código fora de `RACA_MAP` (1, 2, 4, 6, 8, 9) |
+| ~~`chk_candidato_cpf_formato`~~ | ❌ **REMOVIDA em 30/07** — CPF que não fosse 11 dígitos |
+| ~~`chk_candidato_cep_formato`~~ | ❌ **REMOVIDA em 30/07** — CEP que não fosse 8 dígitos |
+| ~~`chk_candidato_email_formato`~~ | ❌ **REMOVIDA em 30/07** — e-mail sem `@`/domínio |
+| ~~`chk_candidato_raca_valida`~~ | ❌ **REMOVIDA em 30/07** — código fora de `RACA_MAP` |
+
+🔴 **Sobraram DUAS, e a diferença importa.** Desde a migration `20260730100000` (decisão do usuário: dado inválido entra cru), `candidatos` **não tem opinião sobre o formato** de CPF, e-mail, CEP e raça — para nenhum caminho de escrita, não só para o importador. Quem precisar de CPF válido **valida na leitura**; não dá mais para presumir, como dava até 29/07, que o que está na coluna passou por uma CHECK. As duas que restaram são as de **identidade**, e essas seguem barrando.
 
 ⚠️ **O que foi deixado de fora, e é decisão, não esquecimento:**
 
@@ -270,16 +279,58 @@ O passo **Cargos** entrou em 2026-07-27 e tem doc própria: [`cargos.md`](./carg
 
 ⚠️ **Importação e Relatório eram 3 e 4; hoje são 4 e 5.** A renumeração vive em **três** lugares — a trilha, os blocos `{passo === n}` e as transições. Errar um deixa um passo inalcançável, sem erro nenhum na tela; há teste cobrindo os cinco.
 
-### ⭐ Erro vs. aviso: o que descarta a linha e o que só limpa um campo
+### ⭐ Erro vs. aviso: o que descarta a linha e o que entra com o dado cru
 
 **A identidade do candidato é o NÚMERO DE INSCRIÇÃO** — mais o CPF e o cargo —, não o CPF sozinho (ao contrário do colaborador, que loga com o CPF). Daí a regra:
 
 - falta o que **identifica** (inscrição, nome, **cargo**) → **ERRO**, a linha não entra;
-- campo secundário impossível (CPF de 10 dígitos, e-mail sem `@`, data irreconhecível) → **AVISO**, a linha entra com aquele campo em `NULL` e o relatório diz qual foi.
+- campo secundário impossível (CPF de 10 dígitos, e-mail sem `@`, data irreconhecível) → **AVISO**, a linha entra **com o valor como a origem mandou** e o relatório diz qual foi.
 
-⚠️ **O cargo entrou na primeira lista em 2026-07-27** (decisão D9 do roadmap de cargos): ele compõe a identidade, e uma linha sem ele não tem o que associar no passo "Cargos". Medido: **0 das 7.416 linhas** do arquivo real caem aqui, então a regra é preventiva. **O CPF continua na segunda lista** — CPF impossível vira `NULL` e o inscrito entra, porque perder o inscrito é pior.
+⚠️ **O cargo entrou na primeira lista em 2026-07-27** (decisão D9 do roadmap de cargos): ele compõe a identidade, e uma linha sem ele não tem o que associar no passo "Cargos". Medido: **0 das 7.416 linhas** do arquivo real caem aqui, então a regra é preventiva. **O CPF continua na segunda lista** — CPF impossível entra cru e o inscrito entra, porque perder o inscrito é pior.
 
 **Por quê:** descartar o inscrito inteiro por causa do e-mail dele deixaria a **lista de inscritos incompleta**, que é o único jeito de esta tabela estar de fato errada. No arquivo real isso salva 29 inscritos: 2 com CPF impossível (`' 8631309761'` com 10 dígitos, `'1O778817709'` com a letra O no lugar do zero) e 27 com e-mail impossível (`'andi.gmail'`, `'marcia2manoel@ gmail.com'`, dois endereços no mesmo campo).
+
+#### 🔵 O aviso deixou de ANULAR o campo em 2026-07-30 — decisão do usuário
+
+Até 29/07 o campo impossível virava `NULL`: o inscrito entrava, mas o que a origem afirmou sumia, e ninguém depois conseguia saber o que a pessoa tinha digitado para corrigir na fonte. **Agora o valor é gravado como veio** (migration `20260730100000`, que soltou as quatro CHECKs de formato e trocou `raca` e `data_nascimento` para `text`). O relatório continua igual em forma e lugar; o que mudou é que ele passou a apontar um dado que ainda existe.
+
+⚠️ **O texto do aviso mudou de "gravado sem CPF" para "gravado como veio"** — a frase antiga descreveria o oposto do que acontece.
+
+🔴 **A mudança CORRIGIU um defeito que ninguém tinha visto, e é a parte que vale lembrar.** Os 2 CPFs impossíveis do arquivo real são **valores distintos**. Com os dois virando `NULL`, a chave natural ficava idêntica e o `deduplicar()` **fundia os dois inscritos num só** — um deles sumia da lista, exatamente o erro que a regra de aviso existe para evitar. Havia um teste **afirmando essa fusão como correta**. Gravar o cru desfaz o empate: verificado contra o PostgREST em 30/07, dois CPFs impossíveis diferentes agora são duas linhas.
+
+⚠️ **Uma regressão silenciosa saiu junto:** a guarda antiga do CPF lia `soDigitos`, que devolve `null` quando não sobra dígito nenhum — então um campo como `'abc'` era anulado **sem aviso**. Perda calada dentro da regra criada para não perder calado. Hoje o aviso lê o valor bruto.
+
+⚠️ **O `NULLS NOT DISTINCT` do índice NÃO perdeu a razão de existir, só mudou de dono:** ele agora guarda a célula **vazia** (que continua virando `NULL`), não mais a impossível. **Vazio ≠ impossível** — um não tem dado, o outro tem dado errado.
+
+#### 🔵 Três regras novas em 2026-07-30, todas medidas antes de existir
+
+Segunda leva do mesmo tema, no mesmo dia. **Todas são AVISO** — nenhuma descarta linha, pelo mesmo motivo de sempre.
+
+| Regra | Atinge | O que ela pega de verdade |
+|---|---|---|
+| **Nome com caractere estranho** | **10** de 7.416 | `SALVAD0` (zero por O) · `SANT¿ ANA` (mojibake, o mesmo do cargo) · `VITO&#769;RIA` (entidade HTML) · `D\'AVILA` (**escape de apóstrofo vazado da exportação**, 3 casos) · `LIMA3131` · um ID concatenado · `}` solto |
+| **Nome de uma palavra só** | **10** de 7.416 | `TESTEPAULO` ×3 e um `A` — **registro de teste que vazou para a lista de inscritos**. Também pega nome legítimo só com prenome, daí ser aviso |
+| **Nome com palavra de mock** | **3** de 7.416 | `TESTEPAULO`. Lista em `PALAVRAS_DE_MOCK` (`teste`, `test`), busca por **substring**, case-insensitive |
+| **Hora de nascimento irreconhecível** | **2** de 3.089 preenchidas | `'88888888'` e `'Não sei'` |
+
+⚠️ **O que conta como "caractere estranho", e por que este parágrafo é o mais importante dos três.** Aceitos: **letra (com acento), espaço, apóstrofo, hífen e PONTO**. O regex é `/[\p{L}\s'.-]/u` em `CARACTERE_ACEITO_NO_NOME`.
+
+- **`\p{L}` cobre letra acentuada de propósito.** **1.527 dos 7.416 nomes têm acento** — acusá-los faria a regra apontar um quinto da lista e ninguém leria o relatório. Há **controle negativo** guardando isto.
+- **O ponto ficou de fora por decisão do usuário.** `MÁRCIA A. MALAQUIAS` é nome bem escrito; acusar os 6 nomes com ponto seria gastar atenção em falso positivo. Foi o que levou a regra de 16 para 10.
+
+⚠️ **A regra de mock busca por SUBSTRING, e isso é decisão, não descuido.** `TESTEPAULO` é uma palavra só — busca por palavra inteira não o pegaria. **O preço é falso positivo em português:** `TESTA` é sobrenome legítimo de origem italiana e seria acusado (medido: **0 no arquivo real**, então o custo hoje é zero). Que o risco é real, prova o campo **e-mail**: `soumatestemunhadodeusvivente@gmail.com` traz *"testemunha"*, que contém `test`. 🔴 **Quem acrescentar palavra a `PALAVRAS_DE_MOCK` mede antes** — em português, palavra curta vira substring de palavra comum com facilidade.
+
+⚠️ **A ordem de `PALAVRAS_DE_MOCK` é significativa** (`['teste', 'test']`, da mais específica para a mais genérica): o `find` para na primeira, e é ela que aparece na mensagem. Invertida, `TESTEPAULO` seria acusado de conter *"test"* quando o que ele contém é *"teste"*. Há teste guardando isso.
+
+📌 **Hoje esta regra não acrescenta nenhuma linha ao relatório** — as 3 `TESTEPAULO` já caem na regra de uma palavra só. Ela existe pelo caso que as outras duas **não** pegam: `TESTE DA SILVA` tem três palavras e só letras, e passaria calado. É o caso coberto pelo teste marcado ⭐.
+
+🔴 **A hora era o buraco maior, e não estava em lista nenhuma.** Ela é o **único campo secundário que anulava sem sequer avisar** — não havia `avisos.push` para ela. Os 2 valores sumiam e nem o relatório denunciava. Segunda vez que o padrão "perda silenciosa" aparece no mesmo dia (a primeira foi o CPF sem dígito nenhum).
+
+⚠️ **Hora de nascimento é critério LEGAL de desempate em concurso.** Com a coluna em `text`, quem for calcular desempate por SQL precisa converter — e decidir o que fazer com o valor sujo. Está anotado na migration `20260730110000`.
+
+⚠️ **Armadilha de implementação, já paga:** o regex de caractere aceito **não pode ter a flag `g`**. Um regex global de módulo usado com `.test()` guarda `lastIndex` entre chamadas e alterna o resultado na mesma entrada — aqui produziria aviso em dia sim, dia não.
+
+> **Efeito colateral na suíte:** 7 testes usavam `"F"` ou `"FULANO"` como nome de fixture e passaram a receber o aviso de uma palavra só. Trocados por `"FULANO SOUZA"`. **Eram fixtures, não regressão** — mas é o sinal de que a regra pega o que promete.
 
 ### ⚠️ A planilha é lida em ARRAY, nunca em objeto
 

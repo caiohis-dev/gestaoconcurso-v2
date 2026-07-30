@@ -97,7 +97,7 @@ telas de Candidatos foram as primeiras. O que se aprendeu ali:
   no caso de candidatos, as duas colunas de mesmo nome que são a origem da armadilha.
   Redefina `arrayBuffer` no `File` se o jsdom não o trouxer.
 
-## ⚠️ As sete armadilhas que já custaram tempo aqui
+## ⚠️ As oito armadilhas que já custaram tempo aqui
 
 **1. A sequência é consumida pela listagem antes de chegar à mutation.** A query de listagem também chama `from(<tabela>)`, então ela come a primeira entrada e o hook recebe um objeto onde espera array (`coordenadores.map is not a function`). Espere a carga inicial e **só então** instale a sequência — `setTableResultSequence` zera o contador. E a **última entrada precisa ser um array**, porque o refetch disparado pela invalidação cai nela.
 
@@ -129,9 +129,17 @@ async function carregarEDepois(sequencia) {
 
 > Corolário para quem for medir "não aconteceu nada": só é seguro afirmar isso quando a página não tem query pendente que possa mudar a decisão depois. Caso contrário, o teste está medindo o meio do caminho.
 
+**8. 🔴 Teste verde pode estar GUARDANDO um defeito — e o comentário dele te convence de que é regra.** Apareceu em 2026-07-30. O teste dizia *"duas linhas com CPF impossível não viram duas: o CPF vira NULL e a chave é a mesma"*, com um comentário explicando por que aquilo era necessário. Estava verde desde 27/07. Só que os dois CPFs do arquivo real são **valores diferentes**: ao virarem `NULL`, a chave natural ficava idêntica e o `deduplicar()` **fundia dois inscritos num só** — um sumia da lista, que é o único erro grave possível naquela tabela. O teste não estava errado sobre o comportamento; estava errado sobre o comportamento ser **desejável**.
+
+> **Como detectar:** quando um teste afirma que duas coisas **colapsam**, pergunte se elas eram a mesma coisa. Fusão silenciosa é o oposto de duplicação e ninguém a procura, porque o sintoma é "tem menos linha do que eu esperava" — e quem importa 7.416 inscritos não conta.
+>
+> **A regra que fica:** ao mudar uma regra de negócio, os testes que caem **não são obstáculo, são a pergunta**. Cada um deles afirmava algo; antes de reescrever, decida se aquilo era verdade ou só era o que o código fazia.
+
 ## O que está coberto (2026-07-27)
 
-**965 testes em 51 arquivos** (medido em 2026-07-29, ao fim do tema Cargos). O módulo Candidatos sozinho responde por **197** deles.
+**974 testes em 51 arquivos** (medido em 2026-07-30, ao fim do tema "dado inválido entra cru"; eram 965 em 29/07). O módulo Candidatos sozinho responde por **206** deles.
+
+⚠️ **Os 9 testes novos de 30/07 quase todos AFIRMAM O CONTRÁRIO do que a suíte afirmava na véspera** — a decisão inverteu a regra (o campo impossível deixou de virar `NULL` e passou a entrar cru). **Um deles guardava um defeito**: "duas linhas com CPF impossível não viram duas" descrevia o `deduplicar()` fundindo dois inscritos distintos num só. É o caso exemplar da armadilha 8 abaixo.
 
 ✅ **Os três arquivos que estavam marcados como "nunca executados" rodaram.** `useCandidatos.test.tsx` (24), `Candidatos.ui.test.tsx` (23) e `CandidatosImportar.ui.test.tsx` (18) — os primeiros testes de comportamento de página do projeto.
 

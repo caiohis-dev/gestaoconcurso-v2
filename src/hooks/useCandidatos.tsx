@@ -49,7 +49,8 @@ export interface Candidato {
   data_nascimento: string | null;
   hora_nascimento: string | null;
   sexo: string | null;
-  raca: number | null;
+  /** TEXT desde 30/07: o código impossível entra cru, então não presuma número. */
+  raca: string | null;
   portador_deficiencia: boolean;
   confirmado: boolean;
   concurso_id_origem: string | null;

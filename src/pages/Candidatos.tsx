@@ -70,6 +70,19 @@ function cpfFormatado(cpf: string | null): string {
 }
 
 /**
+ * O rótulo da raça, ou o texto cru quando o código não é conhecido.
+ *
+ * `RACA_MAP` é indexado por número, mas a coluna virou TEXT em 2026-07-30 e um valor
+ * impossível chega aqui inteiro. Mostrar o cru é o ponto: a ficha não pode esconder
+ * justamente o dado que o relatório de importação mandou corrigir na origem.
+ */
+function racaLabel(raca: string | null): string {
+  if (raca === null) return "—";
+  const codigo = Number(raca);
+  return Number.isInteger(codigo) ? (RACA_MAP[codigo] ?? raca) : raca;
+}
+
+/**
  * O traço é o vazio da ficha: dos 25 campos, 20 são opcionais na planilha.
  *
  * Existe como função — e não como um `?? "—"` repetido 20 vezes — porque um campo vazio é
@@ -105,7 +118,7 @@ function camposDaFicha(c: Candidato): [string, string][] {
     ["Nascimento", dataBr(c.data_nascimento)],
     ["Hora de nascimento", ou(c.hora_nascimento)],
     ["Sexo", ou(c.sexo)],
-    ["Raça", c.raca != null ? String(RACA_MAP[c.raca] ?? c.raca) : "—"],
+    ["Raça", racaLabel(c.raca)],
     ["Telefone", ou(c.telefone)],
     ["Celular", ou(c.celular)],
     ["Identidade", ou(c.identidade_numero)],

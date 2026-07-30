@@ -279,7 +279,8 @@ export interface CandidatoImportado {
   data_nascimento: string | null;
   hora_nascimento: string | null;
   sexo: string | null;
-  raca: number | null;
+  /** TEXT, não number: valor impossível entra cru (migration 20260730100000). */
+  raca: string | null;
   portador_deficiencia: boolean;
   confirmado: boolean;
   concurso_id_origem: string | null;
@@ -291,15 +292,62 @@ export interface LinhaConvertida {
   candidato: CandidatoImportado | null;
   /** Preenchido quando `candidato` é null: a linha não entra. */
   erro: string | null;
-  /** A linha entra, mas estes campos foram para NULL. */
+  /**
+   * A linha entra INTEIRA, e estes campos entraram com o valor impossível que a origem
+   * mandou. Desde 2026-07-30 o aviso não anuncia perda — anuncia o que precisa ser
+   * corrigido na fonte. Nada é descartado aqui; para isso existe `erro`.
+   */
   avisos: string[];
 }
 
 const RACAS_VALIDAS = [1, 2, 4, 6, 8, 9];
 
 /**
- * Converte UMA linha. Nunca lança: devolve `erro` (descarta) ou `avisos` (entra parcial),
- * porque numa importação de 7 mil linhas uma exceção no meio é perda de trabalho.
+ * O que um nome pode ter além de letra: espaço, apóstrofo (`D'AVILA`), hífen
+ * (`SANTA-CRUZ`) e ponto de abreviação (`MÁRCIA A. MALAQUIAS`).
+ *
+ * ⚠️ `\p{L}` cobre LETRA ACENTUADA de propósito — 1.527 dos 7.416 nomes do arquivo real
+ * têm acento (`BRANDÃO`, `JÚLIA`). Acusá-los transformaria a regra em ruído: acento é
+ * nome brasileiro normal, não caractere estranho.
+ *
+ * ⚠️ O PONTO ficou de fora por decisão do usuário em 2026-07-30. Ele aparece em 8 linhas,
+ * todas abreviação legítima; acusá-las gastaria a atenção do usuário em falso positivo.
+ *
+ * SEM a flag `g`: um regex global de módulo usado com `.test()` guarda `lastIndex` entre
+ * chamadas e passa a alternar resultado na mesma entrada. É a armadilha clássica, e aqui
+ * ela produziria aviso em dia sim, dia não.
+ */
+const CARACTERE_ACEITO_NO_NOME = /[\p{L}\s'.-]/u;
+
+/**
+ * Palavras que denunciam registro de desenvolvedor solto na lista de inscritos.
+ *
+ * A busca é por SUBSTRING, não por palavra inteira — é o que pega `TESTEPAULO`, que é uma
+ * palavra só e foi o caso real que motivou a regra (3 linhas do arquivo, medido em 30/07).
+ *
+ * ⚠️ ORDEM IMPORTA: da mais específica para a mais genérica, porque o `find` para na
+ * primeira e é ela que aparece na mensagem. Com `'test'` antes, `TESTEPAULO` seria
+ * acusado de conter "test" quando o que ele contém é "teste".
+ *
+ * ⚠️ FALSO POSITIVO CONHECIDO, aceito por ser aviso e não descarte: `TESTA` é sobrenome
+ * brasileiro legítimo (origem italiana) e seria acusado. Medido no arquivo real: **0
+ * ocorrências**, então hoje o custo é zero. Que o risco é real, prova o campo e-mail —
+ * `soumatestemunhadodeusvivente@gmail.com` traz "testemunha", que contém "test". **Se
+ * alguém acrescentar palavra a esta lista, meça antes**: em português, palavra curta é
+ * substring de palavra comum.
+ */
+const PALAVRAS_DE_MOCK = ['teste', 'test'];
+
+/**
+ * Converte UMA linha. Nunca lança: devolve `erro` (descarta) ou `avisos` (entra com o
+ * dado cru), porque numa importação de 7 mil linhas uma exceção no meio é perda de
+ * trabalho.
+ *
+ * As duas classes NÃO são graus da mesma coisa, e é o que decide onde mexer:
+ *   • `erro`  — falta o que IDENTIFICA (inscrição, nome, cargo). Sem isso não há o que
+ *               gravar, então a linha não entra. Inalterado em 30/07.
+ *   • `aviso` — o valor de um campo secundário é impossível. Desde 2026-07-30 ele entra
+ *               COMO VEIO e é citado no relatório; até 29/07 virava NULL.
  */
 export function converterLinha(
   linha: LinhaPlanilha,
@@ -328,39 +376,114 @@ export function converterLinha(
   const cargo = val('cargo');
   if (cargo === null) return falha('Cargo vazio');
 
-  // ── O que é secundário: impossível → NULL + aviso ──────────────────────────────
-  let cpf = soDigitos(val('cpf'));
-  if (cpf !== null && cpf.length !== 11) {
-    avisos.push(`CPF "${val('cpf')}" não tem 11 dígitos — gravado sem CPF`);
-    cpf = null;
+  // ── O nome ENTRA sempre; estes dois avisos só pedem conferência na origem ──────
+  //
+  // Decisão do usuário, 2026-07-30. Diferente dos campos abaixo, aqui nada é convertido
+  // nem normalizado — o nome já entrava cru. O aviso é o produto inteiro da regra: ele
+  // transforma "ninguém nunca olhou" em uma linha do relatório.
+  //
+  // ⚠️ NÃO transforme nenhum destes dois em `erro`. Nome estranho continua sendo o nome
+  // de um inscrito, e a lista incompleta é o único erro grave possível nesta tabela.
+  const estranhos = [...new Set([...nome])].filter((ch) => !CARACTERE_ACEITO_NO_NOME.test(ch));
+  if (estranhos.length > 0) {
+    // Citar QUAIS caracteres é o que torna o aviso acionável: num relatório, '0' e 'O'
+    // são indistinguíveis a olho — 'HUGO CESAR COELHO SALVAD0' traz um zero no fim.
+    avisos.push(`Nome "${nome}" tem caractere fora do esperado (${estranhos.join(' ')}) — gravado como veio`);
   }
 
-  let email = val('email');
-  if (email !== null) {
-    email = email.toLowerCase();
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-      avisos.push(`E-mail "${email}" é inválido — gravado sem e-mail`);
-      email = null;
+  // Medido: 10 das 7.416, incluindo 3 'TESTEPAULO' e um 'A'. Nome de uma palavra pode ser
+  // legítimo (a origem às vezes traz só o primeiro), então é aviso e não erro — mas é o
+  // que denuncia registro de teste que vazou para a lista de inscritos.
+  if (nome.split(/\s+/).filter(Boolean).length === 1) {
+    avisos.push(`Nome "${nome}" tem uma palavra só — gravado como veio`);
+  }
+
+  // Medido: 3 linhas, todas 'TESTEPAULO', e as 3 já caem na regra de uma palavra só — ou
+  // seja, hoje esta regra não acrescenta nenhuma linha ao relatório. Ela existe pelo caso
+  // que as OUTRAS DUAS não pegam: um 'TESTE DA SILVA' tem duas palavras e só letras.
+  const mock = PALAVRAS_DE_MOCK.find((p) => nome.toLowerCase().includes(p));
+  if (mock !== undefined) {
+    avisos.push(`Nome "${nome}" contém "${mock}" — parece registro de teste, gravado como veio`);
+  }
+
+  // ── O que é secundário: impossível → ENTRA CRU + aviso ─────────────────────────
+  //
+  // DECISÃO DO USUÁRIO, 2026-07-30: "Candidato e dados entram. Candidato e dados são
+  // citados no relatório." Até 29/07 estes cinco campos viravam NULL quando o valor era
+  // impossível; o inscrito entrava, mas o que a origem afirmou sumia — e ninguém depois
+  // conseguia saber o que a pessoa tinha digitado para poder corrigir na fonte.
+  //
+  // O que sustenta isto no banco: a migration 20260730100000 soltou as quatro CHECKs de
+  // formato e trocou `raca` e `data_nascimento` para `text`. ⚠️ SEM ELA APLICADA, gravar
+  // o valor cru derruba o BLOCO DE 500 INTEIRO, não a linha — o envio é em lote.
+  //
+  // A normalização continua acontecendo no caminho feliz: um CPF mascarado é gravado só
+  // com os dígitos. O valor cru é para quando ele NÃO cabe na forma esperada.
+  const cpfBruto = val('cpf');
+  let cpf = cpfBruto;
+  if (cpfBruto !== null) {
+    const digitos = soDigitos(cpfBruto);
+    if (digitos !== null && digitos.length === 11) {
+      cpf = digitos;
+    } else {
+      // ⚠️ O aviso lê o BRUTO, não `soDigitos`. Antes de 30/07 um campo sem dígito nenhum
+      // ('abc') saía calado: `soDigitos` devolvia null e o `!== null` da guarda antiga
+      // não pegava. Era perda silenciosa dentro da regra que existia justamente para não
+      // perder em silêncio.
+      avisos.push(`CPF "${cpfBruto}" não tem 11 dígitos — gravado como veio`);
     }
   }
 
+  let email = val('email');
+  if (email !== null && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.toLowerCase())) {
+    // Entra exatamente como veio: num e-mail que já é impossível, baixar a caixa seria
+    // mais uma alteração em cima de um dado que o usuário vai ter de ler para corrigir.
+    avisos.push(`E-mail "${email}" é inválido — gravado como veio`);
+  } else if (email !== null) {
+    email = email.toLowerCase();
+  }
+
   const dataBruta = val('data_nascimento');
-  const dataNascimento = parseDataBr(dataBruta);
+  let dataNascimento = parseDataBr(dataBruta);
   if (dataBruta !== null && dataNascimento === null) {
-    avisos.push(`Data de nascimento "${dataBruta}" não foi reconhecida — gravada em branco`);
+    avisos.push(`Data de nascimento "${dataBruta}" não foi reconhecida — gravada como veio`);
+    dataNascimento = dataBruta;
   }
 
-  let cep = soDigitos(val('cep'));
-  if (cep !== null && cep.length !== 8) {
-    avisos.push(`CEP "${val('cep')}" não tem 8 dígitos — gravado sem CEP`);
-    cep = null;
+  // Medido: 3.089 preenchidas e o `parseHora` reconhece 3.087. As 2 que sobram são
+  // '88888888' e 'Não sei'. ⚠️ Até 30/07 elas viravam NULL SEM AVISO NENHUM — este campo
+  // era o único da classe secundária que não avisava, então a perda era invisível até no
+  // relatório. A coluna virou `text` na migration 20260730110000 para comportar o cru.
+  const horaBruta = val('hora_nascimento');
+  let horaNascimento = parseHora(horaBruta);
+  if (horaBruta !== null && horaNascimento === null) {
+    avisos.push(`Hora de nascimento "${horaBruta}" não foi reconhecida — gravada como veio`);
+    horaNascimento = horaBruta;
   }
 
-  const racaBruta = soDigitos(val('raca'));
-  let raca: number | null = racaBruta === null ? null : Number(racaBruta);
-  if (raca !== null && !RACAS_VALIDAS.includes(raca)) {
-    avisos.push(`Raça "${val('raca')}" não é um código conhecido — gravada em branco`);
-    raca = null;
+  const cepBruto = val('cep');
+  let cep = cepBruto;
+  if (cepBruto !== null) {
+    const digitos = soDigitos(cepBruto);
+    if (digitos !== null && digitos.length === 8) {
+      cep = digitos;
+    } else {
+      avisos.push(`CEP "${cepBruto}" não tem 8 dígitos — gravado como veio`);
+    }
+  }
+
+  // TEXT, não number, desde 30/07: o código que a origem manda pode não ser código, e a
+  // coluna passou a ser `text` para comportá-lo. O caminho feliz normaliza ('02' → '2').
+  const racaBruta = val('raca');
+  let raca = racaBruta;
+  if (racaBruta !== null) {
+    const digitos = soDigitos(racaBruta);
+    const codigo = digitos === null ? null : Number(digitos);
+    if (codigo !== null && RACAS_VALIDAS.includes(codigo)) {
+      raca = String(codigo);
+    } else {
+      avisos.push(`Raça "${racaBruta}" não é um código conhecido — gravada como veio`);
+    }
   }
 
   // varchar(2) no banco: corta em vez de estourar a carga. 'BR', 'UF' e '13' aparecem no
@@ -388,7 +511,7 @@ export function converterLinha(
     identidade_uf: recortarUf(val('identidade_uf')),
     identidade_emissao: parseDataBr(val('identidade_emissao')),
     data_nascimento: dataNascimento,
-    hora_nascimento: parseHora(val('hora_nascimento')),
+    hora_nascimento: horaNascimento,
     sexo: val('sexo'),
     raca,
     portador_deficiencia: parseBooleano(val('portador_deficiencia')),

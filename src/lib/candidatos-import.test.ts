@@ -297,51 +297,189 @@ describe("converterLinha — aviso mantém o inscrito na lista", () => {
     return l;
   };
 
-  it("os 2 CPFs impossíveis do arquivo entram sem CPF, não somem", () => {
+  it("⭐ os 2 CPFs impossíveis do arquivo entram COMO VIERAM, não somem", () => {
     // ' 8631309761' (10 dígitos) e '1O778817709' (letra O no lugar do zero). A identidade
     // do candidato é a INSCRIÇÃO — descartar o inscrito por causa do CPF deixaria a
     // lista de inscritos incompleta, que é o único erro grave possível nesta tabela.
-    for (const cpfRuim of [" 8631309761", "1O778817709"]) {
+    //
+    // Desde 2026-07-30 o valor entra CRU em vez de virar NULL (decisão do usuário): sem
+    // isso, ninguém depois conseguia saber o que a pessoa tinha digitado para corrigir na
+    // origem. O espaço da frente some porque `bruto()` apara — é artefato de planilha.
+    for (const [cpfRuim, gravado] of [
+      [" 8631309761", "8631309761"],
+      ["1O778817709", "1O778817709"],
+    ]) {
       const r = converterLinha(comCargo(["214274", "FULANO", cpfRuim]), m, EDITAL, 5);
       expect(r.candidato).not.toBeNull();
       expect(r.candidato?.nome).toBe("FULANO");
-      expect(r.candidato?.cpf).toBeNull();
+      expect(r.candidato?.cpf).toBe(gravado);
       expect(r.avisos.join(" ")).toMatch(/CPF/i);
     }
   });
 
-  it("os 27 e-mails inválidos entram sem e-mail", () => {
+  it("um CPF sem dígito nenhum também é acusado — antes saía calado", () => {
+    // ⚠️ REGRESSÃO REAL, corrigida em 30/07: a guarda antiga lia `soDigitos`, que devolve
+    // null quando não sobra dígito. 'abc' então não entrava no `!== null` e o campo era
+    // anulado SEM aviso — perda silenciosa dentro da regra criada para não perder calado.
+    const r = converterLinha(comCargo(["214274", "FULANO", "abc"]), m, EDITAL, 5);
+    expect(r.candidato?.cpf).toBe("abc");
+    expect(r.avisos.join(" ")).toMatch(/CPF/i);
+  });
+
+  it("⭐ acusa o caractere estranho no nome, e diz QUAL é", () => {
+    // As 10 linhas do arquivo real (medido em 30/07). Não são sujeira aleatória: são 4
+    // classes de defeito de exportação, e o aviso cita o caractere porque num relatório
+    // '0' e 'O' são indistinguíveis a olho.
+    const casos: [string, string][] = [
+      ["HUGO CESAR COELHO SALVAD0", "0"], // zero no lugar do O
+      ["CLARA ALICE SANT¿ ANA MARQUES", "¿"], // mojibake cp1252, o mesmo do cargo
+      ["EMANUELLE D\\'AVILA ARAÚJO", "\\"], // escape de apóstrofo vazado da exportação
+      ["}DANIELE CRISTINE SANTANA", "}"],
+    ];
+    for (const [nomeRuim, esperado] of casos) {
+      const r = converterLinha(comCargo(["214274", nomeRuim]), m, EDITAL, 5);
+      expect(r.candidato?.nome).toBe(nomeRuim);
+      expect(r.avisos.join(" ")).toContain(esperado);
+      expect(r.avisos.join(" ")).toMatch(/[Nn]ome/);
+    }
+  });
+
+  it("⚠️ CONTROLE NEGATIVO do nome: acento, ponto, apóstrofo e hífen NÃO são estranhos", () => {
+    // O que impede a regra de virar ruído. 1.527 dos 7.416 nomes têm acento — se este
+    // teste cair, a regra passou a acusar um quinto da lista e ninguém vai ler o relatório.
+    // O PONTO está aqui por decisão do usuário em 30/07: abreviação é nome bem escrito.
+    for (const nomeBom of [
+      "SARAH BRANDÃO BARROS",
+      "JÚLIA VERONICA CARDOSO DA SILVA",
+      "MÁRCIA A. MALAQUIAS",
+      "EMILIO FERNANDEZ P.F.DA SILVA ROCHA",
+      "MARIA D'AVILA SANTA-CRUZ",
+    ]) {
+      const r = converterLinha(comCargo(["214274", nomeBom]), m, EDITAL, 5);
+      expect(r.avisos).toEqual([]);
+    }
+  });
+
+  it("acusa o nome de uma palavra só, sem descartar a linha", () => {
+    // Medido: 10 das 7.416, incluindo 3 'TESTEPAULO' e um 'A'. É o que denuncia registro
+    // de teste que vazou para a lista de inscritos — mas nome de uma palavra pode ser
+    // legítimo, então é aviso.
+    const r = converterLinha(comCargo(["214274", "TESTEPAULO"]), m, EDITAL, 5);
+    expect(r.candidato?.nome).toBe("TESTEPAULO");
+    expect(r.erro).toBeNull();
+    expect(r.avisos.join(" ")).toMatch(/uma palavra/i);
+
+    // CONTROLE POSITIVO: dois nomes já bastam, e o espaço extra não conta como palavra.
+    const dois = converterLinha(comCargo(["214274", "ANA  SOUZA"]), m, EDITAL, 5);
+    expect(dois.avisos).toEqual([]);
+  });
+
+  it("acusa palavra de mock no nome, mesmo grudada em outra", () => {
+    // A busca é por SUBSTRING de propósito: 'TESTEPAULO' é uma palavra só, e foi o caso
+    // real (3 linhas). Busca por palavra inteira não o pegaria.
+    const r = converterLinha(comCargo(["214274", "TESTEPAULO"]), m, EDITAL, 5);
+    expect(r.erro).toBeNull();
+    expect(r.candidato?.nome).toBe("TESTEPAULO");
+    expect(r.avisos.join(" ")).toMatch(/parece registro de teste/i);
+
+    // ⭐ O CASO QUE JUSTIFICA A REGRA EXISTIR. As outras duas regras de nome não pegam
+    // este: 'TESTE DA SILVA' tem três palavras e só letras. Sem esta, passaria calado.
+    const duasPalavras = converterLinha(comCargo(["214274", "TESTE DA SILVA"]), m, EDITAL, 5);
+    expect(duasPalavras.avisos.join(" ")).toMatch(/parece registro de teste/i);
+
+    // Case insensitive, e cita a palavra MAIS ESPECÍFICA das duas — a lista é ordenada
+    // para isso. Se aparecer "test" aqui, alguém inverteu PALAVRAS_DE_MOCK.
+    const minuscula = converterLinha(comCargo(["214274", "Fulano Teste Silva"]), m, EDITAL, 5);
+    expect(minuscula.avisos.join(" ")).toContain('"teste"');
+  });
+
+  it("⚠️ CONTROLE NEGATIVO do mock: nome comum não pode ser acusado", () => {
+    // ⚠️ O falso positivo CONHECIDO e aceito é 'TESTA', sobrenome de origem italiana —
+    // medido: 0 no arquivo real. Este controle guarda o resto: a busca é por substring, e
+    // em português palavra curta vira substring de palavra comum com facilidade. O campo
+    // e-mail prova o risco ('soumatestemunhadodeusvivente@gmail.com' tem "testemunha").
+    for (const nomeBom of [
+      "AGATHA LAMIM DE SOUZA",
+      "CELESTINO MODESTO BATISTA",
+      "MARIA CELESTE PROTASIO",
+    ]) {
+      const r = converterLinha(comCargo(["214274", nomeBom]), m, EDITAL, 5);
+      expect(r.avisos).toEqual([]);
+    }
+  });
+
+  it("🔴 a hora irreconhecível entra crua — antes sumia SEM AVISO", () => {
+    // As 2 do arquivo real. Este campo era o único da classe secundária que não avisava:
+    // o valor virava NULL e nem o relatório denunciava. Coluna virou `text` na 20260730110000.
+    const mHora = mapa({ n_inscricao: 0, nome: 1, cargo: 2, hora_nascimento: 3 });
+    for (const ruim of ["88888888", "Não sei"]) {
+      const r = converterLinha(["214274", "FULANO", "DOCENTE II", ruim], mHora, EDITAL, 5);
+      expect(r.candidato?.hora_nascimento).toBe(ruim);
+      expect(r.avisos.join(" ")).toMatch(/[Hh]ora/);
+    }
+
+    // CONTROLE POSITIVO: as 3.087 reconhecíveis continuam normalizadas para HH:MM:SS.
+    const boa = converterLinha(["214274", "FULANO SOUZA", "DOCENTE II", "7h00"], mHora, EDITAL, 5);
+    expect(boa.candidato?.hora_nascimento).toBe("07:00:00");
+    expect(boa.avisos).toEqual([]);
+  });
+
+  it("normaliza o CPF mascarado — o caminho feliz não virou cru", () => {
+    // CONTROLE POSITIVO: gravar cru é para o que NÃO cabe na forma esperada. Um CPF
+    // válido e pontuado continua sendo normalizado, senão a chave natural se partiria.
+    const r = converterLinha(comCargo(["214274", "FULANO SOUZA", "229.401.617-39"]), m, EDITAL, 5);
+    expect(r.candidato?.cpf).toBe("22940161739");
+    expect(r.avisos).toEqual([]);
+  });
+
+  it("os 27 e-mails inválidos entram COMO VIERAM", () => {
     for (const ruim of ["andi.gmail", "marcia2manoel@ gmail.com", "a@b.com / c@d.com"]) {
       const r = converterLinha(comCargo(["214274", "FULANO", "22940161739", ruim]), m, EDITAL, 5);
-      expect(r.candidato?.email).toBeNull();
+      expect(r.candidato?.email).toBe(ruim);
       expect(r.avisos.join(" ")).toMatch(/mail/i);
     }
   });
 
   it("normaliza o e-mail válido para minúsculas", () => {
-    const r = converterLinha(comCargo(["1", "F", null, "Fulano@Gmail.COM"]), m, EDITAL, 5);
+    const r = converterLinha(comCargo(["1", "FULANO SOUZA", null, "Fulano@Gmail.COM"]), m, EDITAL, 5);
     expect(r.candidato?.email).toBe("fulano@gmail.com");
     expect(r.avisos).toEqual([]);
   });
 
-  it("avisa quando a data não foi entendida, mas só se havia data", () => {
-    const comLixo = converterLinha(comCargo(["1", "F", null, null, "não sei"]), m, EDITAL, 5);
-    expect(comLixo.candidato?.data_nascimento).toBeNull();
+  it("a data irreconhecível é gravada como veio, e a célula vazia segue calada", () => {
+    // A coluna virou `text` em 30/07 justamente para isto: uma `date` não guarda
+    // 'não sei'. Ver a migration 20260730100000.
+    const comLixo = converterLinha(comCargo(["1", "FULANO SOUZA", null, null, "não sei"]), m, EDITAL, 5);
+    expect(comLixo.candidato?.data_nascimento).toBe("não sei");
     expect(comLixo.avisos.join(" ")).toMatch(/nascimento/i);
 
-    // CONTROLE POSITIVO: célula vazia não é problema e não pode virar ruído no relatório.
-    const semData = converterLinha(comCargo(["1", "F", null, null, null]), m, EDITAL, 5);
+    // CONTROLE POSITIVO 1: a data reconhecível continua saindo em ISO. Se este caísse, o
+    // "grava como veio" teria vazado para o caminho feliz e a coluna viraria texto solto.
+    const boa = converterLinha(comCargo(["1", "FULANO SOUZA", null, null, "31/12/1990"]), m, EDITAL, 5);
+    expect(boa.candidato?.data_nascimento).toBe("1990-12-31");
+    expect(boa.avisos).toEqual([]);
+
+    // CONTROLE POSITIVO 2: célula vazia não é problema e não pode virar ruído no relatório.
+    const semData = converterLinha(comCargo(["1", "FULANO SOUZA", null, null, null]), m, EDITAL, 5);
+    expect(semData.candidato?.data_nascimento).toBeNull();
     expect(semData.avisos).toEqual([]);
   });
 
-  it("recusa código de raça fora do dicionário e mantém a linha", () => {
-    const r = converterLinha(comCargo(["1", "F", null, null, null, null, "7"]), m, EDITAL, 5);
-    expect(r.candidato?.raca).toBeNull();
+  it("o código de raça fora do dicionário é gravado como veio e a linha fica", () => {
+    const r = converterLinha(comCargo(["1", "FULANO SOUZA", null, null, null, null, "7"]), m, EDITAL, 5);
+    expect(r.candidato?.raca).toBe("7");
     expect(r.avisos.join(" ")).toMatch(/[Rr]aça/);
 
-    // CONTROLE POSITIVO: o código 2 (Branca) é o único que aparece no arquivo real.
-    const valido = converterLinha(comCargo(["1", "F", null, null, null, null, "2"]), m, EDITAL, 5);
-    expect(valido.candidato?.raca).toBe(2);
+    // A coluna é `text` desde 30/07 e aceita o que não é número nenhum — era smallint, e
+    // este caso simplesmente não tinha onde ser gravado.
+    const texto = converterLinha(comCargo(["1", "FULANO SOUZA", null, null, null, null, "Z"]), m, EDITAL, 5);
+    expect(texto.candidato?.raca).toBe("Z");
+    expect(texto.avisos.join(" ")).toMatch(/[Rr]aça/);
+
+    // CONTROLE POSITIVO: o código 2 (Branca) é o único que aparece no arquivo real, e o
+    // caminho feliz normaliza para o código canônico em texto.
+    const valido = converterLinha(comCargo(["1", "FULANO SOUZA", null, null, null, null, "2"]), m, EDITAL, 5);
+    expect(valido.candidato?.raca).toBe("2");
     expect(valido.avisos).toEqual([]);
   });
 
@@ -510,13 +648,30 @@ describe("deduplicar", () => {
       expect(candidatos[0].nome).toBe("NOME CORRIGIDO");
     });
 
-    it("duas linhas com CPF impossível não viram duas: o CPF vira NULL e a chave é a mesma", () => {
-      // As 2 linhas do arquivo real ('8631309761' com 10 dígitos, '1O778817709' com a
-      // letra O). Ambas viram cpf NULL; se a chave as tratasse como distintas, cada
-      // reimportação as multiplicaria.
+    it("🔴 dois CPFs impossíveis DIFERENTES são duas linhas — antes viravam uma", () => {
+      // ⚠️ ESTE TESTE AFIRMAVA O CONTRÁRIO ATÉ 2026-07-29, e o que ele guardava era um
+      // DEFEITO. As 2 linhas do arquivo real ('8631309761' com 10 dígitos, '1O778817709'
+      // com a letra O) são CPFs distintos; com os dois virando NULL, a chave natural ficava
+      // idêntica e o dedup FUNDIA os dois inscritos num só — um deles sumia da lista, que é
+      // exatamente o "único erro grave possível nesta tabela" que a regra de aviso existe
+      // para evitar. Gravar o valor cru desfaz a fusão.
       const { candidatos, repetidas } = pipelineCpf([
         ["214274", "FULANO", "DOCENTE II", "8631309761"],
         ["214274", "FULANO", "DOCENTE II", "1O778817709"],
+      ]);
+      expect(candidatos).toHaveLength(2);
+      expect(repetidas).toHaveLength(0);
+      expect(candidatos.map((c) => c.cpf).sort()).toEqual(["1O778817709", "8631309761"]);
+    });
+
+    it("⚠️ o CPF VAZIO continua colapsando — é o que o NULLS NOT DISTINCT guarda", () => {
+      // A razão de o índice ser NULLS NOT DISTINCT não caiu com a mudança de 30/07, só
+      // mudou de dono: célula VAZIA continua virando NULL, e no padrão do Postgres dois
+      // NULL são distintos — sem isso, estas linhas se reinseririam a cada reimportação.
+      // Vazio ≠ impossível: um não tem dado, o outro tem dado errado.
+      const { candidatos, repetidas } = pipelineCpf([
+        ["214274", "FULANO", "DOCENTE II", ""],
+        ["214274", "FULANO", "DOCENTE II", null],
       ]);
       expect(candidatos).toHaveLength(1);
       expect(repetidas).toHaveLength(1);

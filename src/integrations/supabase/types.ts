@@ -80,7 +80,7 @@ export type Database = {
           nome: string
           numero: string | null
           portador_deficiencia: boolean
-          raca: number | null
+          raca: string | null
           sexo: string | null
           telefone: string | null
           uf: string | null
@@ -113,7 +113,7 @@ export type Database = {
           nome: string
           numero?: string | null
           portador_deficiencia?: boolean
-          raca?: number | null
+          raca?: string | null
           sexo?: string | null
           telefone?: string | null
           uf?: string | null
@@ -146,7 +146,7 @@ export type Database = {
           nome?: string
           numero?: string | null
           portador_deficiencia?: boolean
-          raca?: number | null
+          raca?: string | null
           sexo?: string | null
           telefone?: string | null
           uf?: string | null

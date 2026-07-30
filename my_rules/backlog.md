@@ -524,3 +524,120 @@ Registro do que era, para quem reabrir: em 2026-07-20 descobriu-se que a `send-e
 
 ⚠️ **A premissa que fica anotada, não contestada:** uma Edge Function responde pela URL do projeto **independentemente de o frontend estar no ar**. Ou seja, "sistema fora do ar" e "endpoint inalcançável" não são a mesma coisa — o que fecha o assunto de fato é o projeto v1 **não existir mais** ou não ter a function publicada. Se algum dia se confirmar que o projeto v1 segue ativo, isto volta a valer, incluindo checar o volume de envio da conta SMTP.
 
+---
+
+## ✅ CONCLUÍDO 2026-07-30 — dado inválido do candidato passou a ENTRAR como veio
+
+**Área:** Candidatos (ver [`estrutura/modulos/candidatos/00-modulo.md`](./estrutura/modulos/candidatos/00-modulo.md))
+
+**Decisão do usuário:** *"Candidato com dados considerado inválido. Candidato e dados entram. Candidato e dados são citados no relatório."*
+
+Até 29/07 o campo secundário impossível virava `NULL`: o inscrito entrava, mas **o que a origem afirmou sumia** — e ninguém depois conseguia saber o que a pessoa tinha digitado para corrigir na fonte. Agora o valor é gravado como veio, e o relatório continua igual em forma e lugar.
+
+Migration `20260730100000`: as quatro CHECKs de formato (`cpf`, `cep`, `email`, `raca`) saíram, e `raca` (`smallint`) e `data_nascimento` (`date`) viraram `text` — nesses dois não havia CHECK a remover, o valor cru **fisicamente não cabia no tipo**.
+
+### 🔴 O que esta decisão custou, dito por extenso
+
+**A garantia de formato caiu para TODO caminho de escrita**, não só para o importador: PostgREST direto, Edge Function e script passam a poder gravar CPF, CEP, e-mail e raça em qualquer forma. Isto foi levantado como **risco alto antes da decisão** e escolhido assim mesmo, com o risco à vista.
+
+**A consequência prática para quem for escrever regra nova:** `candidatos` deixou de ter opinião sobre o formato desses quatro campos. Quem precisar de CPF válido **valida na leitura** — não dá mais para presumir, como dava até 29/07, que o que está na coluna passou por uma CHECK. As duas CHECKs de **identidade** (`n_inscricao`, `nome`) seguem de pé, e a classe "erro" da importação não mudou: inscrição, nome e cargo vazios continuam descartando a linha.
+
+**O que se perde com `data_nascimento` text:** ordenação e comparação por data no banco. Hoje ninguém faz nenhuma das duas (`useCandidatos` ordena só por `nome`), então o custo é futuro. Quem for construir filtro por faixa etária vai precisar de `to_date(...)` com o dado sujo dentro.
+
+### 🔴 A mudança corrigiu um defeito que ninguém tinha visto
+
+Os 2 CPFs impossíveis do arquivo real são **valores distintos** (`8631309761` e `1O778817709`). Com os dois virando `NULL`, a chave natural ficava idêntica e o `deduplicar()` **fundia os dois inscritos num só** — um sumia da lista, que é exatamente o erro que a regra de aviso existe para evitar. **Havia um teste afirmando essa fusão como correta.** Verificado contra o PostgREST em 30/07: agora são duas linhas.
+
+⚠️ **Uma regressão silenciosa saiu junto:** a guarda antiga do CPF lia `soDigitos`, que devolve `null` quando não sobra dígito — então `'abc'` era anulado **sem aviso**. Perda calada dentro da regra criada para não perder calado.
+
+⚠️ **O `NULLS NOT DISTINCT` não perdeu a razão de existir, mudou de dono:** guarda agora a célula **vazia**, não a impossível. **Vazio ≠ impossível.**
+
+### Segunda leva, mesmo dia: três regras novas de campo
+
+Todas **aviso**, nenhuma descarta linha, todas medidas no arquivo real antes de existir:
+
+| Regra | Atinge | O que pega |
+|---|---|---|
+| Nome com caractere estranho | **10** de 7.416 | `SALVAD0` (zero por O), `SANT¿ ANA` (mojibake), `VITO&#769;RIA` (entidade HTML), `D\'AVILA` (**escape vazado da exportação**, 3×), ID concatenado, `}` |
+| Nome de uma palavra só | **10** de 7.416 | `TESTEPAULO` ×3 e um `A` — **registro de teste na lista de inscritos** |
+| Nome com palavra de mock | **3** de 7.416 | `TESTEPAULO`. `PALAVRAS_DE_MOCK` = `teste`, `test`; **substring**, case-insensitive |
+| Hora de nascimento irreconhecível | **2** de 3.089 | `'88888888'` e `'Não sei'` — migration `20260730110000` (`time` → `text`) |
+
+⚠️ **Aceitos no nome: letra COM ACENTO, espaço, apóstrofo, hífen e ponto.** 1.527 nomes têm acento e acusá-los faria a regra virar ruído; o ponto saiu por decisão do usuário (abreviação é nome bem escrito), o que levou a regra de 16 para 10 linhas. Há **controle negativo** guardando os dois.
+
+⚠️ **A busca de mock é por SUBSTRING** (é o que pega `TESTEPAULO`, uma palavra só). Falso positivo conhecido e aceito: **`TESTA`, sobrenome legítimo** — 0 no arquivo real. O risco é real e o campo e-mail prova (`soumatestemunhadodeusvivente@` traz "testemunha"). 🔴 **Medir antes de acrescentar palavra à lista.** Hoje a regra não acrescenta linha nenhuma ao relatório — existe pelo caso que as outras não pegam (`TESTE DA SILVA`).
+
+🔴 **A hora era o buraco maior:** único campo secundário que anulava **sem sequer avisar** — não havia `avisos.push` para ela. Segunda ocorrência do padrão "perda silenciosa" no mesmo dia.
+
+⚠️ **Hora de nascimento é critério LEGAL de desempate em concurso.** Com a coluna em `text`, desempate por SQL vai exigir conversão com o dado sujo dentro.
+
+### Como foi verificado
+
+Suíte em **974** (eram 965), `tsc` limpo, `build` limpo, `db reset` com as 101 migrations. Mais bateria SQL contra o banco local, em transação com `ROLLBACK` e **dois controles positivos** — porque provar que passou a aceitar é metade:
+
+| Caso | Esperado | Obtido |
+|---|---|---|
+| `cpf`/`email`/`cep`/`raca`/`data_nascimento` impossíveis | entram crus | ✅ |
+| Dois CPFs impossíveis diferentes | **duas** linhas | ✅ |
+| **CP1:** `nome` em branco | ainda recusado | ✅ |
+| **CP2:** reimportar o CPF cru | **atualiza**, não multiplica | ✅ |
+
+O **CP2 é o que sustenta o resto**: prova que a idempotência do upsert sobreviveu, porque o valor cru é determinístico e a chave natural volta a casar na reimportação.
+
+---
+
+## ⏭️ PRÓXIMA — corrigir CPF ou cargo na origem cria registro órfão, em silêncio
+
+**Status:** pendente, e **é o próximo tema desta área** — levantado em 2026-07-29, adiado de propósito em 30/07 ao fechar o tratamento de dado inválido ("não cuidaremos agora")
+**Área:** Candidatos (ver [`estrutura/modulos/candidatos/00-modulo.md`](./estrutura/modulos/candidatos/00-modulo.md))
+
+Não é cosmético e não é na leitura da planilha — essa está sólida. **É a identidade.**
+
+A chave natural é `(edital_id, cpf, cargo_id, n_inscricao)`. Como CPF e cargo **compõem a identidade**, corrigir qualquer um dos dois na planilha e reimportar faz o upsert **não casar** a linha: entra um registro NOVO e o antigo **fica lá, órfão**. Ninguém é avisado, porque não existe reconciliação. É o formato de erro que este repo já chamou de o pior: **parece ter funcionado.**
+
+O trigger `RC001` cobre **um** caso disso (reapontar cargo) e por construção **não** cobre CPF corrigido nem grafia-nova-mais-reclassificação no mesmo gesto.
+
+### 🔴 O acoplamento que ninguém tinha escrito
+
+**Trocar a chave para `(edital_id, n_inscricao)` OBRIGA a dropar o trigger `RC001` na MESMA migration.** Confirmado lendo a migration `20260728110000`.
+
+O trigger existe **porque** `cargo_id` está na chave — o cabeçalho dele diz isso: antes daquilo, "reapontar ATUALIZA a linha no lugar e a guarda não teria o que guardar". Tirando `cargo_id` da chave, reapontar volta a ser `UPDATE` limpo, e o trigger deixa de proteger e passa a **falso positivo**: ele é `BEFORE INSERT`, e no Postgres o `BEFORE INSERT` de um `INSERT ... ON CONFLICT DO UPDATE` dispara **antes** da resolução do conflito — então barraria uma correção legítima. Quem fizer a troca achando que são duas decisões independentes vai debugar um `RC001` que não deveria existir.
+
+### A recomendação: reconciliação primeiro, chave depois (ou nunca)
+
+A troca de chave é tentadora porque a correção de 28/07 a tornou viável (`N_INSCRICAO` é única, 7.416/7.416) e resolveria o defeito na raiz de graça. **Mas:** é apostar a identidade numa propriedade de **um** export, é a tabela que guarda CPF e endereço de milhares de cidadãos, e o **controle positivo 1** da bateria de cargos precisaria ser **reescrito**, não reajustado.
+
+A **reconciliação** — ao fim da importação, listar quem está no banco e **não veio** no arquivo — não tem migration, não mexe em identidade, não tem risco, e transforma deriva invisível em relatório. Pega os três campos de uma vez e o resíduo que o `RC001` não alcança. E é ela que diria, com dado, se a troca de chave vale.
+
+**Mexer na chave sem antes ter como ver a deriva é trocar um risco silencioso por outro.**
+
+---
+
+## Pendências menores da importação de candidatos
+
+**Status:** registradas para adiante — nenhuma bloqueia nada hoje
+**Área:** Candidatos
+
+1. **O fixture `CABECALHO_REAL` de `candidatos-import.test.ts` é o cabeçalho anterior a 27/07** (coluna 0 sem título). Com o arquivo atual, `autoMapear` casaria a coluna 0, que é **o certo**. Mexe em 3 asserções, e o caso "coluna sem título" precisa de fixture próprio. Barato, e é dívida de **teste**, não de código.
+
+2. **Alargar o trigger da 5b**, tirando a comparação de texto, fecharia o buraco registrado como "irredutível" — ⚠️ mas o **CONTROLE POSITIVO 1** da bateria de cargos quebra e precisa ser **reescrito** com inscrições diferentes. **Fica sem sentido se a chave mudar**, então decidir a chave ANTES de investir no trigger.
+
+3. **`anon` continua com `TRUNCATE` em `candidatos`**, e `TRUNCATE` **não passa por RLS**. Não é da importação, mas é da mesma tabela — tem item próprio acima ("Enxugar os grants de tabela"), com a nota de **começar por `candidatos`**.
+
+---
+
+## Temas de infraestrutura — futuro distante
+
+**Status:** anotados, sem desenho e sem ordem definida. Nenhum tem dono nem medição ainda.
+
+- Rate Limiting
+- Caching & CDN
+- Load Balancing & Scaling
+- Error Tracking & Logs
+- Availability & Recovery
+
+---
+
+## 📋 Nota de manutenção deste arquivo — decisão pendente do usuário
+
+O cabeçalho manda **remover item concluído** ("o histórico do que foi feito vive na documentação em `estrutura/`"), mas o arquivo já acumulou **8 blocos ✅ CONCLUÍDO**. Registro de sessões anteriores não é apagado por conta própria — **é decisão do usuário** se o cabeçalho muda ou se os blocos migram para `estrutura/`.
