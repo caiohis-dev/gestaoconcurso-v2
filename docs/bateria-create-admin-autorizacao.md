@@ -1,8 +1,12 @@
-# Bateria — autorização da Edge Function `create-admin`
+# [OBSOLETO] Bateria — autorização da Edge Function `create-admin`
+
+> **🚨 ATENÇÃO:** Esta bateria manual via curl foi **substituída** pelos testes automatizados em Deno. 
+> Veja `supabase/functions/create-admin/index.test.ts` e `supabase/functions/_shared/test-utils.ts`. 
+> O histórico abaixo é mantido apenas como referência de como as coisas eram antes da automação (2026-07-28).
 
 Prova que a `create-admin` só aceita chamada de um **superadmin autenticado**. Fechada em 2026-07-25; antes disso a função não checava nada e **qualquer um com a anon key criava uma conta `superadmin`** (ver [`../my_rules/estrutura/transversais/integracoes-externas.md`](../my_rules/estrutura/transversais/integracoes-externas.md)).
 
-> **Por que é bateria manual e não teste do Vitest:** a function roda em **Deno**, fora do alcance da suíte — que roda em jsdom contra um mock do Supabase. Um teste lá afirmaria o mock, não a function. O lado do **frontend** (mandar o JWT da sessão, não a anon key) esse sim está coberto, em `src/hooks/useUsers.test.tsx`.
+> **Por que era bateria manual e não teste do Vitest:** a function roda em **Deno**, fora do alcance da suíte — que roda em jsdom contra um mock do Supabase. O lado do **frontend** (mandar o JWT da sessão, não a anon key) esse sim está coberto, em `src/hooks/useUsers.test.tsx`.
 
 ## Antes de começar
 

@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useProvas } from "@/hooks/useProvas";
 import { useUnidadesProva } from "@/hooks/useUnidadesProva";
@@ -68,66 +69,70 @@ export default function GerenciarColaboradoresProva() {
   const [editFuncao, setEditFuncao] = useState("");
   const [metaDialogOpen, setMetaDialogOpen] = useState(false);
   const [coordenadoresDialogOpen, setCoordenadoresDialogOpen] = useState(false);
-  // Fetch prova_unidade info
-  const [provaUnidade, setProvaUnidade] = useState<{ prova_id: string; unidade_id: string } | null>(null);
-  const [provaId, setProvaId] = useState<string | null>(null);
-  const [unidadeId, setUnidadeId] = useState<string | null>(null);
-  const [unidadeFinalizada, setUnidadeFinalizada] = useState<boolean>(false);
-  const [provaCreatedBy, setProvaCreatedBy] = useState<string | null>(null);
-  const [finalizadaBy, setFinalizadaBy] = useState<string | null>(null);
-  const [finalizadaByName, setFinalizadaByName] = useState<string | null>(null);
-  const [isCoordDestaProva, setIsCoordDestaProva] = useState<boolean>(false);
   const [finalizarConfirmOpen, setFinalizarConfirmOpen] = useState(false);
   const [finalizarDialogOpen, setFinalizarDialogOpen] = useState(false);
   const [reabrirDialogOpen, setReabrirDialogOpen] = useState(false);
   const [resultDialog, setResultDialog] = useState<{ open: boolean; success: boolean; message: string }>({ open: false, success: true, message: "" });
 
-  const fetchProvaUnidadeInfo = async () => {
-    if (!provaUnidadeId) return;
-    const { data } = await supabase
-      .from("prova_unidades")
-      .select("prova_id, unidade_id, unidade_finalizada, unidade_finalizada_by, provas!inner(created_by)")
-      .eq("id", provaUnidadeId)
-      .single();
-    if (data) {
-      setProvaUnidade({ prova_id: data.prova_id, unidade_id: data.unidade_id });
-      setProvaId(data.prova_id);
-      setUnidadeId(data.unidade_id);
-      setUnidadeFinalizada(!!(data as any).unidade_finalizada);
-      setProvaCreatedBy(((data as any).provas?.created_by) ?? null);
+  // Fetch prova_unidade info
+  const { data: provaUnidadeData, refetch: fetchProvaUnidadeInfo } = useQuery({
+    queryKey: ["prova_unidade_info", provaUnidadeId],
+    queryFn: async () => {
+      if (!provaUnidadeId) return null;
+      const { data, error } = await supabase
+        .from("prova_unidades")
+        .select("prova_id, unidade_id, unidade_finalizada, unidade_finalizada_by, provas!inner(created_by)")
+        .eq("id", provaUnidadeId)
+        .single();
+      if (error) throw error;
+      
+      let finalizadaByName = null;
       const finBy = (data as any).unidade_finalizada_by ?? null;
-      setFinalizadaBy(finBy);
       if (finBy) {
         const { data: prof } = await supabase
           .from("profiles")
           .select("full_name, email")
           .eq("id", finBy)
           .maybeSingle();
-        setFinalizadaByName(prof?.full_name || prof?.email || "usuário desconhecido");
-      } else {
-        setFinalizadaByName(null);
+        finalizadaByName = prof?.full_name || prof?.email || "usuário desconhecido";
       }
-    }
-  };
 
-  useEffect(() => {
-    fetchProvaUnidadeInfo();
-  }, [provaUnidadeId]);
+      return {
+        prova_id: data.prova_id,
+        unidade_id: data.unidade_id,
+        unidadeFinalizada: !!(data as any).unidade_finalizada,
+        provaCreatedBy: (data as any).provas?.created_by ?? null,
+        finalizadaBy: finBy,
+        finalizadaByName,
+      };
+    },
+    enabled: !!provaUnidadeId,
+  });
+
+  const provaUnidade = provaUnidadeData ? { prova_id: provaUnidadeData.prova_id, unidade_id: provaUnidadeData.unidade_id } : null;
+  const provaId = provaUnidadeData?.prova_id ?? null;
+  const unidadeId = provaUnidadeData?.unidade_id ?? null;
+  const unidadeFinalizada = provaUnidadeData?.unidadeFinalizada ?? false;
+  const provaCreatedBy = provaUnidadeData?.provaCreatedBy ?? null;
+  const finalizadaBy = provaUnidadeData?.finalizadaBy ?? null;
+  const finalizadaByName = provaUnidadeData?.finalizadaByName ?? null;
 
   // Verifica se o usuário é coordenador desta prova
-  useEffect(() => {
-    if (!user || !provaId) {
-      setIsCoordDestaProva(false);
-      return;
-    }
-    supabase
-      .from("coordenadores_prova")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("prova_id", provaId)
-      .limit(1)
-      .then(({ data }) => setIsCoordDestaProva(!!data && data.length > 0));
-  }, [user, provaId]);
+  const { data: isCoordDestaProva = false } = useQuery({
+    queryKey: ["is_coord_desta_prova", user?.id, provaId],
+    queryFn: async () => {
+      if (!user || !provaId) return false;
+      const { data, error } = await supabase
+        .from("coordenadores_prova")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("prova_id", provaId)
+        .limit(1);
+      if (error) throw error;
+      return !!data && data.length > 0;
+    },
+    enabled: !!user && !!provaId,
+  });
 
   // Nome do usuário para o lock
   const [userName, setUserName] = useState<string>("");

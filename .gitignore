@@ -65,3 +65,6 @@ supabase/seed.local.sql
 # inscritos do concurso 002-2026-SMA, com 7.416 CPFs, e-mails e endereços de cidadãos).
 # Ficava fora do .gitignore, a um `git add .` de virar histórico público e permanente.
 docs/temp/
+
+# Anotações de Segurança
+seguranca/

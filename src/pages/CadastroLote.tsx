@@ -283,7 +283,7 @@ export default function CadastroLote() {
     if (m) return `${m[1]}-${m[2]}-${m[3]}`;
 
     // Formato dd/mm/aaaa, dd-mm-aaaa, dd.mm.aaaa (aceita 1 ou 2 dígitos para dia/mês)
-    m = texto.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+    m = texto.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
     if (m) {
       const dia = m[1].padStart(2, '0');
       const mes = m[2].padStart(2, '0');

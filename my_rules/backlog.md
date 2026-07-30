@@ -356,16 +356,24 @@ Migration `20260726190000_funcoes_colaboradores_on_delete_restrict.sql`: as trê
 
 > **Achado de brinde, agora documentado:** existe uma segunda barreira mais antiga no banco, o trigger `check_system_funcao_changes`, que recusa excluir/renomear/tornar editável as funções com `cargo_editavel = false`. Ele **dispara antes** da checagem de FK — tentar excluir função do sistema levanta `P0001`, não `23503`. Não estava em doc nenhuma.
 
-## Dois `useEffect` do `GerenciarColaboradoresProva` escrevem estado fora do React Query
+## 🔶 PARCIAL — os `useEffect` do `GerenciarColaboradoresProva` fora do React Query
 
-**Status:** pendente — **achado ao centralizar os guards** em 2026-07-26
+**Status:** **2 de 3 convertidos** em 2026-07-29 (trabalho do usuário). O terceiro segue pendente, e é ele que faz o barulho.
 **Área:** Alocação e Funções
 
-A página tem dois efeitos que chamam `supabase...then()` **cru** (linhas ~116 e ~132) e chamam `setState` no `.then`, em vez de usar React Query como o resto do repo. Consequência visível hoje: **3 avisos de `act` no stderr** da bateria de guards, e nenhum truque de teste os silencia — tentei esperar as queries assentarem, drenar macrotarefa e desmontar a árvore antes do fim. A causa é a página, não o teste.
+A página chamava `supabase...then()` **cru** e fazia `setState` no `.then`, em vez de usar React Query como o resto do repo. Por que incomoda além do ruído: estado que aterrissa fora do ciclo do React Query não participa de cache, invalidação nem `isLoading`, então a tela pode mostrar dado velho sem ninguém perceber.
 
-Por que incomoda além do ruído: estado que aterrissa fora do ciclo do React Query não participa de cache, invalidação nem `isLoading`, então a tela pode mostrar dado velho sem ninguém perceber.
+✅ **Convertidos para `useQuery`:** o `fetchProvaUnidadeInfo` (que virou a query `prova_unidade_info`, com o `refetch` no lugar da função) e o `isCoordDestaProva`.
 
-**Conserto:** transformar os dois efeitos em `useQuery`. O ruído no stderr some junto, e é o sinal de que deu certo.
+⏭️ **Falta o terceiro:** o `useEffect` do **`setUserName`** (`GerenciarColaboradoresProva.tsx:139`), que busca `profiles` e escreve estado no `.then`.
+
+### 🔴 A premissa deste item estava errada, e é o que vale registrar
+
+O item dizia **"dois `useEffect`"** e prometia que converter os dois faria os **3 avisos de `act`** sumirem do stderr — *"é o sinal de que deu certo"*. **Medido em 2026-07-30, depois da conversão: os 3 avisos continuam lá, e os três nomeiam `GerenciarColaboradoresProva`.** A origem é o terceiro efeito, que o item nunca contou.
+
+**A lição:** o item mediu o **sintoma** (3 avisos) e presumiu a **causa** (2 efeitos) sem cruzar os dois. É a terceira vez que um item deste backlog carrega premissa errada — as anteriores foram a proposta de os guards lerem papéis de `modulos.ts` e a de que papel `coordenador` sem vínculo era inofensivo. **Conferir a premissa no código antes de executar o item continua sendo obrigatório.**
+
+**Conserto do que falta:** transformar o efeito do `setUserName` em `useQuery`. O sinal de que deu certo continua sendo o stderr — mas agora medido, não presumido: `npx vitest run src/pages/guards.test.tsx` tem de parar de citar `not wrapped in act`.
 
 ---
 
