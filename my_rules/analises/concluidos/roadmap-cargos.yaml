@@ -8,8 +8,20 @@ roadmap:
   titulo: "Cargos — o texto sujo da planilha vira referência a um cargo cadastrado, sanitizado pelo usuário"
   criado: "2026-07-27"
   status: >
-    ✅ JANELAS A, B e C FECHADAS — etapas 1 a 5b concluídas. Falta só a 6 (janela D,
-    cosmética). O tema ENTREGOU o que prometia: renomear cargo não duplica candidato.
+    ✅ TEMA COMPLETO — etapas 1 a 6 concluídas (janelas A, B, C e D). Só a 7 (página
+    /cargos) segue NÃO planejada, por D7. O tema entregou o que prometia: renomear cargo
+    não duplica candidato — e desde a 6 isso APARECE na tela.
+    ---- etapa 6, 2026-07-29 ----
+    (6) a lista e a ficha passaram a exibir `cargos.nome` (join à esquerda embutido no
+    select da listagem) e o cabeçalho ganhou o filtro por cargo, recortado no SERVIDOR.
+    Suíte 965/965 em 51 arquivos (+15), tsc e build limpos, lint de volta ao baseline de
+    110 por `npx eslint src`. Verificado PELO POSTGREST com JWT de admin forjado: o embed
+    devolve objeto e mantém as 3 linhas (a de cargo_id nulo com "cargos": null); o recorte
+    devolve 1 e o count é o do recorte; e o CONTROLE NEGATIVO mostrou que `cargos!inner`
+    some com o inscrito sem cargo E derruba o count (2 de 3). Dados de teste apagados.
+    🔴 A etapa achou um defeito PREEXISTENTE: "limpar edital" anunciava o total FILTRADO
+    numa ação que apaga o edital inteiro — prometia 12, removia 7.416. Corrigido com
+    regressão; a visibilidade do botão também passou a olhar o total do edital.
     ---- etapas 5 e 5b, 2026-07-28 ----
     (5) migration 20260728100000: pré-check medido (0 candidatos, 0 cargos, 0 apelidos no
     local), backfill defensivo + guarda de colisão, DROP/CREATE do índice único e DROP da

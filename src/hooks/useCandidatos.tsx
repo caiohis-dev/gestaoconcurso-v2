@@ -3,11 +3,33 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { CandidatoResolvido, mensagemErroImportacao } from "@/lib/candidatos-import";
 
+/** O cargo canônico do catálogo, trazido pelo join da listagem. */
+export interface CargoDoCandidato {
+  id: string;
+  nome: string;
+}
+
 export interface Candidato {
   id: string;
   edital_id: string;
   n_inscricao: string;
+  /**
+   * O texto do cargo **como veio na planilha** — procedência, não identidade (D2 do
+   * roadmap de cargos). Costuma vir sujo (`DOCENTE I ¿ HISTÓRIA`, travessão em cp1252
+   * lido como latin-1). ⚠️ **Não é isto que a tela deve exibir**: quem responde "qual é
+   * o cargo" é `cargos.nome`, o nome canônico. Este campo existe para explicar ao
+   * usuário por que ele viu o texto sujo antes, e para o mapeamento ser refazível.
+   */
   cargo: string | null;
+  cargo_id: string | null;
+  /**
+   * O cargo do catálogo, embutido pelo `select` da listagem.
+   *
+   * ⚠️ **É um join à esquerda, e tem de continuar sendo.** Trocar por `cargos!inner`
+   * sumiria com todo inscrito de `cargo_id` nulo — e sumir da lista é o único erro grave
+   * possível nesta tela.
+   */
+  cargos: CargoDoCandidato | null;
   nome: string;
   cpf: string | null;
   email: string | null;
@@ -49,9 +71,21 @@ export const TAMANHO_BLOCO = 500;
 export interface FiltroCandidatos {
   editalId: string | null;
   busca?: string;
+  /** Recorte por cargo do catálogo. `null` = todos. */
+  cargoId?: string | null;
   pagina?: number;
   porPagina?: number;
 }
+
+/**
+ * O `select` da listagem, com o cargo canônico embutido.
+ *
+ * O join evita o N+1 (uma consulta a `cargos` por linha exibida) e não custa paginação: o
+ * PostgREST resolve a relação na mesma requisição, então o `count: "exact"` continua sendo
+ * o do servidor. `cargos` tem RLS de SELECT para `authenticated`, e quem já lê `candidatos`
+ * é admin — a relação não esbarra em policy.
+ */
+const SELECT_LISTAGEM = "*, cargos ( id, nome )";
 
 /**
  * Listagem paginada dos inscritos de UM edital.
@@ -61,23 +95,39 @@ export interface FiltroCandidatos {
  * usuário não teria como saber que os outros 6.416 existem — o pior tipo de erro, o que
  * parece ter funcionado. O total vem do `count: "exact"`, não do tamanho do array.
  */
-export function useCandidatos({ editalId, busca = "", pagina = 0, porPagina = 50 }: FiltroCandidatos) {
+export function useCandidatos({
+  editalId,
+  busca = "",
+  cargoId = null,
+  pagina = 0,
+  porPagina = 50,
+}: FiltroCandidatos) {
   const termo = busca.trim();
 
   const query = useQuery({
-    queryKey: ["candidatos", editalId, termo, pagina, porPagina],
+    queryKey: ["candidatos", editalId, termo, cargoId, pagina, porPagina],
     // Sem edital escolhido não há o que listar — e `enabled: false` evita a consulta
     // sem filtro, que traria inscrito de todos os editais misturado.
     enabled: !!editalId,
     queryFn: async () => {
       let q = supabase
         .from("candidatos")
-        .select("*", { count: "exact" })
+        .select(SELECT_LISTAGEM, { count: "exact" })
         .eq("edital_id", editalId as string);
+
+      // O recorte por cargo vai ao SERVIDOR, e é por isso que o contador continua
+      // valendo: filtrar no cliente deixaria o `count` falando do conjunto inteiro
+      // enquanto a tabela mostra um subconjunto — a tela mentiria sem quebrar nada.
+      if (cargoId) q = q.eq("cargo_id", cargoId);
 
       if (termo) {
         // Busca por nome, inscrição ou CPF — os três jeitos de procurar alguém numa lista
         // de inscritos. `%` nas duas pontas porque o usuário costuma lembrar do sobrenome.
+        //
+        // ⚠️ O nome do CARGO está fora deste `or` de propósito. Filtrar por coluna de
+        // tabela embutida tem sintaxe própria no PostgREST e não entra no mesmo `or`; e
+        // quem quer "os inscritos de DOCENTE II" tem o filtro por cargo, que é exato.
+        // Improvisar isso no cliente quebraria o `count` do servidor.
         const escapado = termo.replace(/[%,()]/g, " ");
         q = q.or(`nome.ilike.%${escapado}%,n_inscricao.ilike.%${escapado}%,cpf.ilike.%${escapado}%`);
       }

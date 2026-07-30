@@ -14,6 +14,9 @@
  *    2026-07-28 o cargo entra por `cargo_id` e não pelo texto (migration 20260728100000)
  *    — é essa troca que fez corrigir o nome de um cargo parar de duplicar inscrito.
  *  - **A divisão em blocos.** Sem ela seriam 7.416 requisições.
+ *  - **O join do cargo canônico e o recorte por cargo** (etapa 6, 2026-07-29). O primeiro
+ *    evita N+1 e precisa continuar sendo join à ESQUERDA; o segundo tem de ir ao servidor,
+ *    senão o `count` passa a descrever um conjunto e a tabela, outro.
  *
  * A lógica de CONVERSÃO da planilha não está aqui: ela é pura e tem bateria própria em
  * `lib/candidatos-import.test.ts`. Ver `my_rules/estrutura/modulos/candidatos/00-modulo.md`.
@@ -57,11 +60,17 @@ import {
 
 const EDITAL_ID = "edital-1";
 
+const CARGO_ID = "cargo-historia";
+
 const CANDIDATO: Candidato = {
   id: "cand-1",
   edital_id: EDITAL_ID,
   n_inscricao: "214274",
-  cargo: "DOCENTE II",
+  // O texto CRU da planilha e o cargo CANÔNICO diferem de propósito: o `¿` é o travessão
+  // em cp1252 lido como latin-1, e é o dado real do arquivo de 7.416 linhas.
+  cargo: "DOCENTE I ¿ HISTÓRIA",
+  cargo_id: CARGO_ID,
+  cargos: { id: CARGO_ID, nome: "DOCENTE I — HISTÓRIA" },
   nome: "AGATHA LAMIM DE SOUZA",
   cpf: "22940161739",
   email: "agathalamim86@gmail.com",
@@ -196,9 +205,66 @@ describe("useCandidatos", () => {
       await waitFor(() => expect(result.current.isLoading).toBe(false));
 
       const builder = builderQueChamou("candidatos", "select");
-      expect(builder.select).toHaveBeenCalledWith("*", { count: "exact" });
+      expect(builder.select).toHaveBeenCalledWith("*, cargos ( id, nome )", { count: "exact" });
       expect(builder.eq).toHaveBeenCalledWith("edital_id", EDITAL_ID);
       expect(builder.order).toHaveBeenCalledWith("nome", { ascending: true });
+    });
+
+    it("⭐ traz o cargo canônico no MESMO select, não numa consulta por linha", async () => {
+      // O join é o que permite a tela mostrar `cargos.nome` em vez do texto sujo sem
+      // pagar N+1 (uma ida ao servidor por inscrito exibido, 50 por página). E precisa
+      // ser à ESQUERDA: `cargos!inner` sumiria com quem tem `cargo_id` nulo, e sumir da
+      // lista é o único erro grave possível nesta tela.
+      setTableResult("candidatos", pagina([CANDIDATO]));
+      const { result } = renderHookWithProviders(() => useCandidatos({ editalId: EDITAL_ID }));
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      const [select] = builderQueChamou("candidatos", "select").select.mock.calls[0] as [string];
+      expect(select).toContain("cargos ( id, nome )");
+      expect(select).not.toContain("!inner");
+      expect(supabaseMock.from).not.toHaveBeenCalledWith("cargos");
+      expect(result.current.candidatos[0].cargos?.nome).toBe("DOCENTE I — HISTÓRIA");
+    });
+
+    it("recorta por cargo NO SERVIDOR, mantendo o count e a paginação", async () => {
+      // Filtrar no cliente deixaria o `count` falando do edital inteiro enquanto a tabela
+      // mostra um subconjunto — a tela mentiria sem quebrar nada, que é o mesmo modo de
+      // falha que a paginação já guarda.
+      setTableResult("candidatos", pagina([CANDIDATO], 481));
+      const { result } = renderHookWithProviders(() =>
+        useCandidatos({ editalId: EDITAL_ID, cargoId: CARGO_ID, porPagina: 50 }),
+      );
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      const builder = builderQueChamou("candidatos", "select");
+      expect(builder.eq).toHaveBeenCalledWith("edital_id", EDITAL_ID);
+      expect(builder.eq).toHaveBeenCalledWith("cargo_id", CARGO_ID);
+      expect(builder.range).toHaveBeenCalledWith(0, 49);
+      expect(result.current.total).toBe(481);
+    });
+
+    it("não recorta por cargo quando nenhum está escolhido", async () => {
+      // CONTROLE POSITIVO do filtro: sem ele, um teste que só confere a presença do `eq`
+      // passaria com um recorte aplicado sempre — e a lista nunca mostraria o edital todo.
+      setTableResult("candidatos", pagina([CANDIDATO]));
+      const { result } = renderHookWithProviders(() => useCandidatos({ editalId: EDITAL_ID }));
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      const builder = builderQueChamou("candidatos", "select");
+      expect(builder.eq).toHaveBeenCalledTimes(1);
+      expect(builder.eq).toHaveBeenCalledWith("edital_id", EDITAL_ID);
+    });
+
+    it("busca e cargo se acumulam, em vez de um substituir o outro", async () => {
+      setTableResult("candidatos", pagina([]));
+      const { result } = renderHookWithProviders(() =>
+        useCandidatos({ editalId: EDITAL_ID, cargoId: CARGO_ID, busca: "AGATHA" }),
+      );
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      const builder = builderQueChamou("candidatos", "select");
+      expect(builder.eq).toHaveBeenCalledWith("cargo_id", CARGO_ID);
+      expect(builder.or).toHaveBeenCalledWith(expect.stringContaining("nome.ilike.%AGATHA%"));
     });
 
     it("⭐ o total vem do count do servidor, NÃO do tamanho da página", async () => {

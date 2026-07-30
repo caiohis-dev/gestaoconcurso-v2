@@ -1,8 +1,8 @@
 # Cargos — o cargo do candidato como entidade
 
-> **Doc de feature do módulo Candidatos.** Deve bastar para implementar ou refatorar os cargos sem reler o codebase. Contrato do módulo: [`00-modulo.md`](./00-modulo.md). Roadmap da implementação: [`../../../analises/roadmap-cargos.yaml`](../../../analises/roadmap-cargos.yaml).
+> **Doc de feature do módulo Candidatos.** Deve bastar para implementar ou refatorar os cargos sem reler o codebase. Contrato do módulo: [`00-modulo.md`](./00-modulo.md). Roadmap da implementação, **arquivado** porque o tema fechou: [`../../../analises/concluidos/roadmap-cargos.yaml`](../../../analises/concluidos/roadmap-cargos.yaml) — histórico do raciocínio, **não é plano**.
 
-## Estado: **o tema ENTREGOU** — etapas 1 a 5b concluídas (2026-07-28)
+## Estado: **TEMA COMPLETO** — as 6 etapas concluídas (2026-07-29)
 
 | Etapa | O que é | Estado |
 |---|---|---|
@@ -12,11 +12,12 @@
 | 4 | UI: o passo 3 "Cargos" no assistente | ✅ **feita** — `CandidatosImportar.tsx` |
 | 5 | A chave natural passa a usar `cargo_id` | ✅ **feita** — migration `20260728100000` |
 | 5b | Trigger que recusa reapontar cargo já importado | ✅ **feita** — migration `20260728110000` |
-| 6 | Lista e ficha mostram o cargo canônico | pendente — cosmética, ver o fim |
+| 6 | Lista e ficha mostram o cargo canônico + filtro por cargo | ✅ **feita** — `Candidatos.tsx` (2026-07-29) |
+| 7 | (opcional) página `/cargos` | **não planejada** — ver D7 |
 
 ⭐ **O sintoma que motivou o tema acabou.** `candidatos.cargo_id` é identidade: a chave natural é `(edital_id, cpf, cargo_id, n_inscricao)`. **Renomear um cargo virou um `UPDATE` numa linha e não duplica ninguém** — verificado pelo PostgREST em 28/07 (3 inscritos antes, 3 depois, nome novo aparecendo no join). Antes, a mesma correção criava 481 registros.
 
-⚠️ **A etapa 6 é a única que falta, e é cosmética:** a lista e a ficha ainda mostram o texto CRU da planilha (`candidatos.cargo`), não o nome canônico do catálogo. Nada quebra por causa disso — o dado está certo, só a exibição é que ainda é a da procedência.
+✅ **E desde a etapa 6 o ganho APARECE:** renomear o cargo muda o que a tela mostra, porque a lista e a ficha leem `cargos.nome`, não mais o texto da planilha.
 
 ### ⭐ A etapa 5 INVERTEU qual erro é fatal — leia antes de mexer em qualquer coisa aqui
 
@@ -152,6 +153,21 @@ A verificação real é [`../../../../docs/bateria-cargos.sql`](../../../../docs
 | Trigger | `updated_at` se move sozinho |
 
 ⚠️ **Ao mexer no schema destas tabelas, refaça a bateria à mão.** Os UUIDs de papel embutidos nela são do banco local e podem mudar num `db reset` com dump novo — conferir com a consulta 5.1, que existe para isso.
+
+### A verificação da etapa 6 é PELO POSTGREST, e não cabe em SQL
+
+O embed e o recorte são coisas que o **PostgREST** faz; `psql` passaria mesmo com o app quebrado, e a suíte só prova que o hook *manda* a string. O que foi rodado em 2026-07-29, com JWT de admin forjado com o `JWT_SECRET` do `supabase status` (mesmo método da bateria de `create-admin`), 3 inscritos de teste — um deles com `cargo_id` nulo — inseridos e **apagados depois** (o banco local voltou a 0 candidatos e 0 cargos):
+
+```bash
+# 1. o select do hook, tal como ele o manda — 3 linhas, a terceira com "cargos": null
+GET /rest/v1/candidatos?select=*,cargos%20(%20id,%20nome%20)&edital_id=eq.<E>   # 0-2/3
+# 2. o recorte por cargo — 1 linha, e o count é o do RECORTE
+GET /rest/v1/candidatos?select=*,cargos(id,nome)&edital_id=eq.<E>&cargo_id=eq.<C>   # 0-0/1
+# 3. CONTROLE NEGATIVO — !inner some com o inscrito sem cargo E derruba o count
+GET /rest/v1/candidatos?select=n_inscricao,cargos!inner(id,nome)&edital_id=eq.<E>   # 0-1/2
+```
+
+O caso 3 é o que dá autoridade ao aviso do código: a diferença entre o join certo e o errado é **um inscrito sumindo em silêncio**, com o contador concordando com o erro.
 
 ## A lib (etapa 2) — `src/lib/candidatos-import.ts`
 
@@ -313,6 +329,42 @@ Enquanto isso não for decidido, quem pegaria o resíduo é a **reconciliação*
 
 **O certo, que não coube:** o reapontamento deveria **mover** os inscritos de um cargo para o outro, não duplicá-los — mudar de ideia deveria simplesmente funcionar. Isso é a fusão de cargos da etapa 7 (RPC transacional). Bloquear é o downgrade barato: converte perda silenciosa em "ainda não dá" explícito.
 
-## O que vem a seguir
+## A exibição (etapa 6) — `Candidatos.tsx` e `useCandidatos.tsx`
 
-A **etapa 6**, cosmética: a lista e a ficha passam a mostrar o nome canônico do catálogo (hoje mostram o texto cru), com o texto da planilha como informação secundária de procedência, e um filtro por cargo no cabeçalho. Ver o roadmap.
+O que a etapa fez, em uma frase: **quem responde "qual é o cargo deste inscrito" passou a ser o catálogo, e não a planilha.** Concluída em 2026-07-29.
+
+| Onde | Antes | Agora |
+|---|---|---|
+| Coluna *Cargo* da lista | `candidatos.cargo` (texto cru, com `¿`) | `cargos.nome` (canônico); sem `cargo_id`, um `—` |
+| Ficha | só o texto cru, rotulado "Cargo" | *Cargo* = canônico **+** *Cargo como veio na planilha*, e a segunda linha só aparece quando os dois textos diferem |
+| Cabeçalho | busca por nome/inscrição/CPF | ganhou um **filtro por cargo**, recortado no servidor |
+
+### ⭐ O join tem de ser à ESQUERDA — medido, não presumido
+
+O `select` da listagem é `"*, cargos ( id, nome )"`, uma constante em `useCandidatos.tsx`. Uma requisição, sem N+1, e o `count: "exact"` continua sendo o do servidor.
+
+⚠️ **Trocar por `cargos!inner` faz inscrito desaparecer da lista.** Medido pelo PostgREST em 2026-07-29 com 3 inscritos, um deles com `cargo_id` nulo: o embed padrão devolve **3 linhas** (a terceira com `"cargos": null`) e `Content-Range: 0-2/3`; com `!inner` devolve **2** e `0-1/2`. O count cai junto, então a tela mentiria *e* esconderia gente. `cargo_id` é NULLABLE no banco de propósito — o `!inner` parece uma otimização e é uma perda silenciosa.
+
+### O filtro por cargo vai ao SERVIDOR
+
+`.eq("cargo_id", …)` na consulta, `cargoId` na `queryKey`, catálogo vindo do `useCargos()`. Verificado pelo PostgREST: `cargo_id=eq.<id>` devolve 1 de 3 linhas e `Content-Range: 0-0/1` — **o count é o do recorte**, que é a razão de o filtro não poder ser feito no cliente. Filtrando as 50 linhas da página, o contador continuaria descrevendo o edital inteiro e a paginação passaria a mentir; é o mesmo modo de falha que o teste do `count` já guardava.
+
+Cinco decisões da tela que não são óbvias:
+
+- **O catálogo é GLOBAL (D1), então o filtro oferece cargo que talvez não exista no edital.** Aceito: são 9 cargos, e o vazio filtrado **nomeia o cargo** ("Nenhum inscrito deste edital está no cargo X"). São quatro vazios diferentes e cada um manda fazer outra coisa — daí `mensagemDoVazio()` ser função própria. ⚠️ Dizer "Nenhum inscrito neste edital" com filtro ligado faria o usuário concluir que a importação falhou e reimportar 7.416 linhas à toa.
+- **Trocar de edital SOLTA o filtro de cargo.** Filtro herdado num edital onde aquele cargo não existe produz lista vazia que se parece com importação falhada.
+- **O contador vira "X de Y" com filtro ligado.** Um número solto menor que o do card do edital se lê como inscrito perdido na importação.
+- **O nome do cargo NÃO entrou na busca textual.** Filtrar coluna de tabela embutida tem sintaxe própria no PostgREST e não cabe no mesmo `.or()`; e o filtro exato já responde a pergunta. **Não improvisar isso no cliente** — quebraria o `count`.
+- **O `isLoading` do `useCargos` é lido**, e o Select fica `disabled` enquanto o catálogo não chega: array vazio é indistinguível de "ainda não sei", e o filtro apareceria com uma opção só como se não existisse cargo nenhum. ⚠️ **Sem `placeholder` no `SelectValue`**, porque `value` nunca é vazio (o sentinela `"todos"` sempre vale) — o Radix nunca o exibiria. Era adorno morto, e adorno morto é primo da guarda que não pode disparar. Não há teste de página cobrindo esse instante (o mock resolve imediato); quem cobre a distinção é `useCargos.test.tsx`, no nível do hook.
+
+### 🔴 A etapa achou um defeito que já existia: "limpar edital" anunciava o total ERRADO
+
+`excluirDoEdital` apaga por `edital_id` — o edital **inteiro**. Mas a confirmação (a que pede senha) anunciava `total`, que é o count da consulta **filtrada**. Com uma busca ligada ela prometia remover 12 inscritos e removia 7.416.
+
+**Já era defeito com a busca**, desde o nascimento da tela; o filtro por cargo só o tornaria fácil de encontrar. Corrigido: o número vem de `totalDoEdital` (a RPC de contagem, que ignora filtros), e com filtro ligado o texto diz "inclusive os que os filtros atuais escondem". O mesmo vale para a **visibilidade** do botão, que passou a olhar o total do edital — antes, uma busca sem resultado escondia o "limpar edital" de um edital com milhares de linhas. Há regressão guardando os dois em `Candidatos.ui.test.tsx`.
+
+> **A lição, que vale além desta tela:** ao acrescentar um filtro, procure toda ação da tela que age sobre o conjunto **inteiro**. Um contador filtrado ao lado de um botão não filtrado é uma promessa errada, e aqui a promessa errada estava justamente atrás da barreira de senha.
+
+### Efeito colateral bem-vindo no lint
+
+Extrair `camposDaFicha()` e `mensagemDoVazio()` para fora do componente derrubou a complexidade da função `Candidatos` de **40 para 25** (a regra `complexity` do eslint, máximo 15). O helper `ou()` existe porque 20 `?? "—"` inline eram contados como 20 ramos numa lista que não decide nada.

@@ -33,13 +33,13 @@ Duas consequências que precisam sobreviver a qualquer refatoração:
 |---|---|
 | `src/lib/candidatos-import.ts` (699 l.) | **O cérebro do módulo.** Puro, sem React nem Supabase: campos disponíveis, rótulos de coluna, auto-pareamento, conversores (data/hora/CPF/e-mail), a distinção erro-vs-aviso, deduplicação, os **cargos da planilha** e a tradução de erro do Postgres |
 | `src/lib/candidatos-import.test.ts` (71 testes) | A bateria da lógica acima. **Todos os casos de dado sujo são medidos no arquivo real**, não inventados |
-| `src/hooks/useCandidatos.test.tsx` (24 testes) | Bateria dos hooks: paginação e o `count` do servidor, o `onConflict` da chave natural, a divisão em blocos, o parar, a tradução de erro |
+| `src/hooks/useCandidatos.test.tsx` (28 testes) | Bateria dos hooks: paginação e o `count` do servidor, o `onConflict` da chave natural, o **join do cargo canônico** e o **recorte por cargo**, a divisão em blocos, o parar, a tradução de erro |
 | `src/hooks/useCargos.test.tsx` (26 testes) | Bateria dos cargos: a **assimetria dos dois upserts**, o `isLoading` distinguível de lista vazia, nome repetido que vira associação |
-| `src/pages/Candidatos.ui.test.tsx` (23 testes) | Bateria da listagem: total do servidor, data sem o bug de fuso, badges, busca, paginação e **as duas exclusões com barreiras diferentes** |
+| `src/pages/Candidatos.ui.test.tsx` (34 testes) | Bateria da listagem: total do servidor, data sem o bug de fuso, badges, busca, **o cargo canônico e o filtro por cargo**, paginação e **as duas exclusões com barreiras diferentes** |
 | `src/pages/CandidatosImportar.ui.test.tsx` (38 testes) | Bateria do assistente. Monta um `.xlsx` de verdade (com as duas colunas `NOME`) e o lê pelo caminho real da página; guarda o **impedimento quando o cargo não é pareado** |
-| `src/pages/Candidatos.tsx` (424 l.) | Listagem: escolha do edital por card, busca, paginação, ficha em diálogo, exclusão de um e "limpar edital" |
+| `src/pages/Candidatos.tsx` (553 l.) | Listagem: escolha do edital por card, busca, **filtro por cargo**, paginação, ficha em diálogo, exclusão de um e "limpar edital" |
 | `src/pages/CandidatosImportar.tsx` (1.155 l.) | O assistente de **5 passos**: arquivo → pareamento → **cargos** → importação → relatório |
-| `src/hooks/useCandidatos.tsx` (273 l.) | React Query: `useCandidatos` (paginada), `useContagemCandidatosPorEdital`, `useImportarCandidatos` (upsert em blocos), `useExcluirCandidatos` |
+| `src/hooks/useCandidatos.tsx` (323 l.) | React Query: `useCandidatos` (paginada, com o cargo embutido e o recorte por cargo), `useContagemCandidatosPorEdital`, `useImportarCandidatos` (upsert em blocos), `useExcluirCandidatos` |
 | `src/hooks/useCargos.tsx` (258 l.) | React Query dos cargos: catálogo, apelidos, criação e gravação da memória — ver [`cargos.md`](./cargos.md) |
 | `supabase/migrations/20260727000000_create_candidatos.sql` | O schema da tabela — coluna gerada, índices, 6 CHECKs, RLS, trigger e a RPC de contagem |
 | `supabase/migrations/20260727200000_candidatos_chave_cpf_cargo_inscricao.sql` | A chave natural ganhou o CPF, com `NULLS NOT DISTINCT` |
@@ -49,9 +49,9 @@ Duas consequências que precisam sobreviver a qualquer refatoração:
 
 Não há Edge Function neste módulo. A única RPC é `contar_candidatos_por_edital`, e ela é **SECURITY INVOKER** de propósito.
 
-**182 testes ao todo** (medidos em 2026-07-28), o que faz de Candidatos o módulo mais coberto do sistema. ⚠️ **Mas a suíte mocka o Supabase:** ela não exercita RLS, CHECK, índice único nem a coluna gerada. A tabela de permissões, a idempotência do upsert e as regras de `cargos` foram verificadas **à mão** contra o banco local — [`../../../../docs/bateria-cargos.sql`](../../../../docs/bateria-cargos.sql) e as consultas de [`../../transversais/invariantes.md`](../../transversais/invariantes.md). Quem mexer no schema refaz assim.
+**197 testes ao todo** (medidos em 2026-07-29), o que faz de Candidatos o módulo mais coberto do sistema. ⚠️ **Mas a suíte mocka o Supabase:** ela não exercita RLS, CHECK, índice único nem a coluna gerada. A tabela de permissões, a idempotência do upsert e as regras de `cargos` foram verificadas **à mão** contra o banco local — [`../../../../docs/bateria-cargos.sql`](../../../../docs/bateria-cargos.sql) e as consultas de [`../../transversais/invariantes.md`](../../transversais/invariantes.md). Quem mexer no schema refaz assim.
 
-> **Uma feature deste módulo tem doc própria:** [`cargos.md`](./cargos.md) — o cargo do candidato como entidade, o passo "Cargos" do assistente e o roadmap (etapas 1–5 e 5b concluídas; falta só a 6, cosmética).
+> **Uma feature deste módulo tem doc própria:** [`cargos.md`](./cargos.md) — o cargo do candidato como entidade, o passo "Cargos" do assistente e a exibição na listagem. **Tema completo em 2026-07-29** (etapas 1 a 6); só a 7, a página `/cargos`, segue não planejada.
 
 ## Modelo de dados
 
@@ -245,6 +245,19 @@ A tabela herda os `GRANT`s do `ALTER DEFAULT PRIVILEGES` da migration `202607120
 
 Isso é o item *"Enxugar os grants de `anon`/`authenticated`"* do [`backlog.md`](../../../backlog.md), que é sistêmico e anterior a este módulo. **O que muda com Candidatos é a aposta:** as outras tabelas guardam dado operacional; esta guarda CPF, e-mail, telefone e endereço de milhares de cidadãos. Ao mexer naquele item, comece por aqui.
 
+## As telas
+
+Duas: a **listagem** (`/candidatos`) e o **assistente de importação** (`/candidatos/importar`). Não há tela de criação nem de edição, por decisão — ver o começo deste doc.
+
+A listagem é: escolher o edital por card → filtrar → ver a página de 50 → abrir a ficha, excluir um, ou limpar o edital. O que dela não se adivinha:
+
+| | |
+|---|---|
+| **O cargo exibido é o CANÔNICO** (`cargos.nome`, via join), não o texto da planilha. O cru só aparece na ficha, rotulado como procedência. Detalhe e a medição do join em [`cargos.md`](./cargos.md) | desde 2026-07-29 |
+| **Busca e filtro de cargo vão ao servidor**, e é isso que mantém o contador e a paginação honestos. Filtrar no cliente é o defeito a não introduzir | — |
+| **Os contadores da tela são TRÊS coisas diferentes**: o card diz `contagem[edital]` (a RPC, sem filtro); o cabeçalho diz o `count` da consulta **filtrada**; `editais.n_candidatos` é previsão digitada à mão e não entra na tela | ⚠️ confundi-los já causou defeito — ver Pontos frágeis |
+| **Os quatro vazios são mensagens diferentes** (`mensagemDoVazio`): edital vazio, busca sem resultado, cargo sem inscrito, e os dois juntos | — |
+
 ## A importação — as regras que não são óbvias
 
 ### Os cinco passos do assistente
@@ -332,6 +345,7 @@ Três coisas que precisam sobreviver a qualquer refatoração dessas telas:
 
 ## Pontos frágeis conhecidos
 
-- **O acento do arquivo de origem vem quebrado** (`'DOCENTE I ¿ LÍNGUA INGLESA'` — o `¿` é um travessão mal codificado em cp1252). `candidatos.cargo` continua guardando como veio, porque é a procedência do dado. ⚠️ **Isto deixou de ser só uma inconveniência estética:** o texto compõe a identidade, então corrigi-lo e reimportar cria registro novo. É o problema que o tema **Cargos** resolve — o cargo vira referência a uma linha de `cargos`, e o nome canônico passa a ser editável sem duplicar ninguém. **Ainda não está fechado:** falta a etapa 5, ver [`cargos.md`](./cargos.md).
+- ✅ **O acento quebrado do arquivo de origem deixou de aparecer na tela.** O texto vem `'DOCENTE I ¿ LÍNGUA INGLESA'` (o `¿` é um travessão em cp1252 lido como latin-1) e `candidatos.cargo` **continua guardando como veio**, porque é a procedência do dado — mas quem a lista e a ficha exibem é `cargos.nome`, o nome canônico do catálogo. O tema **Cargos** fechou isso em 2026-07-29: o cargo é referência a uma linha de `cargos`, o nome canônico é editável sem duplicar ninguém, e a etapa 6 fez o ganho aparecer. Ver [`cargos.md`](./cargos.md).
 - **A exclusão de um candidato não pede senha; "limpar edital" pede.** Proposital: a primeira atinge uma linha e é reversível por reimportação, a segunda atinge milhares. Pedir senha nas duas ensinaria a digitá-la no piloto automático.
+- 🔴 **"Limpar edital" já anunciou o número errado, e isso é a armadilha a lembrar.** A ação apaga por `edital_id` — o edital **inteiro** —, mas a confirmação exibia o `count` da consulta **filtrada**: com uma busca ligada, prometia remover 12 e removia 7.416. Corrigido em 2026-07-29 (passou a usar a contagem da RPC, e avisa quando há filtro ligado), com regressão guardando. ⚠️ **A regra geral: ao acrescentar filtro a uma tela, revise toda ação que age sobre o conjunto inteiro.** Contador filtrado ao lado de botão não-filtrado é promessa errada — e aqui a promessa errada estava atrás da barreira de senha, que é onde ela menos podia estar.
 - **Não há paginação no relatório de problemas** — ele sai em `.xlsx`, que é onde a pessoa vai trabalhar.

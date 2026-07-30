@@ -7,6 +7,7 @@ import {
   useExcluirCandidatos,
   Candidato,
 } from "@/hooks/useCandidatos";
+import { useCargos } from "@/hooks/useCargos";
 import { RACA_MAP } from "@/lib/constants";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
@@ -47,6 +48,14 @@ import {
 
 const POR_PAGINA = 50;
 
+/**
+ * Valor do Select quando nada está filtrado.
+ *
+ * O Radix não aceita `value=""` num `SelectItem` — string vazia é o que ele usa para
+ * "sem seleção", e um item com esse valor apaga o placeholder. Daí o sentinela.
+ */
+const TODOS_OS_CARGOS = "todos";
+
 /** Data ISO → dd/mm/aaaa. Sem `new Date`: 'YYYY-MM-DD' seria lido como UTC e voltaria um
  *  dia em fusos negativos — o Brasil inteiro. É a armadilha clássica de data no JS. */
 function dataBr(iso: string | null): string {
@@ -60,15 +69,113 @@ function cpfFormatado(cpf: string | null): string {
   return cpf.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4");
 }
 
+/**
+ * O traço é o vazio da ficha: dos 25 campos, 20 são opcionais na planilha.
+ *
+ * Existe como função — e não como um `?? "—"` repetido 20 vezes — porque um campo vazio é
+ * uma decisão de exibição, não um ramo de lógica. Além de nomear a decisão, mantém
+ * `camposDaFicha` legível: com os `??` inline, o contador de complexidade lia 24 ramos
+ * numa lista que não decide nada.
+ */
+const ou = (valor: string | null | undefined) => valor ?? "—";
+
+/**
+ * Os 25 campos da ficha, na ordem em que aparecem.
+ *
+ * Fora do componente porque é dado, não render — e porque manter a lista aqui é o que
+ * permite ao Cargo ter DUAS linhas sem encher a árvore de JSX de condicional.
+ */
+function camposDaFicha(c: Candidato): [string, string][] {
+  const campos: [string, string][] = [
+    ["Nº de inscrição", c.n_inscricao],
+    ["Cargo", ou(c.cargos?.nome)],
+  ];
+
+  // A PROCEDÊNCIA do cargo, e só quando ela difere do nome canônico. É o que explica ao
+  // usuário por que ele já viu `DOCENTE I ¿ HISTÓRIA` nesta tela: o texto sujo continua
+  // guardado (D2), o catálogo é que passou a mandar no que se exibe. Repetir a linha
+  // quando os dois textos são iguais seria ruído em 8 de cada 9 fichas.
+  if (c.cargo && c.cargo !== c.cargos?.nome) {
+    campos.push(["Cargo como veio na planilha", c.cargo]);
+  }
+
+  campos.push(
+    ["CPF", cpfFormatado(c.cpf)],
+    ["E-mail", ou(c.email)],
+    ["Nascimento", dataBr(c.data_nascimento)],
+    ["Hora de nascimento", ou(c.hora_nascimento)],
+    ["Sexo", ou(c.sexo)],
+    ["Raça", c.raca != null ? String(RACA_MAP[c.raca] ?? c.raca) : "—"],
+    ["Telefone", ou(c.telefone)],
+    ["Celular", ou(c.celular)],
+    ["Identidade", ou(c.identidade_numero)],
+    ["Órgão emissor", ou(c.identidade_orgao)],
+    ["UF da identidade", ou(c.identidade_uf)],
+    ["Emissão", dataBr(c.identidade_emissao)],
+    ["Logradouro", ou(c.logradouro)],
+    ["Número", ou(c.numero)],
+    ["Complemento", ou(c.complemento)],
+    ["Bairro", ou(c.bairro)],
+    ["Cidade", ou(c.cidade)],
+    ["UF", ou(c.uf)],
+    ["CEP", ou(c.cep)],
+    ["PcD", c.portador_deficiencia ? "Sim" : "Não"],
+    ["Inscrição confirmada", c.confirmado ? "Sim" : "Não"],
+    ["Concurso na origem", ou(c.concurso_id_origem)],
+  );
+
+  return campos;
+}
+
+/**
+ * O que dizer quando a tabela volta vazia.
+ *
+ * São QUATRO vazios diferentes e a tela precisa distingui-los, porque cada um manda fazer
+ * outra coisa: importar a planilha, corrigir o termo, ou trocar o cargo filtrado. Dizer
+ * "nenhum inscrito neste edital" com um filtro ligado é a versão pior do erro — o usuário
+ * conclui que a importação falhou e reimporta 7.416 linhas à toa.
+ */
+function mensagemDoVazio(busca: string, cargoNome: string | null): { titulo: string; detalhe: string } {
+  if (!busca && !cargoNome) {
+    return {
+      titulo: "Nenhum inscrito neste edital",
+      detalhe: "Importe a planilha de inscritos para preencher a lista.",
+    };
+  }
+  if (busca && cargoNome) {
+    return {
+      titulo: "Nenhum inscrito encontrado",
+      detalhe: `Nenhum inscrito de "${cargoNome}" bate com a busca.`,
+    };
+  }
+  if (cargoNome) {
+    return {
+      titulo: "Nenhum inscrito encontrado",
+      detalhe: `Nenhum inscrito deste edital está no cargo "${cargoNome}".`,
+    };
+  }
+  return { titulo: "Nenhum inscrito encontrado", detalhe: "Nenhum inscrito bate com a busca." };
+}
+
 export default function Candidatos() {
   const navigate = useNavigate();
   const { editais, isLoading: carregandoEditais } = useEditais();
   const { contagem, isLoading: carregandoContagem } = useContagemCandidatosPorEdital();
   const { excluirUm, excluirDoEdital, isExcluindo } = useExcluirCandidatos();
+  // O catálogo alimenta o filtro. É GLOBAL (D1 do roadmap de cargos), então pode conter
+  // cargo de outro edital; hoje são 9 no total, e o vazio filtrado diz qual cargo não tem
+  // ninguém, o que basta para a pessoa entender o que aconteceu.
+  //
+  // ⚠️ `isLoading` é lido de propósito: um catálogo ainda carregando é indistinguível de um
+  // catálogo vazio se a gente só olhar o array, e o filtro apareceria com uma única opção
+  // ("Todos") como se não houvesse cargo nenhum. É o padrão de defeito mais repetido deste
+  // repo, e o próprio `useCargos` avisa sobre ele.
+  const { cargos, isLoading: carregandoCargos } = useCargos();
 
   const [editalId, setEditalId] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
   const [buscaAplicada, setBuscaAplicada] = useState("");
+  const [cargoFiltro, setCargoFiltro] = useState<string | null>(null);
   const [pagina, setPagina] = useState(0);
   const [candidatoAberto, setCandidatoAberto] = useState<Candidato | null>(null);
   const [candidatoParaExcluir, setCandidatoParaExcluir] = useState<Candidato | null>(null);
@@ -87,12 +194,35 @@ export default function Candidatos() {
   const { candidatos, total, isLoading, isFetching } = useCandidatos({
     editalId,
     busca: buscaAplicada,
+    cargoId: cargoFiltro,
     pagina,
     porPagina: POR_PAGINA,
   });
 
   const editalAtual = editais.find((e) => e.id === editalId) ?? null;
   const ultimaPagina = Math.max(0, Math.ceil(total / POR_PAGINA) - 1);
+  const cargoFiltradoNome = cargos.find((c) => c.id === cargoFiltro)?.nome ?? null;
+  const filtrando = !!buscaAplicada || !!cargoFiltro;
+  const vazio = mensagemDoVazio(buscaAplicada, cargoFiltradoNome);
+  /**
+   * Quantos inscritos o edital tem, IGNORANDO os filtros — vem da RPC de contagem, a mesma
+   * dos cards.
+   *
+   * ⚠️ Não confundir com `total`, que é o count da consulta FILTRADA. A distinção não é
+   * cosmética: "limpar edital" apaga o edital inteiro, e enquanto ele anunciava `total` a
+   * confirmação prometia remover 12 inscritos e removia 7.416. Era defeito já com a busca
+   * ligada; o filtro por cargo só o tornaria mais fácil de encontrar.
+   */
+  const totalDoEdital = editalId ? (contagem[editalId] ?? 0) : 0;
+
+  // Trocar de edital é trocar de conjunto: o cargo filtrado pode não existir no novo (o
+  // catálogo é global), e uma lista vazia por causa de filtro herdado se parece com uma
+  // importação que falhou.
+  function escolherEdital(id: string) {
+    setEditalId(id);
+    setCargoFiltro(null);
+    setPagina(0);
+  }
 
   if (carregandoEditais) {
     return (
@@ -149,15 +279,11 @@ export default function Candidatos() {
                 key={edital.id}
                 role="button"
                 tabIndex={0}
-                onClick={() => {
-                  setEditalId(edital.id);
-                  setPagina(0);
-                }}
+                onClick={() => escolherEdital(edital.id)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    setEditalId(edital.id);
-                    setPagina(0);
+                    escolherEdital(edital.id);
                   }
                 }}
                 className={`cursor-pointer transition-colors ${
@@ -193,20 +319,54 @@ export default function Candidatos() {
         ) : (
           <>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="relative w-full max-w-sm">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar por nome, inscrição ou CPF"
-                  value={busca}
-                  onChange={(e) => setBusca(e.target.value)}
-                  className="pl-9"
-                />
+              <div className="flex flex-1 flex-wrap items-center gap-3">
+                <div className="relative w-full max-w-sm">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por nome, inscrição ou CPF"
+                    value={busca}
+                    onChange={(e) => setBusca(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+                {/* "Quantos inscritos de DOCENTE II?" é a primeira pergunta real da
+                    operação, e o `aria-label` é o único nome que este combobox tem — o
+                    placeholder não rotula campo. */}
+                <Select
+                  value={cargoFiltro ?? TODOS_OS_CARGOS}
+                  disabled={carregandoCargos}
+                  onValueChange={(v) => {
+                    setCargoFiltro(v === TODOS_OS_CARGOS ? null : v);
+                    setPagina(0);
+                  }}
+                >
+                  {/* Sem `placeholder`: `value` nunca é vazio (o sentinela "todos" sempre
+                      vale), então o Radix nunca o exibiria — seria adorno morto. Quem
+                      comunica "ainda não sei os cargos" é o `disabled` acima. */}
+                  <SelectTrigger className="w-full sm:w-64" aria-label="Filtrar por cargo">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={TODOS_OS_CARGOS}>Todos os cargos</SelectItem>
+                    {cargos.map((cargo) => (
+                      <SelectItem key={cargo.id} value={cargo.id}>
+                        {cargo.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="flex items-center gap-3">
+                {/* Com filtro ligado o contador diz "X de Y": um número solto menor que o
+                    do card do edital pareceria inscrito perdido na importação. */}
                 <span className="text-sm text-muted-foreground">
-                  {isFetching ? "carregando…" : `${total} inscrito(s)`}
+                  {isFetching
+                    ? "carregando…"
+                    : filtrando
+                      ? `${total} de ${totalDoEdital} inscrito(s)`
+                      : `${total} inscrito(s)`}
                 </span>
-                {total > 0 && (
+                {totalDoEdital > 0 && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -227,14 +387,8 @@ export default function Candidatos() {
             ) : candidatos.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <Users className="mb-4 h-12 w-12 text-muted-foreground" />
-                <h3 className="text-lg font-semibold text-foreground">
-                  {buscaAplicada ? "Nenhum inscrito encontrado" : "Nenhum inscrito neste edital"}
-                </h3>
-                <p className="mt-1 text-muted-foreground">
-                  {buscaAplicada
-                    ? "Nenhum inscrito bate com a busca."
-                    : "Importe a planilha de inscritos para preencher a lista."}
-                </p>
+                <h3 className="text-lg font-semibold text-foreground">{vazio.titulo}</h3>
+                <p className="mt-1 text-muted-foreground">{vazio.detalhe}</p>
               </div>
             ) : (
               <>
@@ -261,7 +415,11 @@ export default function Candidatos() {
                               {!c.confirmado && <Badge variant="outline">não confirmada</Badge>}
                             </div>
                           </TableCell>
-                          <TableCell>{c.cargo ?? "—"}</TableCell>
+                          {/* O nome CANÔNICO do catálogo, não o texto da planilha: é o
+                              ponto inteiro da etapa 6. Sem `cargo_id` não há cargo
+                              canônico a exibir — "—" é preciso, e a ficha mostra o texto
+                              cru de quem quiser saber o que veio na origem. */}
+                          <TableCell>{c.cargos?.nome ?? "—"}</TableCell>
                           <TableCell className="font-mono">{cpfFormatado(c.cpf)}</TableCell>
                           <TableCell>{dataBr(c.data_nascimento)}</TableCell>
                           {/* Os dois botões nomeiam O INSCRITO da linha, e não só a ação.
@@ -343,35 +501,10 @@ export default function Candidatos() {
           </DialogHeader>
           {candidatoAberto && (
             <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-              {[
-                ["Nº de inscrição", candidatoAberto.n_inscricao],
-                ["Cargo", candidatoAberto.cargo ?? "—"],
-                ["CPF", cpfFormatado(candidatoAberto.cpf)],
-                ["E-mail", candidatoAberto.email ?? "—"],
-                ["Nascimento", dataBr(candidatoAberto.data_nascimento)],
-                ["Hora de nascimento", candidatoAberto.hora_nascimento ?? "—"],
-                ["Sexo", candidatoAberto.sexo ?? "—"],
-                ["Raça", candidatoAberto.raca != null ? (RACA_MAP[candidatoAberto.raca] ?? candidatoAberto.raca) : "—"],
-                ["Telefone", candidatoAberto.telefone ?? "—"],
-                ["Celular", candidatoAberto.celular ?? "—"],
-                ["Identidade", candidatoAberto.identidade_numero ?? "—"],
-                ["Órgão emissor", candidatoAberto.identidade_orgao ?? "—"],
-                ["UF da identidade", candidatoAberto.identidade_uf ?? "—"],
-                ["Emissão", dataBr(candidatoAberto.identidade_emissao)],
-                ["Logradouro", candidatoAberto.logradouro ?? "—"],
-                ["Número", candidatoAberto.numero ?? "—"],
-                ["Complemento", candidatoAberto.complemento ?? "—"],
-                ["Bairro", candidatoAberto.bairro ?? "—"],
-                ["Cidade", candidatoAberto.cidade ?? "—"],
-                ["UF", candidatoAberto.uf ?? "—"],
-                ["CEP", candidatoAberto.cep ?? "—"],
-                ["PcD", candidatoAberto.portador_deficiencia ? "Sim" : "Não"],
-                ["Inscrição confirmada", candidatoAberto.confirmado ? "Sim" : "Não"],
-                ["Concurso na origem", candidatoAberto.concurso_id_origem ?? "—"],
-              ].map(([rotulo, valor]) => (
-                <div key={rotulo as string}>
+              {camposDaFicha(candidatoAberto).map(([rotulo, valor]) => (
+                <div key={rotulo}>
                   <dt className="text-muted-foreground">{rotulo}</dt>
-                  <dd className="font-medium text-foreground">{valor as string}</dd>
+                  <dd className="font-medium text-foreground">{valor}</dd>
                 </div>
               ))}
             </dl>
@@ -407,11 +540,16 @@ export default function Candidatos() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* ⚠️ A descrição usa `totalDoEdital`, NUNCA `total`: a ação apaga o edital inteiro, e
+          `total` é o count da consulta FILTRADA. Anunciar o filtrado prometia remover 12 e
+          removia 7.416. Com filtro ligado, a confirmação diz isso na cara. */}
       <PasswordConfirmDialog
         open={limparEditalAberto}
         onOpenChange={setLimparEditalAberto}
         title="Limpar inscritos do edital"
-        description={`Isto remove TODOS os ${total} inscritos de "${editalAtual?.nome ?? ""}". Use quando a planilha de origem mudou de formato e a reimportação sozinha não resolve — reimportar por cima já atualiza os inscritos existentes, sem precisar limpar.`}
+        description={`Isto remove TODOS os ${totalDoEdital} inscritos de "${editalAtual?.nome ?? ""}"${
+          filtrando ? ", inclusive os que os filtros atuais escondem" : ""
+        }. Use quando a planilha de origem mudou de formato e a reimportação sozinha não resolve — reimportar por cima já atualiza os inscritos existentes, sem precisar limpar.`}
         confirmText={isExcluindo ? "Removendo..." : "Remover todos"}
         confirmVariant="destructive"
         onConfirm={async () => {

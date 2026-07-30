@@ -198,9 +198,9 @@ A suíte mocka o Supabase: não exercita RLS, constraint, trigger nem transaçã
 
 ---
 
-## Cargos como entidade — o cargo do candidato deixa de ser texto sujo
+## ✅ CONCLUÍDO 2026-07-29 — Cargos como entidade: o cargo do candidato deixou de ser texto sujo
 
-**Status:** **etapas 1 a 5b concluídas** (2026-07-28) — falta só a **6**, cosmética. Roadmap em [`analises/roadmap-cargos.yaml`](./analises/roadmap-cargos.yaml); doc da feature em [`estrutura/modulos/candidatos/cargos.md`](./estrutura/modulos/candidatos/cargos.md).
+**Status:** **as 6 etapas concluídas** (27 a 29/07). Roadmap arquivado em [`analises/concluidos/roadmap-cargos.yaml`](./analises/concluidos/roadmap-cargos.yaml); doc da feature em [`estrutura/modulos/candidatos/cargos.md`](./estrutura/modulos/candidatos/cargos.md). A etapa 7 (página `/cargos`) **não** é pendência — foi decidida como não planejada em D7.
 
 ✅ **Etapa 1 (schema):** migration `20260727210000` criou `cargos` e `cargo_apelidos`, acrescentou `candidatos.cargo_id` e os dois índices de apoio a FK. Verificada por [`../docs/bateria-cargos.sql`](../docs/bateria-cargos.sql), verde.
 
@@ -214,7 +214,9 @@ A suíte mocka o Supabase: não exercita RLS, constraint, trigger nem transaçã
 
 ✅ **Etapa 5b (a guarda):** migration `20260728110000` — trigger `candidatos_recusa_reapontar_cargo` (SQLSTATE `RC001`). A etapa 5 **inverteu qual erro é fatal**: o perigo deixou de ser a origem mudar a grafia e passou a ser o usuário **reapontar** um texto já importado para outro cargo, o que criaria linhas novas e deixaria as antigas órfãs em silêncio. A guarda fica em `candidatos`, **não** em `cargo_apelidos`.
 
-⏭️ **Falta a etapa 6**, cosmética: a lista e a ficha ainda mostram o texto CRU da planilha, não o nome canônico do catálogo. Nada quebra por isso — o dado está certo, só a exibição é a da procedência. Inclui também um filtro por cargo no cabeçalho da lista.
+✅ **Etapa 6 (a exibição):** a lista e a ficha passaram a mostrar o **nome canônico** do catálogo (join à esquerda embutido no select da listagem), a ficha ganhou o texto da planilha como procedência — só quando difere —, e o cabeçalho ganhou um **filtro por cargo** recortado no servidor. 15 testes novos (suíte em 965). Verificado pelo PostgREST, inclusive o controle negativo que mostra `cargos!inner` sumindo com o inscrito de `cargo_id` nulo.
+
+🔴 **A etapa 6 achou e corrigiu um defeito preexistente:** a confirmação de **"limpar edital"** — a que pede senha — anunciava o `count` da consulta **filtrada** numa ação que apaga o edital inteiro. Com uma busca ligada, prometia remover 12 inscritos e removia 7.416. Passou a usar a contagem da RPC, e a visibilidade do botão também. ⚠️ **A regra que fica:** ao acrescentar filtro a uma tela, revise toda ação que age sobre o conjunto inteiro.
 
 
 **Área:** Candidatos (ver [`estrutura/modulos/candidatos/00-modulo.md`](./estrutura/modulos/candidatos/00-modulo.md))

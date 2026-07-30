@@ -80,11 +80,38 @@ const EDITAL = {
   created_by: null,
 };
 
+/**
+ * O catálogo de cargos, que alimenta o filtro.
+ *
+ * `DOCENTE I — HISTÓRIA` com travessão de verdade é o nome CANÔNICO; o que veio na planilha
+ * é `DOCENTE I ¿ HISTÓRIA`, com o travessão cp1252 lido como latin-1. A diferença entre os
+ * dois é o assunto inteiro da etapa 6.
+ */
+const CARGO_HISTORIA = {
+  id: "cargo-historia",
+  nome: "DOCENTE I — HISTÓRIA",
+  nome_chave: "docente i — história",
+  ativo: true,
+  created_at: null,
+  updated_at: null,
+};
+
+const CARGO_DOCENTE_II = {
+  id: "cargo-docente-ii",
+  nome: "DOCENTE II",
+  nome_chave: "docente ii",
+  ativo: true,
+  created_at: null,
+  updated_at: null,
+};
+
 const AGATHA = {
   id: "cand-1",
   edital_id: "edital-1",
   n_inscricao: "214274",
-  cargo: "DOCENTE II",
+  cargo: "DOCENTE I ¿ HISTÓRIA",
+  cargo_id: CARGO_HISTORIA.id,
+  cargos: { id: CARGO_HISTORIA.id, nome: CARGO_HISTORIA.nome },
   nome: "AGATHA LAMIM DE SOUZA",
   cpf: "22940161739",
   email: "agathalamim86@gmail.com",
@@ -123,14 +150,17 @@ function cenario({
   candidatos = [AGATHA],
   total = candidatos.length,
   contagem = [{ edital_id: "edital-1", total: 7416 }],
+  cargos = [CARGO_HISTORIA, CARGO_DOCENTE_II],
 }: {
   editais?: unknown[];
   candidatos?: unknown[];
   total?: number;
   contagem?: { edital_id: string; total: number }[];
+  cargos?: unknown[];
 } = {}) {
   setTableResult("editais", { data: editais, error: null });
   setTableResult("candidatos", pagina(candidatos, total));
+  setTableResult("cargos", { data: cargos, error: null });
   setRpcResult("contar_candidatos_por_edital", { data: contagem, error: null });
 }
 
@@ -208,13 +238,30 @@ describe("Candidatos (interação)", () => {
   describe("com o edital escolhido", () => {
     beforeEach(() => cenario({ total: 7416 }));
 
-    it("lista o inscrito com inscrição e cargo", async () => {
+    it("⭐ lista o cargo CANÔNICO, não o texto sujo da planilha", async () => {
+      // O ganho da etapa 6, e ele só é visível como par: mostrar o nome do catálogo E não
+      // mostrar mais o texto de origem. Sem a segunda asserção, um `?? c.cargo` deixado
+      // para trás passaria — e a tela continuaria exibindo `¿` como sempre exibiu.
       const user = abrir();
       await escolherEdital(user);
 
       expect(await screen.findByText("AGATHA LAMIM DE SOUZA")).toBeInTheDocument();
       expect(screen.getByText("214274")).toBeInTheDocument();
-      expect(screen.getByText("DOCENTE II")).toBeInTheDocument();
+      expect(screen.getByText("DOCENTE I — HISTÓRIA")).toBeInTheDocument();
+      expect(screen.queryByText("DOCENTE I ¿ HISTÓRIA")).not.toBeInTheDocument();
+    });
+
+    it("inscrito sem cargo no catálogo mostra '—' e não quebra a linha", async () => {
+      // `cargo_id` é NULLABLE no banco — obrigatório só no assistente. Uma linha assim não
+      // tem cargo canônico a exibir, e o traço é preciso: quem quiser saber o que veio na
+      // origem abre a ficha, que mostra o texto cru.
+      cenario({ candidatos: [{ ...AGATHA, cargo_id: null, cargos: null }] });
+      const user = abrir();
+      await escolherEdital(user);
+
+      const linha = (await screen.findByText("AGATHA LAMIM DE SOUZA")).closest("tr");
+      expect(within(linha as HTMLElement).getByText("—")).toBeInTheDocument();
+      expect(screen.queryByText("DOCENTE I ¿ HISTÓRIA")).not.toBeInTheDocument();
     });
 
     it("formata o CPF", async () => {
@@ -297,6 +344,47 @@ describe("Candidatos (interação)", () => {
       // O código 2 de RACA_MAP é "Branca" — a ficha traduz em vez de exibir o número.
       expect(within(ficha).getByText("Branca")).toBeInTheDocument();
     });
+
+    it("⭐ a ficha mostra o cargo canônico E o texto que veio na planilha", async () => {
+      // A lista responde "qual é o cargo"; a ficha responde também "por que eu via `¿`
+      // aqui antes". O texto cru é PROCEDÊNCIA (D2) e continua guardado — é o que torna o
+      // mapeamento refazível, e o que explica ao usuário o que a etapa 6 mudou.
+      const user = abrir();
+      await escolherEdital(user);
+      await user.click(
+        await screen.findByRole("button", { name: "Ver ficha de AGATHA LAMIM DE SOUZA" }),
+      );
+
+      const ficha = await screen.findByRole("dialog");
+      expect(within(ficha).getByText("Cargo")).toBeInTheDocument();
+      expect(within(ficha).getByText("DOCENTE I — HISTÓRIA")).toBeInTheDocument();
+      expect(within(ficha).getByText("Cargo como veio na planilha")).toBeInTheDocument();
+      expect(within(ficha).getByText("DOCENTE I ¿ HISTÓRIA")).toBeInTheDocument();
+    });
+
+    it("a ficha NÃO repete a linha da planilha quando o texto já é o nome canônico", async () => {
+      // CONTROLE POSITIVO do par acima: em 8 dos 9 cargos reais os dois textos coincidem,
+      // e uma linha repetindo o valor anterior seria ruído na maioria das fichas.
+      cenario({
+        candidatos: [
+          {
+            ...AGATHA,
+            cargo: CARGO_DOCENTE_II.nome,
+            cargo_id: CARGO_DOCENTE_II.id,
+            cargos: { id: CARGO_DOCENTE_II.id, nome: CARGO_DOCENTE_II.nome },
+          },
+        ],
+      });
+      const user = abrir();
+      await escolherEdital(user);
+      await user.click(
+        await screen.findByRole("button", { name: "Ver ficha de AGATHA LAMIM DE SOUZA" }),
+      );
+
+      const ficha = await screen.findByRole("dialog");
+      expect(within(ficha).getByText("DOCENTE II")).toBeInTheDocument();
+      expect(within(ficha).queryByText("Cargo como veio na planilha")).not.toBeInTheDocument();
+    });
   });
 
   describe("busca", () => {
@@ -340,6 +428,121 @@ describe("Candidatos (interação)", () => {
 
       expect(await screen.findByText("Nenhum inscrito neste edital")).toBeInTheDocument();
       expect(screen.getByText(/Importe a planilha de inscritos/i)).toBeInTheDocument();
+    });
+  });
+
+  describe("⭐ filtro por cargo", () => {
+    /** Abre o combobox do filtro e escolhe uma opção pelo nome. */
+    async function filtrarPor(user: ReturnType<typeof userEvent.setup>, nome: string) {
+      await user.click(screen.getByRole("combobox", { name: "Filtrar por cargo" }));
+      await user.click(await screen.findByRole("option", { name: nome }));
+    }
+
+    it("recorta no SERVIDOR pelo cargo escolhido", async () => {
+      // "Quantos inscritos de DOCENTE II?" é a primeira pergunta real da operação. O
+      // recorte vai ao servidor porque é o que mantém o contador e a paginação honestos —
+      // filtrar as 50 linhas da página no cliente responderia outra pergunta.
+      cenario({ total: 7416 });
+      const user = abrir();
+      await escolherEdital(user);
+      await screen.findByText("AGATHA LAMIM DE SOUZA");
+
+      await filtrarPor(user, "DOCENTE II");
+
+      await waitFor(() => {
+        const comCargo = buildersDaTabela("candidatos").filter((b) =>
+          b.eq.mock.calls.some(([coluna]) => coluna === "cargo_id"),
+        );
+        expect(comCargo.length).toBeGreaterThan(0);
+        expect(comCargo[comCargo.length - 1].eq).toHaveBeenCalledWith(
+          "cargo_id",
+          CARGO_DOCENTE_II.id,
+        );
+      });
+    });
+
+    it("o combobox tem nome acessível e oferece o catálogo mais a saída 'todos'", async () => {
+      // O `aria-label` é o único nome que este campo tem: placeholder não rotula campo, e
+      // sem ele um leitor de tela anuncia só "combobox". Mesma lição dos 25 comboboxes do
+      // passo 2 do assistente.
+      cenario({ total: 7416 });
+      const user = abrir();
+      await escolherEdital(user);
+      await screen.findByText("AGATHA LAMIM DE SOUZA");
+
+      await user.click(screen.getByRole("combobox", { name: "Filtrar por cargo" }));
+
+      expect(await screen.findByRole("option", { name: "Todos os cargos" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "DOCENTE I — HISTÓRIA" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "DOCENTE II" })).toBeInTheDocument();
+    });
+
+    it("com o filtro ligado o contador diz X de Y, e não um número solto", async () => {
+      // 481 sozinho, ao lado de um card que diz 7416, se parece com inscrito perdido na
+      // importação. O "de 7416" é o que distingue recorte de perda.
+      cenario({ total: 481 });
+      const user = abrir();
+      await escolherEdital(user);
+      await screen.findByText("AGATHA LAMIM DE SOUZA");
+      expect(screen.getByText("481 inscrito(s)")).toBeInTheDocument();
+
+      await filtrarPor(user, "DOCENTE II");
+
+      expect(await screen.findByText("481 de 7416 inscrito(s)")).toBeInTheDocument();
+    });
+
+    it("⭐ o vazio filtrado NOMEIA o cargo em vez de dizer que o edital está vazio", async () => {
+      // O erro que este teste impede: "Nenhum inscrito neste edital" com um filtro ligado
+      // faz o usuário concluir que a importação falhou e reimportar 7.416 linhas à toa.
+      cenario({ candidatos: [], total: 0 });
+      const user = abrir();
+      await escolherEdital(user);
+      await screen.findByText("Nenhum inscrito neste edital");
+
+      await filtrarPor(user, "DOCENTE II");
+
+      expect(await screen.findByText(/está no cargo "DOCENTE II"/i)).toBeInTheDocument();
+      expect(screen.queryByText("Nenhum inscrito neste edital")).not.toBeInTheDocument();
+      expect(screen.queryByText(/Importe a planilha de inscritos/i)).not.toBeInTheDocument();
+    });
+
+    it("'Todos os cargos' solta o recorte", async () => {
+      // CONTROLE POSITIVO: sem esta saída o filtro seria uma armadilha de mão única.
+      cenario({ total: 7416 });
+      const user = abrir();
+      await escolherEdital(user);
+      await screen.findByText("AGATHA LAMIM DE SOUZA");
+      await filtrarPor(user, "DOCENTE II");
+      await screen.findByText("7416 de 7416 inscrito(s)");
+
+      await filtrarPor(user, "Todos os cargos");
+
+      expect(await screen.findByText("7416 inscrito(s)")).toBeInTheDocument();
+      await waitFor(() => {
+        const ultimo = buildersDaTabela("candidatos").at(-1);
+        expect(ultimo?.eq.mock.calls.some(([coluna]) => coluna === "cargo_id")).toBe(false);
+      });
+    });
+
+    it("trocar de edital solta o filtro herdado", async () => {
+      // O catálogo é global (D1): o cargo filtrado pode não existir no edital novo, e uma
+      // lista vazia por filtro herdado se parece com importação que falhou.
+      const OUTRO = { ...EDITAL, id: "edital-2", nome: "Edital 002/2026 SME" };
+      cenario({ editais: [EDITAL, OUTRO], total: 7416 });
+      const user = abrir();
+      await escolherEdital(user);
+      await screen.findByText("AGATHA LAMIM DE SOUZA");
+      await filtrarPor(user, "DOCENTE II");
+      await screen.findByText("7416 de 7416 inscrito(s)");
+
+      await escolherEdital(user, OUTRO.nome);
+
+      expect(await screen.findByText("7416 inscrito(s)")).toBeInTheDocument();
+      await waitFor(() => {
+        const ultimo = buildersDaTabela("candidatos").at(-1);
+        expect(ultimo?.eq).toHaveBeenCalledWith("edital_id", OUTRO.id);
+        expect(ultimo?.eq.mock.calls.some(([coluna]) => coluna === "cargo_id")).toBe(false);
+      });
     });
   });
 
@@ -413,12 +616,50 @@ describe("Candidatos (interação)", () => {
     });
 
     it("não oferece 'limpar edital' quando não há o que limpar", async () => {
-      cenario({ candidatos: [], total: 0 });
+      // Edital vazio de verdade: a contagem da RPC também é zero. É ela que decide se o
+      // botão aparece — não o count filtrado, que some com uma busca qualquer.
+      cenario({ candidatos: [], total: 0, contagem: [] });
       const user = abrir();
       await escolherEdital(user);
 
       await screen.findByText("Nenhum inscrito neste edital");
       expect(screen.queryByRole("button", { name: /Limpar edital/i })).not.toBeInTheDocument();
+    });
+
+    it("⭐ REGRESSÃO: a confirmação anuncia o total do EDITAL, não o da lista filtrada", async () => {
+      // O defeito: "limpar edital" apaga o edital inteiro (`delete().eq('edital_id', …)`),
+      // mas a confirmação anunciava `total`, que é o count da consulta FILTRADA. Com uma
+      // busca ligada ela prometia remover 12 inscritos e removia 7.416 — a barreira de
+      // senha existe justamente para esta ação, e ela estava informando o tamanho errado
+      // do estrago. Já era defeito com a busca; o filtro por cargo só o tornaria fácil de
+      // encontrar. Agora o número vem da RPC de contagem, que ignora os filtros.
+      cenario({ total: 12 });
+      const user = abrir();
+      await escolherEdital(user);
+      await screen.findByText("AGATHA LAMIM DE SOUZA");
+
+      await user.click(screen.getByRole("button", { name: /Limpar edital/i }));
+
+      const confirmacao = await screen.findByRole("alertdialog");
+      expect(within(confirmacao).getByText(/TODOS os 7416 inscritos/)).toBeInTheDocument();
+      expect(within(confirmacao).queryByText(/TODOS os 12 inscritos/)).not.toBeInTheDocument();
+    });
+
+    it("com filtro ligado, a confirmação avisa que apaga o que está escondido", async () => {
+      cenario({ total: 481 });
+      const user = abrir();
+      await escolherEdital(user);
+      await screen.findByText("AGATHA LAMIM DE SOUZA");
+      await user.click(screen.getByRole("combobox", { name: "Filtrar por cargo" }));
+      await user.click(await screen.findByRole("option", { name: "DOCENTE II" }));
+      await screen.findByText("481 de 7416 inscrito(s)");
+
+      await user.click(screen.getByRole("button", { name: /Limpar edital/i }));
+
+      const confirmacao = await screen.findByRole("alertdialog");
+      expect(
+        within(confirmacao).getByText(/inclusive os que os filtros atuais escondem/i),
+      ).toBeInTheDocument();
     });
   });
 

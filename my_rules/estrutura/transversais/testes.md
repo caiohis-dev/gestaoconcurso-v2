@@ -131,7 +131,7 @@ async function carregarEDepois(sequencia) {
 
 ## O que está coberto (2026-07-27)
 
-**950 testes em 51 arquivos** (medido em 2026-07-28, ao fim do tema Cargos). O módulo Candidatos sozinho responde por **182** deles.
+**965 testes em 51 arquivos** (medido em 2026-07-29, ao fim do tema Cargos). O módulo Candidatos sozinho responde por **197** deles.
 
 ✅ **Os três arquivos que estavam marcados como "nunca executados" rodaram.** `useCandidatos.test.tsx` (24), `Candidatos.ui.test.tsx` (23) e `CandidatosImportar.ui.test.tsx` (18) — os primeiros testes de comportamento de página do projeto.
 
@@ -150,11 +150,15 @@ Quando a regra depende de o **app** acertar (upsert com `on_conflict`, traduçã
 
 Foi assim que as chaves de 27/07 e 28/07 foram verificadas, e é assim que se repete.
 
+⭐ **O mesmo vale para JOIN embutido (`select` com relação).** A suíte prova que o hook *manda* a string; só o PostgREST diz se ela é válida, se a relação devolve **objeto ou array**, e se o join é à esquerda. Medido em 29/07 na listagem de candidatos: o embed padrão devolve 3 linhas (a de FK nula com `"cargos": null`), e `cargos!inner` devolve **2** — o inscrito sem cargo desaparece **e o `Content-Range` cai junto**, então o contador concorda com o erro. É defeito que nenhum teste sobre mock pode ver.
+
 ⚠️ Um achado que só apareceu por aí: o **SQLSTATE customizado de um trigger chega em `error.code`, nunca dentro de `error.message`**. Um tradutor de erro que case por `includes('<codigo>')` na mensagem é guarda que não pode disparar.
 
 ### ⭐ Duas práticas que 2026-07-27 consolidou
 
 **1. Falsificar antes de aceitar.** Teste que passa de primeira sobre um mock pode estar afirmando o mock. A cada asserção central, sabote o código e confira que cai *exatamente* o teste esperado — e nada além. No tema Cargos isso rodou nove vezes; a que mais valeu foi trocar `ignoreDuplicates` de `true` para `false`, porque o defeito que ela guarda (criar um cargo renomeando outro) é invisível na tela.
+
+> ⭐ **A falsificação também diz QUAL teste tem dentes, e a resposta surpreende.** Na etapa 6 (29/07), o teste marcado ⭐ era *"a lista mostra o cargo canônico, não o texto sujo"*, com asserção negativa incluída. Sabotando a coluna para `c.cargos?.nome ?? c.cargo ?? "—"` — o *fallback esquecido*, que é o erro realista — ele **passou**: o fixture tinha cargo canônico, então o fallback nunca disparava. Quem pegou foi o teste auxiliar, o do inscrito **sem** `cargo_id`. **Asserção negativa só tem dentes se o fixture puder chegar ao ramo errado**; o caso de borda é que guardava a regra, e sem a sabotagem eu teria confiado no teste errado.
 
 **2. `npm test` sozinho NÃO é o gate.** `CODIGOS_POSTGREST.RLS` não existe — a constante só tem `DUPLICADO` e `CHAVE_ESTRANGEIRA`, e os ~10 arquivos que precisam do 42501 usam o literal. O vitest passou **verde** com a chave inexistente (`undefined` em runtime não quebra o mock); quem pegou foi o `tsc`. Fechar tema exige os três comandos, sempre.
 
@@ -178,12 +182,23 @@ Duas coisas a fazer nesse momento, e as duas são fáceis de esquecer:
 | Hooks de dados | `useEditais`, `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas` (+ `useSalasDistribuidasCapacidade` e `useFiscaisSala`), `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers`, `useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade`, `useBancos` — **a camada está fechada** |
 | UI | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx`, **`PasswordConfirmDialog.ui.test.tsx`** (16 — a barreira das ações destrutivas), **`CoordenadoresProvaDialog.ui.test.tsx`** (23 — a concessão de acesso de coordenador), **`ValoresFuncaoProvaDialog`** + **`MetaColaboradoresDialog`** (20 + 13 — o caminho do dinheiro), **`CorrigirEmailAcessoDialog`** (16 — a âncora de identidade), **`UnidadeProvaDialog`** · **`FuncaoColaboradorDialog`** · **`SalaProvaDialog`** · **`SalaExtraDialog`** (42 no total) |
 | **Guards de página** | `pages/guards.test.tsx` — 151 testes: a matriz **21 páginas × 5 papéis**, mais a janela do `rolesLoaded` e o `isLoggingOut` |
-| **Hooks de candidatos** | `hooks/useCandidatos.test.tsx` — paginação com `count` do servidor, `onConflict` da chave natural, blocos de 500, parada no meio e tradução de erro |
+| **Hooks de candidatos** | `hooks/useCandidatos.test.tsx` (28) — paginação com `count` do servidor, `onConflict` da chave natural, o **join do cargo canônico** (e que ele é à esquerda), o **recorte por cargo no servidor** com controle positivo, blocos de 500, parada no meio e tradução de erro |
 | **Hooks de cargos** | `hooks/useCargos.test.tsx` — a **assimetria dos dois upserts** (`ignoreDuplicates` em `cargos`, `merge` em `cargo_apelidos`), o `isLoading` distinguível de lista vazia, e o nome repetido que vira associação em vez de erro |
-| **Páginas de candidatos** | `pages/Candidatos.ui.test.tsx` e `pages/CandidatosImportar.ui.test.tsx` — os **primeiros testes de comportamento de página** do projeto (até aqui, das páginas só o guard era testado). O do assistente monta um `.xlsx` real e guarda o alerta que impede a perda silenciosa de inscritos |
+| **Páginas de candidatos** | `pages/Candidatos.ui.test.tsx` (34) e `pages/CandidatosImportar.ui.test.tsx` (38) — os **primeiros testes de comportamento de página** do projeto (até aqui, das páginas só o guard era testado). O do assistente monta um `.xlsx` real e guarda o alerta que impede a perda silenciosa de inscritos; o da listagem guarda o **cargo canônico** (com o par negativo: o texto sujo NÃO aparece mais) e a **regressão do "limpar edital"**, que anunciava o total filtrado numa ação que apaga o edital inteiro |
 
-**A camada de hooks fechou em 2026-07-26** — os 20 hooks de dados têm teste (`use-mobile` e `use-toast` são utilitários do shadcn, fora da conta). **Os 12 diálogos estão cobertos.** Falta e **as 8 Edge Functions** (rodam em Deno, fora do alcance desta suíte — a autorização de duas delas é verificada pela bateria manual [`../../../docs/bateria-create-admin-autorizacao.md`](../../../docs/bateria-create-admin-autorizacao.md)).
+**A camada de hooks fechou em 2026-07-26** — os 20 hooks de dados têm teste (`use-mobile` e `use-toast` são utilitários do shadcn, fora da conta). **Os 12 diálogos estão cobertos.**
 
+### Edge Functions (Deno)
+
+As **Edge Functions** (que rodam em Deno e interagem direto com o banco/Auth) estão fora do escopo do Vitest e ganharam uma infraestrutura própria em 2026-07-28 usando o test runner nativo do Deno (`deno test`). Elas são tratadas como **testes de integração reais** contra o Supabase local (exigindo que a stack do banco esteja online via `npx supabase start`).
+
+O coração dessa infraestrutura é o `supabase/functions/_shared/test-utils.ts`, que forja JWTs localmente (usando a constante `JWT_SECRET` e a biblioteca `jose`). Isso resolve o maior obstáculo desse tipo de teste: permite invocar funções assumindo qualquer papel (como `superadmin` ou `admin`) sem precisar trafegar senhas ou fazer requisições lentas de login no Auth.
+
+| Função | Cobertura |
+|---|---|
+| `create-admin` | `index.test.ts` (8 cenários). Garante recusas (`401`/`403`) para tokens anônimos, lixos ou de administradores não-super. Impede concessões ilícitas (ex: criar papel "coordenador" avulso que corromperia o painel), verificando no próprio banco se o dado foi preservado intacto. |
+
+*(Baterias manuais prévias, como a `docs/bateria-create-admin-autorizacao.md`, tornaram-se obsoletas com esta infraestrutura e são mantidas apenas para registro histórico.)*
 **Das páginas, o que está coberto é o guard, não o comportamento.** A bateria afirma quem entra e para onde o recusado é mandado; ela não exercita formulário, listagem nem ação de página nenhuma. As **4 páginas fora da matriz** são as que não têm guard a testar, todas públicas por natureza: `/auth`, `/cadastro-publico`, `/redefinir-senha` e `NotFound`.
 
 O inventário completo, com ordem de prioridade e o que **não** se testa aqui, está no [`backlog.md`](../../backlog.md) → "Completar a suíte de testes (Vitest)".

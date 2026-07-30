@@ -5,11 +5,11 @@ import { useToast } from "@/hooks/use-toast";
 /**
  * Camada de dados dos CARGOS — o catálogo canônico e a memória de apelidos.
  *
- * Etapa 3 do roadmap `my_rules/analises/roadmap-cargos.yaml`. Doc da feature:
- * `my_rules/estrutura/modulos/candidatos/cargos.md`.
+ * Doc da feature: `my_rules/estrutura/modulos/candidatos/cargos.md` (o roadmap do tema está
+ * arquivado em `my_rules/analises/concluidos/roadmap-cargos.yaml`).
  *
- * ⚠️ Nada consome este arquivo ainda — o consumidor é o passo "Cargos" do assistente de
- * importação, que é a etapa 4. Esta é a última etapa da janela A (inerte).
+ * Dois consumidores: o passo "Cargos" do assistente de importação, que resolve texto sujo
+ * em `cargo_id`, e o **filtro por cargo** da listagem, que só usa `useCargos`.
  *
  * ⚠️ `cargos` NÃO tem relação com `funcoes_colaboradores`. Aquela é o que o COLABORADOR faz
  * ao aplicar a prova (tem pagamento, meta, alocação); esta é a vaga a que o CANDIDATO
