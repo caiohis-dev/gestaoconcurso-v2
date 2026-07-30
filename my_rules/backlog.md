@@ -121,7 +121,9 @@ O teste `⚠️ DEFEITO` que acusava a fabricação vivia em `useUsers.test.tsx`
 | `role: "admin"` | 200, papel gravado | ✅ |
 | sem `Authorization` | 401 (o portão de 25/07 segue de pé) | ✅ |
 
-E as contagens de `colaboradores_prova` / `coordenadores_prova` **iguais antes e depois** (554 / 9). É essa igualdade que prova que nada foi fabricado — não o status HTTP.
+E as contagens de `colaboradores_prova` / `coordenadores_prova` **iguais antes e depois** (554 / 9 em 26/07). É essa **igualdade** que prova que nada foi fabricado — não o status HTTP, e não o número em si.
+
+> ⚠️ **Medido de novo em 2026-07-30, depois de um `db reset`: 554 / 10.** As 10 linhas são todas de 2026-06-26, com e-mails reais do dump, e nenhuma foi criada pelos testes — não é resíduo. Não sei dizer se o `9` estava errado ou se o dump foi reexportado desde então, e **não vale investigar**: o que a verificação prova é a igualdade antes/depois, não o valor absoluto. Fica como exemplo da regra da casa — **contagem escrita envelhece; confira na hora**.
 
 > Observação colhida na verificação, **não é defeito deste item**: a conta criada pela EF termina com **dois** papéis, `user` (do trigger `handle_new_user`) e o pedido. Comportamento antigo, sem efeito prático porque `has_role` é por papel — mas quem for contar papéis por usuário precisa saber.
 
