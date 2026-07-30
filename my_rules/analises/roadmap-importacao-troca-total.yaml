@@ -17,7 +17,7 @@ roadmap:
   status: >
     🟢 ETAPA 1 CONCLUÍDA em 2026-07-30 (migration 20260730120000): a tabela de preparo e o
     RPC transacional existem e estão verificados por docs/bateria-troca-total-candidatos.sql,
-    verde nos 7 casos. ⚠️ NADA MUDOU DE COMPORTAMENTO AINDA — ninguém chama o RPC; a
+    verde nos 10 casos. ⚠️ NADA MUDOU DE COMPORTAMENTO AINDA — ninguém chama o RPC; a
     importação continua sendo o upsert. As etapas 2, 3 e 4 seguem pendentes.
 
   origem: >
@@ -176,24 +176,68 @@ roadmap:
         qualquer caminho — cliente, script ou chamada manual.
 
     - id: D4
-      titulo: "🔴 A troca só é disparada se TODOS os blocos de preparo subiram"
-      decidido: "PROPOSTO — etapa 2. É o gate do lado do cliente"
-      racional: |
-        A GUARDA 1 do RPC (D3) pega o lote vazio, mas NÃO pega o lote INCOMPLETO: 6.000
-        das 7.416 linhas no preparo é um lote perfeitamente válido aos olhos dele, e a
-        troca aconteceria apagando 7.416 e inserindo 6.000. **1.416 pessoas somem e o
-        relatório diz sucesso.**
+      titulo: "🔴 O preparo INCOMPLETO é recusado PELO BANCO (IM003), não por convenção do cliente"
+      decidido: "sim — implementado em 2026-07-30, migration 20260730130000"
+      historico: |
+        ⚠️ ESTA DECISÃO MUDOU DE NATUREZA no mesmo dia, e a mudança é o ponto.
 
-        Quem sabe quantas linhas deveriam subir é o cliente, e só ele. Por isso o gate é
-        lá: conferir que o número preparado bate com o do lote antes de chamar.
+        A primeira versão punha a conferência no CLIENTE: "só chame a troca se todos os
+        blocos entraram". O usuário perguntou se dava para fatiar em 1.000 e "entregar ao
+        fim o total" — e a pergunta expôs que aquilo era CONVENÇÃO, não regra: não valeria
+        para uma chamada via PostgREST, para um script, nem para quem repetisse o gesto à
+        mão daqui a um ano. É o princípio que este repo já catalogou (`invariantes.md`):
+        **regra de negócio só no cliente não é regra.**
+      racional: |
+        As guardas 1 e 2 pegam o lote VAZIO e o lote de OUTRO EDITAL. Nenhuma pega o lote
+        INCOMPLETO — e ele é o mais provável dos três, porque acontece sozinho: o preparo
+        sobe em blocos (o lote inteiro não cabe numa requisição, D2), um bloco falha, e
+        sobram 6.000 das 7.416 linhas. Para as duas guardas isso é um lote perfeitamente
+        válido: tem linhas, é do edital certo.
+
+        **A troca apagaria 7.416 e inseriria 6.000. 1.416 pessoas somem e o relatório diz
+        sucesso.**
       consequencia: |
-        Bloco falho ou `deveParar()` acionado → a troca NÃO é chamada, o preparo daquele
-        lote é descartado, e o relatório diz que a lista do edital NÃO mudou.
+        `trocar_candidatos_do_edital` ganhou um terceiro parâmetro, `p_total_esperado`, e
+        recusa com **IM003** quando a contagem do preparo não bate. Pega os dois lados:
+          - MENOR que o esperado → bloco falhou;
+          - MAIOR que o esperado → retentativa que não limpou o preparo antes.
+
+        ⚠️ O parâmetro NÃO tem default, de propósito: um default tornaria a conferência
+        pulável, e guarda pulável não é guarda.
+
+        Quem sabe quantas linhas deveriam subir continua sendo o cliente — o banco não tem
+        como descobrir isso sozinho. O que mudou é que ele deixou de decidir SE confere e
+        passou a só informar CONTRA O QUE conferir. A recusa é do banco.
       nota: >
         ⚠️ Isto INVERTE a semântica de falha parcial de hoje. Hoje um bloco falho deixa a
         importação pela metade e reimportar conserta. Com a troca total, um bloco falho
         deixa a lista INTACTA — o que é melhor, mas é diferente, e o relatório precisa
         dizer com todas as letras que nada mudou.
+
+    - id: D4b
+      titulo: "O bloco passa de 500 para 1.000 — e isso é etapa 2, não agora"
+      decidido: "PROPOSTO — etapa 2"
+      racional: |
+        MEDIDO em 2026-07-30, para o shape do preparo:
+
+          bloco    payload    requisições p/ 7.416    folga em 5 MB
+            500    0,44 MB                     15          4,56 MB
+           1000    0,89 MB                      8          4,11 MB
+           5000    4,44 MB                      2          0,56 MB
+           7416    6,59 MB                      1          🔴 ESTOURA
+
+        1.000 tem folga confortável e corta as requisições pela metade. ⭐ E o que responde
+        ao crescimento do edital: **o bloco não cresce, só o número de requisições** —
+        50.000 inscritos são 50 requisições de 0,89 MB. O teto some.
+
+        ⚠️ Fatiar mais grosso REDUZ as chances de um bloco falhar, mas NÃO elimina o risco
+        de preparo incompleto. Quem elimina é a GUARDA 3 (D4). São coisas diferentes, e
+        confundi-las levaria a "resolver" o problema mexendo no tamanho do bloco.
+      nao_faca: >
+        ⚠️ NÃO mudar `TAMANHO_BLOCO` antes da etapa 2. Ele governa o upsert que ainda está
+        no ar, e mexer nele agora alteraria um fluxo em produção sem necessidade — o
+        usuário pediu nominalmente que nenhum outro fluxo mudasse. Na etapa 2 o destino do
+        bloco muda de qualquer jeito, e a troca sai de graça.
 
     - id: D5
       titulo: "`deduplicar()` e `chaveNatural()` permanecem — e a chave natural NÃO muda"
@@ -317,8 +361,13 @@ roadmap:
       status: |
         ✅ CONCLUÍDA em 2026-07-30 — migration
         `20260730120000_candidatos_troca_total_preparo_e_rpc.sql`.
-        Verificada por `docs/bateria-troca-total-candidatos.sql`, VERDE nos 7 casos.
-        `types.ts` regenerado: diff PURAMENTE ADITIVO (+42, −0) — o que também prova que
+        Complementada no mesmo dia pela migration `20260730130000`, que acrescentou a
+        GUARDA 3 (`p_total_esperado` / IM003) — ver D4 para o porquê de ela existir e de
+        ter nascido no cliente.
+        Verificada por `docs/bateria-troca-total-candidatos.sql`, VERDE nos 10 casos.
+        ⚠️ `types.ts` PRECISA ser regenerado de novo depois da 20260730130000: a assinatura
+        do RPC mudou de (uuid, uuid) para (uuid, uuid, integer).
+        Na primeira geração o diff foi PURAMENTE ADITIVO (+42, −0) — o que também prova que
         não havia drift entre o arquivo e o banco, inclusive na coluna `raca` que virou
         `text` mais cedo no mesmo dia.
         Gates: 974 testes, tsc limpo, build limpo, lint 110 (= baseline), db reset com as
@@ -346,6 +395,9 @@ roadmap:
         - "✅ CASO 2 — preparo com edital divergente recusado (IM002) e a lista sobreviveu"
         - "✅ CASO 3 — CONTROLE POSITIVO: removidos=3, inseridos=2, preparo consumido, id/created_at gerados por nós"
         - "✅ CASO 4 — ⭐ ATOMICIDADE: INSERT sabotado por CHECK → ninguém apagado (3) e preparo intacto (2)"
+        - "✅ CASO 4b — ⭐ preparo INCOMPLETO (2 de 3) recusado com IM003 e a lista sobreviveu"
+        - "✅ CASO 4c — preparo DUPLICADO (2 de 1) recusado com IM003"
+        - "✅ CASO 4d — total esperado ZERO recusado com IM001 (esvaziar tem tela própria)"
         - "✅ CASO 5 — CONTROLE POSITIVO: o outro edital ficou intocado (2)"
         - "✅ CASO 6 — ⭐ coluna nova em candidatos viajou sozinha (é a razão de a linha ser jsonb)"
         - "✅ CASO 7 — anon com ZERO privilégios na tabela nova e sem EXECUTE no RPC; candidatos segue com os 7 (contraste registrado)"
@@ -445,8 +497,10 @@ roadmap:
   riscos:
     - risco: "🔴 Preparo INCOMPLETO disparar a troca — apaga 7.416 e insere 6.000, e o relatório diz sucesso"
       mitigacao: >
-        D4, o gate do cliente. ⚠️ A GUARDA 1 do banco NÃO pega este caso: 6.000 linhas são
-        um lote válido para ela. É o risco nº 1 do desenho e o único sem defesa no banco.
+        ✅ FECHADO NO BANCO em 2026-07-30 pela GUARDA 3 (IM003), migration 20260730130000 —
+        ver D4. Era o risco nº 1 do desenho e o único que estava sem defesa no banco; a
+        conferência saiu do cliente e virou regra. Verificado nos casos 4b (incompleto) e
+        4c (duplicado) da bateria.
 
     - risco: "🔴 Lote vazio ou já consumido apagar a lista sem repor, em silêncio"
       mitigacao: "GUARDA 1 do RPC (IM001), verificada no caso 1 da bateria."

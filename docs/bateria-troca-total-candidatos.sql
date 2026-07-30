@@ -49,7 +49,7 @@ SAVEPOINT c1;
 SELECT 'CASO 1 — lote vazio (espera IM001)' AS caso;
 SELECT * FROM trocar_candidatos_do_edital(
   'aaaaaaaa-0000-0000-0000-000000000001',
-  'bbbbbbbb-0000-0000-0000-00000000dead');
+  'bbbbbbbb-0000-0000-0000-00000000dead', 1);
 ROLLBACK TO c1;
 
 SELECT 'CASO 1 — a lista sobreviveu' AS verificacao,
@@ -71,7 +71,7 @@ INSERT INTO public.candidatos_importacao (importacao_id, edital_id, linha) VALUE
 SELECT 'CASO 2 — preparo misturado (espera IM002)' AS caso;
 SELECT * FROM trocar_candidatos_do_edital(
   'aaaaaaaa-0000-0000-0000-000000000001',
-  'bbbbbbbb-0000-0000-0000-000000000002');
+  'bbbbbbbb-0000-0000-0000-000000000002', 2);
 ROLLBACK TO c2;
 
 SELECT 'CASO 2 — a lista sobreviveu' AS verificacao,
@@ -92,7 +92,7 @@ INSERT INTO public.candidatos_importacao (importacao_id, edital_id, linha) VALUE
 SELECT 'CASO 3 — a troca (espera removidos=3, inseridos=2)' AS caso;
 SELECT * FROM trocar_candidatos_do_edital(
   'aaaaaaaa-0000-0000-0000-000000000001',
-  'bbbbbbbb-0000-0000-0000-000000000003');
+  'bbbbbbbb-0000-0000-0000-000000000003', 2);
 
 SELECT 'CASO 3 — quem ficou' AS verificacao, n_inscricao, nome, cpf
   FROM candidatos WHERE edital_id='aaaaaaaa-0000-0000-0000-000000000001'
@@ -114,6 +114,74 @@ ROLLBACK TO c3;
 --  porquê: dentro de um BEGIN não dá para observar o estado depois de um erro.)
 
 -- ═════════════════════════════════════════════════════════════════════════════════════
+-- CASO 4b — 🔴 GUARDA 3: preparo INCOMPLETO é recusado (IM003)
+--
+-- O caso mais provável de todos, porque acontece SOZINHO: o preparo sobe em blocos, um
+-- bloco falha, e sobram menos linhas do que a planilha tem. Para as guardas 1 e 2 isso é
+-- um lote perfeitamente válido — tem linhas e é do edital certo. Sem a guarda 3, a troca
+-- apagaria a lista inteira e reporia só uma parte, dizendo sucesso.
+-- ═════════════════════════════════════════════════════════════════════════════════════
+SAVEPOINT c4b;
+-- 2 linhas no preparo, mas a importação declara 3: um bloco se perdeu.
+INSERT INTO public.candidatos_importacao (importacao_id, edital_id, linha) VALUES
+  ('bbbbbbbb-0000-0000-0000-00000000004b', 'aaaaaaaa-0000-0000-0000-000000000001',
+   '{"n_inscricao":"N001","nome":"NOVO UM","cargo":"DOCENTE II"}'),
+  ('bbbbbbbb-0000-0000-0000-00000000004b', 'aaaaaaaa-0000-0000-0000-000000000001',
+   '{"n_inscricao":"N002","nome":"NOVO DOIS","cargo":"DOCENTE II"}');
+
+SELECT 'CASO 4b — preparo INCOMPLETO, 2 de 3 (espera IM003)' AS caso;
+SELECT * FROM trocar_candidatos_do_edital(
+  'aaaaaaaa-0000-0000-0000-000000000001',
+  'bbbbbbbb-0000-0000-0000-00000000004b', 3);
+ROLLBACK TO c4b;
+
+SELECT '⭐ CASO 4b — a lista sobreviveu' AS verificacao,
+       count(*) AS deve_ser_3 FROM candidatos
+ WHERE edital_id='aaaaaaaa-0000-0000-0000-000000000001';
+
+-- ═════════════════════════════════════════════════════════════════════════════════════
+-- CASO 4c — 🔴 GUARDA 3 pelo OUTRO lado: preparo DUPLICADO também é recusado
+-- Acontece quando uma tentativa anterior deixou resto e a retentativa não limpou.
+-- Sem isto, a troca inseriria cada inscrito duas vezes — ou derrubaria tudo no índice
+-- único, que é o menos ruim dos dois.
+-- ═════════════════════════════════════════════════════════════════════════════════════
+SAVEPOINT c4c;
+INSERT INTO public.candidatos_importacao (importacao_id, edital_id, linha) VALUES
+  ('bbbbbbbb-0000-0000-0000-00000000004c', 'aaaaaaaa-0000-0000-0000-000000000001',
+   '{"n_inscricao":"N001","nome":"NOVO UM","cargo":"DOCENTE II"}'),
+  ('bbbbbbbb-0000-0000-0000-00000000004c', 'aaaaaaaa-0000-0000-0000-000000000001',
+   '{"n_inscricao":"N001","nome":"NOVO UM","cargo":"DOCENTE II"}');
+
+SELECT 'CASO 4c — preparo DUPLICADO, 2 de 1 (espera IM003)' AS caso;
+SELECT * FROM trocar_candidatos_do_edital(
+  'aaaaaaaa-0000-0000-0000-000000000001',
+  'bbbbbbbb-0000-0000-0000-00000000004c', 1);
+ROLLBACK TO c4c;
+
+SELECT 'CASO 4c — a lista sobreviveu' AS verificacao,
+       count(*) AS deve_ser_3 FROM candidatos
+ WHERE edital_id='aaaaaaaa-0000-0000-0000-000000000001';
+
+-- ═════════════════════════════════════════════════════════════════════════════════════
+-- CASO 4d — total esperado ZERO não é caminho para esvaziar edital
+-- Esvaziar é gesto legítimo, mas tem tela própria ("limpar edital", com senha).
+-- ═════════════════════════════════════════════════════════════════════════════════════
+SAVEPOINT c4d;
+INSERT INTO public.candidatos_importacao (importacao_id, edital_id, linha) VALUES
+  ('bbbbbbbb-0000-0000-0000-00000000004d', 'aaaaaaaa-0000-0000-0000-000000000001',
+   '{"n_inscricao":"N001","nome":"NOVO UM","cargo":"DOCENTE II"}');
+
+SELECT 'CASO 4d — total esperado = 0 (espera IM001)' AS caso;
+SELECT * FROM trocar_candidatos_do_edital(
+  'aaaaaaaa-0000-0000-0000-000000000001',
+  'bbbbbbbb-0000-0000-0000-00000000004d', 0);
+ROLLBACK TO c4d;
+
+SELECT 'CASO 4d — a lista sobreviveu' AS verificacao,
+       count(*) AS deve_ser_3 FROM candidatos
+ WHERE edital_id='aaaaaaaa-0000-0000-0000-000000000001';
+
+-- ═════════════════════════════════════════════════════════════════════════════════════
 -- CASO 5 — ⭐ CONTROLE POSITIVO: a troca NÃO alcança outro edital
 -- ═════════════════════════════════════════════════════════════════════════════════════
 SAVEPOINT c5;
@@ -123,7 +191,7 @@ INSERT INTO public.candidatos_importacao (importacao_id, edital_id, linha) VALUE
 
 SELECT * FROM trocar_candidatos_do_edital(
   'aaaaaaaa-0000-0000-0000-000000000001',
-  'bbbbbbbb-0000-0000-0000-000000000005');
+  'bbbbbbbb-0000-0000-0000-000000000005', 1);
 
 SELECT 'CASO 5 — edital B intocado' AS verificacao,
        count(*) AS deve_ser_2 FROM candidatos
@@ -145,7 +213,7 @@ INSERT INTO public.candidatos_importacao (importacao_id, edital_id, linha) VALUE
 
 SELECT * FROM trocar_candidatos_do_edital(
   'aaaaaaaa-0000-0000-0000-000000000001',
-  'bbbbbbbb-0000-0000-0000-000000000006');
+  'bbbbbbbb-0000-0000-0000-000000000006', 1);
 
 SELECT '⭐ CASO 6 — o campo novo chegou sozinho' AS verificacao, n_inscricao, campo_futuro
   FROM candidatos WHERE edital_id='aaaaaaaa-0000-0000-0000-000000000001';
@@ -161,8 +229,8 @@ SELECT 'CASO 7 — privilégios de anon' AS verificacao, table_name, privilege_t
  ORDER BY table_name, privilege_type;
 
 SELECT 'CASO 7 — anon pode EXECUTAR a troca?' AS verificacao,
-       has_function_privilege('anon', 'public.trocar_candidatos_do_edital(uuid,uuid)', 'EXECUTE') AS deve_ser_false,
-       has_function_privilege('authenticated', 'public.trocar_candidatos_do_edital(uuid,uuid)', 'EXECUTE') AS deve_ser_true;
+       has_function_privilege('anon', 'public.trocar_candidatos_do_edital(uuid,uuid,integer)', 'EXECUTE') AS deve_ser_false,
+       has_function_privilege('authenticated', 'public.trocar_candidatos_do_edital(uuid,uuid,integer)', 'EXECUTE') AS deve_ser_true;
 
 ROLLBACK;
 
@@ -196,7 +264,7 @@ INSERT INTO public.candidatos_importacao (importacao_id, edital_id, linha) VALUE
 SELECT 'CASO 4 — INSERT sabotado (espera violação de CHECK)' AS caso;
 SELECT * FROM trocar_candidatos_do_edital(
   'cccccccc-0000-0000-0000-000000000004',
-  'dddddddd-0000-0000-0000-000000000004');
+  'dddddddd-0000-0000-0000-000000000004', 2);
 
 -- ⭐ A asserção que vale por toda a bateria.
 SELECT '⭐ CASO 4 — NINGUÉM foi apagado' AS verificacao,

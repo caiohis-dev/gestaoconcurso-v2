@@ -1253,7 +1253,11 @@ export type Database = {
       }
       revogar_coordenador: { Args: { p_user_id: string }; Returns: undefined }
       trocar_candidatos_do_edital: {
-        Args: { p_edital_id: string; p_importacao_id: string }
+        Args: {
+          p_edital_id: string
+          p_importacao_id: string
+          p_total_esperado: number
+        }
         Returns: {
           inseridos: number
           removidos: number
