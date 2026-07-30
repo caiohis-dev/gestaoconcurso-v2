@@ -599,30 +599,57 @@ O **CP2 é o que sustenta o resto**: prova que a idempotência do upsert sobrevi
 
 ---
 
-## ⏭️ PRÓXIMA — corrigir CPF ou cargo na origem cria registro órfão, em silêncio
+## ✅ CONCLUÍDO 2026-07-30 — o registro órfão deixou de ser possível: importar virou TROCA TOTAL
 
-**Status:** pendente, e **é o próximo tema desta área** — levantado em 2026-07-29, adiado de propósito em 30/07 ao fechar o tratamento de dado inválido ("não cuidaremos agora")
-**Área:** Candidatos (ver [`estrutura/modulos/candidatos/00-modulo.md`](./estrutura/modulos/candidatos/00-modulo.md))
+**Área:** Candidatos (ver [`estrutura/modulos/candidatos/00-modulo.md`](./estrutura/modulos/candidatos/00-modulo.md)). Roadmap arquivado em [`analises/concluidos/roadmap-importacao-troca-total.yaml`](./analises/concluidos/roadmap-importacao-troca-total.yaml).
 
-Não é cosmético e não é na leitura da planilha — essa está sólida. **É a identidade.**
+### O que era
 
-A chave natural é `(edital_id, cpf, cargo_id, n_inscricao)`. Como CPF e cargo **compõem a identidade**, corrigir qualquer um dos dois na planilha e reimportar faz o upsert **não casar** a linha: entra um registro NOVO e o antigo **fica lá, órfão**. Ninguém é avisado, porque não existe reconciliação. É o formato de erro que este repo já chamou de o pior: **parece ter funcionado.**
+A chave natural é `(edital_id, cpf, cargo_id, n_inscricao)`. Como CPF, cargo e inscrição **compunham a identidade**, corrigir qualquer um deles na planilha e reimportar fazia o upsert **não casar** a linha: entrava um registro NOVO e o antigo **ficava lá, órfão**. Sem aviso. É o formato de erro que este repo chama de o pior — **parece ter funcionado**.
 
-O trigger `RC001` cobre **um** caso disso (reapontar cargo) e por construção **não** cobre CPF corrigido nem grafia-nova-mais-reclassificação no mesmo gesto.
+### A decisão do usuário
 
-### 🔴 O acoplamento que ninguém tinha escrito
+**Importar passa a APAGAR a lista do edital e reinserir a planilha inteira**, numa transação só. Ele escolheu isto sobre a alternativa que eu recomendei (upsert + exclusão do resíduo), com os trade-offs à vista. As duas premissas que autorizam: *"sempre planilhas inteiras, nunca de adição"* e *"corrigimos tudo na origem"*.
 
-**Trocar a chave para `(edital_id, n_inscricao)` OBRIGA a dropar o trigger `RC001` na MESMA migration.** Confirmado lendo a migration `20260728110000`.
+Resolve os **três** campos de uma vez — coisa que nem trocar a chave natural nem o `RC001` alcançavam.
 
-O trigger existe **porque** `cargo_id` está na chave — o cabeçalho dele diz isso: antes daquilo, "reapontar ATUALIZA a linha no lugar e a guarda não teria o que guardar". Tirando `cargo_id` da chave, reapontar volta a ser `UPDATE` limpo, e o trigger deixa de proteger e passa a **falso positivo**: ele é `BEFORE INSERT`, e no Postgres o `BEFORE INSERT` de um `INSERT ... ON CONFLICT DO UPDATE` dispara **antes** da resolução do conflito — então barraria uma correção legítima. Quem fizer a troca achando que são duas decisões independentes vai debugar um `RC001` que não deveria existir.
+### 🔴 A medição que mudou a FORMA da solução
 
-### A recomendação: reconciliação primeiro, chave depois (ou nunca)
+O desenho óbvio era um RPC recebendo tudo em JSON. **Não cabe:** 5,40 MB para 7.416 inscritos (5,11 MB omitindo nulos — economiza 5%) contra o limite de 5 MB do Kong, e pior com editais maiores.
 
-A troca de chave é tentadora porque a correção de 28/07 a tornou viável (`N_INSCRICAO` é única, 7.416/7.416) e resolveria o defeito na raiz de graça. **Mas:** é apostar a identidade numa propriedade de **um** export, é a tabela que guarda CPF e endereço de milhares de cidadãos, e o **controle positivo 1** da bateria de cargos precisaria ser **reescrito**, não reajustado.
+Por isso os blocos continuam, mas sobem para uma **tabela de preparo**, e **uma** chamada à RPC faz `DELETE` + `INSERT` no servidor. Delete total + insert total, atômico, sem teto: o bloco não cresce com o edital, só o número de requisições (50.000 inscritos = 50 requisições de 0,89 MB).
 
-A **reconciliação** — ao fim da importação, listar quem está no banco e **não veio** no arquivo — não tem migration, não mexe em identidade, não tem risco, e transforma deriva invisível em relatório. Pega os três campos de uma vez e o resíduo que o `RC001` não alcança. E é ela que diria, com dado, se a troca de chave vale.
+### As três guardas do banco, e por que cada uma existe
 
-**Mexer na chave sem antes ter como ver a deriva é trocar um risco silencioso por outro.**
+| Código | Recusa | Por que é silencioso sem ela |
+|---|---|---|
+| `IM001` | lote vazio ou já consumido | o `DELETE` roda, o `INSERT` não insere ninguém, **e não há erro** |
+| `IM002` | preparo com edital divergente | apagaria a lista de A e poria a de B no lugar |
+| `IM003` | contagem ≠ total declarado | **preparo incompleto**: apagaria 7.416 e inseriria 6.000, dizendo sucesso |
+
+🔴 **A `IM003` nasceu de uma pergunta do usuário.** Eu tinha posto essa conferência no *cliente*, e ele perguntou se dava para fatiar em mil "entregando ao fim o total" — o que expôs que aquilo era **convenção, não regra**: não valeria para PostgREST, script nem chamada manual. A guarda foi para o banco.
+
+### ⚠️ A inversão que precisa sobreviver a qualquer refatoração
+
+Antes, um bloco falho deixava a importação **pela metade** e reimportar consertava. Agora deixa a lista **INTACTA**. É melhor, mas é diferente — o relatório abre com *"A lista NÃO foi alterada"*, porque sem isso o usuário assume o pior e vai conferir milhares de linhas à mão.
+
+### O que a decisão custou, dito por extenso
+
+- **`created_at` e `created_by` de todos os inscritos são reescritos a cada importação.** A data de entrada de cada pessoa passa a ser a do último reimport. Não tem mitigação dentro deste desenho; foi aceito ao escolhê-lo.
+- **A proteção contra arquivo truncado é mais fraca** que a da alternativa recusada, que sabia dizer *quem* sumiria. Aqui o usuário compara os dois números na confirmação e decide.
+- 🔴 **Se `candidatos` um dia guardar algo que a planilha não sabe** (nota, alocação de sala, presença), a troca total passa a **destruir esse dado a cada importação**, e o tema tem de ser reaberto ANTES da feature nova. Hoje há **0 FKs** apontando para `candidatos` — é o que torna isto seguro agora.
+
+### O `RC001` saiu junto, e o acoplamento fica registrado
+
+O trigger existia porque o upsert casava linha pela chave. Com o `DELETE` rodando antes do `INSERT`, ele não tinha mais o que encontrar — **guarda que não pode disparar**. ⚠️ **Se a importação voltar ao upsert, o trigger tem de voltar junto.**
+
+### Como foi verificado
+
+Bateria própria em [`../docs/bateria-troca-total-candidatos.sql`](../docs/bateria-troca-total-candidatos.sql), **10 casos**, mais os três casos reescritos de `bateria-cargos.sql`. Suíte em **978**, `tsc`, `build` e lint (110, = baseline) limpos.
+
+⚠️ **A prova de ATOMICIDADE roda FORA de transação, de propósito** — dentro de um `BEGIN` o erro aborta o bloco, e o que se mediria depois do `ROLLBACK` seria o efeito **dele**, não o da função: o caso provaria a si mesmo. Vale para qualquer bateria futura que precise observar estado **após** um erro.
+
+**Verificado pelo PostgREST, e é o item que fecha o tema:** com o CPF corrigido na origem, 2 linhas entram e 2 ficam. No upsert ficariam 3.
 
 ---
 

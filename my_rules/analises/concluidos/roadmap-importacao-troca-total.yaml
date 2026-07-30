@@ -1,5 +1,7 @@
 # Roadmap — a importação de candidatos passa a ser TROCA TOTAL da lista do edital
-# Criado em 2026-07-30. VIVO — etapa 1 CONCLUÍDA, etapas 2 a 4 pendentes.
+# Criado em 2026-07-30. ✅ CONCLUÍDO no mesmo dia — as 4 etapas.
+# ARQUIVADO: este arquivo é HISTÓRICO, não plano. Ver o estado atual em
+# my_rules/estrutura/modulos/candidatos/00-modulo.md.
 # Leia my_rules/analises/README.md antes de usar este arquivo como guia.
 #
 # ⚠️ REESCRITO em 2026-07-30, no mesmo dia em que nasceu. A primeira versão desenhava um
@@ -22,8 +24,9 @@ roadmap:
     números antes de qualquer envio. Verificado PELO POSTGREST: corrigir o CPF na origem
     e reimportar deixa 2 linhas, não 3 — o defeito que abriu o tema. Suíte 978, tsc,
     build e lint (110, = baseline) limpos; bateria SQL verde nos 10 casos.
-    ⏭️ Falta a ETAPA 4 (janela C): dropar o trigger RC001, que a troca total tornou
-    incapaz de disparar, e reescrever o controle positivo 1 de docs/bateria-cargos.sql.
+    ✅ ETAPA 4 CONCLUÍDA (migration 20260730140000): o trigger RC001 e sua função foram
+    dropados, e os casos 7.4, 7.5 e 7.6 de docs/bateria-cargos.sql foram REESCRITOS — o
+    7.4 afirmava exatamente o contrário do que passou a valer. TEMA COMPLETO.
 
   origem: >
     Levantado em 2026-07-29 como "corrigir CPF ou cargo na origem cria registro novo e
@@ -509,7 +512,19 @@ roadmap:
     - id: 4
       titulo: "Limpeza — o RC001 sai e a documentação fecha"
       janela: "C"
-      status: "🟡 NÃO INICIADA"
+      status: |
+        ✅ CONCLUÍDA em 2026-07-30 — migration `20260730140000`. Trigger e função dropados;
+        confirmado no banco (0 triggers, 0 funções com aquele nome).
+
+        TRÊS casos de docs/bateria-cargos.sql foram REESCRITOS, não ajustados:
+          7.4 afirmava que reapontar cargo era RECUSADO. Hoje prova o oposto — a troca
+              converge para UMA linha, no cargo novo (verificado: removidos=1, inseridos=1).
+          7.5 continua válido, mas MUDOU DE DONO: guardava a estreiteza da condição do
+              trigger; agora guarda o ÍNDICE ÚNICO, que precisa do cargo dentro para não
+              fundir os 382 casos de mesma pessoa em dois cargos.
+          7.6 testava ON CONFLICT DO UPDATE, caminho que a troca total eliminou. Reescrito
+              para o que o índice guarda AGORA: duplicata DENTRO do arquivo — e o custo
+              subiu, porque o INSERT virou a lista inteira."
       objetivo: "Tirar a guarda que a troca total tornou incapaz de disparar."
       acoes:
         - acao: "Migration — DROP do trigger e da função (D6)"

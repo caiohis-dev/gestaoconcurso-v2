@@ -362,26 +362,41 @@ BEGIN;
 ROLLBACK;
 
 \echo ''
-\echo '-- 7.4 ⭐ REAPONTAMENTO É RECUSADO (etapa 5b / D11) — esperado: erro RC001'
+\echo '-- 7.4 ⭐ REAPONTAR CARGO É SEGURO — a troca total converge para UMA linha'
+\echo '--     ⚠️ ESTE CASO AFIRMAVA O CONTRÁRIO até 2026-07-30: ele provava que o trigger'
+\echo '--     RC001 RECUSAVA o reapontamento. O trigger foi DROPADO (migration'
+\echo '--     20260730140000) porque a troca total o tornou incapaz de disparar — e porque'
+\echo '--     o gesto que ele barrava deixou de ser perigoso. Esperado: 1 linha, no cargo NOVO.'
 BEGIN;
   INSERT INTO public.editais (id, nome) VALUES
     ('77770000-0000-0000-0000-000000000003', 'EDITAL BATERIA 5B2');
   INSERT INTO public.cargos (id, nome) VALUES
     ('77771111-0000-0000-0000-00000000000a', 'ARTE'),
     ('77771111-0000-0000-0000-00000000000b', 'DOCENTE I — ARTE');
+
+  -- A lista como está hoje: o inscrito apontado para 'ARTE'.
   INSERT INTO public.candidatos (edital_id, n_inscricao, nome, cpf, cargo, cargo_id) VALUES
     ('77770000-0000-0000-0000-000000000003', '900020', 'INSCRITO ARTE', '22940161739', 'ARTE', '77771111-0000-0000-0000-00000000000a');
 
-  -- O MESMO texto de planilha, apontado para OUTRO cargo. É o gesto que criaria a linha
-  -- nova e deixaria a antiga órfã. Tem de falhar aqui.
-  INSERT INTO public.candidatos (edital_id, n_inscricao, nome, cpf, cargo, cargo_id) VALUES
-    ('77770000-0000-0000-0000-000000000003', '900020', 'INSCRITO ARTE', '22940161739', 'ARTE', '77771111-0000-0000-0000-00000000000b');
+  -- O usuário reaponta 'ARTE' para 'DOCENTE I — ARTE' no passo Cargos e reimporta.
+  -- No fluxo de UPSERT isto criava uma linha nova e órfãva a antiga — daí o RC001.
+  -- Com a troca total, o DELETE roda antes e a antiga simplesmente não existe mais.
+  INSERT INTO public.candidatos_importacao (importacao_id, edital_id, linha) VALUES
+    ('77772222-0000-0000-0000-000000000001', '77770000-0000-0000-0000-000000000003',
+     '{"n_inscricao":"900020","nome":"INSCRITO ARTE","cpf":"22940161739","cargo":"ARTE","cargo_id":"77771111-0000-0000-0000-00000000000b"}');
+
+  SELECT * FROM public.trocar_candidatos_do_edital(
+    '77770000-0000-0000-0000-000000000003', '77772222-0000-0000-0000-000000000001', 1);
+
+  SELECT count(*) AS deve_ser_1, max(cargo_id::text) AS cargo_final
+    FROM public.candidatos WHERE edital_id = '77770000-0000-0000-0000-000000000003';
 ROLLBACK;
 
 \echo ''
 \echo '-- 7.5 ⭐ CONTROLE POSITIVO 1 — a mesma pessoa num SEGUNDO cargo ENTRA.'
-\echo '--     São os 382 casos reais. Se este falhar, a condição do trigger ficou LARGA'
-\echo '--     e a guarda passou a descartar inscrito legítimo. Esperado: 2 linhas.'
+\echo '--     São os 382 casos reais. ⚠️ O QUE ELE GUARDA MUDOU DE DONO: até 29/07 era a'
+\echo '--     estreiteza da condição do trigger; hoje é o ÍNDICE ÚNICO, que continua'
+\echo '--     precisando ter o cargo dentro para não fundir estes dois. Esperado: 2 linhas.'
 BEGIN;
   INSERT INTO public.editais (id, nome) VALUES
     ('77770000-0000-0000-0000-000000000004', 'EDITAL BATERIA 382');
@@ -390,7 +405,7 @@ BEGIN;
     ('77771111-0000-0000-0000-00000000000d', 'DOCENTE I — HISTÓRIA');
   INSERT INTO public.candidatos (edital_id, n_inscricao, nome, cpf, cargo, cargo_id) VALUES
     ('77770000-0000-0000-0000-000000000004', '213946', 'CASSIA ANDREA', '22940161739', 'DOCENTE II', '77771111-0000-0000-0000-00000000000c');
-  -- Mesma inscrição, mesmo CPF, cargo DIFERENTE e TEXTO diferente → tem de entrar.
+  -- Mesma inscrição, mesmo CPF, cargo DIFERENTE → tem de entrar.
   INSERT INTO public.candidatos (edital_id, n_inscricao, nome, cpf, cargo, cargo_id) VALUES
     ('77770000-0000-0000-0000-000000000004', '213946', 'CASSIA ANDREA', '22940161739', 'DOCENTE I — HISTÓRIA', '77771111-0000-0000-0000-00000000000d');
   SELECT count(*) AS mesma_inscricao_dois_cargos FROM public.candidatos
@@ -398,20 +413,27 @@ BEGIN;
 ROLLBACK;
 
 \echo ''
-\echo '-- 7.6 CONTROLE POSITIVO 2 — reimportar a MESMA linha com o MESMO cargo atualiza.'
-\echo '--     Prova que o trigger não pegou o caminho feliz. Esperado: 1 linha, nome novo.'
+\echo '-- 7.6 ⭐ DUPLICATA DENTRO DO ARQUIVO é recusada pelo índice único'
+\echo '--     ⚠️ REESCRITO em 2026-07-30. Ele testava ON CONFLICT DO UPDATE, caminho que a'
+\echo '--     troca total eliminou (o app não faz mais upsert). O que o índice guarda AGORA'
+\echo '--     é a duplicata no LOTE — e o custo subiu: o INSERT passou a ser a lista'
+\echo '--     inteira, então uma linha repetida derruba a troca toda. É por isso que'
+\echo '--     deduplicar() no cliente virou PRÉ-REQUISITO. Esperado: erro de chave duplicada.'
 BEGIN;
   INSERT INTO public.editais (id, nome) VALUES
-    ('77770000-0000-0000-0000-000000000005', 'EDITAL BATERIA FELIZ');
+    ('77770000-0000-0000-0000-000000000005', 'EDITAL BATERIA DUPLICATA');
   INSERT INTO public.cargos (id, nome) VALUES
     ('77771111-0000-0000-0000-00000000000e', 'DOCENTE II');
-  INSERT INTO public.candidatos (edital_id, n_inscricao, nome, cpf, cargo, cargo_id) VALUES
-    ('77770000-0000-0000-0000-000000000005', '900030', 'NOME ANTIGO', '22940161739', 'DOCENTE II', '77771111-0000-0000-0000-00000000000e');
-  INSERT INTO public.candidatos (edital_id, n_inscricao, nome, cpf, cargo, cargo_id) VALUES
-    ('77770000-0000-0000-0000-000000000005', '900030', 'NOME NOVO', '22940161739', 'DOCENTE II', '77771111-0000-0000-0000-00000000000e')
-  ON CONFLICT (edital_id, cpf, cargo_id, n_inscricao) DO UPDATE SET nome = EXCLUDED.nome;
-  SELECT count(*) AS linhas, max(nome) AS nome FROM public.candidatos
-   WHERE edital_id = '77770000-0000-0000-0000-000000000005';
+
+  -- Duas linhas com a MESMA chave natural no mesmo lote — o que `deduplicar()` impede.
+  INSERT INTO public.candidatos_importacao (importacao_id, edital_id, linha) VALUES
+    ('77772222-0000-0000-0000-000000000002', '77770000-0000-0000-0000-000000000005',
+     '{"n_inscricao":"900030","nome":"PRIMEIRO","cpf":"22940161739","cargo":"DOCENTE II","cargo_id":"77771111-0000-0000-0000-00000000000e"}'),
+    ('77772222-0000-0000-0000-000000000002', '77770000-0000-0000-0000-000000000005',
+     '{"n_inscricao":"900030","nome":"SEGUNDO","cpf":"22940161739","cargo":"DOCENTE II","cargo_id":"77771111-0000-0000-0000-00000000000e"}');
+
+  SELECT * FROM public.trocar_candidatos_do_edital(
+    '77770000-0000-0000-0000-000000000005', '77772222-0000-0000-0000-000000000002', 2);
 ROLLBACK;
 
 \echo ''

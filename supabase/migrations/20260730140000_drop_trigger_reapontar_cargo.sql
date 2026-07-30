@@ -1,0 +1,46 @@
+-- ─────────────────────────────────────────────────────────────────────────────────────
+-- ETAPA 4 — o trigger RC001 sai: a troca total o tornou incapaz de disparar
+-- ─────────────────────────────────────────────────────────────────────────────────────
+--
+-- Fecha o roadmap `my_rules/analises/roadmap-importacao-troca-total.yaml` (decisão D6).
+--
+-- ── O QUE ELE GUARDAVA ──────────────────────────────────────────────────────────────
+--
+-- `candidatos_recusa_reapontar_cargo` era BEFORE INSERT e recusava inserir uma linha
+-- quando já existia outra com a mesma (edital, cpf, inscrição) e o mesmo TEXTO de cargo,
+-- mas `cargo_id` diferente. Criado em 2026-07-28 (migration 20260728110000) porque, no
+-- fluxo de UPSERT, reapontar um texto já importado para outro cargo INSERIA linhas novas
+-- e deixava as antigas ÓRFÃS, em silêncio.
+--
+-- O cabeçalho dele dizia isso com todas as letras: a guarda existia PORQUE `cargo_id`
+-- compunha a chave natural, e porque o upsert casava linha por essa chave.
+--
+-- ── POR QUE ELE SAI ─────────────────────────────────────────────────────────────────
+--
+-- Desde 2026-07-30 a importação é TROCA TOTAL: a RPC `trocar_candidatos_do_edital` apaga
+-- todos os candidatos do edital e reinsere a planilha, na MESMA transação. Quando o
+-- INSERT roda, o DELETE já rodou — não existe mais nenhuma linha daquele edital para o
+-- trigger encontrar.
+--
+-- 🔴 Ele virou uma GUARDA QUE NÃO PODE DISPARAR. Este repo já catalogou três vezes, no
+-- tema Cargos, que isso é armadilha e não segurança: um trigger inerte faz o próximo
+-- leitor acreditar que a regra está protegida, e ninguém confere uma proteção que
+-- "já existe". Pior ainda, ele protegia contra um defeito que deixou de existir —
+-- reapontar cargo agora é seguro, porque a linha antiga é apagada pela própria troca.
+--
+-- ⚠️ NÃO ressuscite este trigger sem antes reverter a troca total. Os dois são
+-- acoplados: ele só faz sentido enquanto o fluxo casar linha em vez de substituir a
+-- lista. Se a importação um dia voltar ao upsert, esta migration tem de ser desfeita
+-- JUNTO — senão o defeito de 28/07 volta sem guarda nenhuma.
+--
+-- ── O que NÃO sai ───────────────────────────────────────────────────────────────────
+--
+-- O índice único `candidatos_cpf_cargo_id_inscricao_key` FICA, e continua necessário: é
+-- ele que recusa duas linhas com a mesma chave DENTRO de um mesmo arquivo. Mudou só o
+-- papel — de "identidade através das importações" para "detector de duplicata no lote".
+-- É por isso que `deduplicar()` no cliente deixou de ser conveniência e virou
+-- pré-requisito: agora o INSERT é a lista inteira, e uma duplicata derruba a troca toda.
+-- ─────────────────────────────────────────────────────────────────────────────────────
+
+DROP TRIGGER IF EXISTS check_candidato_nao_reaponta_cargo ON public.candidatos;
+DROP FUNCTION IF EXISTS public.candidatos_recusa_reapontar_cargo();

@@ -286,7 +286,19 @@ Uma tabela de uma linha por cargo distinto (**9 no arquivo real**, então sem pa
 
 ## A guarda do reapontamento (etapa 5b) — `candidatos_recusa_reapontar_cargo`
 
-Trigger `BEFORE INSERT` em `candidatos`, migration `20260728110000`, SQLSTATE **`RC001`**. Recusa gravar quando **já existe** linha com o mesmo `(edital_id, cpf, n_inscricao)` **e o mesmo texto de cargo**, apontando para um `cargo_id` **diferente**.
+> ❌ **ESTE TRIGGER NÃO EXISTE MAIS — removido em 2026-07-30** (migration `20260730140000`).
+> A importação virou **troca total**: a RPC apaga a lista do edital e reinsere, na mesma
+> transação. Quando o `INSERT` roda, o `DELETE` já rodou — o trigger não tinha mais o que
+> encontrar, e virou guarda incapaz de disparar. **E o gesto que ele barrava deixou de ser
+> perigoso:** reapontar cargo hoje converge para uma linha só, verificado no caso 7.4 de
+> `docs/bateria-cargos.sql`.
+>
+> ⚠️ **Os dois são acoplados:** se a importação um dia voltar ao upsert, este trigger tem
+> de voltar JUNTO — senão o defeito de 28/07 reaparece sem guarda nenhuma.
+>
+> O texto abaixo fica como registro do que ele era e de por que existiu.
+
+Trigger `BEFORE INSERT` em `candidatos`, migration `20260728110000`, SQLSTATE **`RC001`**. Recusava gravar quando **já existia** linha com o mesmo `(edital_id, cpf, n_inscricao)` **e o mesmo texto de cargo**, apontando para um `cargo_id` **diferente**.
 
 ### ⚠️ Por que a guarda NÃO fica em `cargo_apelidos`
 

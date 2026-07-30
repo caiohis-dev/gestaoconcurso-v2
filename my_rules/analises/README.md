@@ -9,9 +9,12 @@
 | **`analises/*.md`** (raiz) | **Vivo.** Desenho ainda não executado, ou dívida ainda em aberto. | Pode guiar implementação. Confira contra o código mesmo assim. |
 | **`analises/concluidos/*`** | **Histórico.** Registro do desenho e das decisões de um tema já entregue. | **Não é plano.** Serve para entender *por que* algo é como é — não *o que fazer*. |
 
-Hoje, vivos: [`roadmap-importacao-troca-total.yaml`](./roadmap-importacao-troca-total.yaml), [`dividas-auth-colaborador.md`](./dividas-auth-colaborador.md) e [`roadmap-edicao-email-colaborador.md`](./roadmap-edicao-email-colaborador.md).
+Hoje, vivos: [`dividas-auth-colaborador.md`](./dividas-auth-colaborador.md) e [`roadmap-edicao-email-colaborador.md`](./roadmap-edicao-email-colaborador.md).
 
-🟢 **`roadmap-importacao-troca-total.yaml` é o único VIVO com etapas a executar.** Criado em 2026-07-30; **etapa 1 concluída**, etapas 2 a 4 pendentes. ⚠️ Ele foi **reescrito no mesmo dia**: a primeira versão desenhava um fluxo diferente (upsert + exclusão do resíduo), que o usuário avaliou e **recusou** em favor da troca total. A alternativa está preservada na decisão **D0** — é o caso exato do aviso desta página sobre proposta rejeitada com motivo, e **não** é um "plano original" a restaurar.
+⚠️ **`roadmap-importacao-troca-total.yaml` saiu daqui em 2026-07-30** e está em [`concluidos/`](./concluidos/roadmap-importacao-troca-total.yaml): as quatro etapas foram executadas no mesmo dia em que ele nasceu. Duas coisas nele merecem cuidado ao ser lido depois:
+
+1. **A decisão D0 registra uma alternativa RECUSADA** (upsert + exclusão do resíduo), que eu havia recomendado e o usuário preteriu em favor da troca total. É o caso exato do aviso desta página — **não** é um "plano original" a restaurar.
+2. **Ele foi reescrito no mesmo dia em que nasceu**, quando a decisão mudou. O que está lá descreve o que foi feito, não o primeiro desenho.
 
 ⚠️ **`roadmap-cargos.yaml` saiu daqui em 2026-07-29** e está em [`concluidos/`](./concluidos/roadmap-cargos.yaml): as etapas 1 a 6 foram executadas em 27–29/07. Ele ainda descreve uma **etapa 7** (página `/cargos`) que **nunca foi planejada para a entrega** — é o caso exato de que a seção acima avisa. Não a leia como pendência; a decisão está em D7.
 

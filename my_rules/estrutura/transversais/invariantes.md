@@ -39,7 +39,7 @@ Não repita esforço: isto está coberto e não precisa de barreira no cliente p
 | Revogação de coordenador é atômica | RPC `revogar_coordenador` |
 | Hierarquia de papéis (`superadmin ⇒ admin`) | dentro do `has_role` |
 | Inscrição de candidato única por (edital, **CPF**, **cargo_id**, nº); formato de CPF/CEP/e-mail/raça do candidato | `candidatos_cpf_cargo_id_inscricao_key` (`NULLS NOT DISTINCT`, 28/07) + **6 CHECKs** (27/07) — ver [`../modulos/candidatos/00-modulo.md`](../modulos/candidatos/00-modulo.md) |
-| Reapontar para outro cargo uma linha JÁ importada é recusado (senão os inscritos antigos ficam órfãos) | trigger `candidatos_recusa_reapontar_cargo` (28/07), SQLSTATE `RC001` — condição ESTREITA de propósito, ver [`../modulos/candidatos/cargos.md`](../modulos/candidatos/cargos.md) |
+| ~~Reapontar para outro cargo uma linha JÁ importada é recusado~~ | ❌ **REMOVIDO em 2026-07-30** (migration `20260730140000`). O trigger `candidatos_recusa_reapontar_cargo` / `RC001` existia porque o UPSERT casava linha pela chave; com a **troca total** o DELETE roda antes do INSERT e ele não tinha mais o que encontrar — guarda que não pode disparar. ⚠️ Reapontar cargo deixou de ser perigoso: a linha antiga é apagada pela própria troca |
 | Nome de cargo único (caixa/espaço normalizados); um texto de planilha aponta para um cargo só | `cargos_nome_chave_key`, `cargo_apelidos_texto_chave_key` + 2 CHECKs de não-branco (27/07) |
 | Cargo em uso por candidato não se exclui; apagar cargo leva os apelidos dele | `candidatos.cargo_id` **RESTRICT**, `cargo_apelidos.cargo_id` **CASCADE** — opostos de propósito, ver [`../modulos/candidatos/cargos.md`](../modulos/candidatos/cargos.md) |
 
