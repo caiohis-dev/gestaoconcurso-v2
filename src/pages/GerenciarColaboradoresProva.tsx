@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
@@ -135,35 +135,45 @@ export default function GerenciarColaboradoresProva() {
   });
 
   // Nome do usuário para o lock
-  const [userName, setUserName] = useState<string>("");
-  useEffect(() => {
-    if (!user) return;
-    supabase
-      .from("profiles")
-      .select("full_name, email")
-      .eq("id", user.id)
-      .maybeSingle()
-      .then(
-        ({ data }) => {
-          setUserName(data?.full_name || data?.email || user.email || "Usuário");
-        },
-        (err) => {
-          // `userName` alimenta o `enabled` do lock abaixo. Sem tratar a rejeição, o
-          // nome ficaria vazio para sempre e o lock nunca seria habilitado. (O
-          // rejeitado vai no 2º argumento do .then porque o builder do PostgREST é
-          // um thenable — não expõe .catch.)
-          console.error("Error fetching user name for lock:", err);
-          setUserName(user.email || "Usuário");
-        },
-      );
-  }, [user]);
+  const { data: userName = "", isSuccess: userNameCarregado } = useQuery({
+    queryKey: ["user_name_lock", user?.id],
+    queryFn: async () => {
+      if (!user) return "";
+      try {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("full_name, email")
+          .eq("id", user.id)
+          .maybeSingle();
+        if (error) throw error;
+        return data?.full_name || data?.email || user.email || "Usuário";
+      } catch (err) {
+        // ⚠️ DEGRADAÇÃO DELIBERADA — é o único ponto do arquivo onde o erro NÃO sobe, e
+        // isso é escolha, não descuido. `userName` habilita o lock de edição exclusiva
+        // logo abaixo; deixar a falha virar estado de erro manteria o lock DESLIGADO, e
+        // a unidade ficaria sem proteção contra dois coordenadores editando ao mesmo
+        // tempo. O e-mail identifica o dono do lock igual, só que pior de ler.
+        //
+        // O `try` cobre os DOIS modos de falha, que o `.then(ok, erro)` anterior tratava
+        // junto: o erro do PostgREST (que volta em `error`, sem rejeitar) e a rejeição
+        // de rede. Devolver em vez de relançar também evita o retry do React Query, que
+        // atrasaria o lock sem melhorar nada — o fallback não depende do servidor.
+        console.error("Error fetching user name for lock:", err);
+        return user.email || "Usuário";
+      }
+    },
+    enabled: !!user,
+  });
 
   // Lock de edição exclusiva para esta unidade
   const unidadeLock = useProvaLock({
     provaId: provaUnidadeId,
     userId: user?.id,
     userName: userName || undefined,
-    enabled: !!provaUnidadeId && !!user && !!userName,
+    // `userNameCarregado` (o `isSuccess`) no lugar do antigo `!!userName`: diz "o nome já
+    // foi resolvido", que é a condição de verdade, em vez de inferi-la de a string não
+    // estar vazia. O `useProvaLock` ainda se protege sozinho contra nome vazio.
+    enabled: !!provaUnidadeId && !!user && userNameCarregado,
   });
 
   // Get valores por função da prova

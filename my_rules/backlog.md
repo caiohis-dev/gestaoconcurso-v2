@@ -356,24 +356,29 @@ Migration `20260726190000_funcoes_colaboradores_on_delete_restrict.sql`: as trê
 
 > **Achado de brinde, agora documentado:** existe uma segunda barreira mais antiga no banco, o trigger `check_system_funcao_changes`, que recusa excluir/renomear/tornar editável as funções com `cargo_editavel = false`. Ele **dispara antes** da checagem de FK — tentar excluir função do sistema levanta `P0001`, não `23503`. Não estava em doc nenhuma.
 
-## 🔶 PARCIAL — os `useEffect` do `GerenciarColaboradoresProva` fora do React Query
+## ✅ CONCLUÍDO 2026-07-30 — os `useEffect` do `GerenciarColaboradoresProva` saíram do jeito cru
 
-**Status:** **2 de 3 convertidos** em 2026-07-29 (trabalho do usuário). O terceiro segue pendente, e é ele que faz o barulho.
 **Área:** Alocação e Funções
 
-A página chamava `supabase...then()` **cru** e fazia `setState` no `.then`, em vez de usar React Query como o resto do repo. Por que incomoda além do ruído: estado que aterrissa fora do ciclo do React Query não participa de cache, invalidação nem `isLoading`, então a tela pode mostrar dado velho sem ninguém perceber.
+A página chamava `supabase...then()` **cru** e fazia `setState` no `.then`, em vez de usar React Query como o resto do repo. Estado que aterrissa fora do ciclo do React Query não participa de cache, invalidação nem `isLoading` — a tela pode mostrar dado velho sem ninguém perceber.
 
-✅ **Convertidos para `useQuery`:** o `fetchProvaUnidadeInfo` (que virou a query `prova_unidade_info`, com o `refetch` no lugar da função) e o `isCoordDestaProva`.
+**Os TRÊS foram convertidos**, em dois momentos: `fetchProvaUnidadeInfo` (virou a query `prova_unidade_info`, com o `refetch` reaproveitando o nome antigo, então os dois pontos de chamada não mudaram) e `isCoordDestaProva` em 29/07; o `setUserName` em 30/07.
 
-⏭️ **Falta o terceiro:** o `useEffect` do **`setUserName`** (`GerenciarColaboradoresProva.tsx:139`), que busca `profiles` e escreve estado no `.then`.
+**Verificado pelo critério certo, e agora medido:** `npx vitest run src/pages/guards.test.tsx` não cita mais `not wrapped in act` — **de 3 para 0**, e **0 na suíte inteira** (974 testes).
 
-### 🔴 A premissa deste item estava errada, e é o que vale registrar
+### 🔴 A premissa deste item estava errada — é o que vale guardar
 
-O item dizia **"dois `useEffect`"** e prometia que converter os dois faria os **3 avisos de `act`** sumirem do stderr — *"é o sinal de que deu certo"*. **Medido em 2026-07-30, depois da conversão: os 3 avisos continuam lá, e os três nomeiam `GerenciarColaboradoresProva`.** A origem é o terceiro efeito, que o item nunca contou.
+O item se chamava **"Dois `useEffect`"** e prometia que converter os dois faria os 3 avisos sumirem: *"é o sinal de que deu certo"*. **Eram TRÊS**, e os dois convertidos primeiro **não eram a fonte do barulho** — medido em 30/07, depois da primeira conversão, os 3 avisos continuavam intactos. Quem os produzia era justamente o terceiro, que o item nunca contou.
 
-**A lição:** o item mediu o **sintoma** (3 avisos) e presumiu a **causa** (2 efeitos) sem cruzar os dois. É a terceira vez que um item deste backlog carrega premissa errada — as anteriores foram a proposta de os guards lerem papéis de `modulos.ts` e a de que papel `coordenador` sem vínculo era inofensivo. **Conferir a premissa no código antes de executar o item continua sendo obrigatório.**
+**A lição:** o item mediu o **sintoma** (3 avisos) e presumiu a **causa** (2 efeitos) sem cruzar os dois. É a **terceira vez** que um item deste backlog carrega premissa errada — as anteriores foram a proposta de os guards lerem papéis de `modulos.ts` (que teria **afrouxado** o acesso) e a de que papel `coordenador` sem vínculo era inofensivo. **Conferir a premissa no código antes de executar o item continua sendo obrigatório.**
 
-**Conserto do que falta:** transformar o efeito do `setUserName` em `useQuery`. O sinal de que deu certo continua sendo o stderr — mas agora medido, não presumido: `npx vitest run src/pages/guards.test.tsx` tem de parar de citar `not wrapped in act`.
+### ⚠️ O terceiro tinha uma regra que os outros dois não tinham
+
+Os dois primeiros passaram a **propagar erro** (`if (error) throw error`) — inclusive corrigindo, no `prova_unidade_info`, um `error` que sequer era desestruturado e sumia em silêncio.
+
+O do `setUserName` faz o **oposto, de propósito**: engole a falha e devolve `user.email` como nome. `userName` habilita o **lock de edição exclusiva** da unidade; deixar a falha virar estado de erro manteria o lock **desligado**, e a unidade ficaria sem proteção contra dois coordenadores editando ao mesmo tempo. O `try/catch` cobre os dois modos de falha que o `.then(ok, erro)` antigo tratava junto — o erro do PostgREST (que volta em `error`, sem rejeitar) e a rejeição de rede —, e devolver em vez de relançar evita o retry do React Query, que atrasaria o lock sem melhorar nada.
+
+**O `enabled` do lock passou a olhar `isSuccess`** em vez de `!!userName`: diz "o nome foi resolvido", que é a condição de verdade, em vez de inferi-la de a string não estar vazia.
 
 ---
 
