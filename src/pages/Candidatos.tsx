@@ -44,6 +44,7 @@ import {
   ChevronRight,
   Eye,
   ScrollText,
+  Briefcase,
 } from "lucide-react";
 
 const POR_PAGINA = 50;
@@ -277,10 +278,22 @@ export default function Candidatos() {
               Os inscritos de cada edital. A lista é sempre carregada por importação de planilha.
             </p>
           </div>
-          <Button className="gap-2" onClick={() => navigate("/candidatos/importar")}>
-            <Upload className="h-4 w-4" />
-            Importar Planilha
-          </Button>
+          {/* Wrapper próprio: sem ele o `justify-between` do pai empurraria cada botão
+              para uma ponta, em vez de mantê-los juntos à direita. */}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => navigate("/candidatos/cargos")}
+            >
+              <Briefcase className="h-4 w-4" />
+              Cargos
+            </Button>
+            <Button className="gap-2" onClick={() => navigate("/candidatos/importar")}>
+              <Upload className="h-4 w-4" />
+              Importar Planilha
+            </Button>
+          </div>
         </div>
 
         {/* Escolha do edital — os cards mostram quantos inscritos cada um já tem. */}

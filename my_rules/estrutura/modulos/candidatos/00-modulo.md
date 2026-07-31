@@ -11,7 +11,7 @@
 | **Papéis com acesso** | `superadmin`, `admin` — **não** coordenador |
 | **Rota de entrada** | `/candidatos` (fixa, sem variação por papel) |
 | **`prefixosRota`** | `['/candidatos']` — cobre `/candidatos/importar` pela regra prefixo + `/` |
-| **`navLinks`** | Candidatos → `/candidatos` · Importar → `/candidatos/importar` (ambos `showFor: ['admin','superadmin']`) |
+| **`navLinks`** | Candidatos → `/candidatos` · Importar → `/candidatos/importar` · **Cargos → `/candidatos/cargos`** (os três `showFor: ['admin','superadmin']`) |
 | **Ícone** | `Users` (lucide) |
 
 Módulo criado em **2026-07-27**, a partir do arquivo real de inscritos do concurso 002-2026-SMA (7.416 linhas, em `docs/temp/`).
@@ -42,7 +42,9 @@ Duas consequências que precisam sobreviver a qualquer refatoração:
 | `src/hooks/useCandidatos.tsx` | React Query: `useCandidatos` (paginada, com o cargo embutido e o recorte por cargo), `useContagemCandidatosPorEdital`, `useImportarCandidatos` (**preparo em blocos + a RPC de troca**), `useExcluirCandidatos` |
 | `supabase/migrations/20260730120000_*` e `20260730130000_*` | A tabela de preparo `candidatos_importacao` e a RPC `trocar_candidatos_do_edital`, com as três guardas |
 | `docs/bateria-troca-total-candidatos.sql` | A bateria da troca, 10 casos — inclui a prova de ATOMICIDADE, que roda fora de transação de propósito |
-| `src/hooks/useCargos.tsx` (258 l.) | React Query dos cargos: catálogo, apelidos, criação e gravação da memória — ver [`cargos.md`](./cargos.md) |
+| `src/hooks/useCargos.tsx` | React Query dos cargos: catálogo (com e sem contagem de uso), apelidos, criação, **renomeação e exclusão** — ver [`cargos.md`](./cargos.md) |
+| `src/pages/Cargos.tsx` + `src/components/CargoDialog.tsx` | 🔵 A gestão do catálogo em `/candidatos/cargos` (30/07): listar com o uso, criar, renomear, excluir |
+| `src/pages/Cargos.ui.test.tsx` (11) + `CargoDialog.test.ts` (6) | Bateria do CRUD e o contrato do schema |
 | `supabase/migrations/20260727000000_create_candidatos.sql` | O schema da tabela — coluna gerada, índices, 6 CHECKs, RLS, trigger e a RPC de contagem. ⚠️ **Os comentários de coluna dela sobre CPF e e-mail descrevem o comportamento ANTIGO** (gravar `NULL`); a `20260730100000` é que manda |
 | `supabase/migrations/20260727200000_candidatos_chave_cpf_cargo_inscricao.sql` | A chave natural ganhou o CPF, com `NULLS NOT DISTINCT` |
 | `supabase/migrations/20260728100000_candidatos_chave_cargo_id.sql` | A chave trocou o TEXTO do cargo pela REFERÊNCIA; `cargo_chave` dropada |

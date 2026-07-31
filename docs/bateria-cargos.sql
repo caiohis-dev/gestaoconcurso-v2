@@ -7,6 +7,18 @@
 -- Ela não exercita RLS, CHECK, índice único, coluna gerada, FK nem trigger — um teste lá
 -- afirmaria o mock. Esta é a única verificação real destas regras.
 --
+-- 🔴 PRÉ-CONDIÇÃO, descoberta em 2026-07-31: esta bateria PRECISA de um catálogo de
+-- `cargos` que não contenha os nomes que ela insere ('DOCENTE II', 'ARTE',
+-- 'DOCENTE I — HISTÓRIA'...). Com o catálogo povoado — e uma importação real o povoa
+-- exatamente com esses nomes — os INSERTs colidem em `cargos_nome_chave_key`, cada
+-- colisão aborta o bloco, e o resultado vira uma cascata de "transaction is aborted"
+-- que PARECE falha da bateria e não é.
+--
+-- Rodar depois de `supabase db reset`, ou conferir antes com:
+--     SELECT nome FROM cargos;
+-- Se houver colisão, o conserto é dar nomes improváveis aos fixtures (prefixo 'BATERIA')
+-- — não apagar o catálogo do banco.
+--
 -- REGRA DA CASA: toda recusa vem acompanhada do CONTROLE POSITIVO. Provar que passou a
 -- recusar é metade do trabalho; a outra metade é provar que continua aceitando o que deve.
 -- Tudo em transação com ROLLBACK — a bateria não deixa resíduo.

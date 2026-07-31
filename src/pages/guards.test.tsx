@@ -73,6 +73,11 @@ vi.mock("@/hooks/useAuth", () => ({
 const TABELAS = [
   "bancos",
   "candidatos",
+  // ⚠️ Acrescentadas em 2026-07-30 com a página de Cargos: sem elas, o `useCargosComUso`
+  // recebe `undefined` do mock e a página quebra com TypeError ANTES de o guard rodar —
+  // o teste de recusa passaria por acidente, medindo o crash e não a autorização.
+  "cargos",
+  "cargo_apelidos",
   "colaboradores",
   "colaboradores_prova",
   "coordenadores_prova",
@@ -350,6 +355,14 @@ const PAGINAS: Pagina[] = [
     permitidos: ["admin", "superadmin"],
   },
   {
+    nome: "Cargos",
+    path: "/candidatos/cargos",
+    rota: "/candidatos/cargos",
+    mod: () => import("./Cargos"),
+    exige: ["admin"],
+    permitidos: ["admin", "superadmin"],
+  },
+  {
     nome: "UnidadesProva",
     path: "/unidades-prova",
     rota: "/unidades-prova",
@@ -488,8 +501,9 @@ describe("guards de página — matriz papel × rota", () => {
   it("a matriz cobre as páginas guardadas do App.tsx", () => {
     // Sem esta asserção, esvaziar PAGINAS por acidente faria todo o resto passar por
     // vacuidade — o mesmo cuidado que o teste de acessibilidade dos diálogos toma.
-    // 19 até 2026-07-26; 21 desde o módulo Candidatos (/candidatos e /candidatos/importar).
-    expect(PAGINAS.length).toBe(21);
+    // 19 até 2026-07-26; 21 desde o módulo Candidatos (/candidatos e /candidatos/importar);
+    // 22 desde 2026-07-30, com a página de gestão de cargos (/candidatos/cargos).
+    expect(PAGINAS.length).toBe(22);
     expect(new Set(PAGINAS.map((p) => p.nome)).size).toBe(PAGINAS.length);
   });
 

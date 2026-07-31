@@ -4,6 +4,8 @@
 
 ## Estado: **TEMA COMPLETO** — as 6 etapas concluídas (2026-07-29)
 
+> 🔵 **Acrescentado em 2026-07-30:** a página de gestão `/candidatos/cargos` (CRUD do catálogo). Ela executa parte da "etapa 7", que a decisão **D7** havia deixado como não planejada — o usuário pediu depois. Ver a seção própria abaixo.
+
 | Etapa | O que é | Estado |
 |---|---|---|
 | 1 | Schema: `cargos`, `cargo_apelidos`, `candidatos.cargo_id` | ✅ **feita** — migration `20260727210000` |
@@ -340,6 +342,50 @@ Enquanto isso não for decidido, quem pegaria o resíduo é a **reconciliação*
 ⚠️ **A mensagem orienta, não só barra** (lição da etapa 4): nomeia o texto, o cargo a que ele já está associado, e a saída. Ela **passa inteira** ao usuário — `mensagemErroImportacao` não tem ramo próprio para `RC001`, e o fallback já devolve o texto do banco. **Não tente casar pelo código:** verificado pelo PostgREST, o `RC001` chega em `error.code`, nunca dentro de `error.message`.
 
 **O certo, que não coube:** o reapontamento deveria **mover** os inscritos de um cargo para o outro, não duplicá-los — mudar de ideia deveria simplesmente funcionar. Isso é a fusão de cargos da etapa 7 (RPC transacional). Bloquear é o downgrade barato: converte perda silenciosa em "ainda não dá" explícito.
+
+## A página de gestão (2026-07-30) — `/candidatos/cargos`
+
+**A rota é `/candidatos/cargos`, e a URL não é acidente:** ela cai no prefixo `/candidatos` do módulo, então `prefixosRota` não mudou e o invariante de `modulos.test.ts` ("todo navLink resolve para o próprio módulo") continua valendo sem ajuste. Uma rota de topo `/cargos` exigiria um prefixo novo — e esquecê-lo faria `moduloDaRota` devolver `null`, tirando o realce do header e quebrando aquele teste.
+
+| Arquivo | Papel |
+|---|---|
+| `src/pages/Cargos.tsx` | A tela: tabela com **nome · inscritos · textos memorizados · ações** |
+| `src/components/CargoDialog.tsx` | Um diálogo só, para criar E renomear — `isEditing = !!cargo` governa tudo |
+| `src/components/CargoDialog.test.ts` | O contrato do schema Zod |
+| `src/pages/Cargos.ui.test.tsx` | 11 testes do CRUD |
+
+**Hooks novos em `useCargos.tsx`:** `useCargosComUso`, `useAtualizarCargo`, `useExcluirCargo`.
+
+### ⭐ A contagem de uso vem numa requisição só
+
+`cargos?select=...,candidatos(count),cargo_apelidos(count)` — o embed de agregação do PostgREST resolve no servidor. **Foi medido em 30/07 ANTES de o código existir**, porque o fallback seria uma RPC e mudaria o escopo. O índice `idx_candidatos_cargo` (etapa 1) é o que torna isso barato.
+
+⚠️ Cargo sem uso volta `[{ count: 0 }]`, **não** array vazio. O `?.[0]?.count ?? 0` cobre os dois, para o hook não depender dessa observação continuar valendo.
+
+⚠️ A queryKey é `["cargos", "com-uso"]` e **não precisa de invalidação própria**: `invalidateQueries({ queryKey: ["cargos"] })` casa por PREFIXO e alcança as duas. Não acrescente uma segunda achando que falta.
+
+### 🔴 Renomear invalida DUAS queries
+
+`useAtualizarCargo` invalida `["cargos"]` **e** `["candidatos"]`. Desde a etapa 6 a listagem e a ficha exibem `cargos.nome` por join embutido — sem a segunda, o usuário renomeia, volta para a lista, vê o nome **antigo** e conclui que não funcionou. Mesmo motivo pelo qual `useEditais` invalida `provas`. **Há teste guardando, e ele foi falsificado.**
+
+### 🔴 Excluir leva os apelidos junto, e o diálogo TEM de dizer isso
+
+`cargo_apelidos.cargo_id` é `ON DELETE CASCADE`: apagar o cargo apaga em silêncio a memória de "texto sujo → cargo". É perda real e invisível — na próxima importação aqueles textos voltam a aparecer sem associação. O `AlertDialog` mostra a contagem e avisa; **há teste próprio para o aviso**, senão ele some na primeira refatoração.
+
+**Não há pré-check de uso no cliente, de propósito.** "Leio e então decido" é uma corrida, e a recusa do banco (`candidatos_cargo_id_fkey`, RESTRICT) nomeia o obstáculo melhor. A contagem na tela **informa**; quem barra é a FK.
+
+⚠️ **A confirmação NÃO pede senha**, ao contrário de "limpar edital". Lá não há rede nenhuma; aqui o banco é a rede. É o mesmo critério do módulo: excluir um inscrito usa `AlertDialog`.
+
+### `mensagemErroCargo` ganhou o ramo de nome duplicado
+
+`cargos_nome_chave_key` ficou **fora** dela até 30/07, com bom motivo: só o `criarCargo` escrevia, e ele transforma duplicata em sucesso (D10). **O renomear mudou a premissa** — renomear para um nome existente viola o mesmo índice e não tem para onde escapar. ⚠️ Havia um teste afirmando *"NÃO traduz a violação de nome único"*; ele foi **reescrito**, não removido.
+
+### O que a página deliberadamente NÃO faz
+
+- **Desativar (`cargos.ativo`)** — a coluna existe desde a etapa 1 e segue **sem consumidor**. Para "inativo" significar algo, o passo Cargos do assistente teria de parar de oferecer os inativos, e isso é mudança no fluxo de importação.
+- **Fundir cargos duplicados** — reapontar candidatos e apelidos e só então apagar é operação em três tabelas e exige **RPC transacional**. Três chamadas soltas do cliente deixariam estado pela metade. Segue desenhada na etapa 7 do roadmap.
+
+---
 
 ## A exibição (etapa 6) — `Candidatos.tsx` e `useCandidatos.tsx`
 

@@ -34,6 +34,14 @@ export interface CargoApelido {
   cargo_id: string;
 }
 
+/** Um cargo com o quanto ele é usado — o que a tela de gestão precisa saber para decidir. */
+export interface CargoComUso extends Cargo {
+  /** Inscritos apontando para este cargo. É o que a FK RESTRICT protege. */
+  candidatos: number;
+  /** Textos de planilha memorizados. ⚠️ Somem junto com o cargo (CASCADE). */
+  apelidos: number;
+}
+
 /**
  * Traduz o erro do Postgres para o que a pessoa pode fazer a respeito.
  *
@@ -41,13 +49,24 @@ export interface CargoApelido {
  * regra que este repo já teve de aprender duas vezes — **mensagem vinda do banco passa
  * adiante; texto próprio é fallback**, nunca substituto.
  *
- * ⚠️ Violação de `cargos_nome_chave_key` NÃO está aqui de propósito: `criarCargo` a
- * transforma em sucesso (ver lá), então ela nunca chega à UI como erro.
+ * ⚠️ `cargos_nome_chave_key` ficou FORA daqui até 2026-07-30, e o motivo era bom: quem
+ * criava era só o `criarCargo`, que transforma a duplicata em sucesso — a violação nunca
+ * chegava à UI. **A página de gestão mudou isso:** RENOMEAR para um nome que já existe
+ * viola o mesmo índice e não tem para onde escapar. Sem este ramo, a tela mostraria
+ * `duplicate key value violates unique constraint "cargos_nome_chave_key"` cru.
+ *
+ * O ramo é inofensivo para o `criarCargo`, que continua sem alcançá-lo.
  */
 export function mensagemErroCargo(mensagem: string): string {
   const m = mensagem.toLowerCase();
   if (m.includes("candidatos_cargo_id_fkey")) {
     return "Este cargo está em uso por candidatos e não pode ser excluído.";
+  }
+  if (m.includes("cargos_nome_chave_key")) {
+    // A unicidade é sobre a coluna GERADA `nome_chave` (lower + btrim), então "Docente II"
+    // e " docente ii " colidem. Dizer só "nome duplicado" deixaria o usuário olhando dois
+    // textos diferentes na tela sem entender por que o banco os considera iguais.
+    return "Já existe um cargo com esse nome (a comparação ignora maiúsculas e espaços nas pontas).";
   }
   if (m.includes("chk_cargo_nome_preenchido")) return "O nome do cargo não pode ficar em branco.";
   if (m.includes("row-level security") || m.includes("permission denied")) {
@@ -197,6 +216,142 @@ export function useCriarCargo() {
     criarCargo: mutation.mutateAsync,
     isCriando: mutation.isPending,
   };
+}
+
+/**
+ * O catálogo com o USO de cada cargo — quantos inscritos e quantos apelidos.
+ *
+ * Existe separado de `useCargos()` porque só a tela de gestão precisa das contagens: o
+ * passo 3 do assistente carrega o catálogo a cada importação e não tem uso para elas.
+ *
+ * ⭐ UMA requisição, não uma por cargo. O embed de agregação do PostgREST
+ * (`candidatos(count)`) resolve no servidor — foi medido em 2026-07-30 antes de o código
+ * existir, justamente porque o fallback seria uma RPC e mudaria o escopo. O índice
+ * `idx_candidatos_cargo` é o que torna a contagem barata.
+ *
+ * ⚠️ Cargo sem uso volta `[{ count: 0 }]`, NÃO array vazio — também medido. Um
+ * `?.[0]?.count ?? 0` cobre os dois casos e não depende dessa observação continuar valendo.
+ *
+ * ⭐ A queryKey é `["cargos", "com-uso"]` e isso NÃO exige invalidação própria: o
+ * `invalidateQueries({ queryKey: ["cargos"] })` das mutations casa por PREFIXO e alcança
+ * esta também. Não acrescente uma segunda invalidação achando que falta — ela seria
+ * redundante, e redundância aqui é a forma de alguém depois "limpar" a errada.
+ */
+export function useCargosComUso() {
+  const query = useQuery({
+    queryKey: ["cargos", "com-uso"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("cargos")
+        .select(
+          "id, nome, nome_chave, ativo, created_at, updated_at, candidatos(count), cargo_apelidos(count)",
+        )
+        .order("nome", { ascending: true });
+
+      if (error) throw error;
+
+      type LinhaComContagem = Cargo & {
+        candidatos: { count: number }[] | null;
+        cargo_apelidos: { count: number }[] | null;
+      };
+
+      return ((data ?? []) as LinhaComContagem[]).map((c) => ({
+        id: c.id,
+        nome: c.nome,
+        nome_chave: c.nome_chave,
+        ativo: c.ativo,
+        created_at: c.created_at,
+        updated_at: c.updated_at,
+        candidatos: c.candidatos?.[0]?.count ?? 0,
+        apelidos: c.cargo_apelidos?.[0]?.count ?? 0,
+      })) as CargoComUso[];
+    },
+  });
+
+  return {
+    cargos: query.data ?? [],
+    // Mesma advertência de `useCargos`: carregando NÃO é catálogo vazio.
+    isLoading: query.isLoading,
+    error: query.error,
+  };
+}
+
+/**
+ * Renomeia um cargo.
+ *
+ * ⭐ É a operação mais valiosa da tela, e só é segura por causa da etapa 5: com
+ * `cargo_id` na chave natural, o nome virou ATRIBUTO. Renomear é um `UPDATE` numa linha e
+ * não duplica ninguém — antes da etapa 5, a mesma correção criava 481 registros.
+ *
+ * ⚠️ NÃO escrever `nome_chave`: é coluna GENERATED, o banco a recalcula sozinha no
+ * rename. Preenchê-la à mão é erro de escrita em coluna gerada.
+ */
+export function useAtualizarCargo() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const mutation = useMutation({
+    mutationFn: async ({ id, nome }: { id: string; nome: string }): Promise<void> => {
+      const { error } = await supabase.from("cargos").update({ nome: nome.trim() }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cargos"] });
+      // 🔴 A SEGUNDA invalidação é o ponto. Desde a etapa 6 a listagem e a ficha de
+      // candidatos exibem `cargos.nome` por join embutido — sem invalidar `candidatos`, o
+      // usuário renomeia, volta para a lista e continua vendo o nome ANTIGO, concluindo
+      // que o rename não funcionou. Mesmo motivo pelo qual `useEditais` invalida `provas`.
+      queryClient.invalidateQueries({ queryKey: ["candidatos"] });
+      toast({ title: "Cargo renomeado" });
+    },
+    onError: (error: { message: string }) => {
+      toast({
+        title: "Erro ao renomear cargo",
+        description: mensagemErroCargo(error.message),
+        variant: "destructive",
+      });
+    },
+  });
+
+  return { atualizarCargo: mutation.mutateAsync, isAtualizando: mutation.isPending };
+}
+
+/**
+ * Exclui um cargo.
+ *
+ * ⚠️ DUAS FKs apontam para `cargos`, e elas são OPOSTAS de propósito:
+ *   - `candidatos.cargo_id` é RESTRICT → cargo em uso NÃO é excluível. O banco é quem
+ *     barra; não há pré-check no cliente, e é assim que tem de ser (um "leio e então
+ *     decido" seria uma corrida, e a mensagem do banco nomeia o obstáculo melhor).
+ *   - `cargo_apelidos.cargo_id` é CASCADE → os apelidos somem JUNTO, em silêncio.
+ *     Quem chama tem de avisar antes: é a memória de pré-preenchimento das próximas
+ *     importações que está indo embora.
+ */
+export function useExcluirCargo() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const mutation = useMutation({
+    mutationFn: async (id: string): Promise<void> => {
+      const { error } = await supabase.from("cargos").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cargos"] });
+      // Os apelidos foram junto por CASCADE — a query deles está velha.
+      queryClient.invalidateQueries({ queryKey: ["cargo_apelidos"] });
+      toast({ title: "Cargo excluído" });
+    },
+    onError: (error: { message: string }) => {
+      toast({
+        title: "Erro ao excluir cargo",
+        description: mensagemErroCargo(error.message),
+        variant: "destructive",
+      });
+    },
+  });
+
+  return { excluirCargo: mutation.mutateAsync, isExcluindo: mutation.isPending };
 }
 
 /** Um par "texto da planilha → cargo escolhido", como o passo 3 produz. */

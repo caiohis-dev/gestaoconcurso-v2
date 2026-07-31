@@ -29,7 +29,7 @@ import {
   builderQueChamou,
   buildersDaTabela,
 } from "@/test/supabase-mock";
-import { renderHookWithProviders } from "@/test/utils";
+import { renderHookWithProviders, createTestQueryClient } from "@/test/utils";
 
 vi.mock("@/integrations/supabase/client", async () => {
   const { supabaseMock } = await import("@/test/supabase-mock");
@@ -43,8 +43,11 @@ vi.mock("@/hooks/use-toast", () => ({
 
 import {
   useCargos,
+  useCargosComUso,
   useCargoApelidos,
   useCriarCargo,
+  useAtualizarCargo,
+  useExcluirCargo,
   useSalvarApelidos,
   mensagemErroCargo,
   type Cargo,
@@ -391,6 +394,161 @@ describe("useSalvarApelidos", () => {
   });
 });
 
+describe("useCargosComUso", () => {
+  it("⭐ traz as contagens numa requisição só, pelo embed de agregação", () => {
+    // Uma requisição, não uma por cargo. Se alguém trocar isto por N counts, a página
+    // continua funcionando e fica lenta em silêncio — daí a asserção na string do select.
+    setTableResult("cargos", { data: [], error: null });
+    renderHookWithProviders(() => useCargosComUso());
+
+    const select = builderQueChamou("cargos", "select").select.mock.calls[0][0] as string;
+    expect(select).toContain("candidatos(count)");
+    expect(select).toContain("cargo_apelidos(count)");
+  });
+
+  it("desembrulha o count do array que o PostgREST devolve", async () => {
+    setTableResult("cargos", {
+      data: [
+        {
+          id: "c1",
+          nome: "DOCENTE II",
+          nome_chave: "docente ii",
+          ativo: true,
+          created_at: null,
+          updated_at: null,
+          candidatos: [{ count: 3 }],
+          cargo_apelidos: [{ count: 2 }],
+        },
+      ],
+      error: null,
+    });
+
+    const { result } = renderHookWithProviders(() => useCargosComUso());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.cargos[0].candidatos).toBe(3);
+    expect(result.current.cargos[0].apelidos).toBe(2);
+  });
+
+  it("⚠️ cargo sem uso vira 0, venha `[{count:0}]` ou array vazio", async () => {
+    // Medido em 30/07: o PostgREST devolve `[{count: 0}]`. O `?? 0` cobre também o array
+    // vazio, para o hook não depender dessa observação continuar valendo.
+    setTableResult("cargos", {
+      data: [
+        { id: "a", nome: "A", nome_chave: "a", ativo: true, created_at: null, updated_at: null, candidatos: [{ count: 0 }], cargo_apelidos: [] },
+        { id: "b", nome: "B", nome_chave: "b", ativo: true, created_at: null, updated_at: null, candidatos: null, cargo_apelidos: null },
+      ],
+      error: null,
+    });
+
+    const { result } = renderHookWithProviders(() => useCargosComUso());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.cargos.map((c) => [c.candidatos, c.apelidos])).toEqual([
+      [0, 0],
+      [0, 0],
+    ]);
+  });
+});
+
+describe("useAtualizarCargo", () => {
+  it("manda só o nome, aparado — `nome_chave` é GERADA e o banco a recalcula", async () => {
+    setTableResult("cargos", { data: null, error: null });
+    const { result } = renderHookWithProviders(() => useAtualizarCargo());
+
+    await act(async () => {
+      await result.current.atualizarCargo({ id: "c1", nome: "  DOCENTE I — ARTE  " });
+    });
+
+    const builder = builderQueChamou("cargos", "update");
+    expect(builder.update).toHaveBeenCalledWith({ nome: "DOCENTE I — ARTE" });
+    expect(builder.eq).toHaveBeenCalledWith("id", "c1");
+  });
+
+  it("🔴 invalida TAMBÉM `candidatos` — senão o nome novo não aparece na lista", async () => {
+    // ⭐ O teste que guarda o ganho da etapa 6. A listagem de candidatos exibe
+    // `cargos.nome` por join embutido; sem esta invalidação o usuário renomeia, volta para
+    // a lista, vê o nome ANTIGO e conclui que a operação falhou.
+    setTableResult("cargos", { data: null, error: null });
+    const queryClient = createTestQueryClient();
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHookWithProviders(() => useAtualizarCargo(), { queryClient });
+
+    await act(async () => {
+      await result.current.atualizarCargo({ id: "c1", nome: "NOVO" });
+    });
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["cargos"] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["candidatos"] });
+  });
+
+  it("traduz a colisão de nome em vez de mostrar o erro do índice", async () => {
+    setTableResult("cargos", {
+      data: null,
+      error: erroPostgrest(
+        "23505",
+        'duplicate key value violates unique constraint "cargos_nome_chave_key"',
+      ),
+    });
+    const { result } = renderHookWithProviders(() => useAtualizarCargo());
+
+    await act(async () => {
+      await result.current.atualizarCargo({ id: "c1", nome: "DOCENTE II" }).catch(() => undefined);
+    });
+
+    expect(toastMock).toHaveBeenCalledWith(
+      expect.objectContaining({ description: expect.stringMatching(/já existe um cargo/i) }),
+    );
+  });
+});
+
+describe("useExcluirCargo", () => {
+  it("exclui pelo id", async () => {
+    setTableResult("cargos", { data: null, error: null });
+    const { result } = renderHookWithProviders(() => useExcluirCargo());
+
+    await act(async () => {
+      await result.current.excluirCargo("c1");
+    });
+
+    expect(builderQueChamou("cargos", "delete").eq).toHaveBeenCalledWith("id", "c1");
+  });
+
+  it("⭐ o RESTRICT do banco vira mensagem que nomeia o obstáculo", async () => {
+    // Não há pré-check de uso no cliente, e é deliberado: "leio e então decido" é uma
+    // corrida. Quem barra é a FK, e a mensagem dela é o que o usuário lê.
+    setTableResult("cargos", {
+      data: null,
+      error: erroPostgrest(
+        "23503",
+        'update or delete on table "cargos" violates foreign key constraint "candidatos_cargo_id_fkey"',
+      ),
+    });
+    const { result } = renderHookWithProviders(() => useExcluirCargo());
+
+    await act(async () => {
+      await result.current.excluirCargo("c1").catch(() => undefined);
+    });
+
+    expect(toastMock).toHaveBeenCalledWith(
+      expect.objectContaining({ description: expect.stringMatching(/em uso por candidatos/i) }),
+    );
+  });
+
+  it("invalida os apelidos junto — eles foram por CASCADE", async () => {
+    setTableResult("cargos", { data: null, error: null });
+    const queryClient = createTestQueryClient();
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHookWithProviders(() => useExcluirCargo(), { queryClient });
+
+    await act(async () => {
+      await result.current.excluirCargo("c1");
+    });
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["cargo_apelidos"] });
+  });
+});
+
 describe("mensagemErroCargo", () => {
   it("nomeia o obstáculo quando o cargo está em uso", () => {
     // Como `mensagemErroExclusaoFuncao`: dizer QUAL uso bloqueia, porque cada um pede uma
@@ -415,11 +573,23 @@ describe("mensagemErroCargo", () => {
     ).toMatch(/branco/i);
   });
 
-  it("⭐ NÃO traduz a violação de nome único — ela nunca chega aqui como erro", () => {
-    // `criarCargo` transforma o conflito em sucesso (D10). Se um dia esta mensagem
-    // aparecer para o usuário, é sinal de que aquele caminho quebrou.
-    const cru = 'duplicate key value violates unique constraint "cargos_nome_chave_key"';
-    expect(mensagemErroCargo(cru)).toBe(cru);
+  it("⭐ traduz a violação de nome único — o RENOMEAR a destravou", () => {
+    // ⚠️ ESTE TESTE AFIRMAVA O CONTRÁRIO até 2026-07-30, e o motivo era bom: quem criava
+    // era só o `criarCargo`, que transforma o conflito em sucesso (D10), então a violação
+    // nunca chegava à UI. A página de gestão mudou a premissa — RENOMEAR para um nome que
+    // já existe viola o mesmo índice e não tem para onde escapar. Sem o ramo, a tela
+    // mostraria "duplicate key value violates unique constraint..." cru.
+    expect(
+      mensagemErroCargo('duplicate key value violates unique constraint "cargos_nome_chave_key"'),
+    ).toMatch(/já existe um cargo com esse nome/i);
+  });
+
+  it("a mensagem de nome duplicado explica POR QUE dois textos diferentes colidem", () => {
+    // A unicidade é sobre a coluna GERADA (lower + btrim). Sem dizer isso, o usuário olha
+    // "Docente II" e " docente ii " na tela e conclui que o sistema está errado.
+    expect(
+      mensagemErroCargo('duplicate key value violates unique constraint "cargos_nome_chave_key"'),
+    ).toMatch(/mai[úu]sculas e espa[çc]os/i);
   });
 
   it("devolve a mensagem original quando não conhece o erro", () => {

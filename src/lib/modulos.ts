@@ -7,6 +7,7 @@ import {
   Building2,
   Users,
   Upload,
+  Briefcase,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -124,11 +125,17 @@ const candidatos: Modulo = {
   papeis: ['superadmin', 'admin'],
   rotaEntrada: () => '/candidatos',
   // Um prefixo só: `moduloDaRota` casa por igualdade OU prefixo + '/', então
-  // '/candidatos/importar' já entra por aqui sem precisar ser listada.
+  // '/candidatos/importar' e '/candidatos/cargos' já entram por aqui sem precisar ser
+  // listadas. ⭐ É por isso que a página de cargos ficou sob `/candidatos/`: uma rota de
+  // topo `/cargos` exigiria um prefixo novo, e esquecê-lo faria `moduloDaRota` devolver
+  // null — o header perderia o realce e o invariante de `modulos.test.ts` quebraria.
   prefixosRota: ['/candidatos'],
   navLinks: [
     { href: '/candidatos', label: 'Candidatos', icon: Users, showFor: ['admin', 'superadmin'] },
     { href: '/candidatos/importar', label: 'Importar', icon: Upload, showFor: ['admin', 'superadmin'] },
+    // O catálogo de cargos é do módulo Candidatos porque cargo só existe para classificar
+    // inscrito — ele compõe a identidade do candidato desde a etapa 5.
+    { href: '/candidatos/cargos', label: 'Cargos', icon: Briefcase, showFor: ['admin', 'superadmin'] },
   ],
 };
 

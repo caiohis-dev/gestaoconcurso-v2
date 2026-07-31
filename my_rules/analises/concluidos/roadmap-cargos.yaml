@@ -385,7 +385,10 @@ roadmap:
 
     - id: D7
       titulo: "Sem página /cargos própria nesta entrega; a gestão vive no assistente"
-      decidido: "PROPOSTO — recomendado adiar"
+      decidido: |
+        PROPOSTO — recomendado adiar. ⚠️ REVERTIDA PELO USUÁRIO em 2026-07-30, que pediu a
+        página. O adiamento valeu enquanto valeu: o CRUD saiu depois do tema estabilizado,
+        e ficou mais barato do que teria sido junto. Ver a etapa 7 para o que saiu.
       racional: |
         O pedido do usuário descreve criação e associação DENTRO do fluxo de importação.
         Uma rota nova custa entrada no RequireAcesso, no App.tsx e 5 combinações novas na
@@ -1253,7 +1256,26 @@ roadmap:
 
     - id: 7
       titulo: "(OPCIONAL, fora das janelas — só se fizer falta) Página /cargos"
-      status: "NÃO planejada para esta entrega — ver D7"
+      status: |
+        🔵 PARCIALMENTE EXECUTADA em 2026-07-30 — "se fizer falta" fez falta, e o usuário
+        pediu a tela. ⚠️ Este bloco NÃO é mais pendência inteira; leia o que saiu e o que
+        ficou antes de agir sobre ele.
+
+        ✅ FEITO: rota `/candidatos/cargos` (e não `/cargos` — a URL sob `/candidatos`
+        entra pelo prefixo que já existe e não mexe em `prefixosRota`), guard admin,
+        entrada na matriz de guards (21 → 22), e o CRUD com a exclusão barrada pelo
+        RESTRICT e a contagem de uso na tela.
+
+        ⏭️ NÃO FEITO, e segue válido como desenho:
+          - desativar (coluna `ativo`) — a coluna continua SEM consumidor. Dar sentido a
+            ela exigiria o passo Cargos do assistente filtrar por `ativo`, ou seja, mexer
+            no fluxo de importação.
+          - fusão de cargos duplicados — continua exigindo a RPC transacional descrita
+            abaixo.
+
+        ⚠️ O custo citado no `detalhe` está desatualizado: eram "19 páginas × 5 papéis";
+        na execução eram 21, e o parâmetro real foi 1 entrada em PAGINAS + o contador
+        literal. Documentado em `estrutura/modulos/candidatos/cargos.md`.
       detalhe: |
         Se a gestão fora do assistente vier a fazer falta, o trabalho é:
           - rota em App.tsx dentro de RequireAcesso, papéis admin/superadmin
