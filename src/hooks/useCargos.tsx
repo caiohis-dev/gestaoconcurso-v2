@@ -38,8 +38,21 @@ export interface CargoApelido {
 export interface CargoComUso extends Cargo {
   /** Inscritos apontando para este cargo. É o que a FK RESTRICT protege. */
   candidatos: number;
-  /** Textos de planilha memorizados. ⚠️ Somem junto com o cargo (CASCADE). */
+  /** Textos de planilha memorizados. ⚠️ Desde 31/07 eles BARRAM a exclusão (RESTRICT). */
   apelidos: number;
+}
+
+/**
+ * Cargo com menção em qualquer outra tabela é IMUTÁVEL — nem altera, nem exclui.
+ *
+ * Decisão do usuário em 2026-07-31, e a barreira de verdade é o banco (trigger `CG001` +
+ * as duas FKs RESTRICT). Esta função existe para a tela ANTECIPAR a recusa: deixar o
+ * usuário abrir o diálogo, digitar e só então levar erro é barrar sem orientar.
+ *
+ * ⚠️ NÃO é pré-check de autorização: se ela discordar do banco, quem manda é o banco.
+ */
+export function cargoTemMencao(cargo: CargoComUso): boolean {
+  return cargo.candidatos > 0 || cargo.apelidos > 0;
 }
 
 /**
@@ -59,8 +72,18 @@ export interface CargoComUso extends Cargo {
  */
 export function mensagemErroCargo(mensagem: string): string {
   const m = mensagem.toLowerCase();
+  if (m.includes("tem menção em outra tabela")) {
+    // A mensagem do trigger CG001 já traz o nome e as duas contagens — é exatamente o que
+    // o usuário precisa. Passa adiante inteira, como manda a regra da casa.
+    return mensagem;
+  }
   if (m.includes("candidatos_cargo_id_fkey")) {
     return "Este cargo está em uso por candidatos e não pode ser excluído.";
+  }
+  if (m.includes("cargo_apelidos_cargo_id_fkey")) {
+    // RESTRICT desde 31/07 (era CASCADE): o apelido deixou de ser levado junto e passou a
+    // barrar. Dizer QUAL vínculo bloqueia, porque a providência é outra.
+    return "Este cargo tem textos de planilha memorizados e não pode ser excluído.";
   }
   if (m.includes("cargos_nome_chave_key")) {
     // A unicidade é sobre a coluna GERADA `nome_chave` (lower + btrim), então "Docente II"

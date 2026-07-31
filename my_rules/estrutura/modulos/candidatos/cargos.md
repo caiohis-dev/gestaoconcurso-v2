@@ -5,6 +5,8 @@
 ## Estado: **TEMA COMPLETO** — as 6 etapas concluídas (2026-07-29)
 
 > 🔵 **Acrescentado em 2026-07-30:** a página de gestão `/candidatos/cargos` (CRUD do catálogo). Ela executa parte da "etapa 7", que a decisão **D7** havia deixado como não planejada — o usuário pediu depois. Ver a seção própria abaixo.
+>
+> 🔴 **REGRA NOVA EM 2026-07-31, e ela REVERTE o ganho central deste tema: cargo com QUALQUER menção em outra tabela é IMUTÁVEL** — não se altera nem se exclui (migration `20260731100000`, SQLSTATE `CG001`). ⚠️ Toda afirmação abaixo de que "renomear é livre" ou "renomear é cosmético" **deixou de valer**. Ver a seção "Cargo com menção é imutável".
 
 | Etapa | O que é | Estado |
 |---|---|---|
@@ -334,7 +336,7 @@ Enquanto isso não for decidido, quem pegaria o resíduo é a **reconciliação*
 
 | | |
 |---|---|
-| Renomear `cargos.nome` | **livre** — pós-etapa 5 é cosmético, e é o ganho central do tema |
+| ~~Renomear `cargos.nome`~~ | ❌ **NÃO é mais livre desde 2026-07-31**: cargo com menção é imutável (`CG001`). Era o ganho central do tema; ver a seção da regra nova |
 | Criar cargo novo | livre — é `INSERT` em `cargos` |
 | Apagar cargo em uso | já recusado pelo `ON DELETE RESTRICT` da etapa 1 |
 | Reimportar a mesma linha com o mesmo cargo | é o caminho feliz, vira `UPDATE` |
@@ -379,6 +381,30 @@ Enquanto isso não for decidido, quem pegaria o resíduo é a **reconciliação*
 ### `mensagemErroCargo` ganhou o ramo de nome duplicado
 
 `cargos_nome_chave_key` ficou **fora** dela até 30/07, com bom motivo: só o `criarCargo` escrevia, e ele transforma duplicata em sucesso (D10). **O renomear mudou a premissa** — renomear para um nome existente viola o mesmo índice e não tem para onde escapar. ⚠️ Havia um teste afirmando *"NÃO traduz a violação de nome único"*; ele foi **reescrito**, não removido.
+
+### 🔴 Cargo com menção é IMUTÁVEL (2026-07-31)
+
+**Decisão do usuário:** *"Cargos que tenham menção em qualquer outra tabela não podem ser modificados nem deletados."*
+
+| Barreira | O quê |
+|---|---|
+| Trigger `check_cargo_nao_alteravel_em_uso` (`CG001`) | Recusa **qualquer UPDATE** em cargo com inscritos **ou** apelidos. É sobre a LINHA, não sobre a coluna — trocar `ativo` também é recusado |
+| `candidatos_cargo_id_fkey` RESTRICT | Já existia: inscrito barra a exclusão |
+| `cargo_apelidos_cargo_id_fkey` **RESTRICT** | ⚠️ **Era CASCADE.** O apelido deixou de ser apagado junto e passou a **barrar** |
+
+⚠️ **A assimetria "apelido é atalho, candidato é gente" caiu.** Ela era deliberada e está documentada acima em "Modelo de dados"; a regra nova não admite a distinção — menção é menção.
+
+#### 🔴 O que isso custa, medido
+
+Este tema existiu porque **7 dos 9 cargos chegam com `¿`** da origem, e a etapa 5 tornou o rename inofensivo justamente para permitir a limpeza. **Os 9 cargos do arquivo real têm candidatos** (195 a 3.756). Portanto: **depois da primeira importação, nenhum poderá ser renomeado, e os 7 `¿` ficam permanentes.**
+
+Isso foi apresentado ao usuário com esses números e escolhido assim mesmo. **A janela para corrigir um nome é ANTES da primeira importação que o use** — na prática, no próprio passo 3 do assistente, onde o cargo é criado.
+
+#### O que a regra apagou de código
+
+- **O aviso de CASCADE no diálogo de exclusão** virou inalcançável: o apelido agora barra em vez de ser levado. Saiu, com três testes junto.
+- **O ramo "N inscritos vão barrar"** do mesmo diálogo também: o botão Excluir não aparece mais para cargo com menção. O diálogo só abre para cargo com zero menções.
+- A tela mostra **"Em uso — não editável"** com cadeado no lugar dos botões. Botão cinza e mudo deixaria o usuário procurando o que fazer.
 
 ### O que a página deliberadamente NÃO faz
 

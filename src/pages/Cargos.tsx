@@ -5,6 +5,7 @@ import {
   useCriarCargo,
   useAtualizarCargo,
   useExcluirCargo,
+  cargoTemMencao,
   Cargo,
   CargoComUso,
 } from "@/hooks/useCargos";
@@ -23,7 +24,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Pencil, Trash2, Loader2, Briefcase, ArrowLeft } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, Briefcase, ArrowLeft, Lock } from "lucide-react";
 
 /**
  * Gestão do catálogo de cargos.
@@ -83,8 +84,10 @@ export default function Cargos() {
           <div>
             <h1 className="text-2xl font-bold text-foreground">Cargos</h1>
             <p className="text-muted-foreground">
-              O catálogo é global: vale para todos os editais. Renomear um cargo muda o que
-              aparece na lista de inscritos, sem duplicar ninguém.
+              O catálogo é global: vale para todos os editais. ⚠️ <strong>Cargo com
+              qualquer menção — inscritos ou textos memorizados — não pode ser alterado
+              nem excluído.</strong> A janela para corrigir um nome é antes da primeira
+              importação que o use.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -136,37 +139,52 @@ export default function Cargos() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {cargos.map((cargo) => (
-                      <TableRow key={cargo.id}>
-                        <TableCell className="font-medium">{cargo.nome}</TableCell>
-                        <TableCell className="text-right">{cargo.candidatos}</TableCell>
-                        <TableCell className="text-right">{cargo.apelidos}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="gap-2"
-                              onClick={() => abrirEdicao(cargo)}
-                              aria-label={`Renomear ${cargo.nome}`}
-                            >
-                              <Pencil className="h-4 w-4" />
-                              Renomear
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="gap-2 text-destructive hover:text-destructive"
-                              onClick={() => setCargoParaExcluir(cargo)}
-                              aria-label={`Excluir ${cargo.nome}`}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              Excluir
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {cargos.map((cargo) => {
+                      // ⚠️ ANTECIPA a barreira do banco; não a substitui. Quem recusa é o
+                      // trigger CG001 e as duas FKs RESTRICT — aqui é só para o usuário
+                      // não digitar um nome novo para descobrir depois que não podia.
+                      const imutavel = cargoTemMencao(cargo);
+                      return (
+                        <TableRow key={cargo.id}>
+                          <TableCell className="font-medium">{cargo.nome}</TableCell>
+                          <TableCell className="text-right">{cargo.candidatos}</TableCell>
+                          <TableCell className="text-right">{cargo.apelidos}</TableCell>
+                          <TableCell className="text-right">
+                            {imutavel ? (
+                              // Botão cinza e mudo deixa o usuário procurando o que fazer.
+                              // Este diz por que, e a contagem ao lado diz o quanto.
+                              <span className="flex items-center justify-end gap-2 text-sm text-muted-foreground">
+                                <Lock className="h-4 w-4" />
+                                Em uso — não editável
+                              </span>
+                            ) : (
+                              <div className="flex justify-end gap-1">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="gap-2"
+                                  onClick={() => abrirEdicao(cargo)}
+                                  aria-label={`Renomear ${cargo.nome}`}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                  Renomear
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="gap-2 text-destructive hover:text-destructive"
+                                  onClick={() => setCargoParaExcluir(cargo)}
+                                  aria-label={`Excluir ${cargo.nome}`}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                  Excluir
+                                </Button>
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
@@ -186,10 +204,16 @@ export default function Cargos() {
         isLoading={isCriando || isAtualizando}
       />
 
-      {/* Confirmação de exclusão — AlertDialog e não senha, porque o BANCO é a rede: a FK
-          `candidatos_cargo_id_fkey` é RESTRICT e recusa apagar cargo em uso. É o mesmo
-          critério do módulo: excluir UM inscrito usa AlertDialog; "limpar edital", que não
-          tem rede nenhuma, é que pede senha. */}
+      {/* Confirmação de exclusão — AlertDialog e não senha, porque o BANCO é a rede: as
+          duas FKs são RESTRICT. É o mesmo critério do módulo: excluir UM inscrito usa
+          AlertDialog; "limpar edital", que não tem rede nenhuma, é que pede senha.
+
+          ⚠️ ESTE DIÁLOGO SÓ ABRE PARA CARGO SEM MENÇÃO NENHUMA, porque desde 2026-07-31 o
+          botão Excluir não existe para os outros. Ele já teve dois ramos — "N inscritos
+          vão barrar" e "N apelidos serão apagados junto" — e os DOIS viraram inalcançáveis
+          com a regra nova: o primeiro porque o botão sumiu, o segundo porque o apelido
+          deixou de ser CASCADE e passou a BARRAR. Guarda que não pode disparar é armadilha,
+          então saíram. */}
       <AlertDialog
         open={cargoParaExcluir !== null}
         onOpenChange={(aberto) => {
@@ -199,30 +223,10 @@ export default function Cargos() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir o cargo {cargoParaExcluir?.nome}?</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-2">
-                {cargoParaExcluir && cargoParaExcluir.candidatos > 0 ? (
-                  <p>
-                    Este cargo tem <strong>{cargoParaExcluir.candidatos}</strong> inscrito(s) e{" "}
-                    <strong>não poderá ser excluído</strong> enquanto eles existirem — o banco
-                    vai recusar. Reimporte a planilha apontando esses inscritos para outro
-                    cargo antes de tentar.
-                  </p>
-                ) : (
-                  <p>Nenhum inscrito usa este cargo, então ele pode ser excluído.</p>
-                )}
-
-                {/* 🔴 O aviso que não pode sumir: os apelidos vão junto, por CASCADE, e em
-                    silêncio. É a memória de "texto sujo → cargo" que pré-preenche as
-                    próximas importações; sem ela, o usuário reassocia tudo de novo. */}
-                {cargoParaExcluir && cargoParaExcluir.apelidos > 0 && (
-                  <p className="rounded-md border border-destructive p-3 text-destructive">
-                    <strong>{cargoParaExcluir.apelidos}</strong> texto(s) de planilha memorizado(s)
-                    serão apagados junto. Nas próximas importações, esses textos voltam a
-                    aparecer sem associação.
-                  </p>
-                )}
-              </div>
+            <AlertDialogDescription>
+              Este cargo não tem nenhum inscrito nem texto de planilha memorizado, então
+              pode ser excluído. A ação não tem volta — mas o cargo pode ser criado de novo
+              a qualquer momento, inclusive pelo assistente de importação.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

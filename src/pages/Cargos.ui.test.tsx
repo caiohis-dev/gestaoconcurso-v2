@@ -124,6 +124,39 @@ describe("Cargos (interação)", () => {
     });
   });
 
+  describe("🔴 cargo com menção é IMUTÁVEL (2026-07-31)", () => {
+    it("⭐ não oferece Renomear nem Excluir, e DIZ por quê", async () => {
+      // Botão cinza e mudo deixa o usuário procurando o que fazer. E deixá-lo clicável
+      // seria pior: ele digitaria um nome novo para só então levar erro do banco.
+      abrir();
+
+      const linhaEmUso = (await screen.findByText("DOCENTE II")).closest("tr") as HTMLElement;
+      expect(within(linhaEmUso).getByText(/não editável/i)).toBeInTheDocument();
+      expect(within(linhaEmUso).queryByRole("button", { name: /Renomear/i })).not.toBeInTheDocument();
+      expect(within(linhaEmUso).queryByRole("button", { name: /Excluir/i })).not.toBeInTheDocument();
+    });
+
+    it("⚠️ APELIDO sozinho também tranca — menção é menção", async () => {
+      // Este é o caso que mudou em 31/07: até 30/07 o apelido era levado por CASCADE e não
+      // impedia nada. Um cargo sem inscrito nenhum, mas com um texto memorizado, agora é
+      // tão imutável quanto um com 3.756 inscritos.
+      setTableResult("cargos", { data: [linha("SÓ APELIDO", 0, 1, "cargo-so-apelido")], error: null });
+      abrir();
+
+      const l = (await screen.findByText("SÓ APELIDO")).closest("tr") as HTMLElement;
+      expect(within(l).getByText(/não editável/i)).toBeInTheDocument();
+    });
+
+    it("CONTROLE POSITIVO: cargo sem menção nenhuma continua editável", async () => {
+      // Sem este caso, os dois acima provariam só que a tela travou tudo.
+      abrir();
+
+      const l = (await screen.findByText("ARTE")).closest("tr") as HTMLElement;
+      expect(within(l).getByRole("button", { name: /Renomear/i })).toBeInTheDocument();
+      expect(within(l).getByRole("button", { name: /Excluir/i })).toBeInTheDocument();
+    });
+  });
+
   describe("criar e renomear — um diálogo só", () => {
     it("⭐ 'Novo cargo' abre em branco e chama a CRIAÇÃO", async () => {
       const user = abrir();
@@ -147,17 +180,17 @@ describe("Cargos (interação)", () => {
       const user = abrir();
       await screen.findByText("DOCENTE II");
 
-      await user.click(screen.getByRole("button", { name: "Renomear DOCENTE II" }));
+      await user.click(screen.getByRole("button", { name: "Renomear ARTE" }));
       const campo = await screen.findByLabelText(/Nome do cargo/i);
-      expect(campo).toHaveValue("DOCENTE II");
+      expect(campo).toHaveValue("ARTE");
 
       await user.clear(campo);
-      await user.type(campo, "DOCENTE II - CORRIGIDO");
+      await user.type(campo, "DOCENTE I - ARTE");
       await user.click(screen.getByRole("button", { name: "Salvar" }));
 
       await waitFor(() =>
         expect(builderQueChamou("cargos", "update").update).toHaveBeenCalledWith({
-          nome: "DOCENTE II - CORRIGIDO",
+          nome: "DOCENTE I - ARTE",
         }),
       );
       expect(buildersDaTabela("cargos").some((b) => b.upsert.mock.calls.length > 0)).toBe(false);
@@ -169,8 +202,8 @@ describe("Cargos (interação)", () => {
       const user = abrir();
       await screen.findByText("DOCENTE II");
 
-      await user.click(screen.getByRole("button", { name: "Renomear DOCENTE II" }));
-      expect(await screen.findByLabelText(/Nome do cargo/i)).toHaveValue("DOCENTE II");
+      await user.click(screen.getByRole("button", { name: "Renomear ARTE" }));
+      expect(await screen.findByLabelText(/Nome do cargo/i)).toHaveValue("ARTE");
       await user.click(screen.getByRole("button", { name: /Cancelar/i }));
 
       await user.click(screen.getByRole("button", { name: /Novo cargo/i }));
@@ -179,42 +212,21 @@ describe("Cargos (interação)", () => {
   });
 
   describe("exclusão", () => {
-    it("⭐ o diálogo AVISA que os apelidos vão junto — eles somem por CASCADE", async () => {
-      // Sem este teste o aviso some numa refatoração e a perda vira invisível: o usuário
-      // reassocia todos os textos de planilha na próxima importação sem saber por quê.
-      const user = abrir();
-      await screen.findByText("DOCENTE II");
+    // ⚠️ TRÊS TESTES SAÍRAM DAQUI EM 2026-07-31, e o motivo vale registrar: eles cobriam
+    // ramos do diálogo que a regra "cargo com menção é imutável" tornou INALCANÇÁVEIS —
+    // o aviso de "N inscritos vão barrar" (o botão sumiu) e o de "N apelidos serão
+    // apagados junto" (o apelido deixou de ser CASCADE e passou a BARRAR). Manter testes
+    // sobre ramos mortos faria a suíte afirmar comportamento que não existe mais.
+    // O que sobrou é o caso real: o diálogo só abre para cargo sem menção nenhuma.
 
-      await user.click(screen.getByRole("button", { name: "Excluir DOCENTE II" }));
-
-      const dialogo = await screen.findByRole("alertdialog");
-      expect(within(dialogo).getByText(/texto\(s\) de planilha memorizado/i)).toBeInTheDocument();
-      expect(within(dialogo).getByText(/sem associação/i)).toBeInTheDocument();
-    });
-
-    it("não mostra o aviso de apelidos quando não há nenhum", async () => {
-      // Aviso que sempre aparece vira ruído — e ruído é o que faz o usuário parar de ler.
+    it("o diálogo só fala do caso que sobrou: cargo sem menção nenhuma", async () => {
       const user = abrir();
       await screen.findByText("ARTE");
 
       await user.click(screen.getByRole("button", { name: "Excluir ARTE" }));
 
       const dialogo = await screen.findByRole("alertdialog");
-      expect(within(dialogo).queryByText(/texto\(s\) de planilha memorizado/i)).not.toBeInTheDocument();
-      expect(within(dialogo).getByText(/Nenhum inscrito usa este cargo/i)).toBeInTheDocument();
-    });
-
-    it("antecipa a recusa quando o cargo está em uso, sem impedir a tentativa", async () => {
-      // A contagem INFORMA; quem barra é a FK do banco. Um pré-check que desabilitasse o
-      // botão seria "leio e então decido" — uma corrida, e o repo já pagou por ela.
-      const user = abrir();
-      await screen.findByText("DOCENTE II");
-
-      await user.click(screen.getByRole("button", { name: "Excluir DOCENTE II" }));
-
-      const dialogo = await screen.findByRole("alertdialog");
-      expect(within(dialogo).getByText(/3756/)).toBeInTheDocument();
-      expect(within(dialogo).getByRole("button", { name: "Excluir" })).toBeEnabled();
+      expect(within(dialogo).getByText(/não tem nenhum inscrito nem texto/i)).toBeInTheDocument();
     });
 
     it("cancelar não chama exclusão nenhuma", async () => {

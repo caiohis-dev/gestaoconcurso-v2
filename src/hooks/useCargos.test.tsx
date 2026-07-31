@@ -592,6 +592,26 @@ describe("mensagemErroCargo", () => {
     ).toMatch(/mai[úu]sculas e espa[çc]os/i);
   });
 
+  it("🔴 passa inteira a recusa do trigger CG001 — ela já traz nome e contagens", () => {
+    // Desde 2026-07-31 cargo com qualquer menção é IMUTÁVEL. A mensagem do banco nomeia o
+    // cargo e diz quantos inscritos e quantos textos memorizados o prendem — trocá-la por
+    // um texto genérico tiraria justamente a informação que o usuário precisa.
+    const doTrigger =
+      'O cargo "DOCENTE II" tem menção em outra tabela (3756 inscrito(s), 2 texto(s) memorizado(s)) e não pode ser alterado.';
+    expect(mensagemErroCargo(doTrigger)).toBe(doTrigger);
+  });
+
+  it("distingue QUAL vínculo barrou a exclusão — as providências são diferentes", () => {
+    // `cargo_apelidos` virou RESTRICT em 31/07 (era CASCADE). Dizer só "em uso" mandaria o
+    // usuário procurar inscritos que não existem.
+    expect(
+      mensagemErroCargo('violates foreign key constraint "cargo_apelidos_cargo_id_fkey"'),
+    ).toMatch(/textos de planilha memorizados/i);
+    expect(
+      mensagemErroCargo('violates foreign key constraint "candidatos_cargo_id_fkey"'),
+    ).toMatch(/em uso por candidatos/i);
+  });
+
   it("devolve a mensagem original quando não conhece o erro", () => {
     expect(mensagemErroCargo("erro esquisito")).toBe("erro esquisito");
   });
