@@ -131,7 +131,7 @@ const AGATHA = {
   data_nascimento: "2005-12-08",
   hora_nascimento: "12:43:00",
   sexo: "1",
-  raca: 2,
+  raca: "2",
   portador_deficiencia: false,
   confirmado: true,
   concurso_id_origem: "242",
@@ -343,6 +343,59 @@ describe("Candidatos (interação)", () => {
       expect(within(ficha).getByText("AÇUDE")).toBeInTheDocument();
       // O código 2 de RACA_MAP é "Branca" — a ficha traduz em vez de exibir o número.
       expect(within(ficha).getByText("Branca")).toBeInTheDocument();
+    });
+
+    it("🔴 a ficha mostra o dado IMPOSSÍVEL como veio — é o ponto da decisão de 30/07", async () => {
+      // ⭐ ESTE É O TESTE QUE FALTAVA. Desde 30/07 o valor impossível é GRAVADO CRU em vez
+      // de virar NULL, justamente para o usuário poder corrigi-lo na origem. Se a ficha
+      // não o exibir, o dado existe no banco e é invisível — o que anula a decisão
+      // inteira, sem quebrar teste nenhum.
+      //
+      // `dataBr` e `cpfFormatado` sobrevivem a isso por CAIREM de volta ao texto original
+      // quando o regex não casa. É comportamento acidental até alguém "melhorá-los" para
+      // devolver "—" no que não reconhecem. Este teste é o que torna aquilo deliberado.
+      // `pagina()` e não um literal: o `count` viaja junto do `data` no mock, e um
+      // objeto solto não bate com `QueryResult`. O vitest passa; o tsc não.
+      setTableResult(
+        "candidatos",
+        pagina([
+          {
+            ...AGATHA,
+            id: "cand-cru",
+            nome: "INSCRITO COM DADO CRU",
+            cpf: "1O778817709", // letra O no lugar do zero — 1 das 2 linhas reais
+            data_nascimento: "não sei", // a coluna virou `text` para caber isto
+            hora_nascimento: "88888888",
+            raca: "Z", // fora de RACA_MAP
+          },
+        ]),
+      );
+      const user = abrir();
+      await escolherEdital(user);
+      await user.click(
+        await screen.findByRole("button", { name: "Ver ficha de INSCRITO COM DADO CRU" }),
+      );
+
+      const ficha = await screen.findByRole("dialog");
+      expect(within(ficha).getByText("1O778817709")).toBeInTheDocument();
+      expect(within(ficha).getByText("não sei")).toBeInTheDocument();
+      expect(within(ficha).getByText("88888888")).toBeInTheDocument();
+      expect(within(ficha).getByText("Z")).toBeInTheDocument();
+    });
+
+    it("a ficha traduz o código de raça conhecido, e NÃO engole o desconhecido", async () => {
+      // Os dois ramos de `racaLabel` que importam. O terceiro (null → "—") é o vazio
+      // normal da ficha e já está coberto pelos campos opcionais.
+      const user = abrir();
+      await escolherEdital(user);
+      await user.click(
+        await screen.findByRole("button", { name: "Ver ficha de AGATHA LAMIM DE SOUZA" }),
+      );
+
+      const ficha = await screen.findByRole("dialog");
+      // '2' é conhecido → vira rótulo.
+      expect(within(ficha).getByText("Branca")).toBeInTheDocument();
+      expect(within(ficha).queryByText("2")).not.toBeInTheDocument();
     });
 
     it("⭐ a ficha mostra o cargo canônico E o texto que veio na planilha", async () => {

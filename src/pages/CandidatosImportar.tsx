@@ -790,7 +790,7 @@ export default function CandidatosImportar() {
                   <div className="flex flex-wrap gap-2 pt-2">
                     <Badge variant="secondary">{linhasValidas.length} linha(s) lida(s)</Badge>
                     {comAviso.length > 0 && (
-                      <Badge variant="outline">{comAviso.length} com campo descartado</Badge>
+                      <Badge variant="outline">{comAviso.length} com dado a conferir</Badge>
                     )}
                     {comErro.length > 0 && (
                       <Badge variant="destructive">{comErro.length} sem inscrição/nome/cargo</Badge>
@@ -1216,11 +1216,16 @@ export default function CandidatosImportar() {
               {comAviso.length > 0 && (
                 <Alert>
                   <AlertTriangle className="h-4 w-4" />
-                  <AlertTitle>{comAviso.length} inscrito(s) entraram com algum campo em branco</AlertTitle>
+                  <AlertTitle>{comAviso.length} inscrito(s) com algum dado a conferir na origem</AlertTitle>
                   <AlertDescription>
-                    O inscrito está na lista, mas um campo secundário não pôde ser aproveitado (CPF
-                    fora do formato, e-mail inválido, data irreconhecível). Baixe o relatório para
-                    ver quais linhas corrigir na origem.
+                    {/* ⚠️ Este texto dizia "entraram com algum campo em branco" e "não pôde ser
+                        aproveitado" — verdade até 29/07, MENTIRA desde 30/07: o valor impossível
+                        deixou de virar NULL e passa a ser gravado como veio. Anunciar perda que
+                        não houve manda o usuário procurar um dado que está lá. */}
+                    O inscrito está na lista e o dado foi <strong>gravado como veio da planilha</strong>
+                    , mesmo sendo impossível (CPF fora do formato, e-mail inválido, data ou hora
+                    irreconhecível, nome com caractere estranho). Nada foi perdido — baixe o
+                    relatório para ver quais linhas corrigir na origem.
                   </AlertDescription>
                 </Alert>
               )}
