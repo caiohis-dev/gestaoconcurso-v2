@@ -16,7 +16,13 @@ Hoje, vivos: [`dividas-auth-colaborador.md`](./dividas-auth-colaborador.md) e [`
 1. **A decisão D0 registra uma alternativa RECUSADA** (upsert + exclusão do resíduo), que eu havia recomendado e o usuário preteriu em favor da troca total. É o caso exato do aviso desta página — **não** é um "plano original" a restaurar.
 2. **Ele foi reescrito no mesmo dia em que nasceu**, quando a decisão mudou. O que está lá descreve o que foi feito, não o primeiro desenho.
 
-⚠️ **`roadmap-cargos.yaml` saiu daqui em 2026-07-29** e está em [`concluidos/`](./concluidos/roadmap-cargos.yaml): as etapas 1 a 6 foram executadas em 27–29/07. Ele ainda descreve uma **etapa 7** (página `/cargos`) que **nunca foi planejada para a entrega** — é o caso exato de que a seção acima avisa. Não a leia como pendência; a decisão está em D7.
+⚠️ **`roadmap-cargos.yaml` saiu daqui em 2026-07-29** e está em [`concluidos/`](./concluidos/roadmap-cargos.yaml): as etapas 1 a 6 foram executadas em 27–29/07.
+
+> 🔵 **Corrigido em 2026-07-31.** Este aviso dizia que a **etapa 7** (página de cargos) *"nunca foi planejada para a entrega"* e que não devia ser lida como pendência. **Metade dela foi executada:** o usuário pediu o CRUD depois, e ele existe em **`/candidatos/cargos`** — a decisão **D7 foi revertida**. O que segue fora do escopo é **fundir cargos** (três tabelas, exige RPC transacional), que continua desenhada lá.
+>
+> É o próprio caso que esta página descreve, com o sinal trocado: um aviso `⚠️` **envelhecido tem autoridade** e teria feito alguém tratar como "descartado" algo que passou a existir.
+
+📁 **`backlog-itens-concluidos.md`** (desde 2026-07-31) é a exceção de formato desta pasta: em vez de um roadmap, guarda os **15 blocos de temas fechados** que estavam inflando o [`../backlog.md`](../backlog.md) — 65% do arquivo. Vieram na íntegra, e valem pelo mesmo motivo dos roadmaps: registram o que foi **medido**, a premissa que estava **errada** e o que a decisão **custou**.
 
 ## O estado atual NÃO mora aqui
 
