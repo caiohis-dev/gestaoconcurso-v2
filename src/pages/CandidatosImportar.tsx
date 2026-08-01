@@ -48,6 +48,7 @@ import {
   resolverLinhas,
   rotulosDeColunas,
   separarPorPagamento,
+  subtituloDoCampo,
 } from "@/lib/candidatos-import";
 import { useCargos, useCargoApelidos, useCriarCargo, useSalvarApelidos } from "@/hooks/useCargos";
 import { Input } from "@/components/ui/input";
@@ -534,7 +535,9 @@ export default function CandidatosImportar() {
     XLSX.utils.book_append_sheet(
       wb,
       XLSX.utils.json_to_sheet(
-        abaProblemas.length > 0 ? abaProblemas : [{ Linha: "", Situação: "Nenhum problema", Campo: "", Detalhe: "" }],
+        abaProblemas.length > 0
+          ? abaProblemas
+          : [{ "Nº de Inscrição": "", Situação: "Nenhum problema", Campo: "", Detalhe: "" }],
       ),
       "Problemas",
     );
@@ -648,11 +651,13 @@ export default function CandidatosImportar() {
           y = topoDoCorpo;
         }
 
-        escreverSubtitulo(`Problemas encontrados no campo: ${campo}`);
+        // ⚠️ O título NÃO é montado aqui: `subtituloDoCampo` é quem sabe que "Pagamento"
+        // não é problema e merece texto próprio. Ver o porquê lá.
+        escreverSubtitulo(subtituloDoCampo(campo));
         autoTable(doc, {
           startY: y,
-          head: [["Linha", "Situação", "Detalhe"]],
-          body: queixas.map((p) => [p.Linha.toString(), p.Situação, p.Detalhe]),
+          head: [["Nº de Inscrição", "Situação", "Detalhe"]],
+          body: queixas.map((p) => [p["Nº de Inscrição"], p.Situação, p.Detalhe]),
           theme: "grid",
           margin: margensDaTabela,
           // ⚠️ `linebreak`, NÃO `hidden`. Com `hidden` a coluna Detalhe era CORTADA na
@@ -662,7 +667,9 @@ export default function CandidatosImportar() {
           styles: { ...ESTILOS_TABELA, overflow: "linebreak" },
           headStyles: { ...ESTILOS_CABECALHO, minCellHeight: 8 },
           columnStyles: {
-            0: { cellWidth: 20, halign: "center" },
+            // 30mm, e não os 20 de quando a coluna se chamava "Linha": o cabeçalho
+            // "Nº de Inscrição" tem 15 caracteres e em 20mm quebraria em duas linhas.
+            0: { cellWidth: 30, halign: "center" },
             1: { cellWidth: 60 },
             2: { cellWidth: "auto" },
           },

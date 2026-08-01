@@ -402,6 +402,18 @@ Três coisas que precisam sobreviver a qualquer refatoração dessas telas:
 
 As **quatro origens** das queixas: `comErro` (não entrou, falta o que identifica), `comAviso` (entrou, com dado a conferir na origem), `repetidas` (sobrescrita por linha posterior de mesma chave) e `naoPagantes` (não entrou, inscrição não paga — ver a seção do filtro acima).
 
+### 🔵 As colunas, e o que mudou em 2026-08-01
+
+**As colunas são `Nº de Inscrição · Situação · Campo · Detalhe`**, iguais nos dois exports — no XLS os nomes das propriedades de `ProblemaDoRelatorio` **viram cabeçalho** (`json_to_sheet`), então renomear qualquer uma delas muda a planilha entregue.
+
+🔴 **A coluna `Linha` SAIU** (decisão do usuário). Ela dava o endereço dentro do arquivo; o nº de inscrição identifica a **pessoa**, que é o que quem lê o relatório vai procurar.
+
+⚠️ **A ordenação continua sendo pela linha da planilha**, mesmo ela não sendo mais exibida — é a ordem de leitura do arquivo, e ordenar pela inscrição exigiria escolher entre ordem numérica e textual (`"10" < "9"` em texto). No arquivo real os dois critérios coincidem, porque a coluna A é densa e sequencial.
+
+🔴 **`LinhaConvertida.nInscricao` existe por causa disto.** A linha com `erro` tem `candidato` **nulo**, e é justamente ela que o relatório precisa identificar — sem esse campo, "Nome vazio" e "Cargo vazio" (que têm inscrição) sairiam sem nada que permitisse achar a pessoa. Quando a própria inscrição é o que falta, a coluna traz `—` e quem localiza é o texto do erro.
+
+🔴 **"Pagamento" NÃO é apresentado como problema.** O bloco do PDF sai como *"Lista de inscrições sem pagamento registrado"*, e não *"Problemas encontrados no campo: Pagamento"* — inscrição não paga não tem defeito a corrigir, e chamá-la de problema mandava a pessoa caçar erro em 185 linhas legítimas. Quem decide o título é `subtituloDoCampo()`, que casa pelo **texto exato** do `Campo`; mudá-lo em `montarProblemasDoRelatorio` sem mudar lá devolve o título genérico **em silêncio**, e há teste ligando os dois.
+
 **A parte que decide o conteúdo é pura e é a mesma para os dois:** `montarProblemasDoRelatorio()` e `agruparProblemasPorCampo()`, em [`src/lib/candidatos-import.ts`](../../../../src/lib/candidatos-import.ts), com bateria sem mock. Ela viveu **duplicada verbatim dentro do componente**, uma cópia em cada botão, até 2026-08-01 — e o custo desse arranjo era que corrigir a classificação de um campo num export deixava o outro mentindo, sem nada quebrar.
 
 ⚠️ **`classificarQueixa` casa por PREFIXO do texto da mensagem**, e nada liga esse prefixo ao que `converterLinha` escreve. Mexer no texto de um aviso joga a queixa no balde "Geral" em silêncio. Ao acrescentar aviso novo, acrescente o prefixo em `PREFIXOS_POR_CAMPO` no mesmo passe.

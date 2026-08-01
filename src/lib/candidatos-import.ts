@@ -301,8 +301,26 @@ export interface CandidatoImportado {
 }
 
 export interface LinhaConvertida {
-  /** A linha na planilha, 1-based e contando o cabeçalho — o número que o Excel mostra. */
+  /**
+   * A linha na planilha, 1-based e contando o cabeçalho.
+   *
+   * ⚠️ Desde 2026-08-01 este número NÃO aparece mais nos relatórios exportados — quem
+   * identifica a linha para o usuário é o nº de inscrição. Ele continua aqui porque é o
+   * critério de ORDENAÇÃO do relatório e o que `deduplicar` guarda em `repetidas`.
+   */
   linhaPlanilha: number;
+  /**
+   * O nº de inscrição COMO VEIO da planilha, preenchido MESMO quando a linha falha.
+   *
+   * 🔴 Existe separado de `candidato.n_inscricao` por um motivo só: a linha com `erro` tem
+   * `candidato` NULO, e é justamente ela que o relatório precisa identificar. Sem este
+   * campo, "Nome vazio" e "Cargo vazio" — que têm inscrição — sairiam sem nada que
+   * permitisse achar a pessoa.
+   *
+   * `null` só no caso em que a própria inscrição falta ('Nº de inscrição vazio'). Aí o
+   * relatório mostra '—', e quem localiza a linha é o texto do erro.
+   */
+  nInscricao: string | null;
   candidato: CandidatoImportado | null;
   /** Preenchido quando `candidato` é null: a linha não entra. */
   erro: string | null;
@@ -371,10 +389,14 @@ export function converterLinha(
 ): LinhaConvertida {
   const val = (campo: string) => bruto(linha, mapeamento[campo]);
   const avisos: string[] = [];
-  const falha = (erro: string): LinhaConvertida => ({ linhaPlanilha, candidato: null, erro, avisos });
+
+  // Lido ANTES do `falha` de propósito: ele o carrega para dentro da linha que falha, e é
+  // o que dá ao relatório como identificar uma linha que não tem `candidato`.
+  const nInscricao = val('n_inscricao');
+  const falha = (erro: string): LinhaConvertida =>
+    ({ linhaPlanilha, nInscricao, candidato: null, erro, avisos });
 
   // ── O que identifica: falta → a linha não entra ────────────────────────────────
-  const nInscricao = val('n_inscricao');
   if (nInscricao === null) return falha('Nº de inscrição vazio');
   if (nInscricao.length > 8) {
     return falha(`Nº de inscrição "${nInscricao}" tem ${nInscricao.length} caracteres (o limite é 8)`);
@@ -533,7 +555,7 @@ export function converterLinha(
     concurso_id_origem: val('concurso_id_origem'),
   };
 
-  return { linhaPlanilha, candidato, erro: null, avisos };
+  return { linhaPlanilha, nInscricao, candidato, erro: null, avisos };
 }
 
 // ── Cargos ───────────────────────────────────────────────────────────────────────────
@@ -916,10 +938,21 @@ export function mensagemErroImportacao(mensagem: string): string {
 // O relatório de problemas — a parte pura, compartilhada pelos DOIS exports
 // ─────────────────────────────────────────────────────────────────────────────────────
 
-/** Uma queixa do relatório, já atribuída a um campo. */
+/**
+ * Uma queixa do relatório, já atribuída a um campo.
+ *
+ * ⚠️ **As chaves viram CABEÇALHO de coluna no XLS** (`json_to_sheet` usa o nome da
+ * propriedade), então renomear qualquer uma delas muda a planilha exportada. É o motivo de
+ * a primeira ter acento e espaço.
+ *
+ * 🔵 **`Linha` saiu em 2026-08-01, substituída por `Nº de Inscrição`** (decisão do
+ * usuário). O número da linha da planilha era um endereço dentro de um arquivo; o nº de
+ * inscrição identifica a PESSOA, que é o que quem lê o relatório precisa procurar. A
+ * ordenação continua sendo pela linha da planilha — ver `montarProblemasDoRelatorio`.
+ */
 export interface ProblemaDoRelatorio {
-  /** O número que o Excel mostra, para a pessoa achar a linha. */
-  Linha: number;
+  /** Do candidato, não da planilha. `'—'` quando a própria inscrição é o que falta. */
+  "Nº de Inscrição": string;
   Situação:
     | "Não importada"
     | "Importada com ressalva"
@@ -928,6 +961,24 @@ export interface ProblemaDoRelatorio {
   Campo: string;
   Detalhe: string;
 }
+
+/**
+ * O título do bloco do PDF para um campo.
+ *
+ * 🔴 "Pagamento" NÃO é problema, e chamá-lo assim era erro de leitura do relatório: a
+ * inscrição sem pagamento não tem defeito nenhum a corrigir — é o filtro fazendo o que foi
+ * mandado. Mandar a pessoa "corrigir" 185 linhas legítimas é o oposto do que o bloco quer.
+ *
+ * ⚠️ Casa pelo nome do campo que `montarProblemasDoRelatorio` escreve em `Campo`. Mudar lá
+ * sem mudar aqui devolve o título genérico, em silêncio.
+ */
+export function subtituloDoCampo(campo: string): string {
+  if (campo === CAMPO_PAGAMENTO) return "Lista de inscrições sem pagamento registrado";
+  return `Problemas encontrados no campo: ${campo}`;
+}
+
+/** O `Campo` das linhas descartadas pelo filtro de pagamento. Ver `subtituloDoCampo`. */
+const CAMPO_PAGAMENTO = "Pagamento";
 
 /**
  * De que campo fala uma mensagem de erro/aviso — por PREFIXO do texto.
@@ -997,34 +1048,58 @@ export function montarProblemasDoRelatorio(
   repetidas: Deduplicacao["repetidas"],
   naoPagantes: LinhaConvertida[] = [],
 ): ProblemaDoRelatorio[] {
-  return [
+  /** '—' e não '' : célula vazia num relatório impresso parece falha de geração. */
+  const inscricao = (valor: string | null | undefined) => valor ?? "—";
+
+  // ⚠️ A ordenação continua sendo pela LINHA DA PLANILHA, mesmo que ela não seja mais
+  // exibida. Ordenar pelo nº de inscrição exigiria decidir entre ordem numérica e textual
+  // ("10" < "9" em texto), e a linha já entrega a ordem de leitura do arquivo — que no
+  // arquivo real coincide com a da inscrição, porque a coluna A é densa e sequencial.
+  const ordenaveis: { ordem: number; problema: ProblemaDoRelatorio }[] = [
     ...naoPagantes.map((l) => ({
-      Linha: l.linhaPlanilha,
-      Situação: "Não importada (inscrição não paga)" as const,
-      Campo: "Pagamento",
-      // Nomeia a pessoa: o relatório vai para quem precisa conferir se a ausência dela é
-      // legítima, e um número de linha sozinho obriga a voltar à planilha para saber quem é.
-      Detalhe: `${l.candidato?.nome ?? "—"} — inscrição nº ${l.candidato?.n_inscricao ?? "—"} não consta como paga`,
+      ordem: l.linhaPlanilha,
+      problema: {
+        "Nº de Inscrição": inscricao(l.nInscricao),
+        Situação: "Não importada (inscrição não paga)" as const,
+        Campo: CAMPO_PAGAMENTO,
+        // Nomeia a pessoa: o relatório vai para quem precisa conferir se a ausência dela é
+        // legítima, e um número sozinho não diz de quem se trata.
+        Detalhe: `${l.candidato?.nome ?? "—"} — inscrição não consta como paga`,
+      },
     })),
     ...comErro.map((l) => ({
-      Linha: l.linhaPlanilha,
-      Situação: "Não importada" as const,
-      ...classificarQueixa(l.erro ?? ""),
+      ordem: l.linhaPlanilha,
+      problema: {
+        "Nº de Inscrição": inscricao(l.nInscricao),
+        Situação: "Não importada" as const,
+        ...classificarQueixa(l.erro ?? ""),
+      },
     })),
     ...comAviso.flatMap((l) =>
       l.avisos.map((aviso) => ({
-        Linha: l.linhaPlanilha,
-        Situação: "Importada com ressalva" as const,
-        ...classificarQueixa(aviso),
+        ordem: l.linhaPlanilha,
+        problema: {
+          "Nº de Inscrição": inscricao(l.nInscricao),
+          Situação: "Importada com ressalva" as const,
+          ...classificarQueixa(aviso),
+        },
       })),
     ),
     ...repetidas.map((r) => ({
-      Linha: r.linhaPlanilha,
-      Situação: "Substituída por linha posterior" as const,
-      Campo: "Chave de Identificação",
-      Detalhe: `Inscrição e cargo repetidos na planilha (${r.chave.replace("||", " / ")})`,
+      ordem: r.linhaPlanilha,
+      problema: {
+        // ⚠️ `chave` É o nº de inscrição desde 2026-08-01 — `chaveNatural()` devolve só
+        // ele. Enquanto a chave era composta, aqui havia um `.replace("||", " / ")` para
+        // desmontá-la; ele virou código morto e saiu.
+        "Nº de Inscrição": inscricao(r.chave),
+        Situação: "Substituída por linha posterior" as const,
+        Campo: "Chave de Identificação",
+        Detalhe: "Outra linha da planilha traz este mesmo nº de inscrição; valeu a última",
+      },
     })),
-  ].sort((a, b) => a.Linha - b.Linha);
+  ];
+
+  return ordenaveis.sort((a, b) => a.ordem - b.ordem).map((o) => o.problema);
 }
 
 /**

@@ -34,6 +34,7 @@ import {
   separarPorPagamento,
   rotulosDeColunas,
   soDigitos,
+  subtituloDoCampo,
   type CandidatoImportado,
   type CandidatoResolvido,
   type Mapeamento,
@@ -1185,26 +1186,28 @@ describe("classificarQueixa", () => {
 });
 
 describe("montarProblemasDoRelatorio", () => {
-  const erro = (linhaPlanilha: number, erro: string): LinhaConvertida => ({
-    linhaPlanilha,
-    candidato: null,
-    erro,
-    avisos: [],
-  });
-  const aviso = (linhaPlanilha: number, avisos: string[]): LinhaConvertida => ({
-    linhaPlanilha,
-    candidato: null,
-    erro: null,
-    avisos,
-  });
+  const erro = (
+    linhaPlanilha: number,
+    nInscricao: string | null,
+    erro: string,
+  ): LinhaConvertida => ({ linhaPlanilha, nInscricao, candidato: null, erro, avisos: [] });
+  const aviso = (
+    linhaPlanilha: number,
+    nInscricao: string | null,
+    avisos: string[],
+  ): LinhaConvertida => ({ linhaPlanilha, nInscricao, candidato: null, erro: null, avisos });
 
-  it("junta as três origens e ordena pela linha da planilha", () => {
+  it("junta as três origens, ordena pela LINHA e exibe a INSCRIÇÃO", () => {
+    // ⚠️ As duas coisas se separaram em 2026-08-01: a ordem continua sendo a da planilha
+    // (é o que dá a ordem de leitura do arquivo), mas a coluna exibida passou a ser o nº
+    // de inscrição. Por isso as inscrições aqui estão em ordem "errada" de propósito —
+    // se a saída vier ordenada por elas, alguém trocou o critério de ordenação.
     const problemas = montarProblemasDoRelatorio(
-      [erro(9, "Nome em branco")],
-      [aviso(2, ["CPF tem 10 dígitos"])],
-      [{ linhaPlanilha: 5, chave: "111||abc" }],
+      [erro(9, "700", "Nome em branco")],
+      [aviso(2, "900", ["CPF tem 10 dígitos"])],
+      [{ linhaPlanilha: 5, chave: "800" }],
     );
-    expect(problemas.map((p) => p.Linha)).toEqual([2, 5, 9]);
+    expect(problemas.map((p) => p["Nº de Inscrição"])).toEqual(["900", "800", "700"]);
     expect(problemas.map((p) => p.Situação)).toEqual([
       "Importada com ressalva",
       "Substituída por linha posterior",
@@ -1212,31 +1215,55 @@ describe("montarProblemasDoRelatorio", () => {
     ]);
   });
 
+  it("🔴 a linha da planilha NÃO vai para o relatório", () => {
+    // Decisão do usuário em 2026-08-01: o endereço dentro do arquivo saiu, quem identifica
+    // é a pessoa. Se `Linha` voltar a aparecer, este teste cai — é o que impede a coluna de
+    // ser reintroduzida sem decisão.
+    const [p] = montarProblemasDoRelatorio([erro(42, "1234", "Nome vazio")], [], []);
+    expect(Object.keys(p)).toEqual(["Nº de Inscrição", "Situação", "Campo", "Detalhe"]);
+  });
+
+  it("⭐ sem nº de inscrição a queixa NÃO some — sai com '—'", () => {
+    // É o único caso em que a inscrição falta ('Nº de inscrição vazio'), e é justamente
+    // quando a linha não tem mais nada que a identifique. Deixá-la fora do relatório, ou
+    // com célula vazia, seria perda silenciosa: some do relatório o que mais precisa de
+    // conserto. Quem localiza a linha, aí, é o texto do erro.
+    const [p] = montarProblemasDoRelatorio([erro(3, null, "Nº de inscrição vazio")], [], []);
+    expect(p["Nº de Inscrição"]).toBe("—");
+    expect(p.Campo).toBe("Nº de Inscrição");
+  });
+
   it("⭐ uma linha com DOIS avisos rende DUAS queixas, não uma", () => {
     // O `flatMap` é o que garante isto. Com `map`, o segundo aviso sumiria do relatório —
     // e some justamente o que a pessoa precisaria corrigir na planilha.
     const problemas = montarProblemasDoRelatorio(
       [],
-      [aviso(3, ["CPF tem 10 dígitos", "CEP tem 7 dígitos"])],
+      [aviso(3, "555", ["CPF tem 10 dígitos", "CEP tem 7 dígitos"])],
       [],
     );
     expect(problemas).toHaveLength(2);
     expect(problemas.map((p) => p.Campo)).toEqual(["CPF", "CEP"]);
-    expect(problemas.every((p) => p.Linha === 3)).toBe(true);
+    expect(problemas.every((p) => p["Nº de Inscrição"] === "555")).toBe(true);
   });
 
-  it("a linha repetida nomeia a chave inteira, com a separação legível", () => {
-    // `repetidas` inclui duas grafias do MESMO cargo unificadas pela associação, não só
-    // repetição literal — por isso o detalhe mostra a chave: na planilha não há duas
-    // linhas idênticas para achar.
-    const [p] = montarProblemasDoRelatorio([], [], [{ linhaPlanilha: 4, chave: "12345678900||uuid-do-cargo" }]);
+  it("a linha repetida traz a inscrição repetida na coluna", () => {
+    // ⚠️ ESTE TESTE SE CHAMAVA "nomeia a chave inteira, com a separação legível" e exigia
+    // `Detalhe` contendo "12345678900 / uuid-do-cargo". A chave era composta e o detalhe a
+    // desmontava com um `.replace("||", " / ")`. Desde 2026-08-01 `chave` É o nº de
+    // inscrição, então ela vai direto para a coluna e o detalhe explica o que aconteceu.
+    const [p] = montarProblemasDoRelatorio([], [], [{ linhaPlanilha: 4, chave: "214274" }]);
+    expect(p["Nº de Inscrição"]).toBe("214274");
     expect(p.Campo).toBe("Chave de Identificação");
-    expect(p.Detalhe).toContain("12345678900 / uuid-do-cargo");
+    expect(p.Detalhe).toMatch(/mesmo nº de inscrição/i);
   });
 
   it("erro sem mensagem não quebra — vira queixa 'Geral' vazia, e não some", () => {
-    const [p] = montarProblemasDoRelatorio([{ ...erro(7, ""), erro: null }], [], []);
-    expect(p).toMatchObject({ Linha: 7, Campo: "Geral", Situação: "Não importada" });
+    const [p] = montarProblemasDoRelatorio([{ ...erro(7, "77", ""), erro: null }], [], []);
+    expect(p).toMatchObject({
+      "Nº de Inscrição": "77",
+      Campo: "Geral",
+      Situação: "Não importada",
+    });
   });
 
   it("nada errado devolve lista vazia", () => {
@@ -1250,9 +1277,9 @@ describe("agruparProblemasPorCampo", () => {
       montarProblemasDoRelatorio(
         [],
         [
-          { linhaPlanilha: 2, candidato: null, erro: null, avisos: ["Raça fora da lista"] },
-          { linhaPlanilha: 3, candidato: null, erro: null, avisos: ["CPF tem 10 dígitos"] },
-          { linhaPlanilha: 4, candidato: null, erro: null, avisos: ["CPF tem 9 dígitos"] },
+          { linhaPlanilha: 2, nInscricao: "2", candidato: null, erro: null, avisos: ["Raça fora da lista"] },
+          { linhaPlanilha: 3, nInscricao: "3", candidato: null, erro: null, avisos: ["CPF tem 10 dígitos"] },
+          { linhaPlanilha: 4, nInscricao: "4", candidato: null, erro: null, avisos: ["CPF tem 9 dígitos"] },
         ],
         [],
       ),
@@ -1268,27 +1295,59 @@ describe("agruparProblemasPorCampo", () => {
     const problemas = montarProblemasDoRelatorio(
       [],
       [
-        { linhaPlanilha: 2, candidato: null, erro: null, avisos: ["CPF a", "CEP b"] },
-        { linhaPlanilha: 3, candidato: null, erro: null, avisos: ["CPF c", "Nome d"] },
+        { linhaPlanilha: 2, nInscricao: "2", candidato: null, erro: null, avisos: ["CPF a", "CEP b"] },
+        { linhaPlanilha: 3, nInscricao: "3", candidato: null, erro: null, avisos: ["CPF c", "Nome d"] },
       ],
-      [{ linhaPlanilha: 4, chave: "x||y" }],
+      [{ linhaPlanilha: 4, chave: "4" }],
     );
     const grupos = agruparProblemasPorCampo(problemas);
     expect(grupos.reduce((n, g) => n + g.queixas.length, 0)).toBe(problemas.length);
   });
 
   it("preserva a ordem por linha DENTRO de cada campo", () => {
+    // A inscrição "900" está na linha 9 e a "200" na linha 2: o esperado sai na ordem das
+    // LINHAS, não das inscrições, que é o critério que `montarProblemasDoRelatorio` usa.
     const grupos = agruparProblemasPorCampo(
       montarProblemasDoRelatorio(
         [],
         [
-          { linhaPlanilha: 9, candidato: null, erro: null, avisos: ["CPF tarde"] },
-          { linhaPlanilha: 2, candidato: null, erro: null, avisos: ["CPF cedo"] },
+          { linhaPlanilha: 9, nInscricao: "900", candidato: null, erro: null, avisos: ["CPF tarde"] },
+          { linhaPlanilha: 2, nInscricao: "200", candidato: null, erro: null, avisos: ["CPF cedo"] },
         ],
         [],
       ),
     );
-    expect(grupos[0].queixas.map((q) => q.Linha)).toEqual([2, 9]);
+    expect(grupos[0].queixas.map((q) => q["Nº de Inscrição"])).toEqual(["200", "900"]);
+  });
+});
+
+describe("subtituloDoCampo", () => {
+  it("🔴 'Pagamento' NÃO é apresentado como problema", () => {
+    // Decisão do usuário em 2026-08-01: inscrição sem pagamento não tem defeito a
+    // corrigir. Chamá-la de problema mandava a pessoa caçar erro em 185 linhas legítimas.
+    expect(subtituloDoCampo("Pagamento")).toBe("Lista de inscrições sem pagamento registrado");
+    expect(subtituloDoCampo("Pagamento")).not.toMatch(/problema/i);
+  });
+
+  it("CONTROLE POSITIVO: os demais campos seguem com o título de problema", () => {
+    expect(subtituloDoCampo("CPF")).toBe("Problemas encontrados no campo: CPF");
+  });
+
+  it("⚠️ casa pelo texto exato que montarProblemasDoRelatorio escreve em Campo", () => {
+    // Nada de tipo liga os dois. Este teste é a ligação: se o `Campo` dos não-pagantes
+    // mudar de texto, o título especial para de valer EM SILÊNCIO e o bloco volta a se
+    // apresentar como "Problemas encontrados no campo: <seja lá o que for>".
+    const naoPagante: LinhaConvertida = {
+      linhaPlanilha: 2,
+      nInscricao: "185",
+      // Parcial: `montarProblemasDoRelatorio` só lê `nome` daqui — a inscrição vem do
+      // `nInscricao` da linha, que existe mesmo quando o candidato não existe.
+      candidato: { n_inscricao: "185", nome: "FULANA", confirmado: false } as CandidatoImportado,
+      erro: null,
+      avisos: [],
+    };
+    const [p] = montarProblemasDoRelatorio([], [], [], [naoPagante]);
+    expect(subtituloDoCampo(p.Campo)).toBe("Lista de inscrições sem pagamento registrado");
   });
 });
 
@@ -1336,6 +1395,7 @@ describe("separarPorPagamento", () => {
     extra: Partial<CandidatoImportado> = {},
   ): LinhaConvertida => ({
     linhaPlanilha,
+    nInscricao: String(200000 + linhaPlanilha),
     candidato: {
       edital_id: "e-1",
       n_inscricao: String(200000 + linhaPlanilha),
@@ -1384,6 +1444,9 @@ describe("separarPorPagamento", () => {
     // mesma linha por dois motivos, e a pessoa procuraria dois problemas onde há um.
     const comErro: LinhaConvertida = {
       linhaPlanilha: 9,
+      // Tem inscrição: 'Nome vazio' falha DEPOIS de ler a inscrição. É o caso que o
+      // relatório consegue identificar mesmo sem `candidato`.
+      nInscricao: "209",
       candidato: null,
       erro: "Nome vazio",
       avisos: [],
@@ -1443,11 +1506,12 @@ describe("separarPorPagamento", () => {
 
     expect(p.Situação).toBe("Não importada (inscrição não paga)");
     expect(p.Campo).toBe("Pagamento");
-    expect(p.Linha).toBe(3);
-    // Nomeia a pessoa: quem confere se a ausência é legítima não pode ser obrigado a
-    // voltar à planilha só para descobrir de quem é a linha 3.
+    // ⚠️ A inscrição saiu do Detalhe e virou COLUNA em 2026-08-01 — antes o texto dizia
+    // "FULANA — inscrição nº 200003 não consta como paga", repetindo o número que agora
+    // tem lugar próprio. O NOME continua no detalhe, e é o que não pode sumir: quem
+    // confere se a ausência é legítima não pode ser obrigado a voltar à planilha.
+    expect(p["Nº de Inscrição"]).toBe("200003");
     expect(p.Detalhe).toContain("PESSOA 3");
-    expect(p.Detalhe).toContain("200003");
   });
 
   it("⭐ 'não pago' NÃO se confunde com 'não importada' por erro de dado", () => {
@@ -1455,6 +1519,7 @@ describe("separarPorPagamento", () => {
     // corrige e se reimporta; não-pagamento é o filtro fazendo o que foi mandado.
     const comErro: LinhaConvertida = {
       linhaPlanilha: 5,
+      nInscricao: "205",
       candidato: null,
       erro: "Nome vazio",
       avisos: [],
