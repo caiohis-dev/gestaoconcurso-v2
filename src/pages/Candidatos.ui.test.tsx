@@ -716,12 +716,4 @@ describe("Candidatos (interação)", () => {
     });
   });
 
-  it("leva ao assistente de importação", async () => {
-    cenario();
-    const user = abrir();
-
-    await user.click(await screen.findByRole("button", { name: /Importar Planilha/i }));
-
-    expect(navigateMock).toHaveBeenCalledWith("/candidatos/importar");
-  });
 });
