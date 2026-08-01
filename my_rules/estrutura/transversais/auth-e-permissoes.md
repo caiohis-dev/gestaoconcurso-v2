@@ -212,20 +212,55 @@ Toda tabela de `public` tem RLS ativa e policies — mas o Postgres checa o **pr
 
 Consequência prática ao criar uma tabela nova: RLS ativa + policy correta **não basta** se o role não tiver GRANT.
 
-#### ⚠️ …e o inverso também morde: o `ALTER DEFAULT PRIVILEGES` dá DEMAIS
+#### ✅ …e o inverso também mordia: o `ALTER DEFAULT PRIVILEGES` dava DEMAIS
 
-O mesmo ajuste que resolveu o login deixou `ALTER DEFAULT PRIVILEGES ... GRANT ALL ON TABLES TO anon, authenticated, service_role`. **`ALL` inclui TRUNCATE — e TRUNCATE não passa por RLS.** Ou seja, toda tabela nova de `public` nasce com `anon` podendo esvaziá-la; o que segura na prática é o PostgREST não expor TRUNCATE, que é um detalhe de implementação de terceiro.
+> ✅ **RESOLVIDO em 2026-07-31**, migration `20260731110000`. O texto abaixo descreve o que era, porque a **forma** do defeito se repete; o estado atual está na seção seguinte.
 
-Foi assim que `candidatos` nasceu — a tabela com CPF, endereço e telefone de milhares de cidadãos. O enxugamento das 23 tabelas afetadas é item aberto do [`backlog`](../../backlog.md).
+O ajuste que resolveu o login deixou `ALTER DEFAULT PRIVILEGES ... GRANT ALL ON TABLES TO anon, authenticated, service_role`. **`ALL` inclui TRUNCATE — e TRUNCATE não passa por RLS.** Toda tabela nova de `public` nascia com `anon` podendo esvaziá-la; o que segurava era o PostgREST não expor TRUNCATE, um detalhe de implementação de terceiro.
 
-**As primeiras tabelas do repo a NÃO herdar isso são `cargos` e `cargo_apelidos`** (migration `20260727210000`), que revogam na própria migration de criação:
+Foi assim que `candidatos` nasceu — a tabela com CPF, endereço e telefone de milhares de cidadãos.
+
+**As primeiras tabelas do repo a NÃO herdar isso foram `cargos` e `cargo_apelidos`** (migration `20260727210000`), que revogam na própria migration de criação. Esse padrão virou o global:
 
 ```sql
 REVOKE ALL ON public.cargos, public.cargo_apelidos FROM anon;
 REVOKE TRUNCATE, REFERENCES, TRIGGER ON ... FROM authenticated;
 ```
 
-Sobra para `authenticated` só o DML, que é o mínimo para o PostgREST **chegar** a avaliar a RLS. **É o padrão a seguir em tabela nova daqui em diante.** Ver [`../modulos/candidatos/cargos.md`](../modulos/candidatos/cargos.md).
+Sobra para `authenticated` só o DML, que é o mínimo para o PostgREST **chegar** a avaliar a RLS.
+
+### 🔴 O vazamento de leitura para `anon`, e a premissa que o escondeu (2026-07-31)
+
+**Ao executar o item "enxugar os grants", a medição derrubou a premissa do próprio item.** Ele afirmava: *"só a RLS impede o estrago: `anon` não tem policy, então cai em default deny"*. **Falso.** As 46 policies de `public` foram criadas **`TO public`** — e no Postgres o papel `public` **inclui `anon`**. Oito delas ainda usavam `USING (true)`, apesar de se chamarem *"Authenticated users can view …"*:
+
+`bancos` · `coordenadores_prova` · `editais` · `funcoes_colaboradores` · `prova_edit_locks` · `prova_unidades` · `provas` · `sala_prova`
+
+Medido contra o PostgREST local com a anon key e **sem login**: as sete primeiras devolviam **dado real**. `prova_edit_locks` devolveu `[]` só porque estava vazia — a policy dela era igualmente permissiva.
+
+⚠️ **O nome da policy era a armadilha.** *"Authenticated users can view editais"* descrevia a intenção do autor, não o que a policy fazia. Quem auditasse por leitura de nome passaria batido — e passou, por meses.
+
+**O que salvou o pior:** `candidatos`, `colaboradores` e `user_roles` recusavam, porque suas policies checam `has_role(auth.uid(), …)` e `auth.uid()` é nulo sem sessão. E **nenhuma** policy de escrita era permissiva — um POST anônimo em `editais` recusa com 42501. Era vazamento de **leitura**, não de escrita. Nada estava no ar, então não houve exposição real; teria subido junto com a v2.
+
+**O conserto, em quatro partes** (migration `20260731110000`):
+
+| Parte | O quê |
+|---|---|
+| 1 | `REVOKE ALL ... FROM anon` em todas as tabelas de `public` — `anon` não precisa de nenhuma |
+| 2 | `REVOKE TRUNCATE, REFERENCES, TRIGGER ... FROM authenticated` |
+| 3 | O `ALTER DEFAULT PRIVILEGES` para de reconceder aos dois — **sem isto as partes 1 e 2 duram até a próxima tabela** |
+| 4 | As 46 policies passaram de `TO public` para **`TO authenticated`** |
+
+**Por que a parte 4, se a parte 1 já basta?** Porque são camadas diferentes: sem GRANT não se lê, policy nenhuma salva. `TO authenticated` é o que sobrevive a alguém reconceder um GRANT no futuro — e vale para **todas** as 46, não só as 8 permissivas, porque a próxima policy copiada de uma vizinha herdaria o `TO public` e bastaria um `USING (true)` para reabrir tudo. **O modo de falhar passa a ser "ninguém vê" em vez de "todo mundo vê".**
+
+Seguro para carga de dados: `postgres` e `service_role` têm **BYPASSRLS** (conferido), então seed, dump e Edge Function não passam por policy.
+
+**Verificado antes de revogar — e é o que autorizou tirar tudo de `anon`:** nenhum fluxo público lê tabela com a anon key. `/cadastro-publico` fala só com Edge Function; as páginas alcançáveis deslogado não têm `.from(...)`; `useBancos` — a única leitura cujo nome sugeria ser pública — é consumida só por `ColaboradorDialog` e `PerfilColaborador`, ambos autenticados.
+
+🧪 Bateria em [`../../../docs/bateria-grants-e-policies.sql`](../../../docs/bateria-grants-e-policies.sql) — 7 casos, com **controle positivo**: o caso 5c prova que tabela nova continua usável por `authenticated`, porque "sem grants" poderia significar que quebramos o acesso de todo mundo, que é o bug de 2026-07-12 de volta. A parte via PostgREST é **manual** e está no rodapé do arquivo: o Postgres prova o privilégio, só o PostgREST prova o que o mundo vê.
+
+⚠️ **A suíte Vitest não cobre nada disto** — ela mocka o Supabase, então não exercita GRANT, RLS nem policy. Os 1017 testes ficaram verdes o tempo todo, durante e depois do vazamento.
+
+**É a quarta vez que um item do backlog carrega premissa errada** (as outras: guards lendo papéis de `modulos.ts`, `coordenador` sem vínculo ser inofensivo, e os "dois `useEffect`" que eram três). **Conferir a premissa antes de executar o item continua sendo obrigatório** — aqui foi a diferença entre revogar TRUNCATE e achar dado aberto na internet.
 
 #### RLS de `cargos` e `cargo_apelidos`
 
