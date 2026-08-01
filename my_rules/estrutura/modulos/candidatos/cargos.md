@@ -2,35 +2,15 @@
 
 > **Doc de feature do módulo Candidatos.** Deve bastar para implementar ou refatorar os cargos sem reler o codebase. Contrato do módulo: [`00-modulo.md`](./00-modulo.md). Roadmap da implementação, **arquivado** porque o tema fechou: [`../../../analises/concluidos/roadmap-cargos.yaml`](../../../analises/concluidos/roadmap-cargos.yaml) — histórico do raciocínio, **não é plano**.
 
-## Estado: **TEMA COMPLETO** — as 6 etapas concluídas (2026-07-29)
+## O que vale hoje
 
-> 🔵 **Acrescentado em 2026-07-30:** a página de gestão `/candidatos/cargos` (CRUD do catálogo). Ela executa parte da "etapa 7", que a decisão **D7** havia deixado como não planejada — o usuário pediu depois. Ver a seção própria abaixo.
->
-> 🔴 **REGRA NOVA EM 2026-07-31, e ela REVERTE o ganho central deste tema: cargo com QUALQUER menção em outra tabela é IMUTÁVEL** — não se altera nem se exclui (migration `20260731100000`, SQLSTATE `CG001`). ⚠️ Toda afirmação abaixo de que "renomear é livre" ou "renomear é cosmético" **deixou de valer**. Ver a seção "Cargo com menção é imutável".
+🔴 **Cargo com QUALQUER menção em outra tabela é IMUTÁVEL** — não se altera nem se exclui (migration `20260731100000`, SQLSTATE `CG001`). ⚠️ **Toda afirmação neste doc de que "renomear é livre" ou "cosmético" descreve o que a implementação entregou, não o que vale.** Ver a seção "Cargo com menção é IMUTÁVEL".
 
-| Etapa | O que é | Estado |
-|---|---|---|
-| 1 | Schema: `cargos`, `cargo_apelidos`, `candidatos.cargo_id` | ✅ **feita** — migration `20260727210000` |
-| 2 | Lib pura: extrair cargos da planilha, resolver | ✅ **feita** — `candidatos-import.ts` |
-| 3 | Hook `useCargos` | ✅ **feita** — `src/hooks/useCargos.tsx` |
-| 4 | UI: o passo 3 "Cargos" no assistente | ✅ **feita** — `CandidatosImportar.tsx` |
-| 5 | A chave natural passa a usar `cargo_id` | ✅ **feita** — migration `20260728100000` |
-| 5b | Trigger que recusa reapontar cargo já importado | ✅ **feita** — migration `20260728110000` |
-| 6 | Lista e ficha mostram o cargo canônico + filtro por cargo | ✅ **feita** — `Candidatos.tsx` (2026-07-29) |
-| 7 | (opcional) página `/cargos` | **não planejada** — ver D7 |
+⭐ **`candidatos.cargo_id` é identidade** — a chave natural é `(edital_id, cpf, cargo_id, n_inscricao)`. O cargo entra por **referência**, não por texto, e é isso que impede a lista de duplicar: renomear é um `UPDATE` numa linha de `cargos`, onde antes a mesma correção criava **481 registros**. A lista e a ficha leem `cargos.nome`, então o nome corrigido aparece na tela.
 
-⭐ **O sintoma que motivou o tema acabou.** `candidatos.cargo_id` é identidade: a chave natural é `(edital_id, cpf, cargo_id, n_inscricao)`. **Renomear um cargo virou um `UPDATE` numa linha e não duplica ninguém** — verificado pelo PostgREST em 28/07 (3 inscritos antes, 3 depois, nome novo aparecendo no join). Antes, a mesma correção criava 481 registros.
+⚠️ **Os dois acima se contradizem na prática, e é preciso saber disso:** a mecânica tornou o rename inofensivo; a `CG001` o proibiu para cargo em uso. **A janela para corrigir um nome vai até a primeira importação que o use** — na prática, o passo 3 do assistente.
 
-✅ **E desde a etapa 6 o ganho APARECE:** renomear o cargo muda o que a tela mostra, porque a lista e a ficha leem `cargos.nome`, não mais o texto da planilha.
-
-### ⭐ A etapa 5 INVERTEU qual erro é fatal — leia antes de mexer em qualquer coisa aqui
-
-| | antes (chave = texto) | agora (chave = `cargo_id`) |
-|---|---|---|
-| a origem muda a grafia do cargo | 🔴 **duplicava** | ✅ o usuário re-resolve → mesma chave → UPDATE |
-| o usuário reaponta um texto para outro cargo | ✅ `cargo_id` fora da chave → UPDATE | 🔴 duplicaria e deixaria as antigas **órfãs** |
-
-A coluna da direita é a razão de existir a **etapa 5b**. Sem ela, mudar de ideia sobre "ARTE" depois da primeira importação criaria 195 linhas novas e deixaria 195 órfãs, **sem nada acusar** — e mudar de ideia sobre ARTE é o gesto *esperado* do passo Cargos, não o desviante.
+> 📁 As **6 etapas**, seus estados e o raciocínio de cada uma estão em [`roadmap-cargos.yaml`](../../../analises/concluidos/roadmap-cargos.yaml) (`etapas:`), arquivado. Este doc descreve o que os cargos **são**; o roadmap, como chegaram aqui. ⚠️ A "etapa 7" de lá foi **parcialmente executada** — o CRUD existe; ver "A página de gestão".
 
 ## O problema
 
@@ -75,7 +55,7 @@ cargo_apelidos                            -- "este texto sujo significa aquele c
   id            uuid PK
   texto_origem  text NOT NULL             -- o texto CRU, com o ¿ e tudo
   texto_chave   text GENERATED STORED     -- lower(btrim(texto_origem)); UNIQUE
-  cargo_id      uuid NOT NULL → cargos(id) ON DELETE CASCADE
+  cargo_id      uuid NOT NULL → cargos(id) ON DELETE RESTRICT  -- era CASCADE até 31/07
   created_at / created_by
   CHECK btrim(texto_origem) <> ''
 
@@ -145,35 +125,15 @@ Isso **conversa** com a `20260712010000` em vez de brigar: aquela registrou o es
 
 ⚠️ **Nada disto tem teste automatizado, e é decisão registrada:** a suíte mocka o Supabase e não exercita RLS, CHECK, índice único, coluna gerada, FK nem trigger — um teste lá afirmaria o mock.
 
-A verificação real é [`../../../../docs/bateria-cargos.sql`](../../../../docs/bateria-cargos.sql), **rodada e verde em 2026-07-27**. Cada caso em transação com `ROLLBACK`, e **toda recusa acompanhada do controle positivo**. O que ela cobre:
+A verificação real é [`../../../../docs/bateria-cargos.sql`](../../../../docs/bateria-cargos.sql) — o próprio arquivo diz o que cobre, e é ele que se mantém atualizado. ⚠️ **Ao mexer no schema destas tabelas, refaça a bateria à mão.** Os UUIDs de papel embutidos nela são do banco local e podem mudar num `db reset` com dump novo — confira com a consulta 5.1, que existe para isso.
 
-| Bloco | Prova |
-|---|---|
-| Estrutura | as 2 tabelas com RLS ativa; `cargo_id` nullable; os 4 índices; CASCADE vs. RESTRICT |
-| **Grants** | `anon` com **0 privilégios**; `authenticated` só com DML; TRUNCATE recusado nas duas — **e o contraste com `candidatos`, que ainda tem o pacote herdado**, provando que a revogação pegou |
-| Unicidade | `'DOCENTE II'` vs `' docente ii '` colide; a gerada acompanha o rename sozinha; controle positivo com nome de fato diferente |
-| FKs | apagar cargo leva os apelidos; apagar cargo com candidato é recusado; controle positivo (cargo sem uso é excluível); `EXPLAIN` confirmando Index Scan |
-| **RLS** | admin escreve; **superadmin PURO escreve** — o teste fabrica um superadmin sem linha `admin` dentro da transação, porque a conta local tem as duas e usá-la não provaria nada; coordenador lê mas é recusado ao escrever; `anon` barrado já no GRANT |
-| Trigger | `updated_at` se move sozinho |
+### ⭐ O que `psql` NÃO consegue verificar
 
-⚠️ **Ao mexer no schema destas tabelas, refaça a bateria à mão.** Os UUIDs de papel embutidos nela são do banco local e podem mudar num `db reset` com dump novo — conferir com a consulta 5.1, que existe para isso.
+O **embed** de `cargos` na listagem e o **recorte por cargo** são coisas que o *PostgREST* faz. Uma bateria SQL passaria mesmo com o app quebrado, e a suíte só prova que o hook **manda** a string — nenhuma das duas prova que o dado volta certo.
 
-### A verificação da etapa 6 é PELO POSTGREST, e não cabe em SQL
+🔴 **O caso que dá autoridade ao aviso do código:** trocar o join por `cargos!inner` faz **o inscrito sem cargo sumir em silêncio**, e o contador concorda com o erro. É por isso que o join tem de ser à **esquerda**, e por isso a verificação desta parte é por requisição HTTP com JWT forjado, não por SQL.
 
-O embed e o recorte são coisas que o **PostgREST** faz; `psql` passaria mesmo com o app quebrado, e a suíte só prova que o hook *manda* a string. O que foi rodado em 2026-07-29, com JWT de admin forjado com o `JWT_SECRET` do `supabase status` (mesmo método da bateria de `create-admin`), 3 inscritos de teste — um deles com `cargo_id` nulo — inseridos e **apagados depois** (o banco local voltou a 0 candidatos e 0 cargos):
-
-```bash
-# 1. o select do hook, tal como ele o manda — 3 linhas, a terceira com "cargos": null
-GET /rest/v1/candidatos?select=*,cargos%20(%20id,%20nome%20)&edital_id=eq.<E>   # 0-2/3
-# 2. o recorte por cargo — 1 linha, e o count é o do RECORTE
-GET /rest/v1/candidatos?select=*,cargos(id,nome)&edital_id=eq.<E>&cargo_id=eq.<C>   # 0-0/1
-# 3. CONTROLE NEGATIVO — !inner some com o inscrito sem cargo E derruba o count
-GET /rest/v1/candidatos?select=n_inscricao,cargos!inner(id,nome)&edital_id=eq.<E>   # 0-1/2
-```
-
-O caso 3 é o que dá autoridade ao aviso do código: a diferença entre o join certo e o errado é **um inscrito sumindo em silêncio**, com o contador concordando com o erro.
-
-## A lib (etapa 2) — `src/lib/candidatos-import.ts`
+## A lib — `src/lib/candidatos-import.ts`
 
 Três funções puras, sem React e sem Supabase, com bateria própria em `candidatos-import.test.ts` (**66 testes no arquivo**, 22 deles de cargos). É o que separa este fluxo do `CadastroLote`, onde a mesma classe de lógica vive dentro de um componente de 1.100 linhas e não tem como ser exercitada.
 
@@ -216,7 +176,7 @@ Até a etapa 4 a página deduplicava **antes** de resolver, e isso estava **corr
 - **O passo 2 não pode mais anunciar o número final.** Sem cargo resolvido todos os `cargo_id` são `null`, e as inscrições da mesma pessoa em cargos diferentes colapsariam — o passo 2 prometeria 396 inscritos a menos do que vai importar. Por isso ele mostra **"N linha(s) lida(s)"** (`linhasValidas`, um fato do arquivo) e o número de verdade só é afirmado no passo 3, já resolvido.
 - **`repetidas` mudou de significado.** Agora inclui duas *grafias* do mesmo cargo unificadas pela associação, e não só repetição literal na planilha. O aviso vive no passo 3 e **diz isso explicitamente** — sem a frase, a pessoa procura na planilha uma repetição que não está escrita lá.
 
-## Os hooks (etapa 3) — `src/hooks/useCargos.tsx`
+## Os hooks — `src/hooks/useCargos.tsx`
 
 Quatro exportações, com bateria em `useCargos.test.tsx` (**26 testes**).
 
@@ -249,7 +209,7 @@ Mais `mensagemErroCargo()`, que traduz `candidatos_cargo_id_fkey` ("em uso por c
 
 ⭐ **As três asserções centrais foram falsificadas antes de aceitas.** Sabotando o hook (`ignoreDuplicates` → `false`; `onConflict` dos apelidos → `texto_origem`; remoção do fallback de busca), caem exatamente os testes esperados — 1, 1 e 2 respectivamente. Sem isso, um teste sobre mock só afirma o mock.
 
-## O passo "Cargos" (etapa 4) — `CandidatosImportar.tsx`
+## O passo "Cargos" — `CandidatosImportar.tsx`
 
 O assistente passou de **4 para 5 passos**: Arquivo → Pareamento → **Cargos** → Importação → Relatório.
 
@@ -272,7 +232,7 @@ Uma tabela de uma linha por cargo distinto (**9 no arquivo real**, então sem pa
 - **O botão desabilitado diz por quê** ("Resolva N cargo(s) para importar"), em vez de ficar cinza e mudo.
 - **Voltar ao pareamento preserva as associações**; trocar o **arquivo** zera tudo.
 
-### O que a etapa 4 mudou fora do passo 3
+### As regras que o passo Cargos impõe FORA dele
 
 **D4 — o cargo virou obrigatório.** `CAMPOS_CANDIDATO` marca `cargo` como `obrigatorio: true`, então `mapeamentoCompleto()` passa a exigi-lo e o passo 2 não avança sem ele. ⚠️ **Obrigatório não é adivinhado:** `'tipoprova'` continua fora dos sinônimos, e o auto-pareamento continua deixando o cargo em branco de propósito.
 
@@ -284,66 +244,13 @@ Uma tabela de uma linha por cargo distinto (**9 no arquivo real**, então sem pa
 
 **O relatório** ganhou o resumo de cargos ("N cargos: X lembrados, Y definidos agora") e uma **aba `Cargos`** no xlsx com o de-para completo — o registro auditável de que texto virou que cargo naquela importação.
 
-### O guarda de tipo já pegou algo
+## A guarda do reapontamento — REMOVIDA
 
-`useImportarCandidatos` passou a exigir `CandidatoResolvido[]`. A mudança de assinatura **quebrou o helper de `useCandidatos.test.tsx` na hora** — a prova de que a separação de tipo funciona fora do arquivo onde foi desenhada, e não só em teoria.
+O trigger `candidatos_recusa_reapontar_cargo` (`RC001`) **não existe desde 2026-07-30** (migration `20260730140000`). A importação virou **troca total**: o `DELETE` roda antes do `INSERT`, então ele não tinha mais o que encontrar — e o gesto que ele barrava deixou de ser perigoso, porque reapontar cargo agora converge para uma linha só (caso 7.4 de `docs/bateria-cargos.sql`).
 
-## A guarda do reapontamento (etapa 5b) — `candidatos_recusa_reapontar_cargo`
+⚠️ **O acoplamento é o que precisa sobreviver: se a importação voltar ao upsert, este trigger tem de voltar JUNTO** — senão o defeito de 28/07 reaparece sem guarda nenhuma.
 
-> ❌ **ESTE TRIGGER NÃO EXISTE MAIS — removido em 2026-07-30** (migration `20260730140000`).
-> A importação virou **troca total**: a RPC apaga a lista do edital e reinsere, na mesma
-> transação. Quando o `INSERT` roda, o `DELETE` já rodou — o trigger não tinha mais o que
-> encontrar, e virou guarda incapaz de disparar. **E o gesto que ele barrava deixou de ser
-> perigoso:** reapontar cargo hoje converge para uma linha só, verificado no caso 7.4 de
-> `docs/bateria-cargos.sql`.
->
-> ⚠️ **Os dois são acoplados:** se a importação um dia voltar ao upsert, este trigger tem
-> de voltar JUNTO — senão o defeito de 28/07 reaparece sem guarda nenhuma.
->
-> O texto abaixo fica como registro do que ele era e de por que existiu.
-
-Trigger `BEFORE INSERT` em `candidatos`, migration `20260728110000`, SQLSTATE **`RC001`**. Recusava gravar quando **já existia** linha com o mesmo `(edital_id, cpf, n_inscricao)` **e o mesmo texto de cargo**, apontando para um `cargo_id` **diferente**.
-
-### ⚠️ Por que a guarda NÃO fica em `cargo_apelidos`
-
-É o alvo intuitivo e é o **errado**. As três razões foram verificadas no código:
-
-1. **O apelido não é o caminho do dado**, é a memória de pré-preenchimento. Quem decide o `cargo_id` do lote é `resolverLinhas(convertidas, resolucoes)`, e `resolucoes` é **estado da UI**.
-2. **`salvarApelidos` manda os ~9 pares num upsert único e atômico.** Barrar um par derrubaria os nove.
-3. **O chamador engole o erro de propósito** (`.catch(() => undefined)`) — apelido é conveniência, a importação é o objetivo. A guarda falharia **em silêncio** e a importação seguiria gravando o `cargo_id` novo.
-
-### 🔴 A condição é ESTREITA — e a razão disso CAIU em 2026-07-28
-
-**A justificativa original era:** exigir o texto do cargo igual porque *"382 pessoas concorrem a mais de um cargo com a mesma inscrição"*, e uma condição mais larga as bloquearia.
-
-**Isso estava errado.** A inscrição foi lida na coluna `ID`, que é a **pessoa**; a inscrição de verdade é a coluna `N_INSCRICAO`, e ela é **única por linha** (7.416 em 7.416). Ninguém compartilha número de inscrição. Ver a "CORREÇÃO DE 2026-07-28" em [`00-modulo.md`](./00-modulo.md).
-
-**O que a condição estreita continua sendo:** correta, porém **mais restrita do que precisa**. Ela não bloqueia nada de legítimo — só deixa passar mais do que deveria.
-
-⚠️ **O buraco que a estreiteza abre.** Se a origem mudar a **grafia** do cargo e o usuário reclassificar no mesmo gesto, o texto difere, o trigger não dispara e os inscritos antigos ficam **órfãos em silêncio** — exatamente o que a etapa 5b existe para impedir. Antes eu registrei isso como *"irredutível, porque o arquivo não tem identificador por cargo"*. **Não é irredutível:** com `n_inscricao` único, `(edital_id, cpf, n_inscricao)` já identifica a linha, e a comparação do texto pode simplesmente sair da condição.
-
-**O conserto proposto (não feito):** remover do trigger a linha
-
-```sql
-AND lower(btrim(coalesce(c.cargo,''))) = lower(btrim(coalesce(NEW.cargo,'')))
-```
-
-⚠️ **Antes de fazer isso, MEDIR:** o alargamento só é seguro enquanto `n_inscricao` for único por linha. Se algum edital repetir numeração entre cargos, a condição larga passa a bloquear inscrito legítimo — que é precisamente o risco que a versão estreita foi desenhada para evitar, ainda que pelo motivo errado. E o **CONTROLE POSITIVO 1** da bateria (`docs/bateria-cargos.sql`, caso 7.5) **vai falhar** com a condição larga, porque ele foi escrito com CPF e inscrição iguais nos dois cargos — ele precisa ser reescrito com inscrições diferentes, que é o dado real.
-
-Enquanto isso não for decidido, quem pegaria o resíduo é a **reconciliação**, ainda não implementada.
-
-### O que a guarda deliberadamente NÃO bloqueia
-
-| | |
-|---|---|
-| ~~Renomear `cargos.nome`~~ | ❌ **NÃO é mais livre desde 2026-07-31**: cargo com menção é imutável (`CG001`). Era o ganho central do tema; ver a seção da regra nova |
-| Criar cargo novo | livre — é `INSERT` em `cargos` |
-| Apagar cargo em uso | já recusado pelo `ON DELETE RESTRICT` da etapa 1 |
-| Reimportar a mesma linha com o mesmo cargo | é o caminho feliz, vira `UPDATE` |
-
-⚠️ **A mensagem orienta, não só barra** (lição da etapa 4): nomeia o texto, o cargo a que ele já está associado, e a saída. Ela **passa inteira** ao usuário — `mensagemErroImportacao` não tem ramo próprio para `RC001`, e o fallback já devolve o texto do banco. **Não tente casar pelo código:** verificado pelo PostgREST, o `RC001` chega em `error.code`, nunca dentro de `error.message`.
-
-**O certo, que não coube:** o reapontamento deveria **mover** os inscritos de um cargo para o outro, não duplicá-los — mudar de ideia deveria simplesmente funcionar. Isso é a fusão de cargos da etapa 7 (RPC transacional). Bloquear é o downgrade barato: converte perda silenciosa em "ainda não dá" explícito.
+> 📁 O que ele era, por que não ficava em `cargo_apelidos` e o buraco que a condição estreita abria estão no [apêndice do histórico](../../../analises/concluidos/candidatos-chave-natural-e-a-coluna-0.md).
 
 ## A página de gestão (2026-07-30) — `/candidatos/cargos`
 
@@ -370,9 +277,11 @@ Enquanto isso não for decidido, quem pegaria o resíduo é a **reconciliação*
 
 `useAtualizarCargo` invalida `["cargos"]` **e** `["candidatos"]`. Desde a etapa 6 a listagem e a ficha exibem `cargos.nome` por join embutido — sem a segunda, o usuário renomeia, volta para a lista, vê o nome **antigo** e conclui que não funcionou. Mesmo motivo pelo qual `useEditais` invalida `provas`. **Há teste guardando, e ele foi falsificado.**
 
-### 🔴 Excluir leva os apelidos junto, e o diálogo TEM de dizer isso
+### Excluir cargo com QUALQUER menção é recusado
 
-`cargo_apelidos.cargo_id` é `ON DELETE CASCADE`: apagar o cargo apaga em silêncio a memória de "texto sujo → cargo". É perda real e invisível — na próxima importação aqueles textos voltam a aparecer sem associação. O `AlertDialog` mostra a contagem e avisa; **há teste próprio para o aviso**, senão ele some na primeira refatoração.
+`cargo_apelidos.cargo_id` e `candidatos.cargo_id` são **os dois `ON DELETE RESTRICT`**: o diálogo de exclusão só abre para cargo com **zero** menções.
+
+> 🔴 **Corrigido em 2026-07-31.** Esta seção se chamava *"Excluir leva os apelidos junto, e o diálogo TEM de dizer isso"* e descrevia `cargo_apelidos` como **CASCADE**, com um aviso na tela sobre a "perda real e invisível" da memória de apelidos. **Isso deixou de valer no mesmo dia em que foi escrito:** a regra `CG001` tornou cargo com menção imutável e passou a FK para RESTRICT. O aviso e três testes saíram porque viraram ramos inalcançáveis — a exclusão nunca chega lá. O `AlertDialog` mostra a contagem e avisa; **há teste próprio para o aviso**, senão ele some na primeira refatoração.
 
 **Não há pré-check de uso no cliente, de propósito.** "Leio e então decido" é uma corrida, e a recusa do banco (`candidatos_cargo_id_fkey`, RESTRICT) nomeia o obstáculo melhor. A contagem na tela **informa**; quem barra é a FK.
 
@@ -413,7 +322,7 @@ Isso foi apresentado ao usuário com esses números e escolhido assim mesmo. **A
 
 ---
 
-## A exibição (etapa 6) — `Candidatos.tsx` e `useCandidatos.tsx`
+## A exibição — `Candidatos.tsx` e `useCandidatos.tsx`
 
 O que a etapa fez, em uma frase: **quem responde "qual é o cargo deste inscrito" passou a ser o catálogo, e não a planilha.** Concluída em 2026-07-29.
 
@@ -441,14 +350,10 @@ Cinco decisões da tela que não são óbvias:
 - **O nome do cargo NÃO entrou na busca textual.** Filtrar coluna de tabela embutida tem sintaxe própria no PostgREST e não cabe no mesmo `.or()`; e o filtro exato já responde a pergunta. **Não improvisar isso no cliente** — quebraria o `count`.
 - **O `isLoading` do `useCargos` é lido**, e o Select fica `disabled` enquanto o catálogo não chega: array vazio é indistinguível de "ainda não sei", e o filtro apareceria com uma opção só como se não existisse cargo nenhum. ⚠️ **Sem `placeholder` no `SelectValue`**, porque `value` nunca é vazio (o sentinela `"todos"` sempre vale) — o Radix nunca o exibiria. Era adorno morto, e adorno morto é primo da guarda que não pode disparar. Não há teste de página cobrindo esse instante (o mock resolve imediato); quem cobre a distinção é `useCargos.test.tsx`, no nível do hook.
 
-### 🔴 A etapa achou um defeito que já existia: "limpar edital" anunciava o total ERRADO
+### 🔴 "Limpar edital" apaga o edital INTEIRO — o contador não pode ser o filtrado
 
 `excluirDoEdital` apaga por `edital_id` — o edital **inteiro**. Mas a confirmação (a que pede senha) anunciava `total`, que é o count da consulta **filtrada**. Com uma busca ligada ela prometia remover 12 inscritos e removia 7.416.
 
 **Já era defeito com a busca**, desde o nascimento da tela; o filtro por cargo só o tornaria fácil de encontrar. Corrigido: o número vem de `totalDoEdital` (a RPC de contagem, que ignora filtros), e com filtro ligado o texto diz "inclusive os que os filtros atuais escondem". O mesmo vale para a **visibilidade** do botão, que passou a olhar o total do edital — antes, uma busca sem resultado escondia o "limpar edital" de um edital com milhares de linhas. Há regressão guardando os dois em `Candidatos.ui.test.tsx`.
 
 > **A lição, que vale além desta tela:** ao acrescentar um filtro, procure toda ação da tela que age sobre o conjunto **inteiro**. Um contador filtrado ao lado de um botão não filtrado é uma promessa errada, e aqui a promessa errada estava justamente atrás da barreira de senha.
-
-### Efeito colateral bem-vindo no lint
-
-Extrair `camposDaFicha()` e `mensagemDoVazio()` para fora do componente derrubou a complexidade da função `Candidatos` de **40 para 25** (a regra `complexity` do eslint, máximo 15). O helper `ou()` existe porque 20 `?? "—"` inline eram contados como 20 ramos numa lista que não decide nada.

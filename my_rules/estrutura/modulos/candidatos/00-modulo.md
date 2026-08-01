@@ -48,7 +48,7 @@ Duas consequências que precisam sobreviver a qualquer refatoração:
 | `supabase/migrations/20260727000000_create_candidatos.sql` | O schema da tabela — coluna gerada, índices, 6 CHECKs, RLS, trigger e a RPC de contagem. ⚠️ **Os comentários de coluna dela sobre CPF e e-mail descrevem o comportamento ANTIGO** (gravar `NULL`); a `20260730100000` é que manda |
 | `supabase/migrations/20260727200000_candidatos_chave_cpf_cargo_inscricao.sql` | A chave natural ganhou o CPF, com `NULLS NOT DISTINCT` |
 | `supabase/migrations/20260728100000_candidatos_chave_cargo_id.sql` | A chave trocou o TEXTO do cargo pela REFERÊNCIA; `cargo_chave` dropada |
-| `supabase/migrations/20260728110000_candidatos_recusa_reapontar_cargo.sql` | Trigger que recusa reapontar cargo de linha já importada (D11) |
+| `supabase/migrations/20260728110000_candidatos_recusa_reapontar_cargo.sql` | ❌ Criou o trigger `RC001` — **dropado em 30/07** por `20260730140000`; a troca total o tornou incapaz de disparar |
 | `supabase/migrations/20260727210000_create_cargos.sql` | `cargos` e `cargo_apelidos` + `candidatos.cargo_id` — ver [`cargos.md`](./cargos.md) |
 | `supabase/migrations/20260730100000_candidatos_dado_invalido_entra_cru.sql` | 🔵 As 4 CHECKs de formato saíram e `raca`/`data_nascimento` viraram `text`: **dado inválido entra como veio** |
 | `supabase/migrations/20260730110000_candidatos_hora_nascimento_text.sql` | `hora_nascimento` virou `text` pela mesma regra — era o único campo secundário que anulava **sem nem avisar** |
@@ -86,135 +86,30 @@ candidatos
   created_at / updated_at / created_by
 ```
 
-### ⚠️ A revisão foi ABERTA E FECHADA em 2026-07-27 — a chave mudou, mas o arquivo não
+### ⭐ A chave natural
 
-> **Tudo neste bloco aconteceu no mesmo dia**, 2026-07-27: o módulo nasceu de manhã, a revisão da chave abriu à tarde e a decisão saiu à noite. Se alguma frase parecer descrever dias diferentes, é a mesma jornada.
+**A unicidade é `(edital_id, cpf, cargo_id, n_inscricao)`** — índice `candidatos_cpf_cargo_id_inscricao_key`, `NULLS NOT DISTINCT`, migration `20260728100000`.
 
-O usuário decidiu em **2026-07-27**: a chave natural passa a incluir o CPF (migration `20260727200000`). ⚠️ **Em 2026-07-28 ela mudou de novo**, trocando `cargo_chave` por `cargo_id` (migration `20260728100000`) — a chave em vigor é **`(edital_id, cpf, cargo_id, n_inscricao)`**. O que segue nesta seção é o histórico da revisão de 27/07, que continua valendo porque as medições que a motivaram continuam valendo.
+🔴 **`cargo_id` NÃO é redundante: é ele que garante a unicidade.** A inscrição vem do `ID` da planilha, que **repete** para quem concorre a mais de um cargo — 7.020 valores distintos em 7.416 linhas. Sem o cargo na chave, as **396 inscrições excedentes colidiriam** e sumiriam em silêncio. ⚠️ **Não simplifique para `(edital_id, n_inscricao)`** — já foi proposto aqui, com base em medição mal interpretada, e destrói dado.
 
-**A planilha de origem foi remedida no fim do dia e NÃO corrigiu o que abriu a revisão** — ver "O arquivo dito corrigido" logo abaixo. Portanto:
+⭐ **O cargo entra por REFERÊNCIA, não por texto** (etapa 5 do roadmap de cargos, 28/07). É isso que torna renomear cargo inofensivo para a lista: com o texto na identidade, corrigir `DOCENTE I ¿ HISTÓRIA` para `DOCENTE I — HISTÓRIA` criava **481 registros novos**; com `cargo_id` é um `UPDATE` numa linha de `cargos`. Verificado pelo PostgREST. (⚠️ Renomear cargo **em uso** é outra história — a `CG001` o proíbe; ver [`cargos.md`](./cargos.md).)
 
-- **Todas as medições citadas aqui seguem descrevendo o arquivo original**, porque a versão "corrigida" não mudou nenhum dos números: as 7.416 linhas, as 382 inscrições repetidas, os 2 CPFs impossíveis, os 27 e-mails, as 15 datas fora de faixa, os 36 valores de `identidade_uf`. As constraints foram dimensionadas por elas. **Se um arquivo de fato diferente chegar, remeça do zero** (regra 5 de [`../../transversais/invariantes.md`](../../transversais/invariantes.md)).
-- **A instabilidade do texto do cargo não foi resolvida, e agora o CPF entrou junto** — corrigir qualquer um dos três campos da chave e reimportar cria registro novo em vez de atualizar. As duas saídas desenhadas (modelo / reconciliação) seguem sem implementação.
+⚠️ **`NULLS NOT DISTINCT` guarda a célula VAZIA.** No padrão do Postgres dois `NULL` não colidem, então linha com CPF em branco se reinseriria a cada importação. Desde 30/07 o CPF **impossível** entra cru — o índice protege o vazio, não o inválido. **Vazio ≠ impossível.**
 
-#### 🔴 O arquivo dito corrigido (medido em 2026-07-27) — a armadilha PIOROU
+### 🔴 A coluna `N_INSCRICAO` da planilha é o CONTADOR do export
 
-O arquivo em `docs/temp/todos inscritos concurso 002-2026-SMA cabeçalho.xls` foi mexido, mas **só ganhou um cabeçalho novo**:
+**Medido: `1, 2, 3 … 7416`, sem um gap.** A inscrição está na coluna **`ID`**. A pessoa de CPF `05261923727` aparece na linha 9 e na linha 5208 — se a coluna 0 fosse inscrição, seriam dois números a 5.199 de distância.
 
-- A **coluna 0 agora se chama `N_INSCRICAO`** — e continua sendo **o contador de linha do export** (verificado: é exatamente 1, 2, 3… 7416). A inscrição real segue na coluna `ID`.
-- **Isso quebra o auto-pareamento.** `normalizarTexto('N_INSCRICAO')` → `ninscricao`, que é o **primeiro sinônimo** do campo `n_inscricao` em `CAMPOS_CANDIDATO`. Antes a coluna 0 era anônima e era pulada, então o palpite acertava a `ID`. Agora ele casa com o contador — e **nada acusa**, porque o contador é perfeitamente único: importaria 7.416 candidatos numerados de 1 a 7416.
-- As inscrições repetidas **continuam existindo**: 7.020 `ID` distintas em 7.416 linhas. A origem **não** passou a emitir uma inscrição por cargo.
+📌 **Quem escolhe a coluna é o USUÁRIO, no passo 2 do assistente** — `autoMapear` apenas **sugere**, e sugere a coluna 0 porque o cabeçalho tem esse nome. Por decisão do usuário (31/07) a sugestão fica como está e **não há alerta automático** de contador.
 
-⚠️ **Quem for importar precisa conferir à mão que o campo "Nº de Inscrição" aponta para a coluna `ID`, não para a `N_INSCRICAO`.** Está no backlog como item próprio.
+⚠️ **Consequência operacional: a conferência do mapeamento no passo 2 é parte do fluxo, não um remendo.** É o único ponto onde o erro é evitável, e aceitar a sugestão sem conferir grava a posição da linha como número de inscrição — sem erro, sem aviso.
 
-#### O que foi medido e vale independentemente da correção
+🧪 Os dois caminhos têm teste em `candidatos-import.test.ts` (o sugerido e o corrigido à mão).
 
-Verificado no arquivo, com o cuidado de usar a coluna certa (⚠️ a coluna 0 é apenas o número da linha do export, 1, 2, 3…, hoje disfarçada sob o cabeçalho `N_INSCRICAO`; a inscrição é a coluna `ID` — confundir as duas dá um resultado falso e tranquilizador, e foi o que aconteceu na primeira tentativa):
+> 📁 **A história disto — três reviravoltas entre 27 e 31/07, e o erro de inferência que as causou — está em [`../../../analises/concluidos/candidatos-chave-natural-e-a-coluna-0.md`](../../../analises/concluidos/candidatos-chave-natural-e-a-coluna-0.md).** Leia se for mexer na chave ou no auto-pareamento; a regra para usar o módulo está toda acima.
 
-| Fato | Número |
-|---|---|
-| Linhas | 7.416 |
-| Inscrições distintas | 7.020 |
-| CPFs distintos | 7.020 |
-| Inscrições com mais de um CPF | **0** |
-| CPFs com mais de uma inscrição | **0** |
 
-⚠️ **Esta tabela mede a coluna `ID`, e o rótulo dela estava errado** — ver a CORREÇÃO de 28/07 mais abaixo. O que ela mostra é que **`ID` e CPF são a mesma informação** (um determina o outro): são os dois identificadores da PESSOA. A **inscrição** de verdade é a coluna `N_INSCRICAO`, e essa é única por linha (7.416).
-
-A distribuição: 6.638 **pessoas** com 1 cargo, 369 com 2, 12 com 3 e 1 com 4. Os 396 excedentes (7.416 − 7.020) são as inscrições adicionais de quem concorre a mais de um cargo — por exemplo o `ID` `213946`, CPF `99528037704`, em `DOCENTE II`, `DOCENTE I ¿ LÍNGUA INGLESA` e `DOCENTE I ¿ HISTÓRIA`, **com três números de inscrição diferentes**.
-
-#### ⚠️ SOMAR o CPF à chave (feito) ≠ TROCAR o cargo pelo CPF (recusado)
-
-A distinção é a coisa mais fácil de errar aqui, e as duas propostas se parecem no enunciado:
-
-| Chave | Linhas únicas | Colapsam | Status |
-|---|---|---|---|
-| `(ID, cargo)` | 7.416 | 0 | vigorou até 27/07 — lido como "inscrição" na época |
-| **`(cpf, cargo, ID)`** | **7.416** | **0** | ✅ virou a chave em 27/07 |
-| `(ID, cpf)` — trocar | 7.020 | **396** | ❌ recusada |
-| `(ID)` sozinha | 7.020 | 396 | ❌ recusada |
-| `(n_inscricao)` — a coluna certa | **7.416** | **0** | ⚠️ nunca foi avaliada; ver a CORREÇÃO |
-
-**Somar não podia perder ninguém, e não perdeu:** acrescentar coluna a uma chave única só é capaz de *separar* linhas, nunca de fundi-las — a chave nova contém a antiga. **Trocar** o cargo pelo CPF é que colapsaria 396 inscritos em silêncio (o `deduplicar()` mantém a última ocorrência e descarta as anteriores sem erro), porque o CPF é redundante com a inscrição neste arquivo: a troca equivale a usar só a inscrição. **Não ressuscite a troca sem remedir.**
-
-O que somar o CPF **custa**, e está aceito: o CPF entra na identidade, então corrigir um CPF errado e reimportar cria um segundo registro. É o mesmo defeito que o texto do cargo já tinha, agora valendo para três campos. E abre um afrouxamento: duas linhas com a mesma inscrição e o mesmo cargo passam a coexistir se tiverem CPF diferente — não ocorre no arquivo medido, mas passa a ser possível.
-
-⚠️ **No padrão do Postgres `NULL` não colide com `NULL`** — linhas com CPF nulo se inseririam de novo a cada reimportação. É por isso que o índice é `NULLS NOT DISTINCT`, e não um índice comum. Ver a migration `20260727200000`, e o espelho disso em `chaveNatural()`.
-
-> 🔵 **ATUALIZADO EM 2026-07-30 — quem cai nesse caso mudou.** Este parágrafo dizia "os 2 CPFs impossíveis viram `NULL`". Não viram mais: desde a migration `20260730100000` eles entram **crus**, e o `NULLS NOT DISTINCT` passou a guardar apenas a célula **VAZIA**. O motivo do índice continua de pé; o exemplo é que trocou. **Vazio ≠ impossível.**
-
-#### O problema que originou a revisão, e que continua valendo
-
-O texto do cargo é instável (o `¿` é um travessão mal codificado em cp1252) e **faz parte da identidade**. Verificado no banco: mudar caixa ou espaços atualiza a linha, mas **corrigir o texto cria um segundo registro e deixa o antigo** — a doc promete "corrija a planilha e reimporte", e essa promessa **não vale para os campos da chave**. As saídas discutidas, nenhuma implementada:
-
-1. **Modelo:** `candidatos` único por `(edital, inscrição)` e cargo numa tabela filha. Realiza a intenção sem perder linha, e a identidade deixa de depender de texto instável. Muda o importador e a tela (a pessoa vira uma linha com N cargos).
-2. **Reconciliação:** manter a chave e, ao fim da importação, listar os candidatos daquele edital que **não vieram no arquivo**, para remoção. Conserta o sintoma de forma geral — inclusive quem desistiu — sem tocar na identidade.
-
-### ⭐ A chave natural — o achado que decidiu o desenho
-
-**A unicidade é `(edital_id, cpf, cargo_id, n_inscricao)`** — índice `candidatos_cpf_cargo_id_inscricao_key`, `NULLS NOT DISTINCT`, migration `20260728100000`. O `cpf` entrou em 27/07; em **28/07** o cargo deixou de entrar pelo TEXTO e passou a entrar por **referência** (etapa 5 do roadmap de cargos). ⚠️ **A justificativa histórica de o cargo estar na chave caiu em 28/07** — ver a CORREÇÃO abaixo. A chave segue correta; o que mudou é o motivo.
-
-⭐ **É a troca por referência que torna renomear cargo inofensivo.** Com o texto na identidade, corrigir `DOCENTE I ¿ HISTÓRIA` para `DOCENTE I — HISTÓRIA` criava **481 registros novos**; com `cargo_id`, é um `UPDATE` numa linha de `cargos` e nenhum candidato duplica. Verificado pelo PostgREST em 28/07.
-
-### ❌ A "CORREÇÃO DE 2026-07-28" ESTAVA ERRADA — retificada em 2026-07-31
-
-> 🔴 **Esta seção afirmava que a coluna 0 (`N_INSCRICAO`) É a inscrição.** Não é: ela é o **contador de linha do export**. Medido em 31/07 contra o arquivo real — os valores são exatamente `1, 2, 3 … 7416`, **sem um gap** (`col0.every((v, i) => v === i + 1)` → `true`).
->
-> ⚠️ **O erro foi de inferência, não de medição.** A correção de 28/07 raciocinou: *"7.416 valores distintos em 7.416 linhas ⇒ é a inscrição"*. **Cardinalidade não distingue "inscrição" de "contador de linha"** — um contador `1..N` também tem N distintos. A prova que separa os dois é a **sequencialidade**, e ela não foi feita.
->
-> **O caso que encerra a dúvida:** a pessoa de CPF `05261923727` aparece na linha **9** e na linha **5208**. Se a coluna 0 fosse inscrição, seriam dois números a 5.199 de distância.
->
-> 🔴 **Isto reabilita o que a seção declarava "derrubado"** — ver a tabela corrigida abaixo. E é a **quinta** vez que uma premissa errada atravessa a documentação deste repo; desta vez, dentro de um bloco que se anunciava como *correção*.
-
-| Coluna | Distintos em 7.416 linhas | O que é DE VERDADE (medido 31/07) |
-|---|---|---|
-| `N_INSCRICAO` (coluna 0) | 7.416 | 🔴 **o contador do export** — `1..7416`, sem gap |
-| `ID` (coluna 1) | 7.020 | ⭐ **a pessoa**, e é o identificador que a origem dá à inscrição |
-| `CPF` | 7.020 | bate exatamente com o `ID` |
-
-Os **382** `ID` repetidos têm **todos** o mesmo CPF e **todos** cargos distintos (confirmado em 31/07). As **396** linhas excedentes (7.416 − 7.020) são as inscrições adicionais de quem concorre a mais de um cargo — e o arquivo **não traz um número próprio para cada uma**.
-
-**O que volta a valer** (a seção de 28/07 dizia o contrário de cada item):
-
-- ✅ *"382 números de inscrição se repetem"* — **repetem sim**, se a inscrição for lida do `ID`, que é de onde ela deve vir.
-- ✅ *"o cargo é indispensável na chave"* — **verdadeiro**. `(edital_id, n_inscricao)` **não** é único quando `n_inscricao` vem do `ID`: as 396 excedentes colidiriam. É `cargo_id` que as separa.
-- ✅ *"a coluna 0 é o contador do export"* — é exatamente isso.
-
-📌 **Quem escolhe a coluna é o USUÁRIO**, no passo 2 do assistente; `autoMapear` apenas **sugere**. Por decisão do usuário (31/07), a sugestão continua apontando a coluna 0 (o cabeçalho se chama `N_INSCRICAO`) e **não haverá alerta automático de "isto parece um contador"**. ⚠️ **Por isso a conferência manual do passo 2 é parte do fluxo, não um remendo** — e é o único ponto onde o erro é evitável. Há teste executável dos dois caminhos em `candidatos-import.test.ts` ("com o mapeamento CORRIGIDO à mão, a inscrição vem do ID").
-
-**O que NÃO muda:**
-
-- A chave em vigor `(edital_id, cpf, cargo_id, n_inscricao)` **continua correta e única** — mas ⚠️ **não pelo motivo que esta linha dava até 31/07.** Ela dizia *"com `n_inscricao` já único, as outras três são redundantes"*. **Falso:** lida do `ID`, como deve ser, `n_inscricao` **repete** em 382 casos. Quem garante a unicidade é o **`cargo_id`**, que separa as 396 inscrições excedentes. As colunas não são redundantes; são necessárias.
-- Nada precisa ser remigrado. As migrations aplicadas seguem válidas; o que ficou desatualizado são os **comentários** de justificativa dentro delas (`20260727000000`, `20260727200000`, `20260728100000`, `20260728110000`). Como não se edita migration aplicada, a correção vale a partir daqui.
-
-**O que isso ABRIA — e o que sobrou depois da TROCA TOTAL (2026-07-30):**
-
-> 🔵 **Os dois itens abaixo foram esvaziados pela troca total**, e ficam registrados porque a **razão** de terem perdido valor é o que importa. Ver [`../../../analises/concluidos/roadmap-importacao-troca-total.yaml`](../../../analises/concluidos/roadmap-importacao-troca-total.yaml).
-
-1. ~~**A chave poderia ser `(edital_id, n_inscricao)`**~~ — ❌ **DESCARTADO em 2026-07-31, e agora por impossibilidade, não por baixo valor.**
-
-   Esta proposta só existia porque a "correção" de 28/07 afirmava que `n_inscricao` era único por linha. **Com a inscrição lida do `ID`, ela repete em 382 casos** — `(edital_id, n_inscricao)` **fundiria 396 inscritos em silêncio**. É exatamente a perda que o `cargo_id` na chave existe para impedir.
-
-   ⚠️ **Não reabra este item lendo só o título.** Ele parece uma simplificação elegante engavetada; é uma proposta que **destrói dado**, e chegou a ser recomendada aqui com base em premissa errada.
-
-   **O que a chave natural faz hoje:** depois da troca total ela deixou de ser *identidade entre importações* e virou **detector de duplicata dentro do lote** (caso 7.6 da bateria). Para esse papel, `(edital_id, cpf, cargo_id, n_inscricao)` está correta, testada e em uso.
-
-2. ~~**A condição do trigger `candidatos_recusa_reapontar_cargo` pode ser ALARGADA**~~ — ❌ **MORREU.** O trigger (`RC001`) **foi removido** em 30/07 (migration `20260730140000`): ele existia porque o upsert casava linha pela chave, e com o `DELETE` rodando antes do `INSERT` não tinha mais o que encontrar. **Não ressuscitar o item.** ⚠️ Se a importação um dia voltar ao upsert, o trigger tem de voltar junto.
-
-**O que a correção JÁ mudou no código (2026-07-28):**
-
-- **Texto de tela.** O alerta do passo 2 afirmava que sem o cargo pareado "quem concorre a mais de um cargo com a mesma inscrição vira um registro só e desaparece da lista". Em 28/07 isso foi trocado pelo motivo estrutural (sem cargo a lista não responde "quantos inscritos por cargo").
-
-  > 🔴 **A justificativa de 28/07 caiu em 31/07, mas o texto novo continua certo — e é por isso que ele não muda.** A medição *"perda ZERO"* usou a coluna 0, o contador, que nunca colide. Lida do `ID`, a inscrição repete em 382 casos e **as 396 excedentes colidiriam mesmo** sem o cargo. Ainda assim, voltar a prometer "396 somem" seria trocar um número falso por outro **condicional**: a perda depende de qual coluna o usuário mapeou no passo 2. O texto atual não cita número e vale sob qualquer mapeamento.
-- Comentários de `candidatos-import.ts`, `CandidatosImportar.tsx` e `candidatos-import.test.ts` corrigidos no mesmo passe.
-
-**Pendências que a correção deixou:**
-
-1. ✅ **RESOLVIDA em 2026-07-31 — o fixture `CABECALHO_REAL`.** Atualizado lendo o próprio arquivo, não de memória: a coluna 0 se chama `N_INSCRICAO`, e a `LINHA_REAL` do fixture bate exatamente com a primeira linha real, então não precisou mudar. O caso "coluna sem título" ganhou fixture próprio (`CABECALHO_SEM_TITULO_NA_COLUNA_A`) mais um **controle negativo** que quebra se alguém reverter o cabeçalho.
-
-   🔴 **Este item dizia "3 asserções" e eram QUATRO.** A quarta é a que importa: `converterLinha` afirmava `n_inscricao: "214274"` — que é o `ID` da coluna B, **o identificador da PESSOA**. Ficava verde porque o fixture defasado mapeava `n_inscricao` para a coluna 1, ou seja, **o teste afirmava como correto exatamente o defeito que esta seção existe para corrigir**. Teste verde guardando defeito, outra vez.
-
-2. Os comentários **dentro das 4 migrations aplicadas** guardam a justificativa velha. Não se edita migration aplicada — a correção vale a partir daqui.
+### O que precisa concordar com a chave
 
 ⚠️ **A coluna gerada `cargo_chave` NÃO existe mais** — foi dropada em 28/07 junto com a troca da chave (D3 do roadmap de cargos). Ela existia porque o upsert do PostgREST (`?on_conflict=a,b,c`) só sabe nomear **colunas**, nunca expressões, e o texto do cargo precisava ser normalizado *dentro da chave*. Com `cargo_id` na chave não há mais o que normalizar ali. Deixá-la no schema seria uma coluna terminada em `_chave` sem chave nenhuma apontando para ela. O texto cru segue em `cargo`, como procedência.
 
