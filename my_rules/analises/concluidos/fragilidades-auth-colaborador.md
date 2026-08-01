@@ -1,5 +1,10 @@
 # Análise — Fragilidades do fluxo de acesso do colaborador (`/auth`)
 
+> 📁 **HISTÓRICO — não leia por padrão.** Este arquivo registra um tema já entregue.
+> Abra só quando o pedido for sobre o passado (*por que ficou assim? o que se tentou?
+> que alternativa foi rejeitada?*). **Não é plano** — nada aqui é lista de tarefas.
+> Para o que o sistema É, veja `my_rules/estrutura/`; para o que FALTA, `my_rules/backlog.md`.
+
 > **Data:** 2026-07-13. **Natureza:** laudo de segurança, feito por leitura de código e banco (nada foi alterado). É um retrato do estado **antes** da refatoração — não são vulnerabilidades abertas hoje.
 >
 > **Status (2026-07-15):** o login por CPF+código morreu (2A/2B/2C) e as fragilidades 2, 3, 4, 5 e 6 caíram por remoção. **A fragilidade 1 (o nó central) está fechada** desde 2026-07-15: a subetapa 2D item 1 revogou o `EXECUTE` de `PUBLIC` nas RPCs mortas do portal velho (migration `20260715072758_*`) — `anon`/`authenticated` já recebem `permission denied`. A **RLS de verdade** em `colaboradores` também já entrou (2026-07-15, migration `20260715073500_*`): o SELECT `USING (true)` — que deixava todo `authenticated` ler as 771 linhas — virou `has_role(admin) OR has_role(coordenador) OR user_id = auth.uid()`. As **RPCs mortas foram dropadas** (item 3, migration `20260715125720_*`, + remoção da Edge Function `reset-codigo-acesso`) — com isso a **fragilidade 8 fechou**. A **trava de edição concorrente saiu** da policy de UPDATE, com `is_colaborador_logged_in` e `colaborador_sessions` dropadas (migration `20260715130603_*`). E a **coluna `colab_codigo_acesso` foi dropada** (migration `20260715131321_*`), fechando de vez a fragilidade 2 (código em texto puro): o e-mail em massa que a usava foi aposentado e a coluna saiu dos exports. **A 2D está completa — todas as 8 fragilidades do laudo estão resolvidas.** Estado por subetapa em [`roadmap-auth-colaborador.md`](./roadmap-auth-colaborador.md).

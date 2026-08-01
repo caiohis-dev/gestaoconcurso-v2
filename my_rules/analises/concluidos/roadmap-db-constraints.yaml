@@ -1,3 +1,8 @@
+# 📁 HISTÓRICO — não leia por padrão. Registra um tema já entregue.
+# Abra só quando o pedido for sobre o passado (por que ficou assim? o que se tentou?
+# que alternativa foi rejeitada?). NÃO É PLANO — nada aqui é lista de tarefas.
+# Para o que o sistema É: my_rules/estrutura/ | para o que FALTA: my_rules/backlog.md
+
 # Roadmap — Fortalecimento de validações e mitigação de bypass no Supabase (DB Constraints)
 # Criado a partir da análise de riscos de 2026-07-24. NADA implementado — este arquivo é o desenho.
 # Convenção do projeto: análise concluída vai para analises/concluidos/; enquanto

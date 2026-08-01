@@ -1,3 +1,8 @@
+# 📁 HISTÓRICO — não leia por padrão. Registra um tema já entregue.
+# Abra só quando o pedido for sobre o passado (por que ficou assim? o que se tentou?
+# que alternativa foi rejeitada?). NÃO É PLANO — nada aqui é lista de tarefas.
+# Para o que o sistema É: my_rules/estrutura/ | para o que FALTA: my_rules/backlog.md
+
 # Roadmap — a importação de candidatos passa a ser TROCA TOTAL da lista do edital
 # Criado em 2026-07-30. ✅ CONCLUÍDO no mesmo dia — as 4 etapas.
 # ARQUIVADO: este arquivo é HISTÓRICO, não plano. Ver o estado atual em
@@ -10,8 +15,11 @@
 # para reabrir a discussão, mas porque o README desta pasta manda distinguir "proposta
 # rejeitada com motivo" de "plano original a restaurar".
 #
-# Substitui também o rascunho `docs/temp/roadmap-importacao-reinsercao.md`, que fica
-# OBSOLETO: ele propunha a mesma decisão, mas com uma forma que a medição inviabilizou (D2).
+# Substitui também o rascunho de análise prévia, que fica OBSOLETO: ele propunha a mesma
+# decisão, mas com uma forma que a medição inviabilizou (D2).
+# ⚠️ Ele saiu de `docs/temp/` em 2026-07-31 e agora é o vizinho
+# `analise-previa-importacao-reinsercao.md`, com um cabeçalho explicando que está no
+# tempo verbal errado e que todos os riscos que levanta já foram endereçados.
 
 roadmap:
   titulo: "Troca total — importar passa a APAGAR a lista do edital e reinserir a planilha inteira"

@@ -1,5 +1,10 @@
 # Mapeamento Zod × SQL — entregável da Etapa 1 do roadmap de DB constraints
 
+> 📁 **HISTÓRICO — não leia por padrão.** Este arquivo registra um tema já entregue.
+> Abra só quando o pedido for sobre o passado (*por que ficou assim? o que se tentou?
+> que alternativa foi rejeitada?*). **Não é plano** — nada aqui é lista de tarefas.
+> Para o que o sistema É, veja `my_rules/estrutura/`; para o que FALTA, `my_rules/backlog.md`.
+
 **Data:** 2026-07-25 · **Branch:** `feat/db-constraints` · **Roadmap:** [`roadmap-db-constraints.yaml`](./roadmap-db-constraints.yaml)
 
 Levantado do **banco local** (cópia dos dados reais de produção v1), não das migrations — o schema tem drift histórico, então migration não é fonte confiável do estado atual.

@@ -1,5 +1,10 @@
 # [OBSOLETO] Bateria — autorização da Edge Function `create-admin`
 
+> 📁 **HISTÓRICO — não leia por padrão.** Este arquivo registra um tema já entregue.
+> Abra só quando o pedido for sobre o passado (*por que ficou assim? o que se tentou?
+> que alternativa foi rejeitada?*). **Não é plano** — nada aqui é lista de tarefas.
+> Para o que o sistema É, veja `my_rules/estrutura/`; para o que FALTA, `my_rules/backlog.md`.
+
 > **🚨 ATENÇÃO:** Esta bateria manual via curl foi **substituída** pelos testes automatizados em Deno. 
 > Veja `supabase/functions/create-admin/index.test.ts` e `supabase/functions/_shared/test-utils.ts`. 
 > O histórico abaixo é mantido apenas como referência de como as coisas eram antes da automação (2026-07-28).

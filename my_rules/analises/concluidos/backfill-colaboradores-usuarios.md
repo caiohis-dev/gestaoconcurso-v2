@@ -1,5 +1,10 @@
 # Backfill — colaboradores que já eram usuários do Auth
 
+> 📁 **HISTÓRICO — não leia por padrão.** Este arquivo registra um tema já entregue.
+> Abra só quando o pedido for sobre o passado (*por que ficou assim? o que se tentou?
+> que alternativa foi rejeitada?*). **Não é plano** — nada aqui é lista de tarefas.
+> Para o que o sistema É, veja `my_rules/estrutura/`; para o que FALTA, `my_rules/backlog.md`.
+
 Registro dos **12** vínculos criados em 2026-07-14 pelo `supabase/seed.pos.sql` (commit `d332115`), na etapa 1 da refatoração do acesso do colaborador ([`roadmap-auth-colaborador.md`](./roadmap-auth-colaborador.md)).
 
 Cada linha preencheu `colaboradores.user_id` e recebeu o papel `colaborador` em `user_roles`. Os papéis de gestão que a pessoa já tinha foram **mantidos** — `user_roles` é multi-papel.

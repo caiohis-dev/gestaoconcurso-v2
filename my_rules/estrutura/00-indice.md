@@ -45,6 +45,7 @@ O que atravessa módulos, ou é anterior a eles. Um doc de módulo **referencia*
 
 ## Fora desta pasta
 
+- [`../../CLAUDE.md`](../../CLAUDE.md) — **na raiz do repo, e é por onde se começa.** Traz a tabela de "qual doc ler por tipo de pedido" (com a coluna **Não faça**), os comandos de verificação, e as políticas de branch, migration e produção. Criado em 2026-07-31, quando se percebeu que esse roteamento só existia na memória do assistente e **não viajava com o repositório**.
 - [`../analises/`](../analises/) — roadmaps e análises de temas (o desenho e as decisões); concluídos vão para `analises/concluidos/`.
 - [`../backlog.md`](../backlog.md) — trabalho planejado e ainda não iniciado.
 - [`../versionamento.md`](../versionamento.md) — regras de git (branches, commits, tags, o que nunca versionar).
@@ -52,4 +53,6 @@ O que atravessa módulos, ou é anterior a eles. Um doc de módulo **referencia*
 - [`../historico/`](../historico/) — código aposentado cujo raciocínio vale preservar (hoje, a Edge Function `export-seed`).
 - `docs/` (raiz do repo) — baterias de teste manual e documentação pontual de fluxo (ex.: sanitização do cadastro em lote).
 
-**Ordem de leitura para quem chega:** `transversais/arquitetura-geral.md` → `transversais/auth-e-permissoes.md` → o `00-modulo.md` do módulo da tarefa. **Vai implementar ou mexer numa regra de negócio? `transversais/invariantes.md` antes de escrever.** Para subir o ambiente, vá direto a `transversais/desenvolvimento-local.md`.
+**Ordem de leitura para quem chega** (pessoa fazendo onboarding, uma vez): `transversais/arquitetura-geral.md` → `transversais/auth-e-permissoes.md` → o `00-modulo.md` do módulo da tarefa. **Vai implementar ou mexer numa regra de negócio? `transversais/invariantes.md` antes de escrever.** Para subir o ambiente, vá direto a `transversais/desenvolvimento-local.md`.
+
+⚠️ **Isto NÃO é a rotina de abertura de sessão.** Uma sessão de trabalho não lê os transversais "para se situar" — ela lê **o doc que o pedido indica** (tabela em [`../../CLAUDE.md`](../../CLAUDE.md) §1) e nada mais. E **não lê código nenhum antes do primeiro prompt**: é ele que diz qual módulo e quais símbolos. Ler antes é chute caro.

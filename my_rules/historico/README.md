@@ -1,5 +1,10 @@
 # Histórico
 
+> 📁 **HISTÓRICO — não leia por padrão.** Este arquivo registra um tema já entregue.
+> Abra só quando o pedido for sobre o passado (*por que ficou assim? o que se tentou?
+> que alternativa foi rejeitada?*). **Não é plano** — nada aqui é lista de tarefas.
+> Para o que o sistema É, veja `my_rules/estrutura/`; para o que FALTA, `my_rules/backlog.md`.
+
 Código que **não está mais em produção nem é deployado**, guardado por valor de referência: resolveu um problema específico, pode voltar a ser útil, e o raciocínio dentro dele custa caro para reconstruir do zero.
 
 Nada aqui é executado. Arquivos nesta pasta estão fora de `supabase/functions/`, de `src/` e de qualquer build — mover algo para cá é, na prática, aposentá-lo.

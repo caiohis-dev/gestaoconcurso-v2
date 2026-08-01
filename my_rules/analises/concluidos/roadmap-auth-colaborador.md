@@ -1,5 +1,10 @@
 # Roadmap — Refatoração do acesso do colaborador (Supabase Auth)
 
+> 📁 **HISTÓRICO — não leia por padrão.** Este arquivo registra um tema já entregue.
+> Abra só quando o pedido for sobre o passado (*por que ficou assim? o que se tentou?
+> que alternativa foi rejeitada?*). **Não é plano** — nada aqui é lista de tarefas.
+> Para o que o sistema É, veja `my_rules/estrutura/`; para o que FALTA, `my_rules/backlog.md`.
+
 > **Data:** 2026-07-13. **Natureza:** documento de desenho. Registra as decisões tomadas para corrigir as fragilidades do laudo [`fragilidades-auth-colaborador.md`](./fragilidades-auth-colaborador.md) e serve de roteiro da implementação. Nenhum código foi escrito ainda.
 >
 > Quando a refatoração for concluída, o que mudou é descrito em [`../../estrutura/transversais/auth-e-permissoes.md`](../../estrutura/transversais/auth-e-permissoes.md) e o item correspondente sai do [`../../backlog.md`](../../backlog.md). Este arquivo permanece como registro da decisão.
