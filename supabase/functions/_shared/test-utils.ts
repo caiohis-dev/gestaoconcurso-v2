@@ -46,7 +46,18 @@ export function getAdminClient() {
 }
 
 /**
- * Wrapper para chamar as funções locais
+ * Wrapper para chamar as funções locais.
+ *
+ * Sem `token`, manda a **anon key** — que é um JWT válido e público. Esse caso não é
+ * decorativo: é o que prova que `verify_jwt` **não é autorização**, a falha que já
+ * apareceu duas vezes neste repo (`send-email` e `create-admin`).
+ *
+ * 🔴 Por isso a anon key ausente LANÇA, em vez de degradar. Até 2026-07-31 o código
+ * omitia o header quando `SUPABASE_ANON_KEY` não estava definida, e o custo era
+ * silencioso: um caso chamado "anon key crua (401)" passava a exercitar
+ * "requisição sem header nenhum", que também dá 401. **O teste continuava verde
+ * afirmando outra coisa** — e justo a que ele existe para guardar deixava de ser
+ * coberta. Mesma postura do `getAdminClient` acima.
  */
 export async function callFunction(
   functionName: string,
@@ -58,14 +69,23 @@ export async function callFunction(
     "Content-Type": "application/json",
   };
 
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
+  if (token !== undefined) {
+    // `""` é o pedido explícito de NÃO mandar header — o cenário "sem Authorization",
+    // que é diferente de "com anon key" e precisa ser escolhido, não herdado de um
+    // env var faltando.
+    if (token !== "") headers["Authorization"] = `Bearer ${token}`;
   } else {
-    // Se não mandar token explícito, tenta mandar a anon key
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-    if (anonKey) {
-      headers["Authorization"] = `Bearer ${anonKey}`;
+    if (!anonKey) {
+      throw new Error(
+        "SUPABASE_ANON_KEY não está definida nas variáveis de ambiente de teste. " +
+          "callFunction() sem `token` existe para exercitar a anon key crua; sem ela a " +
+          "chamada iria sem header nenhum e o teste passaria afirmando outro cenário. " +
+          "Pegue a chave em `npx supabase status` (PUBLISHABLE_KEY). Para testar de " +
+          'propósito a ausência de header, passe `""` como token.'
+      );
     }
+    headers["Authorization"] = `Bearer ${anonKey}`;
   }
 
   return await fetch(`${supabaseUrl}/functions/v1/${functionName}`, {

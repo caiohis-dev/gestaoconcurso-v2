@@ -207,6 +207,23 @@ O coração dessa infraestrutura é o `supabase/functions/_shared/test-utils.ts`
 | `create-admin` | `index.test.ts` (8 cenários). Garante recusas (`401`/`403`) para tokens anônimos, lixos ou de administradores não-super. Impede concessões ilícitas (ex: criar papel "coordenador" avulso que corromperia o painel), verificando no próprio banco se o dado foi preservado intacto. |
 
 *(Baterias manuais prévias, como a `docs/bateria-create-admin-autorizacao.md`, tornaram-se obsoletas com esta infraestrutura e são mantidas apenas para registro histórico.)*
+
+#### Como rodar — e as duas pré-condições que ninguém tinha escrito
+
+⚠️ **`deno` NÃO é dependência do projeto e pode não estar instalado** (não estava, em 31/07). `npm test` não alcança esta camada, e nada avisa: quem nunca instalou o Deno simplesmente não roda estes testes e não recebe sinal nenhum disso. Não há script no `package.json`.
+
+Com a stack de pé (`npx supabase start`), as chaves saem de `npx supabase status`:
+
+```bash
+export SUPABASE_URL="http://127.0.0.1:54321"
+export SUPABASE_ANON_KEY="<PUBLISHABLE_KEY>"
+export SUPABASE_SERVICE_ROLE_KEY="<SERVICE_ROLE_KEY>"
+deno test --allow-net --allow-env supabase/functions/create-admin/index.test.ts
+```
+
+🔴 **As três variáveis são obrigatórias, e desde 2026-07-31 a ausência LANÇA.** Antes, `callFunction` omitia o header `Authorization` quando `SUPABASE_ANON_KEY` faltava — e o caso *"A1 — Anon Key crua (401)"* passava a exercitar **"requisição sem header nenhum"**, que também dá 401. O teste seguia verde afirmando outro cenário, e o que ele existe para guardar — que **`verify_jwt` não é autorização**, porque a anon key *é* um JWT válido e público, a falha que já apareceu em `send-email` e `create-admin` — deixava de ser coberto. `getAdminClient` já lançava; `callFunction` passou a fazer igual.
+
+Para testar de propósito a ausência de header, passe `""` como token — é explícito, e não se confunde com env var faltando.
 **Das páginas, o que está coberto é o guard, não o comportamento.** A bateria afirma quem entra e para onde o recusado é mandado; ela não exercita formulário, listagem nem ação de página nenhuma. As **4 páginas fora da matriz** são as que não têm guard a testar, todas públicas por natureza: `/auth`, `/cadastro-publico`, `/redefinir-senha` e `NotFound`.
 
 O inventário completo, com ordem de prioridade e o que **não** se testa aqui, está no [`backlog.md`](../../backlog.md) → "Completar a suíte de testes (Vitest)".
