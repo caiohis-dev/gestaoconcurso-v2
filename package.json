@@ -21,7 +21,8 @@
     "prod:diff": "supabase db diff --linked",
     "prod:push:dry": "supabase db push --linked --dry-run",
     "prod:push": "supabase db push --linked",
-    "prod:unlink": "supabase unlink"
+    "prod:unlink": "supabase unlink",
+    "docs:conferir": "python3 scripts/conferir-docs.py /tmp"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
