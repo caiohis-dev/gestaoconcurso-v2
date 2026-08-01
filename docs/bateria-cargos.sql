@@ -7,17 +7,17 @@
 -- Ela não exercita RLS, CHECK, índice único, coluna gerada, FK nem trigger — um teste lá
 -- afirmaria o mock. Esta é a única verificação real destas regras.
 --
--- 🔴 PRÉ-CONDIÇÃO, descoberta em 2026-07-31: esta bateria PRECISA de um catálogo de
--- `cargos` que não contenha os nomes que ela insere ('DOCENTE II', 'ARTE',
--- 'DOCENTE I — HISTÓRIA'...). Com o catálogo povoado — e uma importação real o povoa
--- exatamente com esses nomes — os INSERTs colidem em `cargos_nome_chave_key`, cada
--- colisão aborta o bloco, e o resultado vira uma cascata de "transaction is aborted"
--- que PARECE falha da bateria e não é.
+-- ✅ A PRÉ-CONDIÇÃO FOI ELIMINADA em 2026-07-31 — não precisa mais de `db reset`.
 --
--- Rodar depois de `supabase db reset`, ou conferir antes com:
---     SELECT nome FROM cargos;
--- Se houver colisão, o conserto é dar nomes improváveis aos fixtures (prefixo 'BATERIA')
--- — não apagar o catálogo do banco.
+-- O que era: os fixtures usavam os nomes reais — DOCENTE II, ARTE, DOCENTE I — HISTÓRIA —,
+-- que são EXATAMENTE os que uma importação real cria no catálogo. Com o catálogo povoado,
+-- os INSERTs colidiam em `cargos_nome_chave_key`, cada colisão abortava o bloco, e o
+-- resultado era uma cascata de "transaction is aborted" que PARECIA falha da bateria e
+-- não era.
+--
+-- O conserto: todo fixture ganhou o prefixo **'BATERIA '**, que nenhuma origem produz. A
+-- bateria roda agora em qualquer estado do catálogo. ⚠️ Ao acrescentar caso novo, mantenha
+-- o prefixo — sem ele a pré-condição volta, e ela se manifesta como falha falsa.
 --
 -- REGRA DA CASA: toda recusa vem acompanhada do CONTROLE POSITIVO. Provar que passou a
 -- recusar é metade do trabalho; a outra metade é provar que continua aceitando o que deve.
@@ -52,7 +52,8 @@ WHERE schemaname = 'public'
 ORDER BY tablename, indexname;
 
 \echo ''
-\echo '-- 1.4 As FKs e suas ações. Esperado: apelidos=CASCADE (c), candidatos=RESTRICT (r)'
+\echo '-- 1.4 As FKs e suas ações. Esperado: AS DUAS RESTRICT (r) desde 31/07.'
+\echo '--     ⚠️ Até 30/07 apelidos era CASCADE (c) — a assimetria caiu com a CG001.'
 SELECT c.conrelid::regclass AS tabela, c.conname, c.confdeltype AS on_delete
 FROM pg_constraint c
 WHERE c.contype = 'f' AND c.confrelid = 'public.cargos'::regclass
@@ -60,7 +61,7 @@ ORDER BY 1;
 
 \echo ''
 \echo '╔════════════════════════════════════════════════════════════════════════╗'
-\echo '║ 2. GRANTS — o ponto que candidatos errou (anon com TRUNCATE)           ║'
+\echo '║ 2. GRANTS — cargos nasceu enxuta; candidatos alcançou em 31/07         ║'
 \echo '╚════════════════════════════════════════════════════════════════════════╝'
 
 \echo ''
@@ -80,9 +81,11 @@ WHERE table_schema = 'public' AND grantee = 'authenticated'
 GROUP BY table_name ORDER BY 1;
 
 \echo ''
-\echo '-- 2.3 CONTRASTE — candidatos ainda tem o pacote herdado da era Lovable.'
-\echo '--     Esperado: anon com TRUNCATE aqui. É o item aberto do backlog, e este'
-\echo '--     resultado é a prova de que a revogação das tabelas novas de fato pegou.'
+\echo '-- 2.3 candidatos também ficou enxuta (migration 20260731110000).'
+\echo '--     Esperado: anon AUSENTE; authenticated só com o DML.'
+\echo '--     ⚠️ Este caso era um CONTRASTE — até 30/07 esperava-se ver anon com TRUNCATE'
+\echo '--     aqui, e era essa a prova de que a revogação das tabelas novas tinha pegado.'
+\echo '--     O contraste acabou: agora as três tabelas seguem o mesmo padrão.'
 SELECT grantee, string_agg(privilege_type, ', ' ORDER BY privilege_type) AS privilegios
 FROM information_schema.role_table_grants
 WHERE table_schema = 'public' AND table_name = 'candidatos'
@@ -116,23 +119,23 @@ ROLLBACK;
 \echo ''
 \echo '-- 3.1 nome_chave normaliza caixa e espaço (esperado: RECUSA na 2a inserção)'
 BEGIN;
-  INSERT INTO public.cargos (nome) VALUES ('DOCENTE II');
-  INSERT INTO public.cargos (nome) VALUES ('  docente ii  ');
+  INSERT INTO public.cargos (nome) VALUES ('BATERIA DOCENTE II');
+  INSERT INTO public.cargos (nome) VALUES ('  bateria docente ii  ');
 ROLLBACK;
 
 \echo ''
 \echo '-- 3.2 CONTROLE POSITIVO — nome de fato diferente ENTRA (esperado: INSERT 0 1 duas vezes)'
 BEGIN;
-  INSERT INTO public.cargos (nome) VALUES ('DOCENTE II');
-  INSERT INTO public.cargos (nome) VALUES ('DOCENTE I — HISTÓRIA');
+  INSERT INTO public.cargos (nome) VALUES ('BATERIA DOCENTE II');
+  INSERT INTO public.cargos (nome) VALUES ('BATERIA DOCENTE I — HISTÓRIA');
   SELECT count(*) AS cargos_inseridos FROM public.cargos;
 ROLLBACK;
 
 \echo ''
 \echo '-- 3.3 A coluna gerada acompanha o RENAME sozinha (esperado: nome_chave novo)'
 BEGIN;
-  INSERT INTO public.cargos (nome) VALUES ('DOCENTE I ¿ HISTÓRIA');
-  UPDATE public.cargos SET nome = 'DOCENTE I — HISTÓRIA' WHERE nome LIKE 'DOCENTE I%';
+  INSERT INTO public.cargos (nome) VALUES ('BATERIA DOCENTE I ¿ HISTÓRIA');
+  UPDATE public.cargos SET nome = 'BATERIA DOCENTE I — HISTÓRIA' WHERE nome LIKE 'BATERIA DOCENTE I%';
   SELECT nome, nome_chave FROM public.cargos;
 ROLLBACK;
 
@@ -146,12 +149,12 @@ ROLLBACK;
 \echo '-- 3.5 Apelido: um texto de origem aponta para UM cargo (esperado: RECUSA)'
 BEGIN;
   INSERT INTO public.cargos (id, nome) VALUES
-    ('11111111-1111-1111-1111-111111111111', 'DOCENTE II'),
-    ('22222222-2222-2222-2222-222222222222', 'ARTE');
+    ('11111111-1111-1111-1111-111111111111', 'BATERIA DOCENTE II'),
+    ('22222222-2222-2222-2222-222222222222', 'BATERIA ARTE');
   INSERT INTO public.cargo_apelidos (texto_origem, cargo_id)
-    VALUES ('DOCENTE I ¿ HISTÓRIA', '11111111-1111-1111-1111-111111111111');
+    VALUES ('BATERIA DOCENTE I ¿ HISTÓRIA', '11111111-1111-1111-1111-111111111111');
   INSERT INTO public.cargo_apelidos (texto_origem, cargo_id)
-    VALUES ('  docente i ¿ história  ', '22222222-2222-2222-2222-222222222222');
+    VALUES ('  bateria docente i ¿ história  ', '22222222-2222-2222-2222-222222222222');
 ROLLBACK;
 
 \echo ''
@@ -159,12 +162,12 @@ ROLLBACK;
 \echo '--     (é o upsert que o app fará; esperado: 1 linha, apontando para ARTE)'
 BEGIN;
   INSERT INTO public.cargos (id, nome) VALUES
-    ('11111111-1111-1111-1111-111111111111', 'DOCENTE II'),
-    ('22222222-2222-2222-2222-222222222222', 'ARTE');
+    ('11111111-1111-1111-1111-111111111111', 'BATERIA DOCENTE II'),
+    ('22222222-2222-2222-2222-222222222222', 'BATERIA ARTE');
   INSERT INTO public.cargo_apelidos (texto_origem, cargo_id)
-    VALUES ('ARTE', '11111111-1111-1111-1111-111111111111');
+    VALUES ('BATERIA ARTE', '11111111-1111-1111-1111-111111111111');
   INSERT INTO public.cargo_apelidos (texto_origem, cargo_id)
-    VALUES ('ARTE', '22222222-2222-2222-2222-222222222222')
+    VALUES ('BATERIA ARTE', '22222222-2222-2222-2222-222222222222')
     ON CONFLICT (texto_chave) DO UPDATE SET cargo_id = EXCLUDED.cargo_id;
   SELECT a.texto_origem, c.nome AS aponta_para, count(*) OVER () AS total_linhas
   FROM public.cargo_apelidos a JOIN public.cargos c ON c.id = a.cargo_id;
@@ -172,27 +175,30 @@ ROLLBACK;
 
 \echo ''
 \echo '╔════════════════════════════════════════════════════════════════════════╗'
-\echo '║ 4. AS DUAS FKs — o CASCADE e o RESTRICT, que são opostos de propósito  ║'
+\echo '║ 4. AS DUAS FKs — desde 31/07 as duas são RESTRICT: menção é menção     ║'
 \echo '╚════════════════════════════════════════════════════════════════════════╝'
 
 \echo ''
-\echo '-- 4.1 Apagar cargo LEVA os apelidos (CASCADE). Esperado: apelidos = 0'
+\echo '-- 4.1 Apagar cargo COM APELIDO é RECUSADO (RESTRICT). Esperado: 23503'
+\echo '--     🔴 REESCRITO em 31/07. Este caso afirmava o OPOSTO — que o DELETE passava e'
+\echo '--     levava os apelidos junto (CASCADE), com "apelidos_restantes = 0". Era'
+\echo '--     verdade até 30/07, e vinha da assimetria deliberada "apelido é atalho,'
+\echo '--     candidato é gente". A CG001 derrubou a assimetria; o caso virou o contrário.'
 BEGIN;
   INSERT INTO public.cargos (id, nome)
-    VALUES ('33333333-3333-3333-3333-333333333333', 'CARGO DE TESTE');
+    VALUES ('33333333-3333-3333-3333-333333333333', 'BATERIA CARGO DE TESTE');
   INSERT INTO public.cargo_apelidos (texto_origem, cargo_id)
-    VALUES ('CARGO ¿ TESTE', '33333333-3333-3333-3333-333333333333');
+    VALUES ('BATERIA CARGO ¿ TESTE', '33333333-3333-3333-3333-333333333333');
   DELETE FROM public.cargos WHERE id = '33333333-3333-3333-3333-333333333333';
-  SELECT count(*) AS apelidos_restantes FROM public.cargo_apelidos;
 ROLLBACK;
 
 \echo ''
 \echo '-- 4.2 Apagar cargo COM CANDIDATO é RECUSADO (RESTRICT). Esperado: 23503'
 BEGIN;
   INSERT INTO public.cargos (id, nome)
-    VALUES ('44444444-4444-4444-4444-444444444444', 'CARGO COM INSCRITO');
+    VALUES ('44444444-4444-4444-4444-444444444444', 'BATERIA CARGO COM INSCRITO');
   INSERT INTO public.candidatos (edital_id, n_inscricao, nome, cargo, cargo_id)
-    SELECT id, '999001', 'INSCRITO DE TESTE', 'CARGO ¿ COM INSCRITO',
+    SELECT id, '999001', 'INSCRITO DE TESTE', 'BATERIA CARGO ¿ COM INSCRITO',
            '44444444-4444-4444-4444-444444444444'
     FROM public.editais LIMIT 1;
   DELETE FROM public.cargos WHERE id = '44444444-4444-4444-4444-444444444444';
@@ -202,7 +208,7 @@ ROLLBACK;
 \echo '-- 4.3 CONTROLE POSITIVO — cargo SEM uso nenhum é excluível (esperado: DELETE 1)'
 BEGIN;
   INSERT INTO public.cargos (id, nome)
-    VALUES ('55555555-5555-5555-5555-555555555555', 'CARGO SEM USO');
+    VALUES ('55555555-5555-5555-5555-555555555555', 'BATERIA CARGO SEM USO');
   DELETE FROM public.cargos WHERE id = '55555555-5555-5555-5555-555555555555';
 ROLLBACK;
 
@@ -213,6 +219,65 @@ EXPLAIN (COSTS OFF)
   SELECT 1 FROM public.candidatos WHERE cargo_id = '44444444-4444-4444-4444-444444444444';
 EXPLAIN (COSTS OFF)
   SELECT 1 FROM public.cargo_apelidos WHERE cargo_id = '44444444-4444-4444-4444-444444444444';
+
+\echo ''
+\echo '╔════════════════════════════════════════════════════════════════════════╗'
+\echo '║ 4-bis. CARGO COM MENÇÃO É IMUTÁVEL — trigger CG001 (31/07)             ║'
+\echo '║   🔴 Esta regra REVERTE o ganho central do tema Cargos: com os 9 cargos ║'
+\echo '║   do arquivo real tendo inscritos, depois da 1a importação nenhum pode  ║'
+\echo '║   ser renomeado, e os 7 nomes com ¿ ficam permanentes. Decisão do       ║'
+\echo '║   usuário, tomada com esses números à vista.                           ║'
+\echo '╚════════════════════════════════════════════════════════════════════════╝'
+
+\echo ''
+\echo '-- 4b.1 Renomear cargo COM INSCRITO é recusado (esperado: CG001)'
+BEGIN;
+  INSERT INTO public.cargos (id, nome)
+    VALUES ('66666666-6666-6666-6666-666666666666', 'BATERIA CARGO IMUTAVEL');
+  INSERT INTO public.candidatos (edital_id, n_inscricao, nome, cargo, cargo_id)
+    SELECT id, '999002', 'INSCRITO DE TESTE', 'BATERIA CARGO IMUTAVEL',
+           '66666666-6666-6666-6666-666666666666'
+    FROM public.editais LIMIT 1;
+  UPDATE public.cargos SET nome = 'BATERIA NOME NOVO'
+    WHERE id = '66666666-6666-6666-6666-666666666666';
+ROLLBACK;
+
+\echo ''
+\echo '-- 4b.2 Renomear cargo COM APELIDO também é recusado (esperado: CG001)'
+\echo '--     Menção é menção: a assimetria "apelido é atalho, candidato é gente" caiu.'
+BEGIN;
+  INSERT INTO public.cargos (id, nome)
+    VALUES ('66666666-6666-6666-6666-666666666667', 'BATERIA CARGO COM APELIDO');
+  INSERT INTO public.cargo_apelidos (texto_origem, cargo_id)
+    VALUES ('BATERIA CARGO ¿ COM APELIDO', '66666666-6666-6666-6666-666666666667');
+  UPDATE public.cargos SET nome = 'BATERIA NOME NOVO'
+    WHERE id = '66666666-6666-6666-6666-666666666667';
+ROLLBACK;
+
+\echo ''
+\echo '-- 4b.3 ⚠️ O trigger é sobre a LINHA, não a coluna: trocar `ativo` também é'
+\echo '--     recusado, mesmo sem tocar no nome (esperado: CG001)'
+BEGIN;
+  INSERT INTO public.cargos (id, nome)
+    VALUES ('66666666-6666-6666-6666-666666666668', 'BATERIA CARGO ATIVO');
+  INSERT INTO public.cargo_apelidos (texto_origem, cargo_id)
+    VALUES ('BATERIA CARGO ¿ ATIVO', '66666666-6666-6666-6666-666666666668');
+  UPDATE public.cargos SET ativo = false
+    WHERE id = '66666666-6666-6666-6666-666666666668';
+ROLLBACK;
+
+\echo ''
+\echo '-- 4b.4 CONTROLE POSITIVO — cargo SEM menção nenhuma AINDA é renomeável'
+\echo '--     (esperado: UPDATE 1). É a metade que prova que a regra não travou tudo:'
+\echo '--     a janela para corrigir um nome existe, e vai ATÉ a primeira importação.'
+BEGIN;
+  INSERT INTO public.cargos (id, nome)
+    VALUES ('66666666-6666-6666-6666-666666666669', 'BATERIA CARGO ¿ LIVRE');
+  UPDATE public.cargos SET nome = 'BATERIA CARGO — LIVRE'
+    WHERE id = '66666666-6666-6666-6666-666666666669';
+  SELECT nome, nome_chave FROM public.cargos
+    WHERE id = '66666666-6666-6666-6666-666666666669';
+ROLLBACK;
 
 \echo ''
 \echo '╔════════════════════════════════════════════════════════════════════════╗'
@@ -233,7 +298,7 @@ BEGIN;
   SET LOCAL request.jwt.claims TO
     '{"sub":"12118d98-0f62-4947-bbd4-a2067fa116f2","role":"authenticated"}';
   SELECT count(*) AS admin_le_cargos FROM public.cargos;
-  INSERT INTO public.cargos (nome) VALUES ('CRIADO PELO ADMIN');
+  INSERT INTO public.cargos (nome) VALUES ('BATERIA CRIADO PELO ADMIN');
 ROLLBACK;
 
 \echo ''
@@ -257,7 +322,7 @@ BEGIN;
   SET LOCAL request.jwt.claims TO
     '{"sub":"0979e1b3-b683-4679-9140-41cb7d751bf7","role":"authenticated"}';
   SELECT count(*) AS superadmin_le_cargos FROM public.cargos;
-  INSERT INTO public.cargos (nome) VALUES ('CRIADO PELO SUPERADMIN');
+  INSERT INTO public.cargos (nome) VALUES ('BATERIA CRIADO PELO SUPERADMIN');
 ROLLBACK;
 
 \echo ''
@@ -268,7 +333,7 @@ BEGIN;
   SET LOCAL request.jwt.claims TO
     '{"sub":"5100fb6c-fbdb-47d3-91a3-335b77ba7353","role":"authenticated"}';
   SELECT count(*) AS coordenador_le_cargos FROM public.cargos;
-  INSERT INTO public.cargos (nome) VALUES ('NAO DEVE ENTRAR');
+  INSERT INTO public.cargos (nome) VALUES ('BATERIA NAO DEVE ENTRAR');
 ROLLBACK;
 
 \echo ''
@@ -312,28 +377,56 @@ FROM information_schema.columns
 WHERE table_schema = 'public' AND table_name = 'candidatos' AND column_name = 'cargo_chave';
 
 \echo ''
-\echo '-- 7.2 ⭐ RENOMEAR O CARGO NÃO DUPLICA CANDIDATO — o ponto inteiro da etapa 5.'
-\echo '--     Antes, corrigir o texto e reimportar criava 481 registros novos.'
-\echo '--     Esperado: 3 antes, 3 depois, com o nome novo aparecendo na listagem.'
+\echo '-- 7.2 🔴 REESCRITO em 31/07 — este caso afirmava o que a CG001 TORNOU IMPOSSÍVEL.'
+\echo '--     Ele se chamava "RENOMEAR O CARGO NÃO DUPLICA CANDIDATO — o ponto inteiro da'
+\echo '--     etapa 5" e renomeava um cargo COM 3 inscritos, esperando 3 antes e 3 depois.'
+\echo '--     Desde a CG001 esse UPDATE é RECUSADO: cargo com menção é imutável. O caso'
+\echo '--     não "quebrou" — a regra mudou, e ele era a testemunha do ganho revertido.'
+\echo '--     ⚠️ NÃO o restaure: um caso que só passa se a CG001 sumir vira pressão para'
+\echo '--     removê-la. Se a decisão for revista, isto se reescreve de novo, de propósito.'
+
+\echo ''
+\echo '-- 7.2a A recusa, com os inscritos no lugar (esperado: CG001)'
 BEGIN;
   INSERT INTO public.editais (id, nome) VALUES
     ('77770000-0000-0000-0000-000000000001', 'EDITAL BATERIA 5');
   INSERT INTO public.cargos (id, nome) VALUES
-    ('77771111-0000-0000-0000-000000000001', 'DOCENTE I ¿ HISTÓRIA');
+    ('77771111-0000-0000-0000-000000000001', 'BATERIA DOCENTE I ¿ HISTÓRIA');
   INSERT INTO public.candidatos (edital_id, n_inscricao, nome, cpf, cargo, cargo_id) VALUES
-    ('77770000-0000-0000-0000-000000000001', '900001', 'INSCRITO A', '22940161739', 'DOCENTE I ¿ HISTÓRIA', '77771111-0000-0000-0000-000000000001'),
-    ('77770000-0000-0000-0000-000000000001', '900002', 'INSCRITO B', '14781065732', 'DOCENTE I ¿ HISTÓRIA', '77771111-0000-0000-0000-000000000001'),
-    ('77770000-0000-0000-0000-000000000001', '900003', 'INSCRITO C', '99528037704', 'DOCENTE I ¿ HISTÓRIA', '77771111-0000-0000-0000-000000000001');
+    ('77770000-0000-0000-0000-000000000001', '900001', 'INSCRITO A', '22940161739', 'BATERIA DOCENTE I ¿ HISTÓRIA', '77771111-0000-0000-0000-000000000001'),
+    ('77770000-0000-0000-0000-000000000001', '900002', 'INSCRITO B', '14781065732', 'BATERIA DOCENTE I ¿ HISTÓRIA', '77771111-0000-0000-0000-000000000001'),
+    ('77770000-0000-0000-0000-000000000001', '900003', 'INSCRITO C', '99528037704', 'BATERIA DOCENTE I ¿ HISTÓRIA', '77771111-0000-0000-0000-000000000001');
 
-  SELECT count(*) AS antes_do_rename FROM public.candidatos
-   WHERE edital_id = '77770000-0000-0000-0000-000000000001';
+  UPDATE public.cargos SET nome = 'BATERIA DOCENTE I — HISTÓRIA'
+   WHERE id = '77771111-0000-0000-0000-000000000001';
+ROLLBACK;
 
-  UPDATE public.cargos SET nome = 'DOCENTE I — HISTÓRIA'
+\echo ''
+\echo '-- 7.2b ⭐ O QUE A ETAPA 5 AINDA COMPRA, e continua valendo: o candidato aponta'
+\echo '--      para cargo_id, não para o TEXTO. Renomeando DENTRO DA JANELA (antes do'
+\echo '--      primeiro inscrito), os 3 entram já com o nome corrigido e a listagem'
+\echo '--      mostra o canônico — sem nunca duplicar ninguém.'
+\echo '--      Esperado: 3 inscritos, nome_canonico com travessão de verdade.'
+BEGIN;
+  INSERT INTO public.editais (id, nome) VALUES
+    ('77770000-0000-0000-0000-000000000001', 'EDITAL BATERIA 5');
+  INSERT INTO public.cargos (id, nome) VALUES
+    ('77771111-0000-0000-0000-000000000001', 'BATERIA DOCENTE I ¿ HISTÓRIA');
+
+  -- A JANELA: enquanto ninguém aponta para ele, o cargo ainda é renomeável.
+  UPDATE public.cargos SET nome = 'BATERIA DOCENTE I — HISTÓRIA'
    WHERE id = '77771111-0000-0000-0000-000000000001';
 
-  SELECT count(*) AS depois_do_rename FROM public.candidatos
+  INSERT INTO public.candidatos (edital_id, n_inscricao, nome, cpf, cargo, cargo_id) VALUES
+    ('77770000-0000-0000-0000-000000000001', '900001', 'INSCRITO A', '22940161739', 'BATERIA DOCENTE I ¿ HISTÓRIA', '77771111-0000-0000-0000-000000000001'),
+    ('77770000-0000-0000-0000-000000000001', '900002', 'INSCRITO B', '14781065732', 'BATERIA DOCENTE I ¿ HISTÓRIA', '77771111-0000-0000-0000-000000000001'),
+    ('77770000-0000-0000-0000-000000000001', '900003', 'INSCRITO C', '99528037704', 'BATERIA DOCENTE I ¿ HISTÓRIA', '77771111-0000-0000-0000-000000000001');
+
+  SELECT count(*) AS inscritos FROM public.candidatos
    WHERE edital_id = '77770000-0000-0000-0000-000000000001';
-  SELECT DISTINCT cg.nome AS nome_canonico_na_listagem
+  -- O `cargo` textual dos 3 segue sujo (é a procedência da planilha) e o canônico não:
+  -- é exatamente a separação que a etapa 6 passou a exibir.
+  SELECT DISTINCT cg.nome AS nome_canonico_na_listagem, c.cargo AS texto_da_planilha
     FROM public.candidatos c JOIN public.cargos cg ON cg.id = c.cargo_id
    WHERE c.edital_id = '77770000-0000-0000-0000-000000000001';
 ROLLBACK;
@@ -344,11 +437,11 @@ BEGIN;
   INSERT INTO public.editais (id, nome) VALUES
     ('77770000-0000-0000-0000-000000000002', 'EDITAL BATERIA 5B');
   INSERT INTO public.cargos (id, nome) VALUES
-    ('77771111-0000-0000-0000-000000000002', 'DOCENTE II');
+    ('77771111-0000-0000-0000-000000000002', 'BATERIA DOCENTE II');
 
   INSERT INTO public.candidatos (edital_id, n_inscricao, nome, cpf, cargo, cargo_id) VALUES
-    ('77770000-0000-0000-0000-000000000002', '900010', 'PRIMEIRO NOME', '22940161739', 'DOCENTE II', '77771111-0000-0000-0000-000000000002'),
-    ('77770000-0000-0000-0000-000000000002', '900011', 'SEM CPF', NULL, 'DOCENTE II', '77771111-0000-0000-0000-000000000002')
+    ('77770000-0000-0000-0000-000000000002', '900010', 'PRIMEIRO NOME', '22940161739', 'BATERIA DOCENTE II', '77771111-0000-0000-0000-000000000002'),
+    ('77770000-0000-0000-0000-000000000002', '900011', 'SEM CPF', NULL, 'BATERIA DOCENTE II', '77771111-0000-0000-0000-000000000002')
   ON CONFLICT (edital_id, cpf, cargo_id, n_inscricao) DO UPDATE SET nome = EXCLUDED.nome;
   SELECT count(*) AS apos_1a_carga FROM public.candidatos
    WHERE edital_id = '77770000-0000-0000-0000-000000000002';
@@ -356,12 +449,12 @@ BEGIN;
   -- Segunda e terceira cargas, a terceira com o nome MUDADO: é o CONTROLE POSITIVO.
   -- Sem ele, "não duplicou" poderia ser o insert falhando em silêncio.
   INSERT INTO public.candidatos (edital_id, n_inscricao, nome, cpf, cargo, cargo_id) VALUES
-    ('77770000-0000-0000-0000-000000000002', '900010', 'PRIMEIRO NOME', '22940161739', 'DOCENTE II', '77771111-0000-0000-0000-000000000002'),
-    ('77770000-0000-0000-0000-000000000002', '900011', 'SEM CPF', NULL, 'DOCENTE II', '77771111-0000-0000-0000-000000000002')
+    ('77770000-0000-0000-0000-000000000002', '900010', 'PRIMEIRO NOME', '22940161739', 'BATERIA DOCENTE II', '77771111-0000-0000-0000-000000000002'),
+    ('77770000-0000-0000-0000-000000000002', '900011', 'SEM CPF', NULL, 'BATERIA DOCENTE II', '77771111-0000-0000-0000-000000000002')
   ON CONFLICT (edital_id, cpf, cargo_id, n_inscricao) DO UPDATE SET nome = EXCLUDED.nome;
 
   INSERT INTO public.candidatos (edital_id, n_inscricao, nome, cpf, cargo, cargo_id) VALUES
-    ('77770000-0000-0000-0000-000000000002', '900010', 'NOME CORRIGIDO', '22940161739', 'DOCENTE II', '77771111-0000-0000-0000-000000000002')
+    ('77770000-0000-0000-0000-000000000002', '900010', 'NOME CORRIGIDO', '22940161739', 'BATERIA DOCENTE II', '77771111-0000-0000-0000-000000000002')
   ON CONFLICT (edital_id, cpf, cargo_id, n_inscricao) DO UPDATE SET nome = EXCLUDED.nome;
 
   SELECT count(*) AS apos_3_cargas FROM public.candidatos
@@ -383,14 +476,14 @@ BEGIN;
   INSERT INTO public.editais (id, nome) VALUES
     ('77770000-0000-0000-0000-000000000003', 'EDITAL BATERIA 5B2');
   INSERT INTO public.cargos (id, nome) VALUES
-    ('77771111-0000-0000-0000-00000000000a', 'ARTE'),
+    ('77771111-0000-0000-0000-00000000000a', 'BATERIA ARTE'),
     ('77771111-0000-0000-0000-00000000000b', 'DOCENTE I — ARTE');
 
-  -- A lista como está hoje: o inscrito apontado para 'ARTE'.
+  -- A lista como está hoje: o inscrito apontado para 'BATERIA ARTE'.
   INSERT INTO public.candidatos (edital_id, n_inscricao, nome, cpf, cargo, cargo_id) VALUES
-    ('77770000-0000-0000-0000-000000000003', '900020', 'INSCRITO ARTE', '22940161739', 'ARTE', '77771111-0000-0000-0000-00000000000a');
+    ('77770000-0000-0000-0000-000000000003', '900020', 'INSCRITO ARTE', '22940161739', 'BATERIA ARTE', '77771111-0000-0000-0000-00000000000a');
 
-  -- O usuário reaponta 'ARTE' para 'DOCENTE I — ARTE' no passo Cargos e reimporta.
+  -- O usuário reaponta 'BATERIA ARTE' para 'DOCENTE I — ARTE' no passo Cargos e reimporta.
   -- No fluxo de UPSERT isto criava uma linha nova e órfãva a antiga — daí o RC001.
   -- Com a troca total, o DELETE roda antes e a antiga simplesmente não existe mais.
   INSERT INTO public.candidatos_importacao (importacao_id, edital_id, linha) VALUES
@@ -413,13 +506,13 @@ BEGIN;
   INSERT INTO public.editais (id, nome) VALUES
     ('77770000-0000-0000-0000-000000000004', 'EDITAL BATERIA 382');
   INSERT INTO public.cargos (id, nome) VALUES
-    ('77771111-0000-0000-0000-00000000000c', 'DOCENTE II'),
-    ('77771111-0000-0000-0000-00000000000d', 'DOCENTE I — HISTÓRIA');
+    ('77771111-0000-0000-0000-00000000000c', 'BATERIA DOCENTE II'),
+    ('77771111-0000-0000-0000-00000000000d', 'BATERIA DOCENTE I — HISTÓRIA');
   INSERT INTO public.candidatos (edital_id, n_inscricao, nome, cpf, cargo, cargo_id) VALUES
-    ('77770000-0000-0000-0000-000000000004', '213946', 'CASSIA ANDREA', '22940161739', 'DOCENTE II', '77771111-0000-0000-0000-00000000000c');
+    ('77770000-0000-0000-0000-000000000004', '213946', 'CASSIA ANDREA', '22940161739', 'BATERIA DOCENTE II', '77771111-0000-0000-0000-00000000000c');
   -- Mesma inscrição, mesmo CPF, cargo DIFERENTE → tem de entrar.
   INSERT INTO public.candidatos (edital_id, n_inscricao, nome, cpf, cargo, cargo_id) VALUES
-    ('77770000-0000-0000-0000-000000000004', '213946', 'CASSIA ANDREA', '22940161739', 'DOCENTE I — HISTÓRIA', '77771111-0000-0000-0000-00000000000d');
+    ('77770000-0000-0000-0000-000000000004', '213946', 'CASSIA ANDREA', '22940161739', 'BATERIA DOCENTE I — HISTÓRIA', '77771111-0000-0000-0000-00000000000d');
   SELECT count(*) AS mesma_inscricao_dois_cargos FROM public.candidatos
    WHERE edital_id = '77770000-0000-0000-0000-000000000004';
 ROLLBACK;
@@ -435,7 +528,7 @@ BEGIN;
   INSERT INTO public.editais (id, nome) VALUES
     ('77770000-0000-0000-0000-000000000005', 'EDITAL BATERIA DUPLICATA');
   INSERT INTO public.cargos (id, nome) VALUES
-    ('77771111-0000-0000-0000-00000000000e', 'DOCENTE II');
+    ('77771111-0000-0000-0000-00000000000e', 'BATERIA DOCENTE II');
 
   -- Duas linhas com a MESMA chave natural no mesmo lote — o que `deduplicar()` impede.
   INSERT INTO public.candidatos_importacao (importacao_id, edital_id, linha) VALUES
