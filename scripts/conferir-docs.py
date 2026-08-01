@@ -76,6 +76,23 @@ for a in arquivos_repo:
 
 n_migrations = len(list((RAIZ / "supabase/migrations").glob("*.sql")))
 
+# --- verdade das ROTAS: quem guarda o quê, direto do App.tsx ---------------
+# 🔴 Esta checagem existe porque em 31/07 um doc afirmava que "guard é escrito à
+# mão, um por arquivo" e mandava copiar o par bounce-por-login + bounce-por-papel
+# — o padrão que já falhou 3 vezes e que a centralização de 26/07 eliminou.
+# Guard é matéria de segurança: doc errada aqui ensina a reabrir buraco.
+app = (RAIZ / "src/App.tsx").read_text(encoding="utf-8")
+rotas_reais = {}
+for trecho in app.split("<Route ")[1:]:
+    trecho = trecho.split("/>")[0]          # limita ao próprio <Route ... />
+    mp = re.search(r'path="([^"]+)"', trecho)
+    if not mp:
+        continue
+    mr = re.search(r"papeis=\{\[([^\]]*)\]\}", trecho)
+    rotas_reais[mp.group(1)] = (
+        tuple(sorted(x.strip().strip('"\'') for x in mr.group(1).split(",") if x.strip()))
+        if mr else None)
+
 # --- marcadores que tornam a linha "histórica" (imune) ----------------------
 HIST = ("🔵", "🔴 REESCRITO", "~~", "REMOVIDO", "deixou de valer", "não vale mais",
         "NÃO vale mais", "Até 30/07", "até 30/07", "era CASCADE", "O que era",
@@ -138,6 +155,19 @@ for doc in DOCS_VIVAS:
             if not conhecido and not hist:
                 add("MEDIO", rel, i, "identificador-db-inexistente", f"`{nome}`")
 
+        # 3b. matriz de guards: a linha "| `/rota` | Arquivo | `["papel"]` |"
+        mg = re.match(r"\|\s*`(/[^`]*)`\s*\|[^|]*\|\s*`\[([^\]]*)\]`", linha)
+        if mg and not hist:
+            rota = mg.group(1)
+            doc_papeis = tuple(sorted(x.strip().strip('"\'') for x in mg.group(2).split(",") if x.strip()))
+            if rota not in rotas_reais:
+                add("ALTO", rel, i, "rota-inexistente", f"`{rota}` não está no App.tsx")
+            elif rotas_reais[rota] is None:
+                add("ALTO", rel, i, "guard-ausente", f"`{rota}`: doc diz {list(doc_papeis)}, a rota NÃO tem RequireAcesso")
+            elif rotas_reais[rota] != doc_papeis:
+                add("ALTO", rel, i, "guard-divergente",
+                    f"`{rota}`: doc diz {list(doc_papeis)}, App.tsx tem {list(rotas_reais[rota])}")
+
         # 4. contagens
         for m in RE_NUM.finditer(linha):
             val, tipo = int(m.group(1)), m.group(2).lower()
@@ -152,7 +182,9 @@ ordem = {"ERRO": 0, "ALTO": 1, "MEDIO": 2, "BAIXO": 3}
 achados.sort(key=lambda a: (ordem[a[0]], a[1], a[2]))
 print(f"# Relatório da Camada 1\n")
 print(f"Docs vivas conferidas: **{len(DOCS_VIVAS)}** · fatos estruturais: "
-      f"**{sum(len(v) for v in db.values())}** · migrations: **{n_migrations}**\n")
+      f"**{sum(len(v) for v in db.values())}** · migrations: **{n_migrations}** · "
+      f"rotas no App.tsx: **{len(rotas_reais)}** "
+      f"({sum(1 for v in rotas_reais.values() if v)} com guard)\n")
 if not achados:
     print("Nenhuma divergência.")
 else:
