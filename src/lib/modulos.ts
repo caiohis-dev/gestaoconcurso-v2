@@ -38,8 +38,11 @@ export interface CtxAcesso {
   isCoordenador: boolean;
 }
 
-// Papéis que um link de navegação pode exigir. Inclui 'colaborador' porque o header
-// mistura links de módulo (só gestão) com config geral ('Meu Cadastro', do colaborador).
+// Papéis que um link de navegação pode exigir.
+// ⚠️ 'colaborador' NÃO é usado por nenhum NavLink hoje — o único que o usava era "Meu
+// Cadastro", que saiu do header para o menu do usuário em 2026-08-01 (ver Layout.tsx) e
+// não é mais um NavLink. Fica no union por ser um papel de navegação legítimo, não como
+// resquício: um item futuro só para colaborador volta a usá-lo sem precisar do tipo mudar.
 export type PapelNav = 'superadmin' | 'admin' | 'coordenador' | 'colaborador';
 
 // Um item do header. Sem showFor = visível para todos que estão dentro do módulo.
