@@ -179,19 +179,29 @@ Os **382** `ID` que aparecem em mais de uma linha têm **todos** o mesmo CPF e *
 - A chave em vigor `(edital_id, cpf, cargo_id, n_inscricao)` **continua correta e única**. Somar colunas a uma chave única só separa linhas; com `n_inscricao` já único, as outras três são redundantes para a unicidade — **redundante não é errado**, e ninguém se perde.
 - Nada precisa ser remigrado. As migrations aplicadas seguem válidas; o que ficou desatualizado são os **comentários** de justificativa dentro delas (`20260727000000`, `20260727200000`, `20260728100000`, `20260728110000`). Como não se edita migration aplicada, a correção vale a partir daqui.
 
-**O que isso ABRE, e ainda não foi decidido:**
+**O que isso ABRIA — e o que sobrou depois da TROCA TOTAL (2026-07-30):**
 
-1. **A chave poderia ser `(edital_id, n_inscricao)`** — mais simples, e resolveria de graça o custo aceito de hoje (corrigir CPF ou cargo na planilha passaria a **atualizar** em vez de criar registro novo). É a saída "modelo" que estava desenhada e engavetada, e esta correção a torna barata. ⚠️ Mas apoiar a identidade numa propriedade de **um** export é aposta: se outro edital repetir numeração, funde gente. Decidir com medição, não por elegância.
-2. **A condição do trigger `candidatos_recusa_reapontar_cargo` pode ser ALARGADA** — ver [`cargos.md`](./cargos.md).
+> 🔵 **Os dois itens abaixo foram esvaziados pela troca total**, e ficam registrados porque a **razão** de terem perdido valor é o que importa. Ver [`../../../analises/concluidos/roadmap-importacao-troca-total.yaml`](../../../analises/concluidos/roadmap-importacao-troca-total.yaml).
+
+1. ~~**A chave poderia ser `(edital_id, n_inscricao)`**~~ — 🔵 **virou opcional de baixo valor, e NÃO está fechado.** O argumento a favor era que corrigir CPF ou cargo na planilha passaria a **atualizar** em vez de criar registro novo. **A troca total já resolve isso, e para os três campos de uma vez:** importar apaga a lista do edital e reinsere, então nada fica órfão, seja qual for a chave.
+
+   **O que a chave natural ainda faz:** ela deixou de ser *identidade entre importações* e virou **detector de duplicata dentro do lote** — é ela que faz duas linhas iguais no mesmo arquivo colidirem em vez de entrarem as duas (caso 7.6 da bateria). Para esse papel, `(edital_id, cpf, cargo_id, n_inscricao)` funciona tão bem quanto a alternativa e **já está em produção, testada e verificada**.
+
+   ⚠️ **Simplificá-la é mexer em índice, `chaveNatural()`, `deduplicar()` e a bateria, para ganhar elegância e nenhum comportamento.** E o risco original continua de pé: apoiar a identidade numa propriedade de **um** export é aposta — se outro edital repetir numeração, funde gente. **Só vale se aparecer uma razão nova**; hoje não há.
+
+2. ~~**A condição do trigger `candidatos_recusa_reapontar_cargo` pode ser ALARGADA**~~ — ❌ **MORREU.** O trigger (`RC001`) **foi removido** em 30/07 (migration `20260730140000`): ele existia porque o upsert casava linha pela chave, e com o `DELETE` rodando antes do `INSERT` não tinha mais o que encontrar. **Não ressuscitar o item.** ⚠️ Se a importação um dia voltar ao upsert, o trigger tem de voltar junto.
 
 **O que a correção JÁ mudou no código (2026-07-28):**
 
 - 🔴 **Texto de tela corrigido.** O alerta do passo 2 afirmava que sem o cargo pareado "quem concorre a mais de um cargo com a mesma inscrição vira um registro só e desaparece da lista". **Medido: perda ZERO** — sem parear o cargo, as 7.416 linhas seguem 7.416, porque a inscrição já separa. A regra D4 continua de pé, mas o texto agora dá o motivo real (sem cargo a lista não responde "quantos inscritos por cargo") em vez de uma perda que não acontece.
 - Comentários de `candidatos-import.ts`, `CandidatosImportar.tsx` e `candidatos-import.test.ts` corrigidos no mesmo passe.
 
-**Pendências que a correção deixou, e que NÃO foram feitas:**
+**Pendências que a correção deixou:**
 
-1. ⚠️ **O fixture `CABECALHO_REAL` dos testes é o cabeçalho ANTIGO** (coluna 0 sem título). Com o arquivo atual, `autoMapear` casaria `n_inscricao` com a coluna **0**, e não com a **1** — que é o comportamento certo. Atualizar mexe em 3 asserções, e a de "coluna sem título" precisa de fixture próprio para não perder cobertura.
+1. ✅ **RESOLVIDA em 2026-07-31 — o fixture `CABECALHO_REAL`.** Atualizado lendo o próprio arquivo, não de memória: a coluna 0 se chama `N_INSCRICAO`, e a `LINHA_REAL` do fixture bate exatamente com a primeira linha real, então não precisou mudar. O caso "coluna sem título" ganhou fixture próprio (`CABECALHO_SEM_TITULO_NA_COLUNA_A`) mais um **controle negativo** que quebra se alguém reverter o cabeçalho.
+
+   🔴 **Este item dizia "3 asserções" e eram QUATRO.** A quarta é a que importa: `converterLinha` afirmava `n_inscricao: "214274"` — que é o `ID` da coluna B, **o identificador da PESSOA**. Ficava verde porque o fixture defasado mapeava `n_inscricao` para a coluna 1, ou seja, **o teste afirmava como correto exatamente o defeito que esta seção existe para corrigir**. Teste verde guardando defeito, outra vez.
+
 2. Os comentários **dentro das 4 migrations aplicadas** guardam a justificativa velha. Não se edita migration aplicada — a correção vale a partir daqui.
 
 ⚠️ **A coluna gerada `cargo_chave` NÃO existe mais** — foi dropada em 28/07 junto com a troca da chave (D3 do roadmap de cargos). Ela existia porque o upsert do PostgREST (`?on_conflict=a,b,c`) só sabe nomear **colunas**, nunca expressões, e o texto do cargo precisava ser normalizado *dentro da chave*. Com `cargo_id` na chave não há mais o que normalizar ali. Deixá-la no schema seria uma coluna terminada em `_chave` sem chave nenhuma apontando para ela. O texto cru segue em `cargo`, como procedência.

@@ -38,27 +38,37 @@ import {
 const EDITAL = "11111111-1111-1111-1111-111111111111";
 
 /**
- * O cabeçalho do arquivo real **como ele era até 2026-07-26**, com o `NOME` repetido e a
- * coluna 0 sem título.
+ * O cabeçalho do arquivo real, com o `NOME` repetido (colunas C e AC).
  *
- * ⚠️ ESTE FIXTURE ESTÁ DEFASADO, e de propósito por ora: em 27/07 a origem passou a
- * nomear a coluna 0 de `N_INSCRICAO`. Com o cabeçalho atual, `autoMapear` casaria
- * `n_inscricao` com a coluna **0** (a inscrição de verdade) em vez da **1** (o `ID`, que é
- * a PESSOA) — e isso é o comportamento CERTO, ver a correção de 2026-07-28 em
- * `estrutura/modulos/candidatos/00-modulo.md`.
+ * ✅ Atualizado em 2026-07-31 lendo o próprio arquivo
+ * (`docs/temp/todos inscritos concurso 002-2026-SMA cabeçalho.xls`): a coluna 0 se chama
+ * `N_INSCRICAO`. Até 26/07 ela vinha sem título (`'   '`), e o fixture ficou parado nisso
+ * por alguns dias — as asserções de `autoMapear` descreviam um arquivo que não existia
+ * mais.
  *
- * Consequência a saber antes de mexer: as asserções de `autoMapear` abaixo descrevem o
- * arquivo ANTIGO. Atualizar o fixture é trabalho pendente e mexe em 3 asserções — a de
- * `n_inscricao` (1 → 0) e a da coluna sem título, que precisa de fixture próprio para
- * continuar cobrindo aquele caso.
+ * ⚠️ **`N_INSCRICAO` (coluna 0) é a INSCRIÇÃO; `ID` (coluna 1) é a PESSOA.** Medido no
+ * arquivo: 7.416 valores distintos na coluna 0 contra 7.020 na coluna 1, em 7.416 linhas.
+ * Uma pessoa concorrendo a dois cargos aparece com dois `N_INSCRICAO` e um `ID` só. Mapear
+ * `n_inscricao` para a coluna 1 gravaria o identificador da pessoa repetido em até 4
+ * linhas — ver a correção de 2026-07-28 em `estrutura/modulos/candidatos/00-modulo.md`.
  */
 const CABECALHO_REAL = [
-  "   ", "ID", "NOME", "CPF", "LOGRADOURO", "NUMERO", "COMPLEMENTO", "BAIRRO", "CIDADE",
-  "UF", "CEP", "IDENTIDADE_NUMERO", "IDENTIDADE_ORGAO", "IDENTIDADE_EMISSAO",
+  "N_INSCRICAO", "ID", "NOME", "CPF", "LOGRADOURO", "NUMERO", "COMPLEMENTO", "BAIRRO",
+  "CIDADE", "UF", "CEP", "IDENTIDADE_NUMERO", "IDENTIDADE_ORGAO", "IDENTIDADE_EMISSAO",
   "IDENTIDADE_UF", "TELEFONE", "CELULAR", "EMAIL", "SEXO", "REGISTRO_ORGAO",
   "PORTADOR_DEFICIENCIA", "CONCURSO_ID", "DATA_NASCIMENTO", "CONFIRMADO", "SENHA", "RACA",
   "TIPOPROVA", "HORA_NASCIMENTO", "NOME",
 ];
+
+/**
+ * O cabeçalho **como era até 2026-07-26**, com a coluna 0 sem título.
+ *
+ * Existe para manter viva a cobertura de "coluna sem título", que o fixture atual deixou
+ * de exercitar. Não é histórico decorativo: o `'   '` (espaços, não string vazia) é
+ * exatamente o que o Excel entrega, e é o caso que faria o Select mostrar uma opção em
+ * branco, impossível de escolher conscientemente.
+ */
+const CABECALHO_SEM_TITULO_NA_COLUNA_A = ["   ", "ID", "NOME", "CPF"];
 
 /** Uma linha real do arquivo, copiada sem edição. */
 const LINHA_REAL = [
@@ -97,9 +107,20 @@ describe("rotulosDeColunas", () => {
   });
 
   it("dá nome à coluna sem título em vez de deixá-la em branco na lista", () => {
-    // A coluna A do arquivo real tem '   ' como cabeçalho. Sem isto, o Select mostraria
-    // uma opção vazia, impossível de escolher conscientemente.
-    expect(rotulosDeColunas(CABECALHO_REAL)[0].rotulo).toBe("(sem título — coluna A)");
+    // Sem isto, o Select mostraria uma opção vazia, impossível de escolher
+    // conscientemente. O fixture é o cabeçalho ANTIGO: desde 27/07 o arquivo real nomeia a
+    // coluna A de `N_INSCRICAO`, então ele deixou de cobrir este caso — a regra continua
+    // valendo para qualquer planilha, e é por isso que o fixture sobreviveu à atualização.
+    expect(
+      rotulosDeColunas(CABECALHO_SEM_TITULO_NA_COLUNA_A)[0].rotulo,
+    ).toBe("(sem título — coluna A)");
+  });
+
+  it("⭐ o arquivo real NÃO tem mais coluna sem título — é o que o fixture novo afirma", () => {
+    // Controle negativo do caso acima: se alguém reverter `CABECALHO_REAL` para o
+    // cabeçalho antigo, este teste cai. Sem ele, o fixture poderia envelhecer de novo em
+    // silêncio, que foi exatamente o que aconteceu entre 27/07 e 31/07.
+    expect(rotulosDeColunas(CABECALHO_REAL)[0].rotulo).toBe("N_INSCRICAO");
   });
 });
 
@@ -107,7 +128,9 @@ describe("autoMapear", () => {
   const mapeamento = autoMapear(rotulosDeColunas(CABECALHO_REAL));
 
   it("acerta os campos óbvios do arquivo real", () => {
-    expect(mapeamento.n_inscricao).toBe(1); // ID
+    // ⚠️ Coluna 0 (`N_INSCRICAO`), NÃO a 1 (`ID`). A 0 é a inscrição — uma por linha; a 1 é
+    // a pessoa, que se repete em quem concorre a mais de um cargo.
+    expect(mapeamento.n_inscricao).toBe(0);
     expect(mapeamento.cpf).toBe(3);
     expect(mapeamento.email).toBe(17);
     expect(mapeamento.data_nascimento).toBe(22);
@@ -135,7 +158,7 @@ describe("autoMapear", () => {
     // primeiros o auto-pareamento acerta neste arquivo; o cargo, não, porque ele mora na
     // segunda coluna `NOME` e nenhum heurístico sabe disso. O resultado é deliberado:
     // a pessoa PRECISA escolher a coluna, e agora não consegue seguir sem escolher.
-    expect(mapeamento.n_inscricao).toBe(1);
+    expect(mapeamento.n_inscricao).toBe(0);
     expect(mapeamento.nome).toBe(2);
     expect(mapeamento.cargo).toBeNull();
     expect(mapeamentoCompleto(mapeamento)).toBe(false);
@@ -230,7 +253,12 @@ describe("converterLinha — a linha real", () => {
   it("preenche os campos com o valor certo", () => {
     expect(r.candidato).toMatchObject({
       edital_id: EDITAL,
-      n_inscricao: "214274",
+      // 🔴 Era `"214274"` até 2026-07-31, e isso estava ERRADO: `214274` é o `ID` da
+      // coluna B, o identificador da PESSOA. A inscrição é o `"1"` da coluna A. O teste
+      // ficava verde porque o fixture de cabeçalho estava defasado e mapeava
+      // `n_inscricao` para a coluna 1 — ele afirmava, como correto, exatamente o defeito
+      // que a correção de 28/07 identificou. Armadilha 8 de `testes.md`.
+      n_inscricao: "1",
       nome: "AGATHA LAMIM DE SOUZA",
       cpf: "22940161739",
       email: "agathalamim86@gmail.com",
