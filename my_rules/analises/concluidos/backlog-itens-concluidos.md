@@ -250,7 +250,15 @@ O terceiro caso é o que prova que o índice está sendo *inferido* pelo PostgRE
 
 ---
 
-## ❌ RETIRADO 2026-07-28 — o auto-pareamento estava CERTO; a leitura da planilha é que estava errada
+## ❌ RETIRADO 2026-07-28 — ⚠️ E A RETIRADA ESTAVA ERRADA (visto em 2026-07-31)
+
+> 🔴 **NÃO use este bloco como referência.** Ele retirou um item **válido**, com base na mesma inferência falsa que a "correção de 28/07" na doc do módulo: concluiu que a coluna 0 é a inscrição porque tem 7.416 valores distintos em 7.416 linhas. **Cardinalidade não distingue inscrição de contador de linha.** Medido em 31/07: a coluna 0 é `1, 2, 3 … 7416` **sem um gap** — é o contador do export.
+>
+> **O que isso significa para este bloco:** a instrução que ele mandou abandonar — *"conferir à mão que 'Nº de Inscrição' aponta para a coluna `ID`"* — **continua correta e necessária**. E as três "saídas descartadas" no fim do bloco foram descartadas por um motivo que não se sustenta.
+>
+> ⚠️ **O que NÃO mudou:** `autoMapear` continua sugerindo a coluna 0, **por decisão do usuário em 31/07**, e não haverá alerta automático de contador. A sugestão é sugestão; quem escolhe é o usuário no passo 2. O estado correto está em [`../../estrutura/modulos/candidatos/00-modulo.md`](../../estrutura/modulos/candidatos/00-modulo.md).
+
+### O texto original, preservado
 
 **Área:** Candidatos (ver [`estrutura/modulos/candidatos/00-modulo.md`](./estrutura/modulos/candidatos/00-modulo.md))
 

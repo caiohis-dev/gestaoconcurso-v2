@@ -46,11 +46,21 @@ const EDITAL = "11111111-1111-1111-1111-111111111111";
  * por alguns dias — as asserções de `autoMapear` descreviam um arquivo que não existia
  * mais.
  *
- * ⚠️ **`N_INSCRICAO` (coluna 0) é a INSCRIÇÃO; `ID` (coluna 1) é a PESSOA.** Medido no
- * arquivo: 7.416 valores distintos na coluna 0 contra 7.020 na coluna 1, em 7.416 linhas.
- * Uma pessoa concorrendo a dois cargos aparece com dois `N_INSCRICAO` e um `ID` só. Mapear
- * `n_inscricao` para a coluna 1 gravaria o identificador da pessoa repetido em até 4
- * linhas — ver a correção de 2026-07-28 em `estrutura/modulos/candidatos/00-modulo.md`.
+ * 🔴 **A coluna 0 se CHAMA `N_INSCRICAO` mas é o CONTADOR DE LINHA do export.** Medido em
+ * 2026-07-31: os valores são exatamente `1, 2, 3 … 7416`, sem um gap
+ * (`col0.every((v, i) => v === i + 1)` → `true`). A **pessoa** é o `ID` (coluna 1), com
+ * 7.020 distintos; os 382 `ID` repetidos têm todos o mesmo CPF e cargos distintos.
+ *
+ * ⚠️ **Não confunda cardinalidade com identidade.** Um comentário anterior aqui concluía
+ * que a coluna 0 "é a inscrição" porque tem 7.416 valores distintos em 7.416 linhas — mas
+ * um contador `1..N` também tem. A prova que separa os dois casos é a **sequencialidade**,
+ * não a contagem. O caso decisivo: a pessoa de CPF `05261923727` aparece na linha 9 e na
+ * linha 5208; se a coluna 0 fosse inscrição, seriam dois números de inscrição a 5.199
+ * linhas de distância.
+ *
+ * 📌 **Quem escolhe a coluna é o USUÁRIO**, no passo 2 do assistente — `autoMapear` apenas
+ * sugere. A sugestão da coluna 0 foi mantida por decisão do usuário (2026-07-31), e é por
+ * isso que a conferência manual do passo 2 é parte do fluxo, não um remendo.
  */
 const CABECALHO_REAL = [
   "N_INSCRICAO", "ID", "NOME", "CPF", "LOGRADOURO", "NUMERO", "COMPLEMENTO", "BAIRRO",
@@ -128,8 +138,9 @@ describe("autoMapear", () => {
   const mapeamento = autoMapear(rotulosDeColunas(CABECALHO_REAL));
 
   it("acerta os campos óbvios do arquivo real", () => {
-    // ⚠️ Coluna 0 (`N_INSCRICAO`), NÃO a 1 (`ID`). A 0 é a inscrição — uma por linha; a 1 é
-    // a pessoa, que se repete em quem concorre a mais de um cargo.
+    // ⚠️ Sugere a coluna 0 porque o cabeçalho dela é `N_INSCRICAO`. É SUGESTÃO: quem
+    // decide é o usuário no passo 2. A coluna 0 é o contador do export (ver o cabeçalho
+    // deste arquivo) — mantê-la como sugestão é decisão do usuário, de 2026-07-31.
     expect(mapeamento.n_inscricao).toBe(0);
     expect(mapeamento.cpf).toBe(3);
     expect(mapeamento.email).toBe(17);
@@ -253,11 +264,10 @@ describe("converterLinha — a linha real", () => {
   it("preenche os campos com o valor certo", () => {
     expect(r.candidato).toMatchObject({
       edital_id: EDITAL,
-      // 🔴 Era `"214274"` até 2026-07-31, e isso estava ERRADO: `214274` é o `ID` da
-      // coluna B, o identificador da PESSOA. A inscrição é o `"1"` da coluna A. O teste
-      // ficava verde porque o fixture de cabeçalho estava defasado e mapeava
-      // `n_inscricao` para a coluna 1 — ele afirmava, como correto, exatamente o defeito
-      // que a correção de 28/07 identificou. Armadilha 8 de `testes.md`.
+      // `"1"` é o que a SUGESTÃO do auto-pareamento produz — a coluna 0, que é o contador
+      // do export. Não é a inscrição da pessoa; é a posição da linha no arquivo.
+      // Este caso existe para fixar o comportamento do caminho padrão. O caminho que o
+      // usuário de fato usa está no teste seguinte, com o mapeamento corrigido à mão.
       n_inscricao: "1",
       nome: "AGATHA LAMIM DE SOUZA",
       cpf: "22940161739",
@@ -271,6 +281,23 @@ describe("converterLinha — a linha real", () => {
       portador_deficiencia: false,
       concurso_id_origem: "242",
     });
+  });
+
+  it("⭐ com o mapeamento CORRIGIDO à mão, a inscrição vem do ID — não do contador", () => {
+    // 📌 É ISTO que o usuário faz no passo 2, e é a razão de a conferência manual do
+    // mapeamento fazer parte do fluxo: a coluna 0 do arquivo real se chama `N_INSCRICAO`
+    // mas contém `1, 2, 3 … 7416` — a posição da linha. A identificação que a origem dá
+    // à inscrição mora no `ID` (coluna 1).
+    //
+    // ⚠️ O `ID` se REPETE para quem concorre a mais de um cargo (7.020 distintos em 7.416
+    // linhas), e é justamente por isso que `cargo_id` continua sendo parte da chave
+    // natural — sem ele, as 396 inscrições excedentes colidiriam entre si.
+    const corrigido = { ...autoMapear(rotulosDeColunas(CABECALHO_REAL)), n_inscricao: 1, cargo: 28 };
+    const rc = converterLinha(LINHA_REAL, corrigido, EDITAL, 2);
+
+    expect(rc.erro).toBeNull();
+    expect(rc.candidato?.n_inscricao).toBe("214274");
+    expect(rc.candidato?.nome).toBe("AGATHA LAMIM DE SOUZA");
   });
 
   it("pega o CARGO da coluna AC, não o nome da pessoa", () => {

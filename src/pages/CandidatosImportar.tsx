@@ -481,20 +481,44 @@ export default function CandidatosImportar() {
   );
 
   const baixarRelatorio = () => {
+    const extrairCampoEDetalhe = (mensagem: string) => {
+      const mapeamento = [
+        { prefixo: "Nº de inscrição", campo: "Nº de Inscrição" },
+        { prefixo: "Nome", campo: "Nome" },
+        { prefixo: "Cargo", campo: "Cargo" },
+        { prefixo: "CPF", campo: "CPF" },
+        { prefixo: "E-mail", campo: "E-mail" },
+        { prefixo: "Data de nascimento", campo: "Data de Nascimento" },
+        { prefixo: "Hora de nascimento", campo: "Hora de Nascimento" },
+        { prefixo: "CEP", campo: "CEP" },
+        { prefixo: "Raça", campo: "Raça" },
+      ];
+
+      for (const map of mapeamento) {
+        if (mensagem.startsWith(map.prefixo)) {
+          return { Campo: map.campo, Detalhe: mensagem.substring(map.prefixo.length).trim() };
+        }
+      }
+      return { Campo: "Geral", Detalhe: mensagem };
+    };
+
     const abaProblemas = [
       ...comErro.map((l) => ({
         Linha: l.linhaPlanilha,
         Situação: "Não importada",
-        Detalhe: l.erro ?? "",
+        ...extrairCampoEDetalhe(l.erro ?? ""),
       })),
-      ...comAviso.map((l) => ({
-        Linha: l.linhaPlanilha,
-        Situação: "Importada com ressalva",
-        Detalhe: l.avisos.join(" | "),
-      })),
+      ...comAviso.flatMap((l) =>
+        l.avisos.map((aviso) => ({
+          Linha: l.linhaPlanilha,
+          Situação: "Importada com ressalva",
+          ...extrairCampoEDetalhe(aviso),
+        }))
+      ),
       ...repetidas.map((r) => ({
         Linha: r.linhaPlanilha,
         Situação: "Substituída por linha posterior",
+        Campo: "Chave de Identificação",
         Detalhe: `Inscrição e cargo repetidos na planilha (${r.chave.replace("||", " / ")})`,
       })),
     ].sort((a, b) => a.Linha - b.Linha);
@@ -503,7 +527,7 @@ export default function CandidatosImportar() {
     XLSX.utils.book_append_sheet(
       wb,
       XLSX.utils.json_to_sheet(
-        abaProblemas.length > 0 ? abaProblemas : [{ Linha: "", Situação: "Nenhum problema", Detalhe: "" }],
+        abaProblemas.length > 0 ? abaProblemas : [{ Linha: "", Situação: "Nenhum problema", Campo: "", Detalhe: "" }],
       ),
       "Problemas",
     );
@@ -715,14 +739,22 @@ export default function CandidatosImportar() {
                   propósito: desde que o Cargo virou obrigatório (D4), a prévia só aparece
                   DEPOIS de ele estar pareado — um aviso lá dentro seria código morto.
 
-                  ⚠️ O TEXTO FOI CORRIGIDO EM 2026-07-28. Ele afirmava que sem o cargo "396
-                  inscritos somem", o que vinha de ler o nº de inscrição na coluna `ID`.
-                  MEDIDO com a coluna certa (`N_INSCRICAO`, única por linha): não pareando o
-                  cargo, as 7.416 linhas seguem 7.416 — perda ZERO. A regra D4 continua de
-                  pé, mas pelo motivo real, não por um número falso: o cargo é o dado que
-                  este módulo existe para organizar, e sem ele a importação entrega uma
-                  lista que não responde "quantos inscritos por cargo". Prometer ao usuário
-                  uma perda que não acontece é o mesmo defeito que a regra combate. */}
+                  ⚠️ HISTÓRICO DESTE TEXTO, e ele tem uma volta. Até 28/07 o aviso prometia
+                  que sem o cargo "396 inscritos somem". Em 28/07 isso foi declarado falso
+                  ("medido com a coluna certa: perda ZERO") e o texto passou a falar só da
+                  organização da lista.
+
+                  🔴 EM 31/07 a medição de 28/07 caiu: ela usou a coluna 0 (`N_INSCRICAO`),
+                  que é o CONTADOR DE LINHA do export (`1..7416`, sem gap) e por isso nunca
+                  colide. Lida do `ID` — que é de onde a inscrição deve vir —, ela REPETE em
+                  382 casos, e sem o cargo as 396 inscrições excedentes colidiriam mesmo.
+
+                  O TEXTO ATUAL SEGUE CERTO, e é por isso que não muda aqui: ele não cita
+                  número nenhum, e o motivo que dá (sem cargo a lista não responde "quantos
+                  inscritos por cargo") vale sob qualquer mapeamento. Voltar a prometer "396
+                  somem" seria trocar um número falso por outro condicional — a perda só
+                  ocorre se o usuário mapear a inscrição para o `ID`, que é escolha dele no
+                  passo 2. Ver `my_rules/estrutura/modulos/candidatos/00-modulo.md`. */}
               {mapeamento.cargo === null && (
                 <Alert variant="destructive">
                   <AlertTriangle className="h-4 w-4" />
