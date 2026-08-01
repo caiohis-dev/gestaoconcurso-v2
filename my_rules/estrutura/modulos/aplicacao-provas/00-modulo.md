@@ -78,7 +78,9 @@ Até 2026-07-25 as validações viviam **só** no Zod dos formulários, e uma ch
 
 Três coisas que valem saber antes de mexer aqui:
 
-1. **O CPF não era validado por ninguém.** O Zod usa `.length(11)`, que conta **caracteres** — `'abcdefghijk'` passava —, e a coluna é `CHAR(11)`. Nem front nem banco exigiam dígito. Hoje o banco exige.
+1. **O CPF não era validado por ninguém.** O Zod ainda usa `.length(11)`, que conta **caracteres** — `'abcdefghijk'` passa por ele —, e a coluna é `CHAR(11)`. **Hoje as duas pontas cobrem o buraco, e nenhuma delas é o Zod:** o banco tem `chk_colab_cpf_numerico` (`^[0-9]{11}$`), e o cliente chama **`cpfValido`** (módulo 11, os dois DVs) no `ColaboradorDialog` e no `CadastroLote` — ver [`colaboradores.md`](./colaboradores.md).
+
+   ⚠️ **O `.length(11)` do Zod continua frouxo de propósito?** Não: ele simplesmente não foi mexido. É inofensivo hoje porque a checagem real roda depois dele, mas **não confie no schema Zod como barreira de CPF** — quem barra é `cpfValido` e o banco.
 2. **Nos horários, o banco é mais rígido que o formulário.** O Zod declara os horários como `z.string().optional()` e não confere ordem nenhuma; a CHECK barra prova que termina antes (ou no mesmo instante em que) começa. Foi decisão consciente — se um formulário novo permitir salvar isso, o erro vem do banco.
 3. **`unid_sigla` e `prova_edital` são `CHAR`**, não `VARCHAR`: o Postgres preenche com espaços, então `length()` é sempre o tamanho da coluna. Só `length(trim(...))` diz alguma coisa.
 
@@ -121,9 +123,13 @@ Todas `SECURITY DEFINER`, chamadas via `supabase.rpc(...)`:
 | `finalizar_prova`, `finalizar_prova_unidade` | ciclo de vida | |
 | `reabrir_prova`, `reabrir_prova_unidade` | ciclo de vida | só superadmin **ou** quem finalizou |
 | `encerrar_ocorrencias_unidade` | `OcorrenciasProva` | **sem RPC simétrica de reabertura** — ver `ocorrencias.md` |
-| `acquire_prova_lock`, `update_prova_lock_activity`, `release_prova_lock` | `useProvaLock` | chamadas com cast `(supabase.rpc as any)` — não estão no `types.ts` gerado |
+| `acquire_prova_lock`, `update_prova_lock_activity`, `release_prova_lock` | `useProvaLock` | chamadas com cast `(supabase.rpc as any)` — ⚠️ **o cast é resíduo, não necessidade** (ver abaixo) |
 | `get_coordenador_colaboradores` | `useColaboradores` | recorte do coordenador |
 | `get_coordenador_prova_unidade_ids` | `useCoordenadorUnidades` | idem |
+
+> 🔵 **Corrigido em 2026-07-31 — o cast das RPCs de lock.** Esta tabela afirmava que as três *"não estão no `types.ts` gerado"*, e era isso que justificava o `(supabase.rpc as any)` em `useProvaLock`. **As três estão** — `acquire_prova_lock` tem `Args` e `Returns` completos na linha ~1137. O `types.ts` foi regerado em algum momento e a justificativa caducou junto.
+>
+> ⚠️ **Consequência: o cast virou dívida silenciosa.** Ele desliga a checagem de tipo de três chamadas que hoje poderiam ser verificadas — errar o nome de um parâmetro passa batido no `tsc`. Tirar os três `as any` é mudança pequena e não está feita; **conferir contra os types antes**, porque a assinatura pode ter mudado desde que o cast foi escrito.
 
 **As RPCs do perfil do colaborador** (`get_meu_colaborador`, `update_meu_colaborador`, `update_meus_dados_bancarios`) são chamadas de `PerfilColaborador.tsx`, que é **rota transversal**, não deste módulo — ver [`../../transversais/auth-e-permissoes.md`](../../transversais/auth-e-permissoes.md).
 
@@ -175,6 +181,10 @@ Fora do módulo, em `src/components/`: `Layout`, `NavLink`, `PasswordConfirmDial
 4. **Encerrar ocorrências de uma unidade é irreversível pelo app** — nada devolve `ocorrencias_encerradas` a `FALSE`, nem o `reabrir_prova_unidade`. Ver [`ocorrencias.md`](./ocorrencias.md).
 5. **A liberação do lock ao sair da página passou a funcionar em 2026-07-25** — antes não funcionava, e a armadilha vale registro: era `navigator.sendBeacon`, que **não permite definir header nenhum**, então a requisição saía sem `apikey`/`Authorization` e o PostgREST recusava; quem devolvia a prova era o timeout de 10 min. Agora é `fetch` com `keepalive: true` (sobrevive ao unload **e** aceita headers), no evento **`pagehide`** — que cobre o `beforeunload` e mais: aba mandada para segundo plano no mobile, e navegação que entra no bfcache. **Não volte para `sendBeacon`**, e ao mexer no lock leia o ponto do bfcache em [`provas-e-unidades.md`](./provas-e-unidades.md).
 6. **A rota `/treinamento` não existe mais.** O manual do usuário embutido no app (`Treinamento.tsx`, 1547 linhas de JSX estático) foi **excluído em 2026-07-25**: o conteúdo estava envelhecido demais para valer remendo, e manual errado é pior que manual nenhum, porque parece autoridade. Será reescrito do zero — o item no [`backlog.md`](../../../backlog.md) registra o que a versão nova precisa resolver *além* do conteúdo. Se encontrar referência a `/treinamento` em migration, roadmap ou comentário, é história.
-7. **Guard de página é escrito à mão, um por arquivo** — e por isso já falhou por omissão duas vezes (ver a seção de rotas). Ao criar página nova no módulo, copie o par completo: bounce por login **e** por papel, esperando `rolesLoaded`. `/funcoes-colaboradores` ainda está sem o segundo.
+7. **Guard de página é declarado NA ROTA, não dentro do arquivo.** Envolva o elemento em `<RequireAcesso papeis={[...]}>` no `App.tsx` — são **20 rotas** assim hoje. Nunca escreva o par bounce-por-login + bounce-por-papel à mão na página: é exatamente o que falhou por omissão **três vezes**, e a centralização de 2026-07-26 existe para tornar o esquecimento impossível.
+
+   > 🔴 **Corrigido em 2026-07-31.** Este item dizia *"guard é escrito à mão, um por arquivo … copie o par completo … `/funcoes-colaboradores` ainda está sem o segundo"*. **Nada disso vale**: os guards foram centralizados em `RequireAcesso` em 26/07, e `/funcoes-colaboradores` tem `papeis={["admin"]}` na rota. O item **ensinava a reintroduzir** o padrão que causou as três falhas.
+
+   ⚠️ **Duas páginas ainda têm um `if (!user) return <Navigate to="/auth" />` interno** — `OcorrenciasProva` e `PainelDadosColaboradores`. É redundante com o `RequireAcesso` da rota, não errado; não copie para página nova.
 
 > **Corrigido em 2026-07-25, mantido aqui como aviso de refatoração:** `useProvaLock` deixava `isLoading` preso em `true` quando faltava parâmetro ou `enabled` era falso — a guarda que resolveria o estado vivia *dentro* de `acquireLock`, que o efeito de mount não chamava nesse caso. Travava a tela de alocação num spinner sem saída. O efeito agora resolve o estado no `else`; **não remova esse `else`** achando que a guarda interna de `acquireLock` cobre o caso — ela continua inalcançável pelo mount. Coberto por teste de regressão em `useProvaLock.test.tsx`.
