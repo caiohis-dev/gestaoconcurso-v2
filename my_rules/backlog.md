@@ -242,7 +242,7 @@ Enquanto (2) não estiver resolvido, não é possível criar o `CHECK` que amarr
 
 O projeto novo no supabase.com já foi criado, mas o repo **não é linkado a ele** — e não deve ser, até o dia de colocar a v2 no ar (regra combinada em 2026-07-12: o repo fica deslinkado por padrão, e produção só é atualizada em versões estáveis).
 
-O schema já está pronto para subir quando for a hora: as **107** migrations reproduzem o banco local do zero (validado por `db reset` em 2026-07-31). ⚠️ **Este número já envelheceu duas vezes** — foi escrito como 69, corrigido para 85, e estava em 85 quando o real era 106. Confira com `npm run docs:conferir` em vez de confiar na leitura. O roteiro completo dos **9 passos** (link → `prod:push:dry` → `prod:push` → carga do `seed.local.sql` → **`seed.pos.sql`** → auth no dashboard → edge functions + secrets SMTP → `.env` do frontend → **unlink**) está em [`banco-producao.md`](./banco-producao.md).
+O schema já está pronto para subir quando for a hora: as **108** migrations reproduzem o banco local do zero (validado por `db reset` em 2026-07-31). ⚠️ **Este número já envelheceu duas vezes** — foi escrito como 69, corrigido para 85, e estava em 85 quando o real era 106. Confira com `npm run docs:conferir` em vez de confiar na leitura. O roteiro completo dos **9 passos** (link → `prod:push:dry` → `prod:push` → carga do `seed.local.sql` → **`seed.pos.sql`** → auth no dashboard → edge functions + secrets SMTP → `.env` do frontend → **unlink**) está em [`banco-producao.md`](./banco-producao.md).
 
 Falta apenas, no dia: a **ref do projeto novo** no Supabase.
 
@@ -271,6 +271,24 @@ Publicar a v2 em infraestrutura própria (ex.: Vercel, Netlify, ou build estáti
 2. **Alargar o trigger da 5b**, tirando a comparação de texto, fecharia o buraco registrado como "irredutível" — ⚠️ mas o **CONTROLE POSITIVO 1** da bateria de cargos quebra e precisa ser **reescrito** com inscrições diferentes. **Fica sem sentido se a chave mudar**, então decidir a chave ANTES de investir no trigger.
 
 3. ~~**`anon` continua com `TRUNCATE` em `candidatos`**~~ — ✅ **RESOLVIDO em 2026-07-31** pela migration `20260731110000`: `anon` perdeu **todos** os privilégios em `public`, e o `ALTER DEFAULT PRIVILEGES` parou de reconceder. Ver ["os grants de `anon` foram a zero"](./analises/concluidos/backlog-itens-concluidos.md) no histórico — a execução do item achou, de quebra, um vazamento de leitura em 8 policies.
+
+---
+
+## O selo "não confirmada" ficou inalcançável — por decisão, não por descuido
+
+**Status:** consequência aceita do filtro de pagamento (2026-08-01). Não é defeito; está aqui para não virar achado repetido.
+**Área:** Candidatos
+
+Desde que a importação passa a trazer **só quem pagou a inscrição**, todo `candidato` gravado tem `confirmado = true`. Com isso, dois pedaços de UI deixaram de poder disparar:
+
+- `src/pages/Candidatos.tsx` — `{!c.confirmado && <Badge>não confirmada</Badge>}` na listagem;
+- a linha `"Inscrição confirmada"` da ficha, que passa a dizer sempre "Sim".
+
+**Decisão do usuário: os dois FICAM.** A coluna segue no banco como procedência, e se o filtro for afrouxado eles voltam a valer sozinhos, sem ninguém precisar reescrevê-los.
+
+⚠️ Isto **contraria** a regra da casa "guarda que não pode disparar é armadilha", e a contrariedade é consciente — por isso está escrito aqui. Quem auditar a UI de Candidatos vai reencontrar os dois; não são achado novo.
+
+⚠️ **Foi considerada e rejeitada** uma `CHECK (confirmado = true)` em `candidatos`: a regra é sobre *o que a importação seleciona*, não sobre *o que um candidato pode ser*. Um não-pagante gravado não é dado incoerente, e a CHECK fecharia a porta para sempre.
 
 ---
 

@@ -281,10 +281,11 @@ async function subirPreparo({
  *
  * ── POR QUE DEIXOU DE SER UPSERT ────────────────────────────────────────────────────
  *
- * O upsert casava a linha pela chave natural. Como CPF, cargo e inscrição COMPÕEM essa
- * chave, corrigir qualquer um deles na planilha e reimportar NÃO casava: entrava um
- * registro novo e o antigo ficava lá, órfão, sem ninguém ser avisado. A troca total mata
- * a classe inteira, porque não existe "casar linha" — a lista velha sai inteira.
+ * O upsert casava a linha pela chave natural. Como CPF, cargo e inscrição compunham essa
+ * chave (era assim até 2026-08-01, hoje é só edital + inscrição), corrigir qualquer um
+ * deles na planilha e reimportar NÃO casava: entrava um registro novo e o antigo ficava
+ * lá, órfão, sem ninguém ser avisado. A troca total mata a classe inteira, porque não
+ * existe "casar linha" — a lista velha sai inteira.
  *
  * A premissa que autoriza isso, confirmada pelo usuário: a planilha é SEMPRE a lista
  * completa do edital, nunca um lote de adição.
@@ -303,9 +304,10 @@ async function subirPreparo({
  * Agora, um bloco falho deixa a lista INTACTA: o preparo é descartado e a troca não
  * acontece. É melhor, mas é diferente — e por isso `ResultadoImportacao.trocou` existe.
  *
- * ⚠️ `deduplicar()` e `chaveNatural()` continuam necessários e NÃO mudaram: se a planilha
- * trouxer duas linhas com a mesma chave, o índice único recusa o INSERT — e agora o
- * INSERT é a troca INTEIRA, então uma duplicata no arquivo derruba tudo.
+ * ⚠️ `deduplicar()` e `chaveNatural()` continuam necessários: se a planilha trouxer duas
+ * linhas com a mesma chave, o índice único recusa o INSERT — e agora o INSERT é a troca
+ * INTEIRA, então uma duplicata no arquivo derruba tudo. O que a chave É mudou em
+ * 2026-08-01 (passou a ser só `edital_id + n_inscricao`); a necessidade do dedup, não.
  */
 export function useImportarCandidatos() {
   const queryClient = useQueryClient();

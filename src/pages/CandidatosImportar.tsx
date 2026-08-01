@@ -47,6 +47,7 @@ import {
   pareceSujo,
   resolverLinhas,
   rotulosDeColunas,
+  separarPorPagamento,
 } from "@/lib/candidatos-import";
 import { useCargos, useCargoApelidos, useCriarCargo, useSalvarApelidos } from "@/hooks/useCargos";
 import { Input } from "@/components/ui/input";
@@ -254,23 +255,40 @@ export default function CandidatosImportar() {
   const linhasValidas = useMemo(() => convertidas.filter((l) => l.candidato !== null), [convertidas]);
 
   /**
-   * Estágios 2 e 3 do pipeline, juntos e reativos às resoluções do passo Cargos:
+   * 🔴 O FILTRO DE PAGAMENTO: só quem pagou a inscrição é importado.
    *
-   *     converterLinha → resolverLinhas → deduplicar → blocos de 500
+   * Roda ANTES do dedup de propósito — ver `separarPorPagamento`, que explica por que a
+   * ordem inversa perderia um pagante que tivesse duplicata.
+   */
+  const { pagantes, naoPagantes } = useMemo(
+    () => separarPorPagamento(convertidas),
+    [convertidas],
+  );
+
+  /**
+   * Estágios 2 a 4 do pipeline, juntos e reativos às resoluções do passo Cargos:
    *
-   * ⚠️ A ORDEM É CONTRATO e mudou na etapa 5. Antes o dedup rodava sobre `convertidas`,
-   * o que era CORRETO enquanto a chave natural do banco era o TEXTO do cargo. Com
-   * `cargo_id` na chave, duas grafias sujas do mesmo cargo viraram a MESMA chave: um
-   * dedup sobre o texto as deixaria passar como distintas e o Postgres recusaria o bloco
-   * de 500 inteiro. Hoje quem impede a inversão é o tipo — `deduplicar` só aceita o que
-   * saiu de `resolverLinhas`.
+   *     converterLinha → separarPorPagamento → resolverLinhas → deduplicar → blocos de 500
+   *
+   * ⚠️ Em 2026-08-01 a chave natural encolheu para `(edital_id, n_inscricao)`, e com isso
+   * o dedup deixou de depender do cargo: rodá-lo antes ou depois de `resolverLinhas` dá o
+   * MESMO resultado. A ordem fica porque o que sai daqui é o que vai ser gravado, e a
+   * gravação precisa do `cargo_id` — quem impede a inversão é o tipo, `deduplicar` só
+   * aceita o que saiu de `resolverLinhas`.
+   *
+   * 🔴 Já o filtro de pagamento, que entrou na frente de tudo na mesma data, NÃO tem tipo
+   * guardando a ordem — passar `convertidas` no lugar de `pagantes` compila e roda, e o
+   * único sintoma seria não-pagantes na lista importada.
    */
   const { candidatos, repetidas } = useMemo(
-    () => deduplicar(resolverLinhas(convertidas, resolucoes)),
-    [convertidas, resolucoes],
+    () => deduplicar(resolverLinhas(pagantes, resolucoes)),
+    [pagantes, resolucoes],
   );
   const comErro = convertidas.filter((l) => l.erro !== null);
-  const comAviso = convertidas.filter((l) => l.candidato !== null && l.avisos.length > 0);
+  // ⚠️ Sobre os PAGANTES, não sobre `convertidas`: um aviso de dado a conferir numa linha
+  // que nem vai ser importada é ruído — manda a pessoa corrigir na origem algo que não
+  // entrou. O motivo de a linha ficar de fora já é dito, com nome, na seção Pagamento.
+  const comAviso = pagantes.filter((l) => l.avisos.length > 0);
 
   /**
    * ⚠️ O sinal de arquivo truncado: a planilha traz menos da METADE do que já existe.
@@ -306,7 +324,10 @@ export default function CandidatosImportar() {
   }, [mapeamento]);
 
   // ── Cargos (passo 3) ────────────────────────────────────────────────────────────
-  const cargosLidos = useMemo(() => cargosDaPlanilha(convertidas), [convertidas]);
+  // ⚠️ Sobre os PAGANTES, não sobre `convertidas`. Um cargo que só aparece em linhas de
+  // não-pagante não vai ser importado por ninguém: pedir para pareá-lo é trabalho inútil,
+  // e "Criar novo…" ali sujaria o catálogo global com um cargo sem nenhum inscrito.
+  const cargosLidos = useMemo(() => cargosDaPlanilha(pagantes), [pagantes]);
 
   const cargosPendentes = useMemo(
     () => cargosLidos.filter((c) => !resolucoes.has(c.textoChave)),
@@ -507,7 +528,7 @@ export default function CandidatosImportar() {
   );
 
   const baixarRelatorio = () => {
-    const abaProblemas = montarProblemasDoRelatorio(comErro, comAviso, repetidas);
+    const abaProblemas = montarProblemasDoRelatorio(comErro, comAviso, repetidas, naoPagantes);
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(
@@ -544,7 +565,7 @@ export default function CandidatosImportar() {
     setErroExportacao(null);
     try {
       const problemasPorCampo = agruparProblemasPorCampo(
-        montarProblemasDoRelatorio(comErro, comAviso, repetidas),
+        montarProblemasDoRelatorio(comErro, comAviso, repetidas, naoPagantes),
       );
 
       const doc = criarDocumentoPaisagem();
@@ -959,6 +980,45 @@ export default function CandidatosImportar() {
                     )}
                   </div>
 
+                  {/* 🔴 O AVISO DO FILTRO DE PAGAMENTO, e ele fica AQUI de propósito: este
+                      é o ponto em que a pessoa acabou de dizer qual coluna responde
+                      "pagou?", e é onde a consequência dessa escolha tem de aparecer.
+
+                      Aparece SEMPRE que há pagante, inclusive quando ninguém fica de fora
+                      — "0 ficam de fora" é informação, e some-lo faria o aviso surgir só
+                      às vezes, do jeito que ninguém aprende que a regra existe.
+
+                      ⚠️ Os números saem de `pagantes`/`naoPagantes`, que são pré-dedup.
+                      É o mesmo motivo de `linhasValidas` não usar `candidatos.length`: no
+                      passo 2 nenhum cargo foi resolvido, e o total final só se conhece
+                      depois do passo 3. */}
+                  {linhasValidas.length > 0 && (
+                    <Alert>
+                      <CheckCircle2 className="h-4 w-4" />
+                      <AlertTitle>
+                        Só inscrições pagas serão importadas — {pagantes.length} de{" "}
+                        {linhasValidas.length}
+                      </AlertTitle>
+                      <AlertDescription>
+                        {naoPagantes.length === 0 ? (
+                          <>
+                            Todas as linhas lidas constam como pagas na coluna{" "}
+                            <strong>Inscrição Confirmada</strong>, então ninguém fica de fora.
+                          </>
+                        ) : (
+                          <>
+                            <strong>{naoPagantes.length} linha(s)</strong> não constam como
+                            pagas na coluna <strong>Inscrição Confirmada</strong> e{" "}
+                            <strong>não serão importadas</strong>. Elas saem nomeadas no
+                            relatório final, na seção <strong>Pagamento</strong>. Se o número
+                            surpreender, confira se a coluna pareada é a certa antes de
+                            continuar.
+                          </>
+                        )}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
                   {comErro.length > 0 && (
                     <Alert variant="destructive">
                       <XCircle className="h-4 w-4" />
@@ -1191,22 +1251,27 @@ export default function CandidatosImportar() {
                     </Alert>
                   )}
 
-                  {/* ⚠️ Este aviso MUDOU DE SIGNIFICADO na etapa 5, e o texto tem de dizer
-                      isso. Antes "repetida" só podia ser repetição literal na planilha;
-                      agora, com o cargo entrando por referência, duas GRAFIAS do mesmo
-                      cargo também viram a mesma linha. Sem explicar, a pessoa vai procurar
-                      na planilha uma repetição que não está escrita lá. Ele também só pode
-                      viver aqui, e não no passo 2: depende do cargo já resolvido. */}
+                  {/* ⚠️ Este aviso MUDOU DE SIGNIFICADO DUAS VEZES, e o texto precisa
+                      acompanhar. Na etapa 5 passou a incluir duas GRAFIAS do mesmo cargo
+                      unificadas pela associação. Em 2026-08-01 a chave encolheu para o nº de
+                      inscrição, e agora "repetida" quer dizer só isso: mesmo número, ainda
+                      que o CPF, o nome ou o cargo difiram. Sem explicar, a pessoa procura na
+                      planilha uma repetição que não está escrita lá.
+
+                      ⚠️ Ele já NÃO depende mais do cargo resolvido e poderia viver no passo
+                      2. Fica aqui porque o passo 2 já carrega o aviso do filtro de pagamento,
+                      e dois avisos de descarte no mesmo ponto competem em vez de informar. */}
                   {repetidas.length > 0 && (
                     <Alert>
                       <AlertTriangle className="h-4 w-4" />
                       <AlertTitle>
-                        {repetidas.length} linha(s) da planilha viram a mesma inscrição
+                        {repetidas.length} linha(s) da planilha repetem um nº de inscrição
                       </AlertTitle>
                       <AlertDescription>
-                        Mesmo CPF, mesmo nº de inscrição e o mesmo cargo <em>depois da associação</em>{" "}
-                        — o que inclui grafias diferentes que você apontou para o mesmo cargo. Só a
-                        última ocorrência de cada uma será importada; o relatório final lista todas.
+                        O nº de inscrição identifica o candidato, então duas linhas com o mesmo
+                        número são a mesma inscrição — mesmo que o CPF, o nome ou o cargo estejam
+                        diferentes. Só a última ocorrência de cada uma será importada; o relatório
+                        final lista todas, com o número.
                       </AlertDescription>
                     </Alert>
                   )}
@@ -1324,11 +1389,17 @@ export default function CandidatosImportar() {
                 </Alert>
               )}
 
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              {/* ⚠️ "Sem pagamento" é card PRÓPRIO, e não se soma a "Não importados". As
+                  duas contagens dizem que a linha ficou de fora, mas por motivos opostos:
+                  a primeira é defeito de dado, que se corrige na planilha e se reimporta;
+                  a segunda é o filtro funcionando. Somá-las mandaria a pessoa procurar
+                  erro em 185 linhas que não têm nenhum. */}
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
                 {[
                   ["Inseridos", resultado?.inseridos ?? 0, "text-foreground"],
                   ["Removidos", resultado?.removidos ?? 0, "text-foreground"],
                   ["Não importados", comErro.length, "text-destructive"],
+                  ["Sem pagamento", naoPagantes.length, "text-muted-foreground"],
                   ["Com ressalva", comAviso.length, "text-foreground"],
                 ].map(([rotulo, valor, cor]) => (
                   <div key={rotulo as string} className="rounded-lg border p-4">
@@ -1459,15 +1530,37 @@ export default function CandidatosImportar() {
                       <div className="text-2xl font-bold">
                         {candidatos.length.toLocaleString("pt-BR")}
                       </div>
-                      <div className="text-xs text-muted-foreground">nesta planilha</div>
+                      {/* 🔴 "vão entrar", NÃO "nesta planilha". O número é pós-filtro de
+                          pagamento e pós-dedup, então ele NÃO é o tamanho da planilha —
+                          e o rótulo antigo virou promessa falsa no instante em que o
+                          filtro entrou (2026-08-01).
+
+                          Rótulo que descreve a origem do número em vez do EFEITO dele é
+                          exatamente o defeito do "limpar edital", que exibia a contagem
+                          filtrada ao lado de um botão que apagava o edital inteiro — e
+                          estava, como este, atrás da confirmação destrutiva. */}
+                      <div className="text-xs text-muted-foreground">vão entrar</div>
                     </div>
                   </div>
 
                   <p>
                     Os <strong>{inscritosHoje.toLocaleString("pt-BR")}</strong> inscritos atuais
-                    serão <strong>apagados</strong> e substituídos pelos desta planilha. A
-                    operação é feita de uma vez só: ou a lista inteira é trocada, ou nada muda.
+                    serão <strong>apagados</strong> e substituídos pelos{" "}
+                    <strong>{candidatos.length.toLocaleString("pt-BR")}</strong> desta importação.
+                    A operação é feita de uma vez só: ou a lista inteira é trocada, ou nada muda.
                   </p>
+
+                  {/* O filtro é lembrado AQUI de novo, e não é redundância: entre o aviso
+                      do passo 2 e este diálogo a pessoa atravessou o passo de cargos, que
+                      é longo. Este é o último ponto em que dá para desistir, e a diferença
+                      entre os dois números é a explicação de por que o total encolheu. */}
+                  {naoPagantes.length > 0 && (
+                    <p>
+                      <strong>{naoPagantes.length.toLocaleString("pt-BR")}</strong> linha(s) da
+                      planilha ficam de fora por não constarem como{" "}
+                      <strong>inscrição paga</strong>. Elas saem nomeadas no relatório final.
+                    </p>
+                  )}
 
                   {quedaSuspeita && (
                     <p className="rounded-md border border-destructive p-3 font-medium text-destructive">

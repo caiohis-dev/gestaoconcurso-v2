@@ -1,5 +1,17 @@
 # Candidatos — a chave natural e a coluna 0, em três reviravoltas
 
+> 🔴 **HOUVE UMA QUARTA REVIRAVOLTA, EM 2026-08-01, E ELA INVERTE O DESFECHO DESTE ARQUIVO.**
+> Por decisão do usuário, **o nº de inscrição é a coluna A** e a chave natural passou a ser
+> **`(edital_id, n_inscricao)`** — migration `20260801193530`. Ou seja: a simplificação que
+> este documento registra como **rejeitada por destruir dado** foi **adotada**, e o aviso
+> *"o cargo é indispensável na chave"* **não vale mais**.
+>
+> ⚠️ **Leia isto antes de usar qualquer conclusão daqui.** As medições continuam corretas —
+> o que mudou foi *qual coluna é a inscrição*, e com ela a resposta muda inteira: a coluna A
+> tem os 7.416 valores distintos que a chave precisa, e a mesma pessoa em dois cargos aparece
+> com dois números (inscrições 9 e 5208 para o CPF `05261923727`).
+> A regra vigente está em [`../../estrutura/modulos/candidatos/00-modulo.md`](../../estrutura/modulos/candidatos/00-modulo.md).
+
 > 📁 **HISTÓRICO — não leia por padrão.** Este arquivo registra um tema já entregue.
 > Abra só quando o pedido for sobre o passado (*por que ficou assim? o que se tentou?
 > que alternativa foi rejeitada?*). **Não é plano** — nada aqui é lista de tarefas.

@@ -31,6 +31,7 @@ import {
   parseDataBr,
   parseHora,
   resolverLinhas,
+  separarPorPagamento,
   rotulosDeColunas,
   soDigitos,
   type CandidatoImportado,
@@ -552,11 +553,16 @@ describe("converterLinha — aviso mantém o inscrito na lista", () => {
 });
 
 /**
- * ⚠️ Desde a etapa 5 do roadmap-cargos, `deduplicar` roda DEPOIS de resolver o cargo e
- * opera sobre `cargo_id`, não sobre o texto. Estes testes passaram a montar o pipeline
- * inteiro — converter → resolver → deduplicar — porque é a ORDEM que eles protegem.
- * Deduplicar antes de resolver não é mais só "menos preciso": deixa passar duas grafias
- * do mesmo cargo e o Postgres recusa o bloco de 500 inteiro.
+ * ⚠️ **A chave natural encolheu em 2026-08-01 para `(edital_id, n_inscricao)`** — o CPF e o
+ * cargo SAÍRAM da identidade (migration `20260801193530`). Estes testes continuam montando
+ * o pipeline inteiro — converter → resolver → deduplicar — mas o que ele protege mudou: a
+ * ordem já não é o que separa duas grafias do mesmo cargo, e sim o que garante que o que
+ * sai do dedup tem `cargo_id` para gravar.
+ *
+ * 🔴 Vários testes daqui INVERTERAM de resultado na mudança, e isso é o esperado, não
+ * acidente: com a chave menor, casos que antes eram duas linhas passam a ser uma. Cada um
+ * diz no comentário o que afirmava antes — apagar isso faria a próxima pessoa achar que o
+ * comportamento sempre foi este.
  */
 const ID_DOCENTE_II = "aaaaaaaa-0000-0000-0000-000000000001";
 const ID_INGLES = "aaaaaaaa-0000-0000-0000-000000000002";
@@ -573,17 +579,22 @@ describe("deduplicar", () => {
       ),
     );
 
-  it("mantém a MESMA pessoa em cargos diferentes", () => {
-    // ⚠️ O NOME DESTE TESTE MUDOU EM 2026-07-28, e o dado dele é HIPOTÉTICO de propósito.
-    // Ele se chamava "a MESMA inscrição em cargos diferentes — 382 casos reais", o que
-    // vinha de ler a inscrição na coluna `ID` (que é a PESSOA). No arquivo real a mesma
-    // pessoa em 3 cargos tem TRÊS números de inscrição diferentes, então este cenário —
-    // inscrição repetida entre cargos — não ocorre lá.
-    // O teste FICA porque o comportamento que ele fixa é o que importa e não depende do
-    // arquivo: cargo_id distinto ⇒ linhas distintas. Se um edital futuro repetir numeração
-    // entre cargos, é ele que impede a perda.
-    // ⚠️ É também o cenário que a condição LARGA do trigger da etapa 5b bloquearia — ver
-    // a discussão em estrutura/modulos/candidatos/cargos.md antes de alargá-la.
+  it("🔴 o MESMO nº de inscrição em cargos diferentes vira UMA linha — o aperto aceito", () => {
+    // ⚠️ ESTE TESTE AFIRMAVA O CONTRÁRIO ATÉ 2026-08-01. Ele se chamava "mantém a MESMA
+    // pessoa em cargos diferentes" e exigia `toHaveLength(3)`, porque `cargo_id` compunha a
+    // chave natural. Com a chave sendo só o nº de inscrição, as três linhas são a MESMA
+    // chave e sobra uma.
+    //
+    // 🔴 É o único lado da mudança que pode PERDER linha, e por isso está fixado aqui em
+    // vez de apagado. Duas coisas o tornam aceitável, e as duas foram medidas:
+    //   · no arquivo real o cenário NÃO existe — os 7.416 números de inscrição são
+    //     distintos, e a mesma pessoa em dois cargos tem dois números (inscrições 9 e 5208
+    //     para o CPF 05261923727). Quem concorre a dois cargos faz duas inscrições;
+    //   · a linha descartada NÃO some calada: sai em `repetidas`, nomeada e com a chave, na
+    //     seção "Repetidas" do relatório de importação.
+    //
+    // Se um edital futuro repetir numeração entre cargos, é ESTE teste que descreve o que
+    // vai acontecer — e aí a decisão de voltar `cargo_id` à chave se reabre com dado real.
     const { candidatos, repetidas } = pipeline(
       [
         ["213946", "CASSIA ANDREA", "DOCENTE II"],
@@ -596,14 +607,37 @@ describe("deduplicar", () => {
         ["docente i - história", ID_HISTORIA],
       ]),
     );
-    expect(candidatos).toHaveLength(3);
+    expect(candidatos).toHaveLength(1);
+    expect(repetidas).toHaveLength(2);
+    // Controle positivo do "não some calado": as duas descartadas são nomeáveis pela linha.
+    expect(repetidas.map((r) => r.linhaPlanilha)).toEqual([2, 3]);
+  });
+
+  it("⭐ números de inscrição DIFERENTES continuam sendo linhas diferentes", () => {
+    // O controle positivo do teste acima, e o caso que realmente ocorre no arquivo: a mesma
+    // pessoa, dois cargos, dois números. Se este cair, a chave ficou larga demais e a
+    // segunda inscrição de 380 pagantes some da importação.
+    const { candidatos, repetidas } = pipeline(
+      [
+        ["9", "CASSIA ANDREA", "DOCENTE II"],
+        ["5208", "CASSIA ANDREA", "DOCENTE I - LÍNGUA INGLESA"],
+      ],
+      new Map([
+        ["docente ii", ID_DOCENTE_II],
+        ["docente i - língua inglesa", ID_INGLES],
+      ]),
+    );
+    expect(candidatos).toHaveLength(2);
     expect(repetidas).toHaveLength(0);
   });
 
   it("tira a repetição de verdade, mantendo a ÚLTIMA ocorrência", () => {
-    // Obrigatório, não zelo: o Postgres recusa o upsert inteiro com 'ON CONFLICT DO
-    // UPDATE command cannot affect row a second time' se a chave repetir no mesmo lote.
-    // Sem esta passagem, uma linha duplicada faria o bloco de 500 não gravar NADA.
+    // Obrigatório, não zelo: o índice único recusa a segunda linha de mesma chave, e como a
+    // gravação roda dentro da RPC `trocar_candidatos`, o erro aborta a TROCA INTEIRA — o
+    // DELETE volta atrás junto e nada é importado.
+    // ⚠️ Até 30/07 a recusa vinha do upsert ("cannot affect row a second time") e derrubava
+    // um bloco de 500; hoje os blocos vão para o preparo, que não tem índice único, e a
+    // recusa acontece depois. O mecanismo mudou, a necessidade do dedup não.
     const { candidatos, repetidas } = pipeline(
       [
         ["214274", "NOME ANTIGO", "DOCENTE II"],
@@ -613,15 +647,16 @@ describe("deduplicar", () => {
     );
     expect(candidatos).toHaveLength(1);
     expect(candidatos[0].nome).toBe("NOME CORRIGIDO");
-    expect(repetidas).toEqual([{ linhaPlanilha: 2, chave: `||${ID_DOCENTE_II}||214274` }]);
+    expect(repetidas).toEqual([{ linhaPlanilha: 2, chave: "214274" }]);
   });
 
-  it("⭐ funde DUAS GRAFIAS apontadas ao mesmo cargo — o caso que a ordem antiga deixava passar", () => {
-    // É a razão de o dedup ter mudado de lugar na etapa 5. `DOCENTE I ¿ HISTÓRIA` e
-    // `DOCENTE I — HISTÓRIA` são textos DIFERENTES, então o dedup antigo (sobre o texto)
-    // mandaria as duas linhas ao banco como distintas. Com `cargo_id` na chave elas são a
-    // MESMA linha lá — e o Postgres recusaria o bloco de 500 inteiro com "cannot affect
-    // row a second time". Aqui elas têm de virar UMA, e a repetida tem de ser relatada.
+  it("⭐ funde DUAS GRAFIAS apontadas ao mesmo cargo", () => {
+    // ⚠️ Este teste continua VERDE, mas pelo motivo trocado — e é o tipo de coisa que faz
+    // alguém achar que provou o que não provou. Até 2026-08-01 ele era a razão de o dedup
+    // rodar depois da resolução: os textos `DOCENTE I ¿ HISTÓRIA` e `DOCENTE I — HISTÓRIA`
+    // diferem, e só o `cargo_id` os empatava na chave. Hoje as duas linhas colidem porque
+    // têm o MESMO nº de inscrição — o cargo não entra mais na conta.
+    // O que ele ainda garante de útil: a linha que sobra carrega o `cargo_id` unificado.
     const { candidatos, repetidas } = pipeline(
       [
         ["213946", "CASSIA ANDREA", "DOCENTE I ¿ HISTÓRIA"],
@@ -641,8 +676,10 @@ describe("deduplicar", () => {
   });
 
   it("trata caixa e espaço no cargo como o mesmo cargo, igual ao banco", () => {
-    // A normalização vive em `chaveDeCargo`, e é ela que faz as duas grafias caírem na
-    // MESMA entrada do mapa de resoluções — e portanto no mesmo cargo_id.
+    // ⚠️ Desde 2026-08-01 o dedup NÃO é mais quem prova isso — as duas linhas colidiriam de
+    // qualquer jeito pelo nº de inscrição. Quem normaliza é `chaveDeCargo`, fazendo as duas
+    // grafias caírem na MESMA entrada do mapa de resoluções; por isso a asserção que vale
+    // aqui é a do `cargo_id`, não a contagem.
     const { candidatos } = pipeline(
       [
         ["214274", "FULANO", "DOCENTE II"],
@@ -651,6 +688,7 @@ describe("deduplicar", () => {
       new Map([["docente ii", ID_DOCENTE_II]]),
     );
     expect(candidatos).toHaveLength(1);
+    expect(candidatos[0].cargo_id).toBe(ID_DOCENTE_II);
   });
 
   it("não leva para o banco a linha que já foi descartada por erro", () => {
@@ -658,10 +696,14 @@ describe("deduplicar", () => {
     expect(candidatos).toHaveLength(0);
   });
 
-  it("⚠️ cargo NÃO resolvido vira UM valor só, e não infinitos distintos", () => {
-    // D4 impede que isto chegue ao banco (o passo Cargos não libera). Mas se chegasse, o
-    // `NULLS NOT DISTINCT` do índice trataria os nulos como iguais — a chave em JS precisa
-    // concordar, senão o lote passa no dedup e o banco recusa o bloco inteiro.
+  it("⚠️ cargo NÃO resolvido não afeta mais a chave", () => {
+    // ⚠️ ESTE TESTE MUDOU DE RAZÃO EM 2026-08-01. Ele se chamava "cargo NÃO resolvido vira
+    // UM valor só, e não infinitos distintos", e guardava o espelho do `NULLS NOT DISTINCT`
+    // do índice antigo: com `cargo_id` na chave e nulo em duas linhas, a chave em JS
+    // precisava tratar os nulos como iguais, senão o banco recusava o lote.
+    // Hoje `cargo_id` saiu da chave, então nulo ali não empata nem separa nada. O que
+    // sobra de conteúdo: D4 impede que isto chegue ao banco, e se chegasse a chave continua
+    // sendo o nº de inscrição.
     const { candidatos, repetidas } = pipeline(
       [
         ["214274", "FULANO", "DOCENTE II"],
@@ -674,7 +716,11 @@ describe("deduplicar", () => {
     expect(candidatos[0].cargo_id).toBeNull();
   });
 
-  describe("com o CPF dentro da chave (2026-07-27)", () => {
+  /**
+   * ⚠️ Este bloco se chamava "com o CPF dentro da chave (2026-07-27)". O CPF SAIU da chave
+   * em 2026-08-01, e os testes ficam para fixar o que isso mudou — dois deles inverteram.
+   */
+  describe("o CPF fora da chave (2026-08-01)", () => {
     const mCpf = mapa({ n_inscricao: 0, nome: 1, cargo: 2, cpf: 3 });
     const pipelineCpf = (linhas: string[][]) =>
       deduplicar(
@@ -684,17 +730,17 @@ describe("deduplicar", () => {
         ),
       );
 
-    it("⚠️ CPF diferente separa o que antes era a MESMA linha — o afrouxamento aceito", () => {
-      // Consequência direta de somar o CPF à chave: mesma inscrição + mesmo cargo com
-      // CPFs diferentes deixam de colidir. Não ocorre no arquivo medido (o quarteto e o
-      // par contam 7.416 iguais), mas passa a ser possível — e é também o motivo de
-      // corrigir um CPF na planilha criar registro novo em vez de atualizar o antigo.
+    it("🔴 CPF diferente NÃO separa mais: a inscrição é que manda", () => {
+      // ⚠️ ESTE TESTE AFIRMAVA O CONTRÁRIO ATÉ 2026-08-01 — exigia `toHaveLength(2)` e se
+      // chamava "CPF diferente separa o que antes era a MESMA linha". Era a consequência de
+      // somar o CPF à chave em 27/07; com o CPF fora dela, some.
+      // O ganho: corrigir um CPF na planilha e reimportar deixou de criar registro novo.
       const { candidatos, repetidas } = pipelineCpf([
         ["214274", "FULANO", "DOCENTE II", "22940161739"],
         ["214274", "FULANO", "DOCENTE II", "14781065732"],
       ]);
-      expect(candidatos).toHaveLength(2);
-      expect(repetidas).toHaveLength(0);
+      expect(candidatos).toHaveLength(1);
+      expect(repetidas).toHaveLength(1);
     });
 
     it("o mesmo CPF, cargo e inscrição continuam sendo uma linha só", () => {
@@ -702,32 +748,38 @@ describe("deduplicar", () => {
         ["214274", "NOME ANTIGO", "DOCENTE II", "22940161739"],
         ["214274", "NOME CORRIGIDO", "DOCENTE II", "229.401.617-39"],
       ]);
-      // O segundo CPF vem pontuado: `soDigitos` normaliza antes de a chave se formar.
       expect(candidatos).toHaveLength(1);
       expect(candidatos[0].nome).toBe("NOME CORRIGIDO");
     });
 
-    it("🔴 dois CPFs impossíveis DIFERENTES são duas linhas — antes viravam uma", () => {
-      // ⚠️ ESTE TESTE AFIRMAVA O CONTRÁRIO ATÉ 2026-07-29, e o que ele guardava era um
-      // DEFEITO. As 2 linhas do arquivo real ('8631309761' com 10 dígitos, '1O778817709'
-      // com a letra O) são CPFs distintos; com os dois virando NULL, a chave natural ficava
-      // idêntica e o dedup FUNDIA os dois inscritos num só — um deles sumia da lista, que é
-      // exatamente o "único erro grave possível nesta tabela" que a regra de aviso existe
-      // para evitar. Gravar o valor cru desfaz a fusão.
+    it("🔴 os 2 CPFs impossíveis do arquivo real seguem sendo duas linhas — agora por construção", () => {
+      // O defeito que este teste guarda desde 2026-07-29 é o pior possível nesta tabela:
+      // dois inscritos REAIS fundidos num só, um sumindo da lista. Na época a fusão vinha do
+      // CPF na chave — '8631309761' e '1O778817709' viravam NULL, e o `NULLS NOT DISTINCT`
+      // empatava a chave.
+      //
+      // ⚠️ O FIXTURE MUDOU EM 2026-08-01, e a razão é que o antigo deixou de descrever o
+      // arquivo: ele dava a MESMA inscrição às duas linhas, o que hoje as fundiria de fato.
+      // Medido no arquivo real, as duas estão nas inscrições 375 e 4256 — chaves diferentes.
+      // Com o CPF fora da identidade, o valor dele (cru, inválido ou ausente) não consegue
+      // mais empatar duas pessoas: a proteção deixou de depender de normalização e passou a
+      // ser estrutural.
       const { candidatos, repetidas } = pipelineCpf([
-        ["214274", "FULANO", "DOCENTE II", "8631309761"],
-        ["214274", "FULANO", "DOCENTE II", "1O778817709"],
+        ["375", "CRISTIANE APARECIDA", "DOCENTE II", " 8631309761"],
+        ["4256", "JOSIANE PEDROSA", "DOCENTE II", "1O778817709"],
       ]);
       expect(candidatos).toHaveLength(2);
       expect(repetidas).toHaveLength(0);
       expect(candidatos.map((c) => c.cpf).sort()).toEqual(["1O778817709", "8631309761"]);
     });
 
-    it("⚠️ o CPF VAZIO continua colapsando — é o que o NULLS NOT DISTINCT guarda", () => {
-      // A razão de o índice ser NULLS NOT DISTINCT não caiu com a mudança de 30/07, só
-      // mudou de dono: célula VAZIA continua virando NULL, e no padrão do Postgres dois
-      // NULL são distintos — sem isso, estas linhas se reinseririam a cada reimportação.
-      // Vazio ≠ impossível: um não tem dado, o outro tem dado errado.
+    it("⚠️ CPF ausente não multiplica linha — e não depende mais do NULLS NOT DISTINCT", () => {
+      // ⚠️ Este teste se chamava "o CPF VAZIO continua colapsando — é o que o NULLS NOT
+      // DISTINCT guarda". O índice novo NÃO tem NULLS NOT DISTINCT, e não precisa: as duas
+      // colunas da chave (`edital_id`, `n_inscricao`) são NOT NULL no banco.
+      // O que continua valendo é o efeito visível — inscrito sem CPF não se reinsere a cada
+      // reimportação —, só que agora sai de graça, em vez de depender de dois espelhamentos
+      // (a chave em JS e a cláusula do índice) concordarem.
       const { candidatos, repetidas } = pipelineCpf([
         ["214274", "FULANO", "DOCENTE II", ""],
         ["214274", "FULANO", "DOCENTE II", null],
@@ -740,30 +792,41 @@ describe("deduplicar", () => {
 });
 
 describe("chaveNatural", () => {
-  it("⭐ usa o cargo_id, e NÃO o texto — é a etapa 5 inteira", () => {
-    // O ganho do tema: o texto do cargo saiu da identidade. Renomear o cargo passou a ser
-    // um UPDATE numa linha de `cargos`, em vez de criar 481 registros novos.
-    const base = { n_inscricao: "214274", cpf: "22940161739" } as CandidatoResolvido;
-    expect(chaveNatural({ ...base, cargo: " Docente II ", cargo_id: ID_DOCENTE_II })).toBe(
-      `22940161739||${ID_DOCENTE_II}||214274`,
-    );
-    // O MESMO cargo_id com o texto cru diferente é a MESMA chave. Se este expect cair, o
-    // texto voltou para a identidade e renomear cargo volta a duplicar candidato.
-    expect(chaveNatural({ ...base, cargo: "DOCENTE I ¿ HISTÓRIA", cargo_id: ID_HISTORIA })).toBe(
-      chaveNatural({ ...base, cargo: "DOCENTE I — HISTÓRIA", cargo_id: ID_HISTORIA }),
-    );
+  it("🔴 é SÓ o nº de inscrição — precisa espelhar candidatos_edital_inscricao_key", () => {
+    // ⚠️ Até 2026-08-01 esta chave era `cpf||cargo_id||n_inscricao`, e este teste exigia o
+    // formato de três partes. A migration 20260801193530 trocou o índice para
+    // (edital_id, n_inscricao); `edital_id` não entra aqui porque o dedup roda dentro de
+    // uma importação, que é de um edital só.
+    //
+    // 🔴 Se este teste cair, o dedup e o índice divergiram — e o sintoma NÃO é um erro de
+    // teste: é a troca inteira sendo recusada pelo banco na hora da importação.
+    // ⚠️ As variáveis são tipadas como `CandidatoResolvido` de propósito. `chaveNatural`
+    // aceita `Pick<…, 'n_inscricao'>`, e passar o objeto literal direto faria o TS recusar
+    // `cpf`/`cargo` como propriedade em excesso — o que esconderia o ponto do teste, que é
+    // justamente entregar um candidato COMPLETO e conferir que só a inscrição sai.
+    const completo: CandidatoResolvido = {
+      n_inscricao: "214274",
+      cpf: "22940161739",
+      cargo: " Docente II ",
+      cargo_id: ID_DOCENTE_II,
+    } as CandidatoResolvido;
+    expect(chaveNatural(completo)).toBe("214274");
   });
 
-  it("⭐ trata 'sem CPF' e 'sem cargo' como UM valor, espelhando o NULLS NOT DISTINCT", () => {
-    // No padrão do Postgres dois NULLs são DISTINTOS, e as 2 linhas do arquivo real com
-    // CPF impossível se inseririam de novo a cada reimportação. O índice usa NULLS NOT
-    // DISTINCT justamente para evitar isso, e aqui a chave precisa concordar com ele.
-    // Desde a etapa 5 vale para os DOIS campos nulos, porque cargo_id também é nullable.
-    const base = { n_inscricao: "214274", cargo: "DOCENTE II" } as CandidatoResolvido;
-    expect(chaveNatural({ ...base, cpf: null, cargo_id: ID_DOCENTE_II })).toBe(
-      `||${ID_DOCENTE_II}||214274`,
-    );
-    expect(chaveNatural({ ...base, cpf: null, cargo_id: null })).toBe("||||214274");
+  it("⭐ CPF e cargo NÃO entram: a mesma inscrição é a mesma chave, difiram eles no que for", () => {
+    // O ganho que fez a mudança valer: corrigir CPF ou cargo na planilha e reimportar deixou
+    // de criar registro novo. Se este expect cair, algum dos dois voltou para a identidade.
+    const comCpfEDocente: CandidatoResolvido = {
+      n_inscricao: "214274",
+      cpf: "22940161739",
+      cargo_id: ID_DOCENTE_II,
+    } as CandidatoResolvido;
+    const semCpfEHistoria: CandidatoResolvido = {
+      n_inscricao: "214274",
+      cpf: null,
+      cargo_id: ID_HISTORIA,
+    } as CandidatoResolvido;
+    expect(chaveNatural(comCpfEDocente)).toBe(chaveNatural(semCpfEHistoria));
   });
 });
 
@@ -791,11 +854,14 @@ describe("mensagemErroImportacao", () => {
     expect(mensagemErroImportacao('violates check constraint "chk_candidato_nome_preenchido"')).toMatch(
       /[Nn]ome/,
     );
-    // ⚠️ O nome do índice mudou na etapa 5 (`..._cargo_id_...`). Se alguém reverter o
-    // índice sem reverter isto, o usuário volta a ver 'duplicate key value violates' cru.
+    // ⚠️ O nome do índice mudou DUAS vezes (etapa 5: `..._cargo_id_...`; 2026-08-01:
+    // `candidatos_edital_inscricao_key`). O ramo casa pelo NOME, então renomear o índice sem
+    // mexer aqui faz o usuário voltar a ver o 'duplicate key value violates' cru.
     expect(
-      mensagemErroImportacao('duplicate key value violates "candidatos_cpf_cargo_id_inscricao_key"'),
-    ).toMatch(/repetid/i);
+      mensagemErroImportacao(
+        'duplicate key value violates unique constraint "candidatos_edital_inscricao_key"',
+      ),
+    ).toMatch(/mesmo nº de inscrição/i);
     expect(mensagemErroImportacao("value too long for type character varying(8)")).toMatch(/8/);
   });
 
@@ -1223,5 +1289,183 @@ describe("agruparProblemasPorCampo", () => {
       ),
     );
     expect(grupos[0].queixas.map((q) => q.Linha)).toEqual([2, 9]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────
+// O filtro de pagamento — só quem pagou é importado (2026-08-01)
+// ─────────────────────────────────────────────────────────────────────────────────────
+
+describe("confirmado é campo OBRIGATÓRIO", () => {
+  // 🔴 Esta bateria existe porque a falsificação de 2026-08-01 mostrou o buraco: devolver
+  // `confirmado` para `obrigatorio: false` passava com a suíte inteira verde, e é a
+  // mudança de uma palavra que reabre a falha mais grave que este fluxo pode ter.
+  //
+  // O estrago: sem a coluna pareada, `parseBooleano(null)` devolve `false` para TODA
+  // linha, `separarPorPagamento` descarta o arquivo inteiro e — como importar é TROCA
+  // TOTAL — a lista do edital é apagada e ninguém entra no lugar.
+
+  it("🔴 `confirmado` é obrigatório, e afrouxar isso apaga a lista do edital", () => {
+    const campo = CAMPOS_CANDIDATO.find((c) => c.key === "confirmado");
+    expect(campo?.obrigatorio).toBe(true);
+  });
+
+  it("🔴 pareamento sem `confirmado` NÃO é completo — é o que barra o passo 2", () => {
+    const semConfirmado: Mapeamento = {};
+    for (const campo of CAMPOS_CANDIDATO) {
+      semConfirmado[campo.key] = campo.key === "confirmado" ? null : 0;
+    }
+    expect(mapeamentoCompleto(semConfirmado)).toBe(false);
+
+    // Controle positivo: com a coluna apontada, o pareamento completa. Sem ele, a
+    // asserção acima passaria mesmo se `mapeamentoCompleto` recusasse tudo.
+    expect(mapeamentoCompleto({ ...semConfirmado, confirmado: 0 })).toBe(true);
+  });
+
+  it("o cabeçalho real `CONFIRMADO` auto-mapeia — obrigatório não quer dizer manual", () => {
+    // Ao contrário do cargo, aqui adivinhar é seguro: não há segunda coluna candidata.
+    const mapa = autoMapear(rotulosDeColunas(CABECALHO_REAL));
+    expect(mapa.confirmado).toBe(CABECALHO_REAL.indexOf("CONFIRMADO"));
+  });
+});
+
+describe("separarPorPagamento", () => {
+  const linha = (
+    linhaPlanilha: number,
+    confirmado: boolean,
+    extra: Partial<CandidatoImportado> = {},
+  ): LinhaConvertida => ({
+    linhaPlanilha,
+    candidato: {
+      edital_id: "e-1",
+      n_inscricao: String(200000 + linhaPlanilha),
+      cargo: "DOCENTE II",
+      nome: `PESSOA ${linhaPlanilha}`,
+      cpf: null,
+      email: null,
+      telefone: null,
+      celular: null,
+      logradouro: null,
+      numero: null,
+      complemento: null,
+      bairro: null,
+      cidade: null,
+      uf: null,
+      cep: null,
+      identidade_numero: null,
+      identidade_orgao: null,
+      identidade_uf: null,
+      identidade_emissao: null,
+      data_nascimento: null,
+      hora_nascimento: null,
+      sexo: null,
+      raca: null,
+      portador_deficiencia: false,
+      confirmado,
+      concurso_id_origem: null,
+      ...extra,
+    },
+    erro: null,
+    avisos: [],
+  });
+
+  it("separa pagante de não-pagante", () => {
+    const { pagantes, naoPagantes } = separarPorPagamento([
+      linha(2, true),
+      linha(3, false),
+      linha(4, true),
+    ]);
+    expect(pagantes.map((l) => l.linhaPlanilha)).toEqual([2, 4]);
+    expect(naoPagantes.map((l) => l.linhaPlanilha)).toEqual([3]);
+  });
+
+  it("⭐ linha com ERRO não entra em NENHUM dos dois", () => {
+    // Ela já é contada em `comErro`. Classificá-la também aqui faria o relatório acusar a
+    // mesma linha por dois motivos, e a pessoa procuraria dois problemas onde há um.
+    const comErro: LinhaConvertida = {
+      linhaPlanilha: 9,
+      candidato: null,
+      erro: "Nome vazio",
+      avisos: [],
+    };
+    const { pagantes, naoPagantes } = separarPorPagamento([linha(2, true), comErro]);
+    expect(pagantes).toHaveLength(1);
+    expect(naoPagantes).toHaveLength(0);
+  });
+
+  it("preserva a ordem original dentro de cada grupo", () => {
+    const { pagantes } = separarPorPagamento([linha(7, true), linha(2, true), linha(5, true)]);
+    expect(pagantes.map((l) => l.linhaPlanilha)).toEqual([7, 2, 5]);
+  });
+
+  it("lista vazia devolve os dois grupos vazios", () => {
+    expect(separarPorPagamento([])).toEqual({ pagantes: [], naoPagantes: [] });
+  });
+
+  it("🔴 ninguém pagou: devolve pagantes VAZIO, e não a lista inteira", () => {
+    // O caso que a obrigatoriedade de `confirmado` existe para nunca acontecer por
+    // descuido (coluna sem parear ⇒ `parseBooleano(null)` ⇒ tudo false). Se um dia
+    // acontecer de verdade, a função tem de dizer "zero", não degradar para "todos" — é
+    // a tela que decide o que fazer com o zero, e ela avisa antes de trocar a lista.
+    const { pagantes, naoPagantes } = separarPorPagamento([linha(2, false), linha(3, false)]);
+    expect(pagantes).toEqual([]);
+    expect(naoPagantes).toHaveLength(2);
+  });
+
+  it("🔴 rodar ANTES do dedup preserva o pagante que tem duplicata não-pagante", () => {
+    // ⚠️ ESTE É O TESTE QUE GUARDA A ORDEM DO PIPELINE, e o defeito que ele impede é
+    // invisível na tela: `deduplicar` mantém a ÚLTIMA ocorrência da chave. Com o filtro
+    // DEPOIS dele, a linha 3 (não-pagante) deslocaria a linha 2 (pagante, mesma chave) e
+    // só então seria descartada — o pagante sumiria da importação sem aparecer em lugar
+    // nenhum, nem como erro, nem como repetida, nem como não-pagante.
+    const mesmaChave = { n_inscricao: "214274", cpf: "22940161739" };
+    const pagante = linha(2, true, mesmaChave);
+    const naoPagante = linha(3, false, mesmaChave);
+
+    // A ordem CERTA: filtra e só então deduplica.
+    const { pagantes } = separarPorPagamento([pagante, naoPagante]);
+    const certo = deduplicar(resolverLinhas(pagantes, new Map()));
+    expect(certo.candidatos).toHaveLength(1);
+    expect(certo.candidatos[0].nome).toBe("PESSOA 2");
+
+    // O CONTROLE: a ordem invertida perde a pessoa. Se algum dia esta asserção passar a
+    // devolver "PESSOA 2", é porque `deduplicar` mudou de política e a ordem pode ser
+    // revista — até lá, ela é a prova de que a ordem não é estilo.
+    const invertido = deduplicar(resolverLinhas([pagante, naoPagante], new Map()));
+    expect(invertido.candidatos).toHaveLength(1);
+    expect(invertido.candidatos[0].nome).toBe("PESSOA 3");
+  });
+
+  it("⭐ os não-pagantes entram no relatório, NOMEADOS e com situação própria", () => {
+    // Sem isto o descarte seria mudo — 185 pessoas do arquivo real sumiriam sem rastro.
+    const { naoPagantes } = separarPorPagamento([linha(2, true), linha(3, false)]);
+    const [p] = montarProblemasDoRelatorio([], [], [], naoPagantes);
+
+    expect(p.Situação).toBe("Não importada (inscrição não paga)");
+    expect(p.Campo).toBe("Pagamento");
+    expect(p.Linha).toBe(3);
+    // Nomeia a pessoa: quem confere se a ausência é legítima não pode ser obrigado a
+    // voltar à planilha só para descobrir de quem é a linha 3.
+    expect(p.Detalhe).toContain("PESSOA 3");
+    expect(p.Detalhe).toContain("200003");
+  });
+
+  it("⭐ 'não pago' NÃO se confunde com 'não importada' por erro de dado", () => {
+    // As duas dizem que a linha ficou de fora, mas a providência é oposta: erro se
+    // corrige e se reimporta; não-pagamento é o filtro fazendo o que foi mandado.
+    const comErro: LinhaConvertida = {
+      linhaPlanilha: 5,
+      candidato: null,
+      erro: "Nome vazio",
+      avisos: [],
+    };
+    const { naoPagantes } = separarPorPagamento([linha(3, false)]);
+    const problemas = montarProblemasDoRelatorio([comErro], [], [], naoPagantes);
+
+    expect(problemas.map((p) => p.Situação)).toEqual([
+      "Não importada (inscrição não paga)",
+      "Não importada",
+    ]);
+    expect(new Set(problemas.map((p) => p.Campo)).size).toBe(2);
   });
 });

@@ -6,7 +6,9 @@
 
 🔴 **Cargo com INSCRITO em algum edital é IMUTÁVEL** — não se altera nem se exclui (migration `20260801103940`, SQLSTATE `CG001`). **Apelido NÃO tranca**: cargo com textos memorizados e nenhum inscrito é renomeável e excluível.
 
-⭐ **`candidatos.cargo_id` é identidade** — a chave natural é `(edital_id, cpf, cargo_id, n_inscricao)`. O cargo entra por **referência**, não por texto, e é isso que impede a lista de duplicar: renomear é um `UPDATE` numa linha de `cargos`, onde antes a mesma correção criava **481 registros**. A lista e a ficha leem `cargos.nome`, então o nome corrigido aparece na tela.
+⭐ **`candidatos.cargo_id` entra por REFERÊNCIA, não por texto** — e é isso que impede a lista de duplicar: renomear é um `UPDATE` numa linha de `cargos`, onde antes a mesma correção criava **481 registros**. A lista e a ficha leem `cargos.nome`, então o nome corrigido aparece na tela.
+
+> ⚠️ **`cargo_id` NÃO é mais identidade desde 2026-08-01.** Esta linha dizia *"é identidade — a chave natural é `(edital_id, cpf, cargo_id, n_inscricao)`"*. A chave passou a ser `(edital_id, n_inscricao)` (migration `20260801193530`): o cargo virou **atributo**. O ganho da referência continua inteiro — ele nunca dependeu de o cargo estar na chave, e sim de o **texto** não estar.
 
 **A janela para corrigir um nome vai até a primeira importação que o use** — na prática, o passo 3 do assistente. Enquanto o cargo não tiver inscrito, renomear é livre e inofensivo.
 
@@ -30,7 +32,7 @@ O cargo chega da origem com o texto quebrado. **Medido no arquivo real (7.416 li
    195  ARTE                            ← foge do padrão dos outros sete
 ```
 
-Como o cargo compõe a **identidade** do candidato, corrigir esse texto e reimportar **cria um segundo registro** em vez de atualizar o antigo — 481 registros novos, no caso de `DOCENTE I ¿ HISTÓRIA`. É o problema que abriu a revisão da chave natural, e que somar o CPF a ela **não** resolveu.
+Enquanto o **texto** do cargo compunha a identidade do candidato, corrigir esse texto e reimportar **criava um segundo registro** em vez de atualizar o antigo — 481 registros novos, no caso de `DOCENTE I ¿ HISTÓRIA`. É o problema que abriu a revisão da chave natural, e que somar o CPF a ela **não** resolveu. (Resolveu trocar o texto pela referência em 28/07; desde 01/08 o cargo saiu de vez da chave.)
 
 ### Por que a limpeza não pode ser automática
 
@@ -171,7 +173,11 @@ Carimba o `cargo_id` decidido, casando pelo `textoChave`. Resolução faltante *
 converterLinha → resolverLinhas → deduplicar → blocos de 500
 ```
 
-Até a etapa 4 a página deduplicava **antes** de resolver, e isso estava **correto** enquanto a chave natural era o texto. Com `cargo_id` na chave virou defeito: dois textos sujos apontando para o mesmo cargo são a **mesma** chave no banco, e um dedup sobre o texto os deixaria passar como distintos — o Postgres recusaria o bloco de 500 inteiro com *"cannot affect row a second time"*.
+Até a etapa 4 a página deduplicava **antes** de resolver, e isso estava **correto** enquanto a chave natural era o texto. Com `cargo_id` na chave virou defeito: dois textos sujos apontando para o mesmo cargo são a **mesma** chave no banco, e um dedup sobre o texto os deixaria passar como distintos.
+
+> 🔵 **Desde 2026-08-01 a ordem já não é o que protege isso** — o cargo saiu da chave, então deduplicar antes ou depois de resolver dá o mesmo resultado. O dedup continua rodando depois por outro motivo: o que sai dele é o que vai ser gravado, e a gravação precisa do `cargo_id`. Quem impede a inversão continua sendo o **tipo** (`LinhaResolvida` só sai de `resolverLinhas`).
+>
+> ⚠️ A recusa citada aqui (*"o Postgres recusaria o bloco de 500 com cannot affect row a second time"*) descreve o **upsert**, que não existe desde a troca total de 30/07. Hoje os blocos de 500 vão para `candidatos_importacao`, que não tem índice único, e a recusa vem depois — no `INSERT` da RPC, derrubando a troca inteira.
 
 ⭐ **A ordem não depende mais de disciplina.** `deduplicar()` só aceita `LinhaResolvida[]`, que só sai de `resolverLinhas()`. **Verificado em 28/07, não presumido:** trocar a chamada de volta para `deduplicar(convertidas)` dá `TS2345` — é erro de compilação, não defeito silencioso.
 
