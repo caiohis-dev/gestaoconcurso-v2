@@ -12,7 +12,11 @@
 import { describe, it, expect } from "vitest";
 import {
   CAMPOS_CANDIDATO,
+  LinhaConvertida,
+  agruparProblemasPorCampo,
   aplicarResolucoes,
+  classificarQueixa,
+  montarProblemasDoRelatorio,
   autoMapear,
   cargosDaPlanilha,
   chaveDeCargo,
@@ -1084,5 +1088,140 @@ describe("aplicarResolucoes", () => {
 
   it("lote vazio devolve lote vazio", () => {
     expect(aplicarResolucoes([], resolucoes)).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────
+// O relatório de problemas — a parte pura dos DOIS exports
+// ─────────────────────────────────────────────────────────────────────────────────────
+
+describe("classificarQueixa", () => {
+  it("separa o campo do detalhe pelo prefixo da mensagem", () => {
+    expect(classificarQueixa("CPF tem 10 dígitos")).toEqual({
+      Campo: "CPF",
+      Detalhe: "tem 10 dígitos",
+    });
+  });
+
+  it("⭐ mensagem sem prefixo conhecido vai para 'Geral' COM O TEXTO INTEIRO", () => {
+    // O caso que importa: a queixa não pode sumir só porque ninguém previu o prefixo.
+    // O relatório existe para dizer o que corrigir; uma queixa engolida é perda silenciosa.
+    expect(classificarQueixa("Coisa nova que ninguém mapeou")).toEqual({
+      Campo: "Geral",
+      Detalhe: "Coisa nova que ninguém mapeou",
+    });
+  });
+
+  it("distingue data de hora de nascimento — os dois prefixos começam igual", () => {
+    expect(classificarQueixa("Data de nascimento inválida").Campo).toBe("Data de Nascimento");
+    expect(classificarQueixa("Hora de nascimento inválida").Campo).toBe("Hora de Nascimento");
+  });
+});
+
+describe("montarProblemasDoRelatorio", () => {
+  const erro = (linhaPlanilha: number, erro: string): LinhaConvertida => ({
+    linhaPlanilha,
+    candidato: null,
+    erro,
+    avisos: [],
+  });
+  const aviso = (linhaPlanilha: number, avisos: string[]): LinhaConvertida => ({
+    linhaPlanilha,
+    candidato: null,
+    erro: null,
+    avisos,
+  });
+
+  it("junta as três origens e ordena pela linha da planilha", () => {
+    const problemas = montarProblemasDoRelatorio(
+      [erro(9, "Nome em branco")],
+      [aviso(2, ["CPF tem 10 dígitos"])],
+      [{ linhaPlanilha: 5, chave: "111||abc" }],
+    );
+    expect(problemas.map((p) => p.Linha)).toEqual([2, 5, 9]);
+    expect(problemas.map((p) => p.Situação)).toEqual([
+      "Importada com ressalva",
+      "Substituída por linha posterior",
+      "Não importada",
+    ]);
+  });
+
+  it("⭐ uma linha com DOIS avisos rende DUAS queixas, não uma", () => {
+    // O `flatMap` é o que garante isto. Com `map`, o segundo aviso sumiria do relatório —
+    // e some justamente o que a pessoa precisaria corrigir na planilha.
+    const problemas = montarProblemasDoRelatorio(
+      [],
+      [aviso(3, ["CPF tem 10 dígitos", "CEP tem 7 dígitos"])],
+      [],
+    );
+    expect(problemas).toHaveLength(2);
+    expect(problemas.map((p) => p.Campo)).toEqual(["CPF", "CEP"]);
+    expect(problemas.every((p) => p.Linha === 3)).toBe(true);
+  });
+
+  it("a linha repetida nomeia a chave inteira, com a separação legível", () => {
+    // `repetidas` inclui duas grafias do MESMO cargo unificadas pela associação, não só
+    // repetição literal — por isso o detalhe mostra a chave: na planilha não há duas
+    // linhas idênticas para achar.
+    const [p] = montarProblemasDoRelatorio([], [], [{ linhaPlanilha: 4, chave: "12345678900||uuid-do-cargo" }]);
+    expect(p.Campo).toBe("Chave de Identificação");
+    expect(p.Detalhe).toContain("12345678900 / uuid-do-cargo");
+  });
+
+  it("erro sem mensagem não quebra — vira queixa 'Geral' vazia, e não some", () => {
+    const [p] = montarProblemasDoRelatorio([{ ...erro(7, ""), erro: null }], [], []);
+    expect(p).toMatchObject({ Linha: 7, Campo: "Geral", Situação: "Não importada" });
+  });
+
+  it("nada errado devolve lista vazia", () => {
+    expect(montarProblemasDoRelatorio([], [], [])).toEqual([]);
+  });
+});
+
+describe("agruparProblemasPorCampo", () => {
+  it("agrupa por campo e ordena os campos alfabeticamente", () => {
+    const grupos = agruparProblemasPorCampo(
+      montarProblemasDoRelatorio(
+        [],
+        [
+          { linhaPlanilha: 2, candidato: null, erro: null, avisos: ["Raça fora da lista"] },
+          { linhaPlanilha: 3, candidato: null, erro: null, avisos: ["CPF tem 10 dígitos"] },
+          { linhaPlanilha: 4, candidato: null, erro: null, avisos: ["CPF tem 9 dígitos"] },
+        ],
+        [],
+      ),
+    );
+    expect(grupos.map((g) => g.campo)).toEqual(["CPF", "Raça"]);
+    expect(grupos[0].queixas).toHaveLength(2);
+  });
+
+  it("⭐ agrupar NÃO perde queixa: o total dos grupos bate com a entrada", () => {
+    // Controle contra o modo de falha real de um agrupador — sobrescrever em vez de
+    // acumular. Sem esta soma, um bug que guardasse só a última queixa de cada campo
+    // passaria por todos os outros testes daqui.
+    const problemas = montarProblemasDoRelatorio(
+      [],
+      [
+        { linhaPlanilha: 2, candidato: null, erro: null, avisos: ["CPF a", "CEP b"] },
+        { linhaPlanilha: 3, candidato: null, erro: null, avisos: ["CPF c", "Nome d"] },
+      ],
+      [{ linhaPlanilha: 4, chave: "x||y" }],
+    );
+    const grupos = agruparProblemasPorCampo(problemas);
+    expect(grupos.reduce((n, g) => n + g.queixas.length, 0)).toBe(problemas.length);
+  });
+
+  it("preserva a ordem por linha DENTRO de cada campo", () => {
+    const grupos = agruparProblemasPorCampo(
+      montarProblemasDoRelatorio(
+        [],
+        [
+          { linhaPlanilha: 9, candidato: null, erro: null, avisos: ["CPF tarde"] },
+          { linhaPlanilha: 2, candidato: null, erro: null, avisos: ["CPF cedo"] },
+        ],
+        [],
+      ),
+    );
+    expect(grupos[0].queixas.map((q) => q.Linha)).toEqual([2, 9]);
   });
 });

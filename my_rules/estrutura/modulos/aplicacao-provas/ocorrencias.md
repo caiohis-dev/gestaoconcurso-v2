@@ -50,4 +50,4 @@ Logo, o recorte por unidade existe **só no cliente**, no `provaUnidadeIds` de `
 
 ## Exportação
 
-A página gera PDF (jsPDF + `jspdf-autotable`) da lista de ocorrências, no mesmo padrão client-side usado em [`documentos-e-relatorios.md`](./documentos-e-relatorios.md).
+A página gera PDF (jsPDF + `jspdf-autotable`) da lista de ocorrências, com o timbre compartilhado de `src/lib/pdf-timbre.ts` — ver [`documentos-e-relatorios.md`](./documentos-e-relatorios.md). ⚠️ Timbra só a **página 1**, e numera sem total; as duas coisas são comportamento anterior preservado, não descuido.

@@ -324,4 +324,19 @@ Três coisas que precisam sobreviver a qualquer refatoração dessas telas:
 - ✅ **O acento quebrado do arquivo de origem deixou de aparecer na tela.** O texto vem `'DOCENTE I ¿ LÍNGUA INGLESA'` (o `¿` é um travessão em cp1252 lido como latin-1) e `candidatos.cargo` **continua guardando como veio**, porque é a procedência do dado — mas quem a lista e a ficha exibem é `cargos.nome`, o nome canônico do catálogo. O tema **Cargos** fechou isso em 2026-07-29: o cargo é referência a uma linha de `cargos`, o nome canônico é editável sem duplicar ninguém, e a etapa 6 fez o ganho aparecer. Ver [`cargos.md`](./cargos.md).
 - **A exclusão de um candidato não pede senha; "limpar edital" pede.** Proposital: a primeira atinge uma linha e é reversível por reimportação, a segunda atinge milhares. Pedir senha nas duas ensinaria a digitá-la no piloto automático.
 - 🔴 **"Limpar edital" já anunciou o número errado, e isso é a armadilha a lembrar.** A ação apaga por `edital_id` — o edital **inteiro** —, mas a confirmação exibia o `count` da consulta **filtrada**: com uma busca ligada, prometia remover 12 e removia 7.416. Corrigido em 2026-07-29 (passou a usar a contagem da RPC, e avisa quando há filtro ligado), com regressão guardando. ⚠️ **A regra geral: ao acrescentar filtro a uma tela, revise toda ação que age sobre o conjunto inteiro.** Contador filtrado ao lado de botão não-filtrado é promessa errada — e aqui a promessa errada estava atrás da barreira de senha, que é onde ela menos podia estar.
-- **Não há paginação no relatório de problemas** — ele sai em `.xlsx`, que é onde a pessoa vai trabalhar.
+- **Não há paginação no relatório de problemas** — ele sai em arquivo, que é onde a pessoa vai trabalhar.
+
+## O passo 5 entrega DOIS relatórios, e eles não são o mesmo arquivo em dois formatos
+
+| Botão | Formato | Forma | Para quê |
+|---|---|---|---|
+| Baixar Planilha (XLS) | `.xlsx`, duas abas (`Problemas` + `Cargos`) | lista plana, uma queixa por linha | trabalhar no Excel: filtrar, ordenar, marcar o que já corrigiu |
+| Baixar Documento (PDF) | A4 paisagem, timbrado | **agrupado por campo**, uma tabela por campo | anexar a processo e imprimir; corrigir é trabalho por coluna |
+
+**A parte que decide o conteúdo é pura e é a mesma para os dois:** `montarProblemasDoRelatorio()` e `agruparProblemasPorCampo()`, em [`src/lib/candidatos-import.ts`](../../../../src/lib/candidatos-import.ts), com bateria sem mock. Ela viveu **duplicada verbatim dentro do componente**, uma cópia em cada botão, até 2026-08-01 — e o custo desse arranjo era que corrigir a classificação de um campo num export deixava o outro mentindo, sem nada quebrar.
+
+⚠️ **`classificarQueixa` casa por PREFIXO do texto da mensagem**, e nada liga esse prefixo ao que `converterLinha` escreve. Mexer no texto de um aviso joga a queixa no balde "Geral" em silêncio. Ao acrescentar aviso novo, acrescente o prefixo em `PREFIXOS_POR_CAMPO` no mesmo passe.
+
+🔴 **A coluna Detalhe do PDF usa `overflow: "linebreak"`, não `"hidden"`.** Com `hidden` ela era cortada na largura da célula, sem reticências e sem aviso — e o detalhe é a única coisa que o relatório existe para entregar. Relatório de erro que corta a mensagem do erro é perda silenciosa.
+
+O timbre, o logo e a numeração vêm de [`src/lib/pdf-timbre.ts`](../../../../src/lib/pdf-timbre.ts), compartilhado com os PDFs de Aplicação de Provas — ver [`../aplicacao-provas/documentos-e-relatorios.md`](../aplicacao-provas/documentos-e-relatorios.md).

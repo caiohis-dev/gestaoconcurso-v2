@@ -4,11 +4,13 @@
 
 ## O que vale hoje
 
-🔴 **Cargo com QUALQUER menção em outra tabela é IMUTÁVEL** — não se altera nem se exclui (migration `20260731100000`, SQLSTATE `CG001`). ⚠️ **Toda afirmação neste doc de que "renomear é livre" ou "cosmético" descreve o que a implementação entregou, não o que vale.** Ver a seção "Cargo com menção é IMUTÁVEL".
+🔴 **Cargo com INSCRITO em algum edital é IMUTÁVEL** — não se altera nem se exclui (migration `20260801103940`, SQLSTATE `CG001`). **Apelido NÃO tranca**: cargo com textos memorizados e nenhum inscrito é renomeável e excluível.
 
 ⭐ **`candidatos.cargo_id` é identidade** — a chave natural é `(edital_id, cpf, cargo_id, n_inscricao)`. O cargo entra por **referência**, não por texto, e é isso que impede a lista de duplicar: renomear é um `UPDATE` numa linha de `cargos`, onde antes a mesma correção criava **481 registros**. A lista e a ficha leem `cargos.nome`, então o nome corrigido aparece na tela.
 
-⚠️ **Os dois acima se contradizem na prática, e é preciso saber disso:** a mecânica tornou o rename inofensivo; a `CG001` o proibiu para cargo em uso. **A janela para corrigir um nome vai até a primeira importação que o use** — na prática, o passo 3 do assistente.
+**A janela para corrigir um nome vai até a primeira importação que o use** — na prática, o passo 3 do assistente. Enquanto o cargo não tiver inscrito, renomear é livre e inofensivo.
+
+> ⚠️ **Entre 31/07 e 01/08 vigorou uma regra mais larga** (`20260731100000`): qualquer menção trancava, inclusive apelido. Como o assistente grava os apelidos no **fim do passo 3**, o cargo ficava imutável **antes de existir um único inscrito** — a janela fechava dentro do passo que deveria abri-la. Foi estreitada por decisão do usuário. **Qualquer frase deste doc que diga "menção é menção" é dessa janela e não vale mais.**
 
 > 📁 As **6 etapas**, seus estados e o raciocínio de cada uma estão em [`roadmap-cargos.yaml`](../../../analises/concluidos/roadmap-cargos.yaml) (`etapas:`), arquivado. Este doc descreve o que os cargos **são**; o roadmap, como chegaram aqui. ⚠️ A "etapa 7" de lá foi **parcialmente executada** — o CRUD existe; ver "A página de gestão".
 
@@ -55,7 +57,7 @@ cargo_apelidos                            -- "este texto sujo significa aquele c
   id            uuid PK
   texto_origem  text NOT NULL             -- o texto CRU, com o ¿ e tudo
   texto_chave   text GENERATED STORED     -- lower(btrim(texto_origem)); UNIQUE
-  cargo_id      uuid NOT NULL → cargos(id) ON DELETE RESTRICT  -- era CASCADE até 31/07
+  cargo_id      uuid NOT NULL → cargos(id) ON DELETE CASCADE   -- RESTRICT só de 31/07 a 01/08
   created_at / created_by
   CHECK btrim(texto_origem) <> ''
 
@@ -70,6 +72,8 @@ candidatos (alterada)
 **`candidatos.cargo` (texto cru) PERMANECE** ao lado de `cargo_id`. É procedência, o mesmo papel de `concurso_id_origem`: permite refazer o mapeamento depois, auditar de onde veio cada linha e reconstruir os apelidos a partir do dado.
 
 **CASCADE nos apelidos, RESTRICT nos candidatos — opostos de propósito.** Apelido é atalho de digitação: apagar o cargo deve levá-lo junto, porque um apelido apontando para nada não serve a ninguém. Candidato é gente: apagar um cargo não pode sumir com inscrito.
+
+> ⚠️ **Esta assimetria caiu em 31/07 e voltou em 01/08.** A regra larga fez as duas FKs virarem RESTRICT; o estreitamento devolveu o CASCADE. 🔴 **O CASCADE é escolha, não omissão** — `cargo_apelidos.cargo_id` é `NOT NULL`, então permitir o DELETE de cargo só-com-apelido obriga o apelido a ir junto. Não "conserte" para RESTRICT ao ver a palavra CASCADE numa auditoria; o aviso está no cabeçalho da migration `20260801103940`.
 
 **`cargo_id` é NULLABLE no banco, obrigatório no app** — o mesmo desenho de `provas.edital_id`. A ordem `migrations → dado` impede um NOT NULL honesto (a coluna nasce vazia e é a UI que a preenche). A obrigatoriedade real virá de dois outros lugares: o passo 3 do assistente (etapa 4) e a colisão do índice único (etapa 5).
 
@@ -135,7 +139,7 @@ O **embed** de `cargos` na listagem e o **recorte por cargo** são coisas que o 
 
 ## A lib — `src/lib/candidatos-import.ts`
 
-Três funções puras, sem React e sem Supabase, com bateria própria em `candidatos-import.test.ts` (**66 testes no arquivo**, 22 deles de cargos). É o que separa este fluxo do `CadastroLote`, onde a mesma classe de lógica vive dentro de um componente de 1.100 linhas e não tem como ser exercitada.
+Três funções puras, sem React e sem Supabase, com bateria própria em `candidatos-import.test.ts` (**83 testes no arquivo**, 22 deles de cargos). É o que separa este fluxo do `CadastroLote`, onde a mesma classe de lógica vive dentro de um componente de 1.100 linhas e não tem como ser exercitada.
 
 ### `cargosDaPlanilha(linhas: LinhaConvertida[]): ResumoCargo[]`
 
@@ -178,7 +182,7 @@ Até a etapa 4 a página deduplicava **antes** de resolver, e isso estava **corr
 
 ## Os hooks — `src/hooks/useCargos.tsx`
 
-Quatro exportações, com bateria em `useCargos.test.tsx` (**26 testes**).
+Quatro exportações, com bateria em `useCargos.test.tsx` (**38 testes**).
 
 | | O que faz |
 |---|---|
@@ -261,7 +265,7 @@ O trigger `candidatos_recusa_reapontar_cargo` (`RC001`) **não existe desde 2026
 | `src/pages/Cargos.tsx` | A tela: tabela com **nome · inscritos · textos memorizados · ações** |
 | `src/components/CargoDialog.tsx` | Um diálogo só, para criar E renomear — `isEditing = !!cargo` governa tudo |
 | `src/components/CargoDialog.test.ts` | O contrato do schema Zod |
-| `src/pages/Cargos.ui.test.tsx` | 11 testes do CRUD |
+| `src/pages/Cargos.ui.test.tsx` | 13 testes do CRUD |
 
 **Hooks novos em `useCargos.tsx`:** `useCargosComUso`, `useAtualizarCargo`, `useExcluirCargo`.
 
@@ -277,43 +281,53 @@ O trigger `candidatos_recusa_reapontar_cargo` (`RC001`) **não existe desde 2026
 
 `useAtualizarCargo` invalida `["cargos"]` **e** `["candidatos"]`. Desde a etapa 6 a listagem e a ficha exibem `cargos.nome` por join embutido — sem a segunda, o usuário renomeia, volta para a lista, vê o nome **antigo** e conclui que não funcionou. Mesmo motivo pelo qual `useEditais` invalida `provas`. **Há teste guardando, e ele foi falsificado.**
 
-### Excluir cargo com QUALQUER menção é recusado
+### Excluir leva os apelidos junto, e o diálogo TEM de dizer isso
 
-`cargo_apelidos.cargo_id` e `candidatos.cargo_id` são **os dois `ON DELETE RESTRICT`**: o diálogo de exclusão só abre para cargo com **zero** menções.
+`candidatos.cargo_id` é **RESTRICT** (inscrito barra) e `cargo_apelidos.cargo_id` é **CASCADE** (apelido vai junto). O diálogo de exclusão só abre para cargo **sem inscrito** — mas ele pode ter apelidos, e é aí que mora o risco.
 
-> 🔴 **Corrigido em 2026-07-31.** Esta seção se chamava *"Excluir leva os apelidos junto, e o diálogo TEM de dizer isso"* e descrevia `cargo_apelidos` como **CASCADE**, com um aviso na tela sobre a "perda real e invisível" da memória de apelidos. **Isso deixou de valer no mesmo dia em que foi escrito:** a regra `CG001` tornou cargo com menção imutável e passou a FK para RESTRICT. O aviso e três testes saíram porque viraram ramos inalcançáveis — a exclusão nunca chega lá. O `AlertDialog` mostra a contagem e avisa; **há teste próprio para o aviso**, senão ele some na primeira refatoração.
+🔴 **O aviso no `AlertDialog` não pode sumir.** Excluir apaga em silêncio a memória de "texto sujo → cargo" que pré-preenche as próximas importações: nada dá erro, e o usuário reassocia tudo de novo sem saber por quê. **Há teste próprio para o aviso**, e ele foi falsificado — matar o bloco derruba exatamente 1 teste.
+
+⚠️ **Não existe ramo "N inscritos vão barrar"** neste diálogo, e não deve voltar: o botão Excluir não aparece para cargo com inscrito, então seria guarda que não pode disparar.
+
+> ⚠️ **Esta seção afirmou o oposto entre 31/07 e 01/08**, quando as duas FKs eram RESTRICT: ela se chamava *"Excluir cargo com QUALQUER menção é recusado"* e o aviso tinha sido removido do código por ser inalcançável. Com o estreitamento da `CG001`, o aviso e dois testes voltaram.
 
 **Não há pré-check de uso no cliente, de propósito.** "Leio e então decido" é uma corrida, e a recusa do banco (`candidatos_cargo_id_fkey`, RESTRICT) nomeia o obstáculo melhor. A contagem na tela **informa**; quem barra é a FK.
 
 ⚠️ **A confirmação NÃO pede senha**, ao contrário de "limpar edital". Lá não há rede nenhuma; aqui o banco é a rede. É o mesmo critério do módulo: excluir um inscrito usa `AlertDialog`.
 
+⚠️ **`mensagemErroCargo` NÃO traduz `cargo_apelidos_cargo_id_fkey`**, e a ausência é deliberada: com CASCADE aquela FK nunca recusa nada. Havia um ramo entre 31/07 e 01/08. Há teste guardando a ausência, para ninguém "restaurar" o que parece faltando.
+
 ### `mensagemErroCargo` ganhou o ramo de nome duplicado
 
 `cargos_nome_chave_key` ficou **fora** dela até 30/07, com bom motivo: só o `criarCargo` escrevia, e ele transforma duplicata em sucesso (D10). **O renomear mudou a premissa** — renomear para um nome existente viola o mesmo índice e não tem para onde escapar. ⚠️ Havia um teste afirmando *"NÃO traduz a violação de nome único"*; ele foi **reescrito**, não removido.
 
-### 🔴 Cargo com menção é IMUTÁVEL (2026-07-31)
+### 🔴 Cargo com INSCRITO é IMUTÁVEL (2026-08-01)
 
-**Decisão do usuário:** *"Cargos que tenham menção em qualquer outra tabela não podem ser modificados nem deletados."*
+**Decisão do usuário:** *"A regra de bloqueio deve corresponder somente a condições de haver candidatos associados a esse cargo em algum edital."*
 
 | Barreira | O quê |
 |---|---|
-| Trigger `check_cargo_nao_alteravel_em_uso` (`CG001`) | Recusa **qualquer UPDATE** em cargo com inscritos **ou** apelidos. É sobre a LINHA, não sobre a coluna — trocar `ativo` também é recusado |
-| `candidatos_cargo_id_fkey` RESTRICT | Já existia: inscrito barra a exclusão |
-| `cargo_apelidos_cargo_id_fkey` **RESTRICT** | ⚠️ **Era CASCADE.** O apelido deixou de ser apagado junto e passou a **barrar** |
+| Trigger `check_cargo_nao_alteravel_com_inscritos` (`CG001`) | Recusa **qualquer UPDATE** em cargo com inscritos. É sobre a LINHA, não sobre a coluna — trocar `ativo` também é recusado |
+| `candidatos_cargo_id_fkey` RESTRICT | Inscrito barra a exclusão. É a **única** barreira |
+| `cargo_apelidos_cargo_id_fkey` CASCADE | **Não barra**: o apelido é apagado junto. A tela avisa antes |
 
-⚠️ **A assimetria "apelido é atalho, candidato é gente" caiu.** Ela era deliberada e está documentada acima em "Modelo de dados"; a regra nova não admite a distinção — menção é menção.
+**Apelido não é menção para efeito de bloqueio.** Cargo com 5 textos memorizados e nenhum inscrito é renomeável e excluível.
 
-#### 🔴 O que isso custa, medido
+#### 🔴 O que isso destrava — o defeito da regra larga era de MOMENTO
 
-Este tema existiu porque **7 dos 9 cargos chegam com `¿`** da origem, e a etapa 5 tornou o rename inofensivo justamente para permitir a limpeza. **Os 9 cargos do arquivo real têm candidatos** (195 a 3.756). Portanto: **depois da primeira importação, nenhum poderá ser renomeado, e os 7 `¿` ficam permanentes.**
+`salvarApelidos` grava a memória no **fim do passo 3** (`CandidatosImportar.tsx`), e só o **passo 4** escreve os inscritos. Sob a regra larga, o apelido recém-gravado **já tornava o cargo imutável** — antes de existir um único inscrito. A janela que este doc promete ("vai até o passo 3") fechava **dentro** do passo 3, pela mão do próprio assistente, e os 7 nomes com `¿` congelavam sem ninguém ter importado nada.
 
-Isso foi apresentado ao usuário com esses números e escolhido assim mesmo. **A janela para corrigir um nome é ANTES da primeira importação que o use** — na prática, no próprio passo 3 do assistente, onde o cargo é criado.
+⚠️ **Observado no banco local em 01/08**, no estado deixado por uma execução do passo 3: 9 cargos, 9 apelidos, **0 candidatos** — os 9 imutáveis. **Esse estado não sobrevive a `db reset`:** o dump não traz cargo, apelido nem candidato, e as três tabelas voltam vazias. Para reproduzir, rode o passo 3.
 
-#### O que a regra apagou de código
+**Agora a janela é a prometida: vai até a primeira importação que USE o cargo.** Depois disso o nome congela, e aí por um motivo real — há inscritos apontando para ele.
 
-- **O aviso de CASCADE no diálogo de exclusão** virou inalcançável: o apelido agora barra em vez de ser levado. Saiu, com três testes junto.
-- **O ramo "N inscritos vão barrar"** do mesmo diálogo também: o botão Excluir não aparece mais para cargo com menção. O diálogo só abre para cargo com zero menções.
-- A tela mostra **"Em uso — não editável"** com cadeado no lugar dos botões. Botão cinza e mudo deixaria o usuário procurando o que fazer.
+#### O que voltou de código
+
+- **O aviso de CASCADE no diálogo de exclusão**, com 2 testes. Tinha saído em 31/07 por ser inalcançável; com a FK de volta a CASCADE, a perda voltou a ser possível.
+- **`cargoTemMencao` virou `cargoTemInscritos`.** O nome importa: uma função chamada "menção" que ignora apelidos é a próxima leitura errada — é a armadilha nº 1 deste repo.
+- A tela mostra **"Em uso por inscritos — não editável"** com cadeado. O rótulo genérico ficaria ambíguo agora que uma linha pode exibir "Textos memorizados: 5" **e** os dois botões.
+
+⚠️ **O ramo "N inscritos vão barrar" continua fora**, e deve continuar: o botão Excluir não aparece para cargo com inscrito.
 
 ### O que a página deliberadamente NÃO faz
 

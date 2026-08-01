@@ -11,6 +11,9 @@
  *    excluir o cargo apaga em silêncio a memória de "texto sujo → cargo" que pré-preenche
  *    as próximas importações. É perda real e invisível; sem teste, o aviso some na primeira
  *    refatoração do diálogo e ninguém percebe.
+ *  - **⭐ Que APELIDO não tranca, e INSCRITO tranca.** É a regra de 01/08, e o par de
+ *    casos existe nos dois sentidos: sem o controle positivo, eles provariam só que a tela
+ *    travou tudo. ⚠️ Entre 31/07 e 01/08 a suíte afirmava o oposto sobre o apelido.
  *  - **A ausência de pré-check de uso.** Quem barra a exclusão é a FK do banco, não um
  *    `if` aqui. A tela informa a contagem; ela não decide.
  *
@@ -89,6 +92,14 @@ function linha(nome: string, candidatos: number, apelidos: number, id = nome.toL
 
 const EM_USO = linha("DOCENTE II", 3756, 2, "cargo-docente-ii");
 const SEM_USO = linha("ARTE", 0, 0, "cargo-arte");
+/**
+ * Cargo com apelido e SEM inscrito — desde 01/08 ele é editável e excluível.
+ *
+ * ⚠️ Não é um caso de laboratório: é o estado em que o passo 3 do assistente DEIXA todo
+ * cargo que ele cria — `salvarApelidos` grava a memória antes de a importação escrever um
+ * só inscrito. Entre 31/07 e 01/08 essa combinação travava, e era o defeito.
+ */
+const SO_APELIDO = linha("DOCENTE I ¿ HISTÓRIA", 0, 3, "cargo-historia");
 
 function abrir() {
   renderWithProviders(<Cargos />, { route: "/candidatos/cargos" });
@@ -100,7 +111,7 @@ describe("Cargos (interação)", () => {
     resetSupabaseMock();
     toastMock.mockClear();
     navigateMock.mockClear();
-    setTableResult("cargos", { data: [EM_USO, SEM_USO], error: null });
+    setTableResult("cargos", { data: [EM_USO, SEM_USO, SO_APELIDO], error: null });
   });
 
   describe("listagem", () => {
@@ -124,7 +135,7 @@ describe("Cargos (interação)", () => {
     });
   });
 
-  describe("🔴 cargo com menção é IMUTÁVEL (2026-07-31)", () => {
+  describe("🔴 cargo com INSCRITO é IMUTÁVEL (2026-08-01)", () => {
     it("⭐ não oferece Renomear nem Excluir, e DIZ por quê", async () => {
       // Botão cinza e mudo deixa o usuário procurando o que fazer. E deixá-lo clicável
       // seria pior: ele digitaria um nome novo para só então levar erro do banco.
@@ -136,19 +147,37 @@ describe("Cargos (interação)", () => {
       expect(within(linhaEmUso).queryByRole("button", { name: /Excluir/i })).not.toBeInTheDocument();
     });
 
-    it("⚠️ APELIDO sozinho também tranca — menção é menção", async () => {
-      // Este é o caso que mudou em 31/07: até 30/07 o apelido era levado por CASCADE e não
-      // impedia nada. Um cargo sem inscrito nenhum, mas com um texto memorizado, agora é
-      // tão imutável quanto um com 3.756 inscritos.
-      setTableResult("cargos", { data: [linha("SÓ APELIDO", 0, 1, "cargo-so-apelido")], error: null });
+    it("⭐ APELIDO sozinho NÃO tranca — só inscrito tranca", async () => {
+      // 🔴 ESTE TESTE JÁ AFIRMOU O CONTRÁRIO. Entre 31/07 e 01/08 ele se chamava "APELIDO
+      // sozinho também tranca — menção é menção", e travar por apelido deixava os 9 cargos
+      // reais imutáveis (0 inscritos, 1 apelido cada) com os 7 nomes sujos permanentes.
+      //
+      // É o caso que a mudança de 01/08 existe para destravar, então é ele que cai
+      // primeiro se alguém reintroduzir a contagem de apelidos em `cargoTemInscritos`.
       abrir();
 
-      const l = (await screen.findByText("SÓ APELIDO")).closest("tr") as HTMLElement;
-      expect(within(l).getByText(/não editável/i)).toBeInTheDocument();
+      const l = (await screen.findByText("DOCENTE I ¿ HISTÓRIA")).closest("tr") as HTMLElement;
+      expect(within(l).queryByText(/não editável/i)).not.toBeInTheDocument();
+      expect(within(l).getByRole("button", { name: /Renomear/i })).toBeInTheDocument();
+      expect(within(l).getByRole("button", { name: /Excluir/i })).toBeInTheDocument();
+      // A contagem continua VISÍVEL — ela informa, não decide.
+      expect(within(l).getByText("3")).toBeInTheDocument();
+    });
+
+    it("⚠️ o texto do cabeçalho descreve a regra CERTA — ele já descreveu a errada", async () => {
+      // Afirmação sobre COMPORTAMENTO na tela é o que `docs:conferir` NÃO pega, e este
+      // parágrafo sobreviveu à mudança de 01/08 dizendo "cargo com qualquer menção —
+      // inscritos ou textos memorizados — não pode ser alterado". Estava mentindo para o
+      // usuário na única tela onde a regra é explicada.
+      abrir();
+
+      const cabecalho = await screen.findByText(/O catálogo é global/i);
+      expect(cabecalho).toHaveTextContent(/já tem inscritos não pode ser alterado/i);
+      expect(cabecalho).toHaveTextContent(/textos memorizados não impedem/i);
     });
 
     it("CONTROLE POSITIVO: cargo sem menção nenhuma continua editável", async () => {
-      // Sem este caso, os dois acima provariam só que a tela travou tudo.
+      // Sem este caso, o primeiro provaria só que a tela travou tudo.
       abrir();
 
       const l = (await screen.findByText("ARTE")).closest("tr") as HTMLElement;
@@ -212,21 +241,35 @@ describe("Cargos (interação)", () => {
   });
 
   describe("exclusão", () => {
-    // ⚠️ TRÊS TESTES SAÍRAM DAQUI EM 2026-07-31, e o motivo vale registrar: eles cobriam
-    // ramos do diálogo que a regra "cargo com menção é imutável" tornou INALCANÇÁVEIS —
-    // o aviso de "N inscritos vão barrar" (o botão sumiu) e o de "N apelidos serão
-    // apagados junto" (o apelido deixou de ser CASCADE e passou a BARRAR). Manter testes
-    // sobre ramos mortos faria a suíte afirmar comportamento que não existe mais.
-    // O que sobrou é o caso real: o diálogo só abre para cargo sem menção nenhuma.
+    // ⚠️ O RAMO "N INSCRITOS VÃO BARRAR" NÃO EXISTE, e não deve voltar: o botão Excluir
+    // não aparece para cargo com inscrito, então ele seria guarda que não pode disparar.
+    // Saiu em 31/07 e continua fora. O ramo dos apelidos é outra história — ele saiu junto
+    // e VOLTOU em 01/08, porque a FK voltou a ser CASCADE e a perda voltou a ser possível.
 
-    it("o diálogo só fala do caso que sobrou: cargo sem menção nenhuma", async () => {
+    it("⭐ o diálogo AVISA que os apelidos vão junto — eles somem por CASCADE", async () => {
+      // Sem este teste o aviso some numa refatoração e a perda vira invisível: o usuário
+      // reassocia todos os textos de planilha na próxima importação sem saber por quê.
+      const user = abrir();
+      await screen.findByText("DOCENTE I ¿ HISTÓRIA");
+
+      await user.click(screen.getByRole("button", { name: "Excluir DOCENTE I ¿ HISTÓRIA" }));
+
+      const dialogo = await screen.findByRole("alertdialog");
+      expect(within(dialogo).getByText(/texto\(s\) de planilha memorizado/i)).toBeInTheDocument();
+      expect(within(dialogo).getByText(/sem associação/i)).toBeInTheDocument();
+      expect(within(dialogo).getByText("3")).toBeInTheDocument();
+    });
+
+    it("não mostra o aviso de apelidos quando não há nenhum", async () => {
+      // Aviso que sempre aparece vira ruído — e ruído é o que faz o usuário parar de ler.
       const user = abrir();
       await screen.findByText("ARTE");
 
       await user.click(screen.getByRole("button", { name: "Excluir ARTE" }));
 
       const dialogo = await screen.findByRole("alertdialog");
-      expect(within(dialogo).getByText(/não tem nenhum inscrito nem texto/i)).toBeInTheDocument();
+      expect(within(dialogo).queryByText(/texto\(s\) de planilha memorizado/i)).not.toBeInTheDocument();
+      expect(within(dialogo).getByText(/Nenhum inscrito usa este cargo/i)).toBeInTheDocument();
     });
 
     it("cancelar não chama exclusão nenhuma", async () => {

@@ -12,9 +12,18 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { formatDateBR } from "@/lib/utils";
-import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import fevreLogo from "@/assets/fevre-logo.png";
+import {
+  useLogoBase64,
+  criarDocumentoPaisagem,
+  desenharTimbre,
+  MARGEM_LATERAL,
+  ESTILOS_TABELA,
+  ESTILOS_CABECALHO,
+  LOGO_FEVRE,
+  TIMBRE_LINHA1_PADRAO,
+  TIMBRE_LINHA2_PADRAO,
+} from "@/lib/pdf-timbre";
 
 export default function DocumentosImpressao() {
   const { provaId } = useParams<{ provaId: string }>();
@@ -25,31 +34,14 @@ export default function DocumentosImpressao() {
   const { toast } = useToast();
 
   const [exportingReciboUnidadeId, setExportingReciboUnidadeId] = useState<string | null>(null);
-  const [logoBase64, setLogoBase64] = useState<string>("");
-
-  // Load logo as base64 on mount
-  useEffect(() => {
-    const loadLogo = async () => {
-      try {
-        const response = await fetch(fevreLogo);
-        const blob = await response.blob();
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setLogoBase64(reader.result as string);
-        };
-        reader.readAsDataURL(blob);
-      } catch (error) {
-        console.error("Erro ao carregar logo:", error);
-      }
-    };
-    loadLogo();
-  }, []);
+  const logoBase64 = useLogoBase64();
 
   const prova = provas.find((p) => p.id === provaId);
 
-  // Get header lines from prova data
-  const headerLine1 = prova?.prova_cabecalho_linha1 || "FUNDAÇÃO EDUCACIONAL DE VOLTA REDONDA";
-  const headerLine2 = prova?.prova_cabecalho_linha2 || "Coordenação de Concursos e Processos Seletivos";
+  // ⚠️ As duas linhas são as DA PROVA, não as do edital. O edital só sugere o valor
+  // inicial ao cadastrar a prova; editá-lo depois não altera PDFs já emitidos.
+  const headerLine1 = prova?.prova_cabecalho_linha1 || TIMBRE_LINHA1_PADRAO;
+  const headerLine2 = prova?.prova_cabecalho_linha2 || TIMBRE_LINHA2_PADRAO;
 
   const unidadesVinculadas = useMemo(() => {
     return provaUnidades.map((pu) => {
@@ -164,64 +156,36 @@ export default function DocumentosImpressao() {
       // Format exam date for title
       const dataProvaFormatada = formatDateBR(prova.prova_data) || "";
       
-      // Create PDF - Landscape orientation
-      const doc = new jsPDF({
-        orientation: "landscape",
-        unit: "mm",
-        format: "a4",
-      });
+      const doc = criarDocumentoPaisagem();
 
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
-      const marginLeft = 15;
-      const marginRight = 15;
 
-      // Function to format currency
       const formatCurrency = (value: number | null) => {
         if (value === null || value === undefined) return "R$ 0,00";
         return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
       };
 
-      // Function to add header to each page
+      /** Timbra a página e devolve o Y em que a tabela começa. */
       const addHeader = (funcaoName: string) => {
-        let yPos = 15;
+        const yTitulo = desenharTimbre(doc, {
+          logoBase64,
+          // Quatro linhas: este é o único documento que nomeia a UNIDADE no timbre —
+          // cada unidade recebe a sua lista impressa, e a folha tem de se identificar.
+          linhas: [headerLine1, headerLine2, edital, nomeUnidade],
+          titulo: `LISTA DE PRESENÇA - ${funcaoName.toUpperCase()} ${dataProvaFormatada ? `- ${dataProvaFormatada}` : ""}`,
+        });
 
-        // Add logo on the left
-        if (logoBase64) {
-          doc.addImage(logoBase64, "PNG", marginLeft, yPos, 20, 20);
-        }
-
-        // Header text - centered (Times New Roman, size 11)
-        doc.setFont("times", "normal");
-        doc.setFontSize(11);
-
-        const headerCenterX = pageWidth / 2;
-
-        // Line 1 - From prova registration
-        doc.text(headerLine1, headerCenterX, yPos + 4, { align: "center" });
-        
-        // Line 2 - From prova registration
-        doc.text(headerLine2, headerCenterX, yPos + 9, { align: "center" });
-        
-        // Line 3 - Edital
-        doc.text(edital, headerCenterX, yPos + 14, { align: "center" });
-        
-        // Line 4 - Unidade
-        doc.text(nomeUnidade, headerCenterX, yPos + 19, { align: "center" });
-
-        // Title line - Bold, centered: "RECIBO DE PAGAMENTO DE [FUNÇÃO] - [DATA]"
-        doc.setFont("times", "bold");
-        const titleText = `LISTA DE PRESENÇA - ${funcaoName.toUpperCase()} ${dataProvaFormatada ? `- ${dataProvaFormatada}` : ""}`;
-        doc.text(titleText, headerCenterX, yPos + 28, { align: "center" });
-
-        // Coordenador Geral line - only show if name is not empty
         if (coordenadorGeralNome.trim()) {
           doc.setFont("times", "normal");
-          const coordenadorText = `COORDENADOR GERAL: ${coordenadorGeralNome}`;
-          doc.text(coordenadorText, marginLeft, yPos + 35);
+          doc.text(`COORDENADOR GERAL: ${coordenadorGeralNome}`, MARGEM_LATERAL, yTitulo + 7);
         }
 
-        return yPos + 42; // Return Y position after header
+        // ⚠️ Reserva os 14mm da linha do Coordenador Geral MESMO SEM coordenador, para a
+        // tabela começar no mesmo Y nos dois casos — folhas da mesma prova têm de sair
+        // com o mesmo leiaute. É por isso que `desenharTimbre` devolve o Y do título e
+        // não "o Y livre": só quem chama sabe desta reserva.
+        return yTitulo + 14;
       };
 
       // Fixed 15 rows per page for payment receipt
@@ -274,25 +238,11 @@ export default function DocumentosImpressao() {
             head: [["Nº", "Nome", "Função", "PIX", "Valor", "Assinatura"]],
             body: tableData,
             theme: "grid",
-            margin: { left: marginLeft, right: marginRight, bottom: footerHeight },
-            styles: {
-              font: "times",
-              fontSize: fontSize,
-              cellPadding: 2,
-              valign: "middle",
-              lineColor: [0, 0, 0],
-              lineWidth: 0.3,
-              overflow: 'hidden',
-              cellWidth: 'wrap',
-              minCellHeight: rowHeight,
-            },
-            headStyles: {
-              fillColor: [255, 255, 255],
-              textColor: [0, 0, 0],
-              fontStyle: "bold",
-              halign: "center",
-              minCellHeight: tableHeaderHeight,
-            },
+            margin: { left: MARGEM_LATERAL, right: MARGEM_LATERAL, bottom: footerHeight },
+            // `hidden` aqui é escolha: a folha tem 15 linhas de altura FIXA para assinar,
+            // e um nome longo que quebrasse em duas linhas empurraria a grade inteira.
+            styles: { ...ESTILOS_TABELA, overflow: 'hidden', cellWidth: 'wrap', minCellHeight: rowHeight },
+            headStyles: { ...ESTILOS_CABECALHO, halign: "center", minCellHeight: tableHeaderHeight },
             columnStyles: {
               0: { halign: "center", cellWidth: 12 },
               1: { halign: "left", cellWidth: 80, overflow: 'hidden' },
@@ -328,25 +278,9 @@ export default function DocumentosImpressao() {
         head: [["Nome Completo", "Data de Nascimento", "CPF", "Telefone", "Assinatura"]],
         body: subsRows,
         theme: "grid",
-        margin: { left: marginLeft, right: marginRight, bottom: footerHeight },
-        styles: {
-          font: "times",
-          fontSize: fontSize,
-          cellPadding: 2,
-          valign: "middle",
-          lineColor: [0, 0, 0],
-          lineWidth: 0.3,
-          overflow: 'hidden',
-          cellWidth: 'wrap',
-          minCellHeight: rowHeight,
-        },
-        headStyles: {
-          fillColor: [255, 255, 255],
-          textColor: [0, 0, 0],
-          fontStyle: "bold",
-          halign: "center",
-          minCellHeight: tableHeaderHeight,
-        },
+        margin: { left: MARGEM_LATERAL, right: MARGEM_LATERAL, bottom: footerHeight },
+        styles: { ...ESTILOS_TABELA, overflow: 'hidden', cellWidth: 'wrap', minCellHeight: rowHeight },
+        headStyles: { ...ESTILOS_CABECALHO, halign: "center", minCellHeight: tableHeaderHeight },
         columnStyles: {
           0: { halign: "left", cellWidth: 80, overflow: 'hidden' },
           1: { halign: "center", cellWidth: 35 },
@@ -416,7 +350,7 @@ export default function DocumentosImpressao() {
               <div className="flex items-start gap-4">
                 <div className="flex-shrink-0">
                   <img 
-                    src={fevreLogo} 
+                    src={LOGO_FEVRE} 
                     alt="FEVRE Logo" 
                     className="w-16 h-16 object-contain"
                   />

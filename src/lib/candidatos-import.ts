@@ -838,3 +838,117 @@ export function mensagemErroImportacao(mensagem: string): string {
   }
   return mensagem;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────────────
+// O relatório de problemas — a parte pura, compartilhada pelos DOIS exports
+// ─────────────────────────────────────────────────────────────────────────────────────
+
+/** Uma queixa do relatório, já atribuída a um campo. */
+export interface ProblemaDoRelatorio {
+  /** O número que o Excel mostra, para a pessoa achar a linha. */
+  Linha: number;
+  Situação: "Não importada" | "Importada com ressalva" | "Substituída por linha posterior";
+  Campo: string;
+  Detalhe: string;
+}
+
+/**
+ * De que campo fala uma mensagem de erro/aviso — por PREFIXO do texto.
+ *
+ * ⚠️ Isto é acoplado às mensagens que `converterLinha` escreve. Não há tipo que ligue os
+ * dois: mexer no texto de um aviso lá joga a queixa no balde "Geral" aqui, em silêncio, e
+ * nada quebra. Ao acrescentar aviso novo, acrescente o prefixo nesta lista no mesmo passe.
+ *
+ * ORDEM IMPORTA: "Nome" também prefixa "Nome da mãe", se um dia existir. Do mais
+ * específico para o mais genérico, como em `PALAVRAS_DE_TESTE`.
+ */
+const PREFIXOS_POR_CAMPO: { prefixo: string; campo: string }[] = [
+  { prefixo: "Nº de inscrição", campo: "Nº de Inscrição" },
+  { prefixo: "Data de nascimento", campo: "Data de Nascimento" },
+  { prefixo: "Hora de nascimento", campo: "Hora de Nascimento" },
+  { prefixo: "Nome", campo: "Nome" },
+  { prefixo: "Cargo", campo: "Cargo" },
+  { prefixo: "CPF", campo: "CPF" },
+  { prefixo: "E-mail", campo: "E-mail" },
+  { prefixo: "CEP", campo: "CEP" },
+  { prefixo: "Raça", campo: "Raça" },
+];
+
+/** Separa "CPF tem 10 dígitos" em `{ Campo: "CPF", Detalhe: "tem 10 dígitos" }`. */
+export function classificarQueixa(mensagem: string): { Campo: string; Detalhe: string } {
+  for (const { prefixo, campo } of PREFIXOS_POR_CAMPO) {
+    if (mensagem.startsWith(prefixo)) {
+      return { Campo: campo, Detalhe: mensagem.substring(prefixo.length).trim() };
+    }
+  }
+  // ⚠️ Sem prefixo conhecido a queixa NÃO é descartada — vai para "Geral" com o texto
+  // inteiro. Perder queixa em silêncio é exatamente o formato de erro que este repo teme.
+  return { Campo: "Geral", Detalhe: mensagem };
+}
+
+/**
+ * Monta a lista de problemas do relatório final, ordenada pela linha da planilha.
+ *
+ * ⚠️ **É a fonte ÚNICA dos dois exports** (a planilha XLS e o documento PDF). Ela viveu
+ * duplicada verbatim dentro de `CandidatosImportar.tsx`, uma cópia em cada botão — e o
+ * custo desse arranjo é que corrigir a classificação de um campo num export deixava o
+ * outro mentindo, sem nada quebrar.
+ *
+ * As três origens são deliberadamente diferentes em natureza:
+ *   - `comErro`      → a linha NÃO entrou;
+ *   - `comAviso`     → a linha entrou inteira, com dado a conferir na origem (uma linha
+ *                      pode render VÁRIAS queixas, por isso `flatMap`);
+ *   - `repetidas`    → a linha entrou e foi sobrescrita por uma posterior de mesma chave.
+ *
+ * ⚠️ `repetidas` inclui duas grafias do MESMO cargo unificadas pela associação, não só
+ * repetição literal — ver `deduplicar`. Por isso o detalhe nomeia a chave inteira: quem
+ * for conferir na planilha precisa saber que não vai achar duas linhas idênticas lá.
+ */
+export function montarProblemasDoRelatorio(
+  comErro: LinhaConvertida[],
+  comAviso: LinhaConvertida[],
+  repetidas: Deduplicacao["repetidas"],
+): ProblemaDoRelatorio[] {
+  return [
+    ...comErro.map((l) => ({
+      Linha: l.linhaPlanilha,
+      Situação: "Não importada" as const,
+      ...classificarQueixa(l.erro ?? ""),
+    })),
+    ...comAviso.flatMap((l) =>
+      l.avisos.map((aviso) => ({
+        Linha: l.linhaPlanilha,
+        Situação: "Importada com ressalva" as const,
+        ...classificarQueixa(aviso),
+      })),
+    ),
+    ...repetidas.map((r) => ({
+      Linha: r.linhaPlanilha,
+      Situação: "Substituída por linha posterior" as const,
+      Campo: "Chave de Identificação",
+      Detalhe: `Inscrição e cargo repetidos na planilha (${r.chave.replace("||", " / ")})`,
+    })),
+  ].sort((a, b) => a.Linha - b.Linha);
+}
+
+/**
+ * Agrupa as queixas por campo, para o PDF dar uma tabela por campo.
+ *
+ * O PDF é lido por quem vai CORRIGIR a planilha, e corrigir é trabalho por coluna: ver as
+ * 40 queixas de CPF juntas é outro trabalho que ver 40 linhas misturadas. A planilha XLS
+ * não agrupa de propósito — lá quem filtra é o Excel.
+ */
+export function agruparProblemasPorCampo(
+  problemas: ProblemaDoRelatorio[],
+): { campo: string; queixas: ProblemaDoRelatorio[] }[] {
+  const porCampo = new Map<string, ProblemaDoRelatorio[]>();
+  for (const problema of problemas) {
+    const atual = porCampo.get(problema.Campo);
+    if (atual) atual.push(problema);
+    else porCampo.set(problema.Campo, [problema]);
+  }
+
+  return [...porCampo.entries()]
+    .map(([campo, queixas]) => ({ campo, queixas }))
+    .sort((a, b) => a.campo.localeCompare(b.campo, "pt-BR"));
+}

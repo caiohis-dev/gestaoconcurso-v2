@@ -46,6 +46,32 @@ vi.mock("react-router-dom", async () => {
   return { ...real, useNavigate: () => navigateMock };
 });
 
+/**
+ * O jsPDF não roda no jsdom sem tropeçar em canvas, e o objeto de teste aqui não é o PDF
+ * — é o que a TELA faz quando gerar o documento falha. Por isso só
+ * `criarDocumentoPaisagem` é trocada, e o resto do módulo (inclusive `useLogoBase64`, que
+ * roda no mount) fica real. `vi.hoisted` porque `vi.mock` é içado.
+ */
+const { pdfDeveFalhar, salvarPdf } = vi.hoisted(() => ({
+  pdfDeveFalhar: { valor: false },
+  salvarPdf: vi.fn(),
+}));
+vi.mock("@/lib/pdf-timbre", async () => {
+  const real = await vi.importActual<typeof import("@/lib/pdf-timbre")>("@/lib/pdf-timbre");
+  return {
+    ...real,
+    criarDocumentoPaisagem: () => {
+      if (pdfDeveFalhar.valor) throw new Error("canvas indisponível");
+      const doc = real.criarDocumentoPaisagem();
+      // ⚠️ `save` é NEUTRALIZADO: no jsdom ele grava o arquivo DE VERDADE, e a suíte
+      // passou a sujar a raiz do repo com um PDF por execução. Vira spy, que de quebra
+      // permite afirmar o nome do arquivo.
+      doc.save = salvarPdf as unknown as typeof doc.save;
+      return doc;
+    },
+  };
+});
+
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
     user: { id: "u-1", email: "admin@fevre.test", user_metadata: {} },
@@ -234,6 +260,8 @@ describe("CandidatosImportar (interação)", () => {
   beforeEach(() => {
     resetSupabaseMock();
     navigateMock.mockClear();
+    pdfDeveFalhar.valor = false;
+    salvarPdf.mockClear();
     setTableResult("editais", { data: [EDITAL], error: null });
     setTableResult("candidatos", { data: null, error: null });
     setTableResult("candidatos_importacao", { data: null, error: null });
@@ -891,6 +919,57 @@ describe("CandidatosImportar (interação)", () => {
 
       await user.click(screen.getByRole("button", { name: /Ver candidatos/i }));
       expect(navigateMock).toHaveBeenCalledWith("/candidatos");
+    });
+
+    it("oferece os DOIS formatos de relatório, nomeando cada um", async () => {
+      // Planilha e documento não são o mesmo relatório em dois arquivos: o XLS entrega
+      // lista plana para o Excel filtrar, o PDF vem timbrado e agrupado por campo, para
+      // anexar a processo. O rótulo tem de dizer qual é qual antes do clique.
+      const user = await abrir();
+      await importar(user);
+
+      expect(screen.getByRole("button", { name: /Baixar Planilha \(XLS\)/i })).toBeEnabled();
+      expect(screen.getByRole("button", { name: /Baixar Documento \(PDF\)/i })).toBeEnabled();
+    });
+
+    it("🔴 PDF que falha DIZ que falhou — e que os inscritos estão salvos", async () => {
+      // ⚠️ A primeira versão engolia a exceção num `console.error`: o botão voltava ao
+      // normal, nada baixava, e nada explicava. Perda silenciosa — a pessoa fica sem
+      // saber se o problema foi o download ou a importação.
+      //
+      // As duas metades da mensagem são o objeto do teste. Dizer só "falhou" faria o
+      // usuário refazer a importação inteira, que JÁ terminou com sucesso neste ponto:
+      // o que falhou é o documento, e a planilha continua disponível com os mesmos dados.
+      pdfDeveFalhar.valor = true;
+      const user = await abrir();
+      await importar(user);
+
+      await user.click(screen.getByRole("button", { name: /Baixar Documento \(PDF\)/i }));
+
+      const titulo = await screen.findByText(/Não foi possível gerar o documento/i);
+      // ⚠️ Escopado ao alerta: "planilha (XLS)" também é o rótulo do outro botão, e uma
+      // busca solta morreria por ambiguidade em vez de medir a mensagem.
+      const alerta = titulo.closest('[role="alert"]') as HTMLElement;
+      expect(within(alerta).getByText(/já foram importados e estão salvos/i)).toBeInTheDocument();
+      expect(within(alerta).getByText(/planilha \(XLS\)/i)).toBeInTheDocument();
+      // E o botão volta a ficar clicável: falha não pode deixar a tela travada no spinner.
+      expect(screen.getByRole("button", { name: /Baixar Documento \(PDF\)/i })).toBeEnabled();
+    });
+
+    it("PDF que dá certo NÃO deixa mensagem de erro na tela", async () => {
+      // Controle positivo do teste acima: sem ele, um <Alert> renderizado sempre passaria
+      // por lá e ninguém veria.
+      const user = await abrir();
+      await importar(user);
+
+      await user.click(screen.getByRole("button", { name: /Baixar Documento \(PDF\)/i }));
+
+      await waitFor(() => expect(salvarPdf).toHaveBeenCalled());
+      expect(screen.queryByText(/Não foi possível gerar o documento/i)).not.toBeInTheDocument();
+
+      // O nome carrega o arquivo de origem e o carimbo de quando foi gerado: duas
+      // exportações da mesma planilha não se sobrescrevem na pasta de downloads.
+      expect(salvarPdf.mock.calls[0][0]).toMatch(/^inscritos_relatorio_\d{2}-\d{2}-\d{4} .+\.pdf$/);
     });
   });
 });

@@ -41,10 +41,18 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { ArrowLeft, Plus, Trash2, Loader2, AlertTriangle, UserPlus, Lock, ChevronsUpDown, Check, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDateBRWithFallback, maskDateBR, brDateToIso, isoToBrDate, formatDateBR } from "@/lib/utils";
-import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import fevreLogo from "@/assets/fevre-logo.png";
+import {
+  useLogoBase64,
+  criarDocumentoPaisagem,
+  desenharTimbre,
+  MARGEM_LATERAL,
+  ESTILOS_TABELA,
+  ESTILOS_CABECALHO,
+  TIMBRE_LINHA1_PADRAO,
+  TIMBRE_LINHA2_PADRAO,
+} from "@/lib/pdf-timbre";
 
 interface FormState {
   prova_unidade_id: string;
@@ -120,22 +128,8 @@ export default function OcorrenciasProva() {
   const [substitutoId, setSubstitutoId] = useState<string>("");
   const [alocadosMap, setAlocadosMap] = useState<Record<string, string>>({});
   const [encerrarUnidadeId, setEncerrarUnidadeId] = useState<string | null>(null);
-  const [logoBase64, setLogoBase64] = useState<string>("");
+  const logoBase64 = useLogoBase64();
   const [exportingPdf, setExportingPdf] = useState(false);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const resp = await fetch(fevreLogo);
-        const blob = await resp.blob();
-        const reader = new FileReader();
-        reader.onloadend = () => setLogoBase64(reader.result as string);
-        reader.readAsDataURL(blob);
-      } catch (e) {
-        console.error("Erro ao carregar logo:", e);
-      }
-    })();
-  }, []);
 
   const openSubstituto = async () => {
     setSubstitutoOpen(true);
@@ -346,40 +340,28 @@ export default function OcorrenciasProva() {
 
   const busy = isLoading || isLoadingProvaUnidades;
 
-  const headerLine1 = (prova as any)?.prova_cabecalho_linha1 || "FUNDAÇÃO EDUCACIONAL DE VOLTA REDONDA";
-  const headerLine2 = (prova as any)?.prova_cabecalho_linha2 || "Coordenação de Concursos e Processos Seletivos";
+  const headerLine1 = (prova as any)?.prova_cabecalho_linha1 || TIMBRE_LINHA1_PADRAO;
+  const headerLine2 = (prova as any)?.prova_cabecalho_linha2 || TIMBRE_LINHA2_PADRAO;
 
   const exportPdf = async () => {
     if (!prova) return;
     setExportingPdf(true);
     try {
-      const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+      const doc = criarDocumentoPaisagem();
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
-      const marginLeft = 15;
-      const marginRight = 15;
 
       const edital = prova.editais?.nome || "PROVA";
       const dataProva = formatDateBR(prova.prova_data) || "";
 
-      const addHeader = () => {
-        const yPos = 15;
-        if (logoBase64) {
-          doc.addImage(logoBase64, "PNG", marginLeft, yPos, 20, 20);
-        }
-        doc.setFont("times", "normal");
-        doc.setFontSize(11);
-        const cx = pageWidth / 2;
-        doc.text(headerLine1, cx, yPos + 4, { align: "center" });
-        doc.text(headerLine2, cx, yPos + 9, { align: "center" });
-        doc.text(edital, cx, yPos + 14, { align: "center" });
-        doc.setFont("times", "bold");
-        const title = `REGISTRO DE OCORRÊNCIAS${dataProva ? ` - ${dataProva}` : ""}`;
-        doc.text(title, cx, yPos + 23, { align: "center" });
-        return yPos + 30;
-      };
-
-      const startY = addHeader();
+      // Três linhas — sem unidade, ao contrário da lista de presença: este documento é da
+      // prova inteira, e as ocorrências de todas as unidades saem na mesma tabela.
+      const startY =
+        desenharTimbre(doc, {
+          logoBase64,
+          linhas: [headerLine1, headerLine2, edital],
+          titulo: `REGISTRO DE OCORRÊNCIAS${dataProva ? ` - ${dataProva}` : ""}`,
+        }) + 7;
 
       const body = ocorrencias.map((o) => [
         formatDateDDMMYYYY(o.data_ocorrencia),
@@ -395,22 +377,9 @@ export default function OcorrenciasProva() {
         head: [["Data", "Unidade", "Colaborador", "Tipo", "Substituído", "Descrição"]],
         body: body.length > 0 ? body : [["—", "—", "Nenhuma ocorrência registrada", "—", "—", "—"]],
         theme: "grid",
-        margin: { left: marginLeft, right: marginRight, bottom: 15 },
-        styles: {
-          font: "times",
-          fontSize: 9,
-          cellPadding: 2,
-          valign: "middle",
-          lineColor: [0, 0, 0],
-          lineWidth: 0.3,
-          overflow: "linebreak",
-        },
-        headStyles: {
-          fillColor: [255, 255, 255],
-          textColor: [0, 0, 0],
-          fontStyle: "bold",
-          halign: "center",
-        },
+        margin: { left: MARGEM_LATERAL, right: MARGEM_LATERAL, bottom: 15 },
+        styles: { ...ESTILOS_TABELA, overflow: "linebreak" },
+        headStyles: { ...ESTILOS_CABECALHO, halign: "center" },
         columnStyles: {
           0: { halign: "center", cellWidth: 22 },
           1: { halign: "center", cellWidth: 22 },
@@ -419,11 +388,15 @@ export default function OcorrenciasProva() {
           4: { halign: "left", cellWidth: 50 },
           5: { halign: "left", cellWidth: "auto" },
         },
+        // ⚠️ Numera SEM total, e por isso não usa `numerarPaginas` do helper: aqui a
+        // contagem sai dentro do `didDrawPage`, quando as páginas seguintes ainda não
+        // existem. Trocar pelo passe final mudaria o rodapé do documento emitido.
         didDrawPage: () => {
           doc.setFont("times", "normal");
           doc.setFontSize(10);
-          const pageNum = (doc as any).internal.getNumberOfPages();
-          doc.text(`Página ${pageNum}`, pageWidth / 2, pageHeight - 8, { align: "center" });
+          doc.text(`Página ${doc.getNumberOfPages()}`, pageWidth / 2, pageHeight - 8, {
+            align: "center",
+          });
         },
       });
 

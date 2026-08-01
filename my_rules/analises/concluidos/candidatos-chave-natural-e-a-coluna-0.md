@@ -229,7 +229,7 @@ Enquanto isso não for decidido, quem pegaria o resíduo é a **reconciliação*
 
 | | |
 |---|---|
-| ~~Renomear `cargos.nome`~~ | ❌ **NÃO é mais livre desde 2026-07-31**: cargo com menção é imutável (`CG001`). Era o ganho central do tema; ver a seção da regra nova |
+| Renomear `cargos.nome` | ✅ **Livre enquanto o cargo não tiver INSCRITO** (regra estreitada em 2026-08-01, migration `20260801103940`). ⚠️ Esta linha dizia "NÃO é mais livre desde 31/07: cargo com menção é imutável" — valeu por um dia, quando apelido também trancava |
 | Criar cargo novo | livre — é `INSERT` em `cargos` |
 | Apagar cargo em uso | já recusado pelo `ON DELETE RESTRICT` da etapa 1 |
 | Reimportar a mesma linha com o mesmo cargo | é o caminho feliz, vira `UPDATE` |

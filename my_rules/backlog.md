@@ -242,7 +242,7 @@ Enquanto (2) não estiver resolvido, não é possível criar o `CHECK` que amarr
 
 O projeto novo no supabase.com já foi criado, mas o repo **não é linkado a ele** — e não deve ser, até o dia de colocar a v2 no ar (regra combinada em 2026-07-12: o repo fica deslinkado por padrão, e produção só é atualizada em versões estáveis).
 
-O schema já está pronto para subir quando for a hora: as **106** migrations reproduzem o banco local do zero (validado por `db reset` em 2026-07-31). ⚠️ **Este número já envelheceu duas vezes** — foi escrito como 69, corrigido para 85, e estava em 85 quando o real era 106. Confira com `npm run docs:conferir` em vez de confiar na leitura. O roteiro completo dos **9 passos** (link → `prod:push:dry` → `prod:push` → carga do `seed.local.sql` → **`seed.pos.sql`** → auth no dashboard → edge functions + secrets SMTP → `.env` do frontend → **unlink**) está em [`banco-producao.md`](./banco-producao.md).
+O schema já está pronto para subir quando for a hora: as **107** migrations reproduzem o banco local do zero (validado por `db reset` em 2026-07-31). ⚠️ **Este número já envelheceu duas vezes** — foi escrito como 69, corrigido para 85, e estava em 85 quando o real era 106. Confira com `npm run docs:conferir` em vez de confiar na leitura. O roteiro completo dos **9 passos** (link → `prod:push:dry` → `prod:push` → carga do `seed.local.sql` → **`seed.pos.sql`** → auth no dashboard → edge functions + secrets SMTP → `.env` do frontend → **unlink**) está em [`banco-producao.md`](./banco-producao.md).
 
 Falta apenas, no dia: a **ref do projeto novo** no Supabase.
 
@@ -271,6 +271,23 @@ Publicar a v2 em infraestrutura própria (ex.: Vercel, Netlify, ou build estáti
 2. **Alargar o trigger da 5b**, tirando a comparação de texto, fecharia o buraco registrado como "irredutível" — ⚠️ mas o **CONTROLE POSITIVO 1** da bateria de cargos quebra e precisa ser **reescrito** com inscrições diferentes. **Fica sem sentido se a chave mudar**, então decidir a chave ANTES de investir no trigger.
 
 3. ~~**`anon` continua com `TRUNCATE` em `candidatos`**~~ — ✅ **RESOLVIDO em 2026-07-31** pela migration `20260731110000`: `anon` perdeu **todos** os privilégios em `public`, e o `ALTER DEFAULT PRIVILEGES` parou de reconceder. Ver ["os grants de `anon` foram a zero"](./analises/concluidos/backlog-itens-concluidos.md) no histórico — a execução do item achou, de quebra, um vazamento de leitura em 8 policies.
+
+---
+
+## O PDF de ocorrências só timbra a página 1
+
+**Status:** achado em 2026-08-01, ao extrair `src/lib/pdf-timbre.ts`. Preservado de propósito, não corrigido.
+**Área:** Aplicação de Provas
+
+`OcorrenciasProva.exportPdf` chama o timbre **uma vez**, antes da tabela. O `didDrawPage` dela só escreve o rodapé. Uma prova com ocorrências que transbordem para a segunda página gera um documento em que **da página 2 em diante não há logo, nem fundação, nem nome do edital** — folhas soltas sem identificação.
+
+Não foi corrigido junto com a extração porque **corrigir muda o documento emitido**, e a extração tinha como regra não mudar nenhum. As duas coisas não deviam viajar no mesmo passe: se o leiaute mudasse junto, ninguém saberia depois se foi a extração que estragou.
+
+- **A correção é pequena:** trocar a chamada única por `didDrawPage: timbrar`, com o mesmo `Set` de páginas já timbradas que `CandidatosImportar` usa — o padrão está lá, pronto para copiar.
+- ⚠️ **Junto vem o `margin.top`:** sem ele, a tabela que continua na página 2 começa no topo e passa **por baixo** do timbre novo. É o mesmo par que `CandidatosImportar` resolve com `topoDoCorpo`.
+- **Medir antes:** não sei quantas ocorrências cabem numa página nem se alguma prova real já passou disso. Se nunca passou, o item vale menos do que parece — mas o custo de não saber é um documento oficial saindo errado sem ninguém ver.
+
+⚠️ O comportamento está anotado em [`estrutura/modulos/aplicacao-provas/ocorrencias.md`](./estrutura/modulos/aplicacao-provas/ocorrencias.md) e em `documentos-e-relatorios.md`. **Se este item for fechado, os dois avisos saem no mesmo passe** — aviso envelhecido é pior que aviso nenhum.
 
 ---
 
