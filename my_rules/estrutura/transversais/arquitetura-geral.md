@@ -118,7 +118,7 @@ Duas orientações ao escrever a descrição:
 
 ## 8. Pontos de atenção / higiene do repositório
 
-- **`docs/features/cadastro-lote-sanitizacao.md`** é documentação específica e detalhada do fluxo de importação em lote — parece atualizada, referenciada em [`colaboradores.md`](../modulos/aplicacao-provas/colaboradores.md).
+- ~~**`docs/features/cadastro-lote-sanitizacao.md`** … parece atualizada~~ — 🔵 **resolvido em 2026-07-31.** O arquivo virou [`modulos/aplicacao-provas/cadastro-lote.md`](../modulos/aplicacao-provas/cadastro-lote.md), na pasta do módulo a que pertence, e `docs/features/` deixou de existir. ⚠️ **Ele não estava atualizado:** cinco afirmações divergiam do código, entre elas negar que o CPF passa por dígito verificador. **"Parece atualizada" é exatamente o tipo de aval que um doc não deve dar sobre outro** — ninguém verificou, e a frase emprestou autoridade a um texto errado.
 - **`public/auth_users_export.csv`** existe no repo mas contém só o cabeçalho (sem linhas de dados) — não é vazamento de dados reais no momento, mas vale perguntar por que um artefato de export está versionado em `public/` (fica publicamente acessível se servido como estático).
 - **`src/integrations/supabase/types.ts`** é gerado automaticamente pelo Supabase CLI — não editar à mão. Já **`client.ts`**, apesar de um dia ter carregado o mesmo aviso, **é mantido à mão** (tem um wrapper de `fetch` que corrige o `expires_at` das respostas de auth); o comentário enganoso foi corrigido em 2026-07-11.
 - **Deploy ainda no Lovable** — a limpeza de 2026-07-11 removeu o Lovable do *código*, mas o site continua sendo publicado pela plataforma. Migrar hospedagem é trabalho pendente e separado.

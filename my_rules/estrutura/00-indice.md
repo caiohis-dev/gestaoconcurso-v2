@@ -18,7 +18,7 @@ Os módulos são os de **`src/lib/modulos.ts`** — a fonte de verdade. Módulo 
 
 O `00-modulo.md` de cada pasta é o **contrato**: identidade, arquivos, tabelas, rotas e guards, RPCs, fronteiras e pontos frágeis. Módulo grande se subdivide **por feature/domínio** dentro da própria pasta — nunca por rota nem por camada técnica:
 
-**Aplicação de Provas** — [`colaboradores.md`](./modulos/aplicacao-provas/colaboradores.md) · [`provas-e-unidades.md`](./modulos/aplicacao-provas/provas-e-unidades.md) · [`alocacao-e-funcoes.md`](./modulos/aplicacao-provas/alocacao-e-funcoes.md) · [`ocorrencias.md`](./modulos/aplicacao-provas/ocorrencias.md) · [`documentos-e-relatorios.md`](./modulos/aplicacao-provas/documentos-e-relatorios.md)
+**Aplicação de Provas** — [`colaboradores.md`](./modulos/aplicacao-provas/colaboradores.md) · [`cadastro-lote.md`](./modulos/aplicacao-provas/cadastro-lote.md) · [`provas-e-unidades.md`](./modulos/aplicacao-provas/provas-e-unidades.md) · [`alocacao-e-funcoes.md`](./modulos/aplicacao-provas/alocacao-e-funcoes.md) · [`ocorrencias.md`](./modulos/aplicacao-provas/ocorrencias.md) · [`documentos-e-relatorios.md`](./modulos/aplicacao-provas/documentos-e-relatorios.md)
 
 ## Transversais
 
@@ -51,7 +51,11 @@ O que atravessa módulos, ou é anterior a eles. Um doc de módulo **referencia*
 - [`../versionamento.md`](../versionamento.md) — regras de git (branches, commits, tags, o que nunca versionar).
 - [`../banco-producao.md`](../banco-producao.md) — regras do banco de produção e o roteiro de bootstrap da v2.
 - [`../historico/`](../historico/) — código aposentado cujo raciocínio vale preservar (hoje, a Edge Function `export-seed`).
-- `docs/` (raiz do repo) — baterias de teste manual e documentação pontual de fluxo (ex.: sanitização do cadastro em lote).
+- `docs/` (raiz do repo) — **só baterias de verificação** (`bateria-*.sql`, roteiros de teste manual de frontend). São **ferramentas que se executam**, não documentação que se lê para entender o sistema.
+
+  > 🔵 **Estreitado em 2026-07-31.** Esta linha dizia "baterias de teste manual **e documentação pontual de fluxo** (ex.: sanitização do cadastro em lote)". A exceção existia para acomodar **um único arquivo**, `docs/features/cadastro-lote-sanitizacao.md` — e contradizia a regra central desta pasta, porque aquilo era doc de **feature de módulo**: descrevia `/cadastro-lote`, do módulo Aplicação de Provas. Com ele fora, `colaboradores.md` não bastava para refatorar o fluxo sem reler o código.
+  >
+  > O arquivo virou [`modulos/aplicacao-provas/cadastro-lote.md`](./modulos/aplicacao-provas/cadastro-lote.md) e `docs/features/` deixou de existir. **Doc de feature vai na pasta do módulo. Sem exceção** — a anterior só serviu para que um doc envelhecesse longe dos seus pares.
 
 **Ordem de leitura para quem chega** (pessoa fazendo onboarding, uma vez): `transversais/arquitetura-geral.md` → `transversais/auth-e-permissoes.md` → o `00-modulo.md` do módulo da tarefa. **Vai implementar ou mexer numa regra de negócio? `transversais/invariantes.md` antes de escrever.** Para subir o ambiente, vá direto a `transversais/desenvolvimento-local.md`.
 

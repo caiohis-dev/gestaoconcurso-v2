@@ -63,7 +63,11 @@ Existia também `colaboradores_backup_20260701` (snapshot manual pontual, criado
    - Passo 1: informa CPF, checado via Edge Function `check-cpf-colaborador` (devolve só `{exists}`, sem expor a tabela nem o e-mail).
    - **Se já existe, converge para a reivindicação:** o `ReivindicarAcessoCard` é mostrado ali mesmo, com o CPF pré-preenchido (a pessoa recebe o link no e-mail do cadastro). Não recomeça um cadastro.
    - Se não existe, abre `ColaboradorDialog` em `publicMode`. **Não há mais código de 4 dígitos**; o e-mail é obrigatório. O insert passa pela Edge Function `public-create-colaborador`, que após criar a linha **dispara o link de acesso** (invite) para o e-mail via o helper `_shared/enviar-link-acesso.ts`. A conta é vinculada pelo trigger `handle_new_user` (ver [`auth-e-permissoes.md`](../../transversais/auth-e-permissoes.md)). O sucesso instrui a pessoa a abrir o e-mail e criar a senha.
-3. **`/cadastro-lote`** (`CadastroLote.tsx`) — importação em massa via planilha Excel (`xlsx`/SheetJS), com auto-mapeamento de colunas e sanitização linha a linha **documentados em detalhe em `docs/features/cadastro-lote-sanitizacao.md`** — esse doc específico está atualizado e deve ser a referência ao mexer nesse fluxo, não este arquivo.
+3. **`/cadastro-lote`** (`CadastroLote.tsx`) — importação em massa via planilha Excel (`xlsx`/SheetJS), com auto-mapeamento de colunas e sanitização linha a linha detalhados em [`cadastro-lote.md`](./cadastro-lote.md).
+
+   > 🔵 **Corrigido em 2026-07-31.** Este item dizia que aquele doc *"está atualizado e deve ser a referência ao mexer nesse fluxo, **não este arquivo**"* — e ele apontava para `docs/features/`, fora da pasta do módulo. Duas coisas estavam erradas: o doc **não** estava atualizado (cinco afirmações divergiam do código, entre elas negar que o CPF é validado por dígito verificador, o que **este** arquivo já dizia certo na seção de CPF abaixo), e o ponteiro mandava confiar nele em vez do doc do módulo.
+   >
+   > ⚠️ **A lição, que vale para qualquer referência cruzada:** **um doc não deve atestar que outro está atualizado.** Ele não tem como saber, e a garantia sobrevive à validade do que garante — vira autoridade emprestada a um texto errado.
 
 ## `useColaboradores.tsx` — regras de negócio no CRUD
 
