@@ -63,7 +63,21 @@ export const CAMPOS_CANDIDATO: CampoCandidato[] = [
   { key: 'sexo', label: 'Sexo', obrigatorio: false, sinonimos: ['sexo', 'genero'] },
   { key: 'raca', label: 'Raça', obrigatorio: false, sinonimos: ['raca', 'cor'] },
   { key: 'portador_deficiencia', label: 'Portador de Deficiência', obrigatorio: false, sinonimos: ['portadordeficiencia', 'deficiente', 'pcd', 'deficiencia'] },
-  { key: 'confirmado', label: 'Inscrição Confirmada', obrigatorio: false, sinonimos: ['confirmado', 'confirmacao'] },
+  // 🔴 OBRIGATÓRIO desde 2026-08-01, e o motivo NÃO é zelo: desde esta data só o inscrito
+  // com a inscrição paga é importado (`separarPorPagamento`), e quem responde "pagou?" é
+  // esta coluna. Se ela ficasse opcional e o usuário não a pareasse, `parseBooleano(null)`
+  // devolveria `false` para TODA linha — o filtro descartaria o arquivo inteiro. E como
+  // importar é TROCA TOTAL, o resultado seria a lista do edital apagada, ninguém no lugar
+  // e a tela dizendo "concluída". Perda total e silenciosa.
+  //
+  // É o mesmo precedente do `cargo` (decisão D4), tomado pelo mesmo motivo: campo cuja
+  // ausência produz resultado errado EM SILÊNCIO não pode ser opcional.
+  //
+  // ⚠️ Ao contrário do cargo, este campo TEM sinônimo e auto-mapeia: o cabeçalho do
+  // arquivo real é `CONFIRMADO`, que `normalizarTexto` casa com `'confirmado'`. Adivinhar
+  // aqui é seguro porque não há segunda coluna candidata — o perigo do cargo era existir
+  // `TIPOPROVA` vazia para o palpite acertar por fora.
+  { key: 'confirmado', label: 'Inscrição Confirmada', obrigatorio: true, sinonimos: ['confirmado', 'confirmacao'] },
   { key: 'telefone', label: 'Telefone', obrigatorio: false, sinonimos: ['telefone', 'fone'] },
   { key: 'celular', label: 'Celular', obrigatorio: false, sinonimos: ['celular'] },
   { key: 'logradouro', label: 'Logradouro', obrigatorio: false, sinonimos: ['logradouro', 'rua', 'endereco'] },
@@ -287,8 +301,26 @@ export interface CandidatoImportado {
 }
 
 export interface LinhaConvertida {
-  /** A linha na planilha, 1-based e contando o cabeçalho — o número que o Excel mostra. */
+  /**
+   * A linha na planilha, 1-based e contando o cabeçalho.
+   *
+   * ⚠️ Desde 2026-08-01 este número NÃO aparece mais nos relatórios exportados — quem
+   * identifica a linha para o usuário é o nº de inscrição. Ele continua aqui porque é o
+   * critério de ORDENAÇÃO do relatório e o que `deduplicar` guarda em `repetidas`.
+   */
   linhaPlanilha: number;
+  /**
+   * O nº de inscrição COMO VEIO da planilha, preenchido MESMO quando a linha falha.
+   *
+   * 🔴 Existe separado de `candidato.n_inscricao` por um motivo só: a linha com `erro` tem
+   * `candidato` NULO, e é justamente ela que o relatório precisa identificar. Sem este
+   * campo, "Nome vazio" e "Cargo vazio" — que têm inscrição — sairiam sem nada que
+   * permitisse achar a pessoa.
+   *
+   * `null` só no caso em que a própria inscrição falta ('Nº de inscrição vazio'). Aí o
+   * relatório mostra '—', e quem localiza a linha é o texto do erro.
+   */
+  nInscricao: string | null;
   candidato: CandidatoImportado | null;
   /** Preenchido quando `candidato` é null: a linha não entra. */
   erro: string | null;
@@ -357,10 +389,14 @@ export function converterLinha(
 ): LinhaConvertida {
   const val = (campo: string) => bruto(linha, mapeamento[campo]);
   const avisos: string[] = [];
-  const falha = (erro: string): LinhaConvertida => ({ linhaPlanilha, candidato: null, erro, avisos });
+
+  // Lido ANTES do `falha` de propósito: ele o carrega para dentro da linha que falha, e é
+  // o que dá ao relatório como identificar uma linha que não tem `candidato`.
+  const nInscricao = val('n_inscricao');
+  const falha = (erro: string): LinhaConvertida =>
+    ({ linhaPlanilha, nInscricao, candidato: null, erro, avisos });
 
   // ── O que identifica: falta → a linha não entra ────────────────────────────────
-  const nInscricao = val('n_inscricao');
   if (nInscricao === null) return falha('Nº de inscrição vazio');
   if (nInscricao.length > 8) {
     return falha(`Nº de inscrição "${nInscricao}" tem ${nInscricao.length} caracteres (o limite é 8)`);
@@ -519,7 +555,7 @@ export function converterLinha(
     concurso_id_origem: val('concurso_id_origem'),
   };
 
-  return { linhaPlanilha, candidato, erro: null, avisos };
+  return { linhaPlanilha, nInscricao, candidato, erro: null, avisos };
 }
 
 // ── Cargos ───────────────────────────────────────────────────────────────────────────
@@ -689,6 +725,50 @@ export function aplicarResolucoes(
   }));
 }
 
+export interface SeparacaoPorPagamento {
+  /** Inscrição paga: é o que segue para a importação. */
+  pagantes: LinhaConvertida[];
+  /** Inscrição NÃO paga: fica de fora, e o relatório tem de dizer quem foi. */
+  naoPagantes: LinhaConvertida[];
+}
+
+/**
+ * Separa quem pagou a inscrição de quem não pagou. **Só os pagantes são importados.**
+ *
+ * Decisão do usuário em 2026-08-01. A coluna que responde isso é a `CONFIRMADO` da
+ * planilha, pareada no passo 2 e obrigatória desde a mesma data — ver o comentário em
+ * `CAMPOS_CANDIDATO`, que explica o estrago de ela ficar sem parear.
+ *
+ * Medido no arquivo real (7.416 linhas de dado): **7.231 pagam e 185 não**. Só dois
+ * valores na coluna, `'1'` e `'0'`, sem vazio — mas `parseBooleano` aceita bem mais que
+ * isso, e é ele quem define o que conta como pago.
+ *
+ * 🔴 **RODA ANTES de `resolverLinhas`/`deduplicar`, e a ordem é CORREÇÃO, não estilo.**
+ * `deduplicar` mantém a ÚLTIMA ocorrência de cada chave natural. Se o filtro viesse
+ * depois, um não-pagante repetindo a chave de um pagante o DESLOCARIA no dedup e só então
+ * seria descartado — e o pagante sumiria da importação sem aparecer em lugar nenhum. O
+ * pipeline é:
+ *
+ *     converterLinha → separarPorPagamento → resolverLinhas → deduplicar → blocos de 500
+ *
+ * ⚠️ **Linha com `erro` não entra em NENHUM dos dois.** Ela já é contada em `comErro`, e
+ * classificá-la também aqui faria o relatório acusar a mesma linha por dois motivos — a
+ * pessoa procuraria dois problemas onde há um. Sem candidato não há `confirmado` que se
+ * possa ler, então a pergunta nem chega a fazer sentido.
+ */
+export function separarPorPagamento(linhas: LinhaConvertida[]): SeparacaoPorPagamento {
+  const pagantes: LinhaConvertida[] = [];
+  const naoPagantes: LinhaConvertida[] = [];
+
+  for (const linha of linhas) {
+    if (linha.candidato === null) continue;
+    if (linha.candidato.confirmado) pagantes.push(linha);
+    else naoPagantes.push(linha);
+  }
+
+  return { pagantes, naoPagantes };
+}
+
 /** Uma linha da planilha já convertida E com o cargo resolvido. Ver `resolverLinhas`. */
 export interface LinhaResolvida {
   linhaPlanilha: number;
@@ -719,27 +799,29 @@ export function resolverLinhas(
 
 /**
  * A chave natural da linha — precisa ser a MESMA do índice único
- * `candidatos_cpf_cargo_id_inscricao_key` (migration 20260728100000), porque é ela que
- * deduplica o lote antes do upsert. Divergir do banco não dá erro aqui: dá erro lá, no
- * bloco de 500 inteiro ("cannot affect row a second time").
+ * `candidatos_edital_inscricao_key` (migration 20260801193530), porque é ela que deduplica
+ * o lote antes da gravação. Divergir do banco não dá erro aqui: dá erro lá, quando a RPC
+ * insere, e a troca inteira é recusada.
  *
- * ⭐ Desde a etapa 5 do roadmap-cargos, o cargo entra por `cargo_id` e NÃO pelo texto. É a
- * mudança inteira: com a referência na identidade, o nome do cargo virou atributo, e
- * corrigir `DOCENTE I ¿ HISTÓRIA` para `DOCENTE I — HISTÓRIA` deixou de criar 481
- * registros novos. Por isso a função exige `CandidatoResolvido`: um lote que ainda não
- * passou por `aplicarResolucoes` não tem chave natural, e o TS recusa em vez de deixar
- * deduplicar pelo texto, que é o defeito silencioso que a ordem antiga produziria.
+ * ⭐ Desde 2026-08-01 a identidade é só o **número de inscrição** (dentro do edital, que é
+ * um só por importação e por isso não aparece aqui). Decisão do usuário. `cpf` e `cargo_id`
+ * SAÍRAM da identidade, e a razão de a proposta funcionar foi medida no arquivo real: cada
+ * inscrição tem número próprio, então a mesma pessoa em dois cargos já são dois números
+ * (CPF 05261923727 nas inscrições 9 e 5208). O cargo nunca foi o que distinguia essas
+ * linhas — ele só parecia ser.
  *
- * Os dois `??` reproduzem, em JS, o que o banco faz com ausência de valor — os DOIS
- * campos nulos caem no mesmo `NULLS NOT DISTINCT` do índice, que faz "sem valor" ser UM
- * valor em vez de infinitos distintos:
- *   - `cpf`: 2 linhas do arquivo real trazem CPF impossível e são gravadas com NULL;
- *   - `cargo_id`: nulo quando o cargo não foi resolvido. Não deveria chegar aqui (D4
- *     bloqueia o passo), mas se chegar, deduplicar como um valor só é o que impede a
- *     multiplicação a cada reimportação.
+ * ⚠️ **Os `??` do CPF e do cargo saíram junto, e não devem voltar.** Eles espelhavam o
+ * `NULLS NOT DISTINCT` do índice antigo, que existia porque as duas colunas são nullable.
+ * `n_inscricao` é NOT NULL no banco, então não há nulo a normalizar. Reintroduzir um campo
+ * nullable nesta chave sem reintroduzir o `NULLS NOT DISTINCT` no índice faz as linhas sem
+ * valor se multiplicarem a cada reimportação.
+ *
+ * ⚠️ Ela deixou de exigir `CandidatoResolvido`, e isso é intencional: o cargo saiu da
+ * chave, logo a chave não depende mais de o cargo ter sido resolvido. Quem continua
+ * exigindo a resolução antes é `deduplicar`, por outro motivo — ver lá.
  */
-export function chaveNatural(c: CandidatoResolvido): string {
-  return `${c.cpf ?? ''}||${c.cargo_id ?? ''}||${c.n_inscricao}`;
+export function chaveNatural(c: Pick<CandidatoResolvido, 'n_inscricao'>): string {
+  return c.n_inscricao;
 }
 
 export interface Deduplicacao {
@@ -751,25 +833,34 @@ export interface Deduplicacao {
 /**
  * Tira do lote as chaves repetidas DENTRO DO PRÓPRIO ARQUIVO, mantendo a última ocorrência.
  *
- * ⚠️ Isto não é zelo, é obrigatório: o Postgres recusa o lote inteiro com "ON CONFLICT DO
- * UPDATE command cannot affect row a second time" se a mesma chave aparecer duas vezes no
- * mesmo upsert. Sem esta passagem, um arquivo com uma linha duplicada não importa NADA —
- * falha o bloco de 500 inteiro, e a pessoa não tem como saber por quê.
+ * ⚠️ Isto não é zelo, é obrigatório: o índice único `candidatos_edital_inscricao_key`
+ * recusa a segunda linha de mesma chave, e como a gravação inteira roda dentro da RPC
+ * `trocar_candidatos`, o erro aborta a transação — o DELETE volta atrás junto e a
+ * importação não grava NADA. Sem esta passagem, uma única linha duplicada na planilha
+ * derruba a importação inteira.
  *
- * ⚠️ ELE RODA DEPOIS DA RESOLUÇÃO, e a ordem é contrato (ver `pipeline_da_importacao` no
- * roadmap-cargos.yaml):
+ * ⚠️ **Não é mais "falha o bloco de 500".** Até 2026-07-30 a gravação era um upsert direto
+ * em `candidatos`, e a recusa vinha como "ON CONFLICT DO UPDATE command cannot affect row a
+ * second time", num bloco só. Hoje os blocos de 500 vão para `candidatos_importacao`, que
+ * NÃO tem índice único na chave natural — eles passam. A recusa acontece depois, no INSERT
+ * da RPC, e derruba a troca inteira. O mecanismo mudou; a necessidade do dedup, não.
  *
- *     converterLinha → resolverLinhas → deduplicar → blocos de 500
+ * ELE RODA DEPOIS DA RESOLUÇÃO:
  *
- * Deduplicar ANTES de resolver era correto enquanto a chave do banco era o TEXTO do cargo.
- * Com `cargo_id` na chave passou a ser defeito: duas grafias sujas apontadas ao MESMO
- * cargo são a MESMA chave no banco, e um dedup sobre o texto as deixaria passar como
- * distintas — o Postgres então recusaria o bloco de 500 inteiro. Quem garante a ordem hoje
- * é o TIPO: `LinhaResolvida` só sai de `resolverLinhas`.
+ *     converterLinha → separarPorPagamento → resolverLinhas → deduplicar → blocos de 500
  *
- * ⚠️ Por isso `repetidas` MUDOU DE SIGNIFICADO: agora inclui duas grafias do mesmo cargo
- * unificadas pela associação, e não só repetição literal na planilha. A tela precisa dizer
- * isso, senão a pessoa procura na planilha uma linha repetida que não existe lá.
+ * ⚠️ **O motivo dessa ordem mudou em 2026-08-01, e o motivo antigo NÃO vale mais.** Até
+ * então o cargo compunha a chave natural, e deduplicar antes de resolver deixava passar
+ * duas grafias sujas do mesmo cargo como se fossem linhas distintas. Com a chave sendo só
+ * `(edital_id, n_inscricao)`, deduplicar antes ou depois de resolver dá o MESMO resultado.
+ * A ordem fica porque `deduplicar` devolve o que vai ser gravado, e a gravação precisa do
+ * `cargo_id` preenchido — quem garante isso é o TIPO: `LinhaResolvida` só sai de
+ * `resolverLinhas`.
+ *
+ * ⚠️ `repetidas` inclui repetição que NÃO se vê na planilha: duas linhas com o mesmo número
+ * de inscrição são a mesma chave ainda que difiram em CPF, nome ou cargo. A tela precisa
+ * dizer qual é a chave, senão a pessoa procura na planilha uma linha repetida que não está
+ * lá. No arquivo real isso não ocorre — os 7.416 números são distintos.
  *
  * Mantém a ÚLTIMA porque, quando alguém corrige uma linha, o costume é reescrevê-la abaixo.
  */
@@ -798,8 +889,12 @@ export function deduplicar(linhas: LinhaResolvida[]): Deduplicacao {
  */
 export function mensagemErroImportacao(mensagem: string): string {
   const m = mensagem.toLowerCase();
-  if (m.includes('candidatos_cpf_cargo_id_inscricao_key')) {
-    return 'Há inscrições repetidas (mesmo CPF, mesmo cargo e mesmo nº de inscrição) neste bloco.';
+  // ⚠️ Casa pelo NOME DO ÍNDICE, e é o que fez este ramo sobreviver à troca do mecanismo de
+  // gravação em 30/07: o nome aparece tanto no erro do upsert antigo quanto no
+  // 'duplicate key value violates unique constraint' do INSERT de hoje. Se o índice for
+  // renomeado outra vez sem mexer aqui, o usuário volta a ver a mensagem crua do Postgres.
+  if (m.includes('candidatos_edital_inscricao_key')) {
+    return 'Há mais de uma linha com o mesmo nº de inscrição nesta planilha.';
   }
   // ⚠️ O trigger da etapa 5b (SQLSTATE 'RC001') NÃO tem ramo aqui, e é de propósito: a
   // mensagem dele já nomeia o cargo e o destino atual, então o `return mensagem` do fim
@@ -837,4 +932,194 @@ export function mensagemErroImportacao(mensagem: string): string {
     return 'Sem permissão para gravar candidatos. É necessário ser administrador.';
   }
   return mensagem;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────
+// O relatório de problemas — a parte pura, compartilhada pelos DOIS exports
+// ─────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Uma queixa do relatório, já atribuída a um campo.
+ *
+ * ⚠️ **As chaves viram CABEÇALHO de coluna no XLS** (`json_to_sheet` usa o nome da
+ * propriedade), então renomear qualquer uma delas muda a planilha exportada. É o motivo de
+ * a primeira ter acento e espaço.
+ *
+ * 🔵 **`Linha` saiu em 2026-08-01, substituída por `Nº de Inscrição`** (decisão do
+ * usuário). O número da linha da planilha era um endereço dentro de um arquivo; o nº de
+ * inscrição identifica a PESSOA, que é o que quem lê o relatório precisa procurar. A
+ * ordenação continua sendo pela linha da planilha — ver `montarProblemasDoRelatorio`.
+ */
+export interface ProblemaDoRelatorio {
+  /** Do candidato, não da planilha. `'—'` quando a própria inscrição é o que falta. */
+  "Nº de Inscrição": string;
+  Situação:
+    | "Não importada"
+    | "Importada com ressalva"
+    | "Substituída por linha posterior"
+    | "Não importada (inscrição não paga)";
+  Campo: string;
+  Detalhe: string;
+}
+
+/**
+ * O título do bloco do PDF para um campo.
+ *
+ * 🔴 "Pagamento" NÃO é problema, e chamá-lo assim era erro de leitura do relatório: a
+ * inscrição sem pagamento não tem defeito nenhum a corrigir — é o filtro fazendo o que foi
+ * mandado. Mandar a pessoa "corrigir" 185 linhas legítimas é o oposto do que o bloco quer.
+ *
+ * ⚠️ Casa pelo nome do campo que `montarProblemasDoRelatorio` escreve em `Campo`. Mudar lá
+ * sem mudar aqui devolve o título genérico, em silêncio.
+ */
+export function subtituloDoCampo(campo: string): string {
+  if (campo === CAMPO_PAGAMENTO) return "Lista de inscrições sem pagamento registrado";
+  return `Problemas encontrados no campo: ${campo}`;
+}
+
+/** O `Campo` das linhas descartadas pelo filtro de pagamento. Ver `subtituloDoCampo`. */
+const CAMPO_PAGAMENTO = "Pagamento";
+
+/**
+ * De que campo fala uma mensagem de erro/aviso — por PREFIXO do texto.
+ *
+ * ⚠️ Isto é acoplado às mensagens que `converterLinha` escreve. Não há tipo que ligue os
+ * dois: mexer no texto de um aviso lá joga a queixa no balde "Geral" aqui, em silêncio, e
+ * nada quebra. Ao acrescentar aviso novo, acrescente o prefixo nesta lista no mesmo passe.
+ *
+ * ORDEM IMPORTA: "Nome" também prefixa "Nome da mãe", se um dia existir. Do mais
+ * específico para o mais genérico, como em `PALAVRAS_DE_TESTE`.
+ */
+const PREFIXOS_POR_CAMPO: { prefixo: string; campo: string }[] = [
+  { prefixo: "Nº de inscrição", campo: "Nº de Inscrição" },
+  { prefixo: "Data de nascimento", campo: "Data de Nascimento" },
+  { prefixo: "Hora de nascimento", campo: "Hora de Nascimento" },
+  { prefixo: "Nome", campo: "Nome" },
+  { prefixo: "Cargo", campo: "Cargo" },
+  { prefixo: "CPF", campo: "CPF" },
+  { prefixo: "E-mail", campo: "E-mail" },
+  { prefixo: "CEP", campo: "CEP" },
+  { prefixo: "Raça", campo: "Raça" },
+];
+
+/** Separa "CPF tem 10 dígitos" em `{ Campo: "CPF", Detalhe: "tem 10 dígitos" }`. */
+export function classificarQueixa(mensagem: string): { Campo: string; Detalhe: string } {
+  for (const { prefixo, campo } of PREFIXOS_POR_CAMPO) {
+    if (mensagem.startsWith(prefixo)) {
+      return { Campo: campo, Detalhe: mensagem.substring(prefixo.length).trim() };
+    }
+  }
+  // ⚠️ Sem prefixo conhecido a queixa NÃO é descartada — vai para "Geral" com o texto
+  // inteiro. Perder queixa em silêncio é exatamente o formato de erro que este repo teme.
+  return { Campo: "Geral", Detalhe: mensagem };
+}
+
+/**
+ * Monta a lista de problemas do relatório final, ordenada pela linha da planilha.
+ *
+ * ⚠️ **É a fonte ÚNICA dos dois exports** (a planilha XLS e o documento PDF). Ela viveu
+ * duplicada verbatim dentro de `CandidatosImportar.tsx`, uma cópia em cada botão — e o
+ * custo desse arranjo é que corrigir a classificação de um campo num export deixava o
+ * outro mentindo, sem nada quebrar.
+ *
+ * As quatro origens são deliberadamente diferentes em natureza:
+ *   - `comErro`      → a linha NÃO entrou, porque falta o que a identifica;
+ *   - `comAviso`     → a linha entrou inteira, com dado a conferir na origem (uma linha
+ *                      pode render VÁRIAS queixas, por isso `flatMap`);
+ *   - `repetidas`    → a linha entrou e foi sobrescrita por uma posterior de mesma chave;
+ *   - `naoPagantes`  → a linha NÃO entrou, porque a inscrição não está paga.
+ *
+ * ⚠️ `repetidas` inclui repetição que NÃO se vê como tal na planilha: desde 2026-08-01 a
+ * chave é só o nº de inscrição, então duas linhas com o mesmo número colidem ainda que
+ * difiram em CPF, nome ou cargo — ver `deduplicar`. Por isso o detalhe nomeia a chave: quem
+ * for conferir na planilha precisa saber que não vai achar duas linhas idênticas lá.
+ *
+ * 🔴 `naoPagantes` tem `Situação` PRÓPRIA, e não se mistura com "Não importada". As duas
+ * dizem que a linha ficou de fora, mas a providência é oposta: erro de dado se corrige na
+ * planilha e se reimporta; inscrição não paga não é defeito nenhum — é o filtro fazendo o
+ * que foi mandado fazer. Juntá-las mandaria a pessoa caçar erro onde não há.
+ *
+ * ⚠️ Sem esta origem o descarte seria MUDO: 185 pessoas do arquivo real sumiriam da
+ * importação sem aparecer em lugar nenhum. É o formato de erro que este repo mais teme.
+ */
+export function montarProblemasDoRelatorio(
+  comErro: LinhaConvertida[],
+  comAviso: LinhaConvertida[],
+  repetidas: Deduplicacao["repetidas"],
+  naoPagantes: LinhaConvertida[] = [],
+): ProblemaDoRelatorio[] {
+  /** '—' e não '' : célula vazia num relatório impresso parece falha de geração. */
+  const inscricao = (valor: string | null | undefined) => valor ?? "—";
+
+  // ⚠️ A ordenação continua sendo pela LINHA DA PLANILHA, mesmo que ela não seja mais
+  // exibida. Ordenar pelo nº de inscrição exigiria decidir entre ordem numérica e textual
+  // ("10" < "9" em texto), e a linha já entrega a ordem de leitura do arquivo — que no
+  // arquivo real coincide com a da inscrição, porque a coluna A é densa e sequencial.
+  const ordenaveis: { ordem: number; problema: ProblemaDoRelatorio }[] = [
+    ...naoPagantes.map((l) => ({
+      ordem: l.linhaPlanilha,
+      problema: {
+        "Nº de Inscrição": inscricao(l.nInscricao),
+        Situação: "Não importada (inscrição não paga)" as const,
+        Campo: CAMPO_PAGAMENTO,
+        // Nomeia a pessoa: o relatório vai para quem precisa conferir se a ausência dela é
+        // legítima, e um número sozinho não diz de quem se trata.
+        Detalhe: `${l.candidato?.nome ?? "—"} — inscrição não consta como paga`,
+      },
+    })),
+    ...comErro.map((l) => ({
+      ordem: l.linhaPlanilha,
+      problema: {
+        "Nº de Inscrição": inscricao(l.nInscricao),
+        Situação: "Não importada" as const,
+        ...classificarQueixa(l.erro ?? ""),
+      },
+    })),
+    ...comAviso.flatMap((l) =>
+      l.avisos.map((aviso) => ({
+        ordem: l.linhaPlanilha,
+        problema: {
+          "Nº de Inscrição": inscricao(l.nInscricao),
+          Situação: "Importada com ressalva" as const,
+          ...classificarQueixa(aviso),
+        },
+      })),
+    ),
+    ...repetidas.map((r) => ({
+      ordem: r.linhaPlanilha,
+      problema: {
+        // ⚠️ `chave` É o nº de inscrição desde 2026-08-01 — `chaveNatural()` devolve só
+        // ele. Enquanto a chave era composta, aqui havia um `.replace("||", " / ")` para
+        // desmontá-la; ele virou código morto e saiu.
+        "Nº de Inscrição": inscricao(r.chave),
+        Situação: "Substituída por linha posterior" as const,
+        Campo: "Chave de Identificação",
+        Detalhe: "Outra linha da planilha traz este mesmo nº de inscrição; valeu a última",
+      },
+    })),
+  ];
+
+  return ordenaveis.sort((a, b) => a.ordem - b.ordem).map((o) => o.problema);
+}
+
+/**
+ * Agrupa as queixas por campo, para o PDF dar uma tabela por campo.
+ *
+ * O PDF é lido por quem vai CORRIGIR a planilha, e corrigir é trabalho por coluna: ver as
+ * 40 queixas de CPF juntas é outro trabalho que ver 40 linhas misturadas. A planilha XLS
+ * não agrupa de propósito — lá quem filtra é o Excel.
+ */
+export function agruparProblemasPorCampo(
+  problemas: ProblemaDoRelatorio[],
+): { campo: string; queixas: ProblemaDoRelatorio[] }[] {
+  const porCampo = new Map<string, ProblemaDoRelatorio[]>();
+  for (const problema of problemas) {
+    const atual = porCampo.get(problema.Campo);
+    if (atual) atual.push(problema);
+    else porCampo.set(problema.Campo, [problema]);
+  }
+
+  return [...porCampo.entries()]
+    .map(([campo, queixas]) => ({ campo, queixas }))
+    .sort((a, b) => a.campo.localeCompare(b.campo, "pt-BR"));
 }

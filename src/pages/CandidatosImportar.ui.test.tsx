@@ -46,6 +46,37 @@ vi.mock("react-router-dom", async () => {
   return { ...real, useNavigate: () => navigateMock };
 });
 
+/**
+ * O jsPDF não roda no jsdom sem tropeçar em canvas, e o objeto de teste aqui não é o PDF
+ * — é o que a TELA faz quando gerar o documento falha. Por isso só
+ * `criarDocumentoPaisagem` é trocada, e o resto do módulo (inclusive `useLogoBase64`, que
+ * roda no mount) fica real. `vi.hoisted` porque `vi.mock` é içado.
+ */
+const { pdfDeveFalhar, salvarPdf } = vi.hoisted(() => ({
+  pdfDeveFalhar: { valor: false },
+  salvarPdf: vi.fn(),
+}));
+vi.mock("@/lib/pdf-timbre", async () => {
+  const real = await vi.importActual<typeof import("@/lib/pdf-timbre")>("@/lib/pdf-timbre");
+  return {
+    ...real,
+    // ⚠️ Calado de propósito: o `useLogoBase64` real faz `fetch` da URL do asset, que no
+    // jsdom não é resolvível, e cada teste do arquivo cuspia um TypeError no stderr. O
+    // erro é tratado (o PDF sai sem logo), mas 42 avisos por execução viram ruído que
+    // esconde problema de verdade — é a armadilha 3 de `testes.md`.
+    useLogoBase64: () => "",
+    criarDocumentoPaisagem: () => {
+      if (pdfDeveFalhar.valor) throw new Error("canvas indisponível");
+      const doc = real.criarDocumentoPaisagem();
+      // ⚠️ `save` é NEUTRALIZADO: no jsdom ele grava o arquivo DE VERDADE, e a suíte
+      // passou a sujar a raiz do repo com um PDF por execução. Vira spy, que de quebra
+      // permite afirmar o nome do arquivo.
+      doc.save = salvarPdf as unknown as typeof doc.save;
+      return doc;
+    },
+  };
+});
+
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
     user: { id: "u-1", email: "admin@fevre.test", user_metadata: {} },
@@ -83,13 +114,46 @@ const EDITAL = {
  * O recorte do arquivo real que contém a armadilha inteira:
  *  - coluna A sem título;
  *  - DUAS colunas `NOME` — a C é a pessoa, a E é o cargo;
- *  - a mesma inscrição (213946) em dois cargos, que é o caso dos 382 do arquivo real.
+ *  - a mesma PESSOA (`ID` 213946) concorrendo a dois cargos, que é o caso dos 382 do
+ *    arquivo real — com um nº de inscrição PRÓPRIO para cada uma das duas inscrições.
+ *
+ * 🔴 **Os números de inscrição eram iguais nas duas linhas da CASSIA até 2026-08-01**, e
+ * isso descrevia mal o arquivo: os 382 casos repetem o `ID` (a pessoa), não a inscrição.
+ * Medido no arquivo real — os 7.416 números de inscrição são distintos, e quem concorre a
+ * dois cargos faz duas inscrições. O fixture antigo era o resquício da leitura que trocava
+ * as duas colunas, e com a chave natural virando só o nº de inscrição ele passou a
+ * descrever uma fusão que o arquivo não produz.
+ *
+ * ⚠️ Aqui o nº de inscrição auto-mapeia para a coluna B (`ID`), porque a A está sem título
+ * e `'id'` é sinônimo do campo. No arquivo real a A chama-se `N_INSCRICAO` e é ela que
+ * casa. É uma diferença do fixture, não do sistema — o que os testes daqui medem é o
+ * comportamento da tela dado um mapeamento, não qual coluna o palpite escolhe.
+ *
+ * ⚠️ `CONFIRMADO` entrou em 2026-08-01, quando o campo virou obrigatório e passou a
+ * FILTRAR a importação. Aqui vem `"1"` em todas as linhas de propósito: assim os testes
+ * que já existiam continuam medindo o que mediam, sem o filtro no meio. Quem quiser
+ * exercitar o filtro usa `MATRIZ_COM_NAO_PAGANTE`.
  */
 const MATRIZ = [
-  ["   ", "ID", "NOME", "CPF", "NOME"],
-  ["1", "213946", "CASSIA ANDREA", "99528037704", "DOCENTE II"],
-  ["2", "213946", "CASSIA ANDREA", "99528037704", "DOCENTE I - HISTÓRIA"],
-  ["3", "214274", "AGATHA LAMIM", "22940161739", "DOCENTE II"],
+  ["   ", "ID", "NOME", "CPF", "NOME", "CONFIRMADO"],
+  ["1", "213946", "CASSIA ANDREA", "99528037704", "DOCENTE II", "1"],
+  ["2", "213947", "CASSIA ANDREA", "99528037704", "DOCENTE I - HISTÓRIA", "1"],
+  ["3", "214274", "AGATHA LAMIM", "22940161739", "DOCENTE II", "1"],
+];
+
+/**
+ * A mesma matriz com UM não-pagante, para exercitar o filtro de 2026-08-01.
+ *
+ * ⚠️ A não-pagante é a AGATHA (linha 4), e a escolha não é indiferente: ela é a única que
+ * não divide a PESSOA com outra linha. Marcar uma das duas linhas da CASSIA misturaria o
+ * filtro com o caso das duas inscrições da mesma pessoa, e um teste que falhasse não diria
+ * qual dos dois errou.
+ */
+const MATRIZ_COM_NAO_PAGANTE = [
+  ["   ", "ID", "NOME", "CPF", "NOME", "CONFIRMADO"],
+  ["1", "213946", "CASSIA ANDREA", "99528037704", "DOCENTE II", "1"],
+  ["2", "213947", "CASSIA ANDREA", "99528037704", "DOCENTE I - HISTÓRIA", "1"],
+  ["3", "214274", "AGATHA LAMIM", "22940161739", "DOCENTE II", "0"],
 ];
 
 /** O catálogo de cargos já cadastrados, que o passo 3 oferece no Select. */
@@ -234,6 +298,8 @@ describe("CandidatosImportar (interação)", () => {
   beforeEach(() => {
     resetSupabaseMock();
     navigateMock.mockClear();
+    pdfDeveFalhar.valor = false;
+    salvarPdf.mockClear();
     setTableResult("editais", { data: [EDITAL], error: null });
     setTableResult("candidatos", { data: null, error: null });
     setTableResult("candidatos_importacao", { data: null, error: null });
@@ -262,7 +328,7 @@ describe("CandidatosImportar (interação)", () => {
 
       // 3 linhas de dados e 5 colunas — a contagem é a evidência de que a leitura
       // aconteceu, e de que o cabeçalho não foi contado como dado.
-      expect(await screen.findByText(/3 linha\(s\) de dados, 5 coluna\(s\)/)).toBeInTheDocument();
+      expect(await screen.findByText(/3 linha\(s\) de dados, 6 coluna\(s\)/)).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Parear colunas/i })).toBeEnabled();
     });
 
@@ -348,14 +414,20 @@ describe("CandidatosImportar (interação)", () => {
     it("⭐⭐ sem o cargo pareado NÃO DÁ para avançar, e a tela diz por quê", async () => {
       // ESTE é o teste que não pode cair, e ele mudou de forma em 2026-07-27 (D4).
       //
-      // ANTES: o cargo era opcional. Deixá-lo em branco fundia as duas inscrições 213946
-      // num registro só — 3 linhas viravam 2 candidatos — e a única defesa era um alerta
-      // vermelho que o usuário podia ignorar. No arquivo real, 396 pessoas sumiam sem
-      // erro nenhum, com a importação terminando em verde.
+      // ANTES: o cargo era opcional, e como ele COMPUNHA a chave natural, deixá-lo em
+      // branco fundia linhas num registro só — a única defesa era um alerta vermelho que o
+      // usuário podia ignorar, e a importação terminava em verde tendo perdido gente.
       //
-      // AGORA: o cargo é obrigatório e a perda é IMPOSSÍVEL, não improvável. O teste mede
-      // o impedimento, que é a proteção nova — mas a explicação e o "onde o cargo está"
-      // continuam sendo exigidos, porque barrar sem orientar só troca um problema por outro.
+      // AGORA: o cargo é obrigatório e a perda por essa via é IMPOSSÍVEL, não improvável.
+      //
+      // ⚠️ Desde 2026-08-01 o cargo saiu da chave natural, então a fusão descrita acima não
+      // pode mais acontecer NEM se o cargo voltasse a ser opcional — o motivo original de
+      // D4 caiu. O impedimento FICA, e não por inércia: `candidatos.cargo_id` é NULLABLE no
+      // banco (conferido no information_schema), então nada lá embaixo barra um inscrito
+      // sem cargo, e um inscrito sem cargo não entra em lista de presença nem em nada que a
+      // Aplicação de Provas recorte por cargo. A barreira é só esta tela.
+      // O teste mede o impedimento, mas a explicação e o "onde o cargo está" continuam
+      // sendo exigidos, porque barrar sem orientar só troca um problema por outro.
       const user = await abrir();
       await irParaPareamento(user);
 
@@ -371,17 +443,20 @@ describe("CandidatosImportar (interação)", () => {
       expect(screen.getByRole("button", { name: /^Continuar$/i })).toBeEnabled();
     });
 
-    it("⭐⭐ parear o cargo desfaz a colisão e recupera o inscrito", async () => {
-      // O controle positivo do teste acima: prova que o alerta some porque o problema
-      // acabou, e não porque a condição do alerta está quebrada.
+    it("⭐⭐ as duas inscrições da mesma pessoa chegam INTEIRAS ao fim", async () => {
+      // ⚠️ ESTE TESTE SE CHAMAVA "parear o cargo desfaz a colisão e recupera o inscrito", e
+      // a afirmação morreu em 2026-08-01. Enquanto o cargo compunha a chave natural, deixar
+      // de pareá-lo fundia linhas e pareá-lo as recuperava — havia uma colisão para desfazer.
+      // Com a chave sendo só o nº de inscrição, o cargo não influencia mais a contagem: as
+      // três linhas são três candidatos com ou sem associação.
       //
-      // ⚠️ ONDE A CONTAGEM É LIDA MUDOU DUAS VEZES, e a segunda é a etapa 5.
-      // Desde o passo Cargos (27/07) o botão do passo 2 virou só "Continuar". Agora, com o
-      // dedup rodando DEPOIS da resolução, o passo 2 não tem mais como saber o número
-      // final: sem cargo resolvido todos os `cargo_id` são null, e as duas inscrições
-      // 213946 colapsariam numa só. Por isso o passo 2 anuncia "linha(s) lida(s)" — um
-      // fato do arquivo — e o número de verdade é afirmado no passo 3, JÁ RESOLVIDO.
-      // Ver `linhasValidas` em CandidatosImportar.tsx.
+      // O que o teste guarda AGORA é o que realmente importa e não depende do mecanismo: a
+      // mesma pessoa (`ID` 213946) inscrita em dois cargos chega ao fim como DUAS linhas.
+      // Se cair, 380 segundas inscrições de pagantes do arquivo real somem na importação.
+      //
+      // ⚠️ ONDE A CONTAGEM É LIDA continua sendo passo 3, não passo 2 — o passo 2 anuncia
+      // "linha(s) lida(s)", um fato do arquivo. Isso é anterior à mudança da chave e não
+      // depende dela: o total só é afirmado depois que o usuário decidiu os cargos.
       const user = await abrir();
       await irParaPareamento(user);
 
@@ -390,9 +465,6 @@ describe("CandidatosImportar (interação)", () => {
       await escolher(user, "Cargo", "NOME (coluna E)");
       expect(await screen.findByText("3 linha(s) lida(s)")).toBeInTheDocument();
 
-      // A asserção que importa: depois de resolver, as DUAS inscrições 213946 sobrevivem
-      // em cargos diferentes. Se a chave voltasse a ignorar o cargo, seriam 2 — e os
-      // 396 inscritos do arquivo real se perderiam em silêncio.
       await user.click(await screen.findByRole("button", { name: /^Continuar$/i }));
       await screen.findByRole("heading", { name: "Cargos" });
       await associarTodos(user);
@@ -401,7 +473,7 @@ describe("CandidatosImportar (interação)", () => {
         await screen.findByRole("button", { name: /Importar 3 candidato\(s\)/i }),
       ).toBeInTheDocument();
       await waitFor(() =>
-        expect(screen.queryByText(/viram a mesma inscrição/i)).not.toBeInTheDocument(),
+        expect(screen.queryByText(/repetem um nº de inscrição/i)).not.toBeInTheDocument(),
       );
     });
 
@@ -439,10 +511,14 @@ describe("CandidatosImportar (interação)", () => {
       const user = await abrir();
       // A coluna de cargo entra na matriz porque, desde D9, linha sem cargo também é
       // descartada — e o que este teste mede é o descarte por FALTA DE INSCRIÇÃO.
+      // ⚠️ `CONFIRMADO` entrou aqui em 2026-08-01 por NECESSIDADE, não por simetria: o
+      // campo virou obrigatório, e a prévia inteira — inclusive o alerta que este teste
+      // mede — só renderiza com `mapeamentoCompleto`. Sem a coluna, o teste mediria a
+      // ausência da prévia, não o descarte por falta de inscrição.
       await irParaPareamento(user, [
-        ["ID", "NOME", "CPF", "CARGO"],
-        ["", "SEM INSCRIÇÃO", "99528037704", "DOCENTE II"],
-        ["214274", "AGATHA LAMIM", "22940161739", "DOCENTE II"],
+        ["ID", "NOME", "CPF", "CARGO", "CONFIRMADO"],
+        ["", "SEM INSCRIÇÃO", "99528037704", "DOCENTE II", "1"],
+        ["214274", "AGATHA LAMIM", "22940161739", "DOCENTE II", "1"],
       ]);
       await escolher(user, "Cargo", "CARGO");
 
@@ -450,6 +526,78 @@ describe("CandidatosImportar (interação)", () => {
         await screen.findByText(/1 linha\(s\) não serão importadas/i),
       ).toBeInTheDocument();
       expect(screen.getByText(/linha 2 \(Nº de inscrição vazio\)/i)).toBeInTheDocument();
+    });
+  });
+
+  describe("passo 2 — o filtro de pagamento", () => {
+    it("🔴 sem parear 'Inscrição Confirmada' NÃO dá para avançar", async () => {
+      // A barreira que impede o pior caso possível deste fluxo: sem a coluna, toda linha
+      // conta como não paga, o filtro descarta o arquivo inteiro e a TROCA TOTAL apaga a
+      // lista do edital sem pôr ninguém no lugar.
+      const user = await abrir();
+      await irParaPareamento(user, [
+        ["ID", "NOME", "CPF", "CARGO"],
+        ["214274", "AGATHA LAMIM", "22940161739", "DOCENTE II"],
+      ]);
+      await escolher(user, "Cargo", "CARGO");
+
+      expect(screen.getByRole("button", { name: /^Continuar$/i })).toBeDisabled();
+    });
+
+    it("🔴 controle positivo: com a coluna presente, avança", async () => {
+      // Sem este par, o teste acima passaria mesmo se o botão estivesse quebrado e nunca
+      // habilitasse — mediria "está desabilitado" sem provar que é o `confirmado` que o
+      // desabilita.
+      const user = await abrir();
+      await irParaPareamento(user, [
+        ["ID", "NOME", "CPF", "CARGO", "CONFIRMADO"],
+        ["214274", "AGATHA LAMIM", "22940161739", "DOCENTE II", "1"],
+      ]);
+      await escolher(user, "Cargo", "CARGO");
+
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: /^Continuar$/i })).toBeEnabled(),
+      );
+    });
+
+    it("⭐ diz quantos entram e quantos ficam de fora, antes de qualquer coisa", async () => {
+      // O "usuário deve ser informado" do pedido, no ponto em que ele acabou de escolher
+      // qual coluna responde "pagou?".
+      const user = await abrir();
+      await irParaPareamento(user, MATRIZ_COM_NAO_PAGANTE);
+      await escolher(user, "Cargo", "NOME (coluna E)");
+
+      expect(
+        await screen.findByText(/Só inscrições pagas serão importadas — 2 de 3/i),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/não serão importadas/i)).toBeInTheDocument();
+      expect(screen.getByText(/seção/i)).toBeInTheDocument();
+    });
+
+    it("ninguém de fora: o aviso aparece MESMO ASSIM, dizendo que ninguém fica", async () => {
+      // Aviso que só surge às vezes é aviso que ninguém aprende a procurar — e a pessoa
+      // ficaria sem saber que a regra existe justamente quando ela não mordeu.
+      const user = await abrir();
+      await irParaPareamento(user, MATRIZ);
+      await escolher(user, "Cargo", "NOME (coluna E)");
+
+      expect(
+        await screen.findByText(/Só inscrições pagas serão importadas — 3 de 3/i),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/ninguém fica de fora/i)).toBeInTheDocument();
+    });
+
+    it("🔴 o não-pagante NÃO chega ao lote importado", async () => {
+      // A asserção que fecha o circuito: não basta a tela avisar, o filtro tem de agir.
+      const user = await abrir();
+      await irParaCargos(user, MATRIZ_COM_NAO_PAGANTE);
+      await associar(user, "DOCENTE I - HISTÓRIA", "DOCENTE I — HISTÓRIA");
+
+      // Das 3 linhas, 1 é não-pagante e as outras 2 são a mesma pessoa em cargos
+      // diferentes — logo, 2 entram.
+      expect(
+        await screen.findByRole("button", { name: /Importar 2 candidato\(s\)/i }),
+      ).toBeInTheDocument();
     });
   });
 
@@ -875,7 +1023,12 @@ describe("CandidatosImportar (interação)", () => {
       // O número aparece duas vezes de propósito: no contraste e na frase que diz o que
       // vai acontecer com ele. `getAllByText` em vez de `getByText` por isso.
       expect(screen.getAllByText("7.416").length).toBeGreaterThan(0);
-      expect(screen.getByText(/nesta planilha/i)).toBeInTheDocument();
+      // ⚠️ Era `/nesta planilha/`. O rótulo mudou em 2026-08-01 junto com o filtro de
+      // pagamento: o número deixou de ser o tamanho da planilha e passou a ser quantos
+      // VÃO ENTRAR. Asserção nova mede o rótulo novo — e o par negativo garante que o
+      // antigo, que virou promessa falsa, não voltou.
+      expect(screen.getByText(/vão entrar/i)).toBeInTheDocument();
+      expect(screen.queryByText(/nesta planilha/i)).not.toBeInTheDocument();
       // A planilha traz menos da metade: o aviso de arquivo possivelmente incompleto.
       expect(screen.getByText(/menos da metade dos inscritos/i)).toBeInTheDocument();
 
@@ -891,6 +1044,57 @@ describe("CandidatosImportar (interação)", () => {
 
       await user.click(screen.getByRole("button", { name: /Ver candidatos/i }));
       expect(navigateMock).toHaveBeenCalledWith("/candidatos");
+    });
+
+    it("oferece os DOIS formatos de relatório, nomeando cada um", async () => {
+      // Planilha e documento não são o mesmo relatório em dois arquivos: o XLS entrega
+      // lista plana para o Excel filtrar, o PDF vem timbrado e agrupado por campo, para
+      // anexar a processo. O rótulo tem de dizer qual é qual antes do clique.
+      const user = await abrir();
+      await importar(user);
+
+      expect(screen.getByRole("button", { name: /Baixar Planilha \(XLS\)/i })).toBeEnabled();
+      expect(screen.getByRole("button", { name: /Baixar Documento \(PDF\)/i })).toBeEnabled();
+    });
+
+    it("🔴 PDF que falha DIZ que falhou — e que os inscritos estão salvos", async () => {
+      // ⚠️ A primeira versão engolia a exceção num `console.error`: o botão voltava ao
+      // normal, nada baixava, e nada explicava. Perda silenciosa — a pessoa fica sem
+      // saber se o problema foi o download ou a importação.
+      //
+      // As duas metades da mensagem são o objeto do teste. Dizer só "falhou" faria o
+      // usuário refazer a importação inteira, que JÁ terminou com sucesso neste ponto:
+      // o que falhou é o documento, e a planilha continua disponível com os mesmos dados.
+      pdfDeveFalhar.valor = true;
+      const user = await abrir();
+      await importar(user);
+
+      await user.click(screen.getByRole("button", { name: /Baixar Documento \(PDF\)/i }));
+
+      const titulo = await screen.findByText(/Não foi possível gerar o documento/i);
+      // ⚠️ Escopado ao alerta: "planilha (XLS)" também é o rótulo do outro botão, e uma
+      // busca solta morreria por ambiguidade em vez de medir a mensagem.
+      const alerta = titulo.closest('[role="alert"]') as HTMLElement;
+      expect(within(alerta).getByText(/já foram importados e estão salvos/i)).toBeInTheDocument();
+      expect(within(alerta).getByText(/planilha \(XLS\)/i)).toBeInTheDocument();
+      // E o botão volta a ficar clicável: falha não pode deixar a tela travada no spinner.
+      expect(screen.getByRole("button", { name: /Baixar Documento \(PDF\)/i })).toBeEnabled();
+    });
+
+    it("PDF que dá certo NÃO deixa mensagem de erro na tela", async () => {
+      // Controle positivo do teste acima: sem ele, um <Alert> renderizado sempre passaria
+      // por lá e ninguém veria.
+      const user = await abrir();
+      await importar(user);
+
+      await user.click(screen.getByRole("button", { name: /Baixar Documento \(PDF\)/i }));
+
+      await waitFor(() => expect(salvarPdf).toHaveBeenCalled());
+      expect(screen.queryByText(/Não foi possível gerar o documento/i)).not.toBeInTheDocument();
+
+      // O nome carrega o arquivo de origem e o carimbo de quando foi gerado: duas
+      // exportações da mesma planilha não se sobrescrevem na pasta de downloads.
+      expect(salvarPdf.mock.calls[0][0]).toMatch(/^inscritos_relatorio_\d{2}-\d{2}-\d{4} .+\.pdf$/);
     });
   });
 });

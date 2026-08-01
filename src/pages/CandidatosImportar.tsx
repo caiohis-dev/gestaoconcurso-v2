@@ -1,6 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
+import autoTable from "jspdf-autotable";
+import { format } from "date-fns";
+import {
+  useLogoBase64,
+  criarDocumentoPaisagem,
+  desenharTimbre,
+  numerarPaginas,
+  MARGEM_LATERAL,
+  ESTILOS_TABELA,
+  ESTILOS_CABECALHO,
+  TIMBRE_LINHA1_PADRAO,
+  TIMBRE_LINHA2_PADRAO,
+} from "@/lib/pdf-timbre";
 import { useEditais } from "@/hooks/useEditais";
 import {
   useImportarCandidatos,
@@ -24,14 +37,18 @@ import {
   LinhaPlanilha,
   Mapeamento,
   ResolucaoCargos,
+  agruparProblemasPorCampo,
   autoMapear,
   cargosDaPlanilha,
   converterLinha,
   deduplicar,
   mapeamentoCompleto,
+  montarProblemasDoRelatorio,
   pareceSujo,
   resolverLinhas,
   rotulosDeColunas,
+  separarPorPagamento,
+  subtituloDoCampo,
 } from "@/lib/candidatos-import";
 import { useCargos, useCargoApelidos, useCriarCargo, useSalvarApelidos } from "@/hooks/useCargos";
 import { Input } from "@/components/ui/input";
@@ -48,6 +65,7 @@ import {
   ArrowRight,
   Upload,
   FileSpreadsheet,
+  FileText,
   Loader2,
   CheckCircle2,
   XCircle,
@@ -144,6 +162,16 @@ export default function CandidatosImportar() {
   const [confirmacaoAberta, setConfirmacaoAberta] = useState(false);
   const pararRef = useRef(false);
 
+  const logoBase64 = useLogoBase64();
+  const [exportandoPDF, setExportandoPDF] = useState(false);
+  /**
+   * 🔴 O erro da exportação PRECISA chegar à tela. A primeira versão engolia a exceção
+   * num `console.error` e devolvia o botão ao normal: a pessoa clicava, nada baixava, e
+   * nada dizia por quê — perda silenciosa, o formato de erro que este repo mais teme.
+   * A página não usa toast; o idioma dela é state + <Alert>, como `erroLeitura`.
+   */
+  const [erroExportacao, setErroExportacao] = useState<string | null>(null);
+
   const editalSelecionado = editais.find((e) => e.id === editalId) ?? null;
 
   /**
@@ -228,23 +256,40 @@ export default function CandidatosImportar() {
   const linhasValidas = useMemo(() => convertidas.filter((l) => l.candidato !== null), [convertidas]);
 
   /**
-   * Estágios 2 e 3 do pipeline, juntos e reativos às resoluções do passo Cargos:
+   * 🔴 O FILTRO DE PAGAMENTO: só quem pagou a inscrição é importado.
    *
-   *     converterLinha → resolverLinhas → deduplicar → blocos de 500
+   * Roda ANTES do dedup de propósito — ver `separarPorPagamento`, que explica por que a
+   * ordem inversa perderia um pagante que tivesse duplicata.
+   */
+  const { pagantes, naoPagantes } = useMemo(
+    () => separarPorPagamento(convertidas),
+    [convertidas],
+  );
+
+  /**
+   * Estágios 2 a 4 do pipeline, juntos e reativos às resoluções do passo Cargos:
    *
-   * ⚠️ A ORDEM É CONTRATO e mudou na etapa 5. Antes o dedup rodava sobre `convertidas`,
-   * o que era CORRETO enquanto a chave natural do banco era o TEXTO do cargo. Com
-   * `cargo_id` na chave, duas grafias sujas do mesmo cargo viraram a MESMA chave: um
-   * dedup sobre o texto as deixaria passar como distintas e o Postgres recusaria o bloco
-   * de 500 inteiro. Hoje quem impede a inversão é o tipo — `deduplicar` só aceita o que
-   * saiu de `resolverLinhas`.
+   *     converterLinha → separarPorPagamento → resolverLinhas → deduplicar → blocos de 500
+   *
+   * ⚠️ Em 2026-08-01 a chave natural encolheu para `(edital_id, n_inscricao)`, e com isso
+   * o dedup deixou de depender do cargo: rodá-lo antes ou depois de `resolverLinhas` dá o
+   * MESMO resultado. A ordem fica porque o que sai daqui é o que vai ser gravado, e a
+   * gravação precisa do `cargo_id` — quem impede a inversão é o tipo, `deduplicar` só
+   * aceita o que saiu de `resolverLinhas`.
+   *
+   * 🔴 Já o filtro de pagamento, que entrou na frente de tudo na mesma data, NÃO tem tipo
+   * guardando a ordem — passar `convertidas` no lugar de `pagantes` compila e roda, e o
+   * único sintoma seria não-pagantes na lista importada.
    */
   const { candidatos, repetidas } = useMemo(
-    () => deduplicar(resolverLinhas(convertidas, resolucoes)),
-    [convertidas, resolucoes],
+    () => deduplicar(resolverLinhas(pagantes, resolucoes)),
+    [pagantes, resolucoes],
   );
   const comErro = convertidas.filter((l) => l.erro !== null);
-  const comAviso = convertidas.filter((l) => l.candidato !== null && l.avisos.length > 0);
+  // ⚠️ Sobre os PAGANTES, não sobre `convertidas`: um aviso de dado a conferir numa linha
+  // que nem vai ser importada é ruído — manda a pessoa corrigir na origem algo que não
+  // entrou. O motivo de a linha ficar de fora já é dito, com nome, na seção Pagamento.
+  const comAviso = pagantes.filter((l) => l.avisos.length > 0);
 
   /**
    * ⚠️ O sinal de arquivo truncado: a planilha traz menos da METADE do que já existe.
@@ -280,7 +325,10 @@ export default function CandidatosImportar() {
   }, [mapeamento]);
 
   // ── Cargos (passo 3) ────────────────────────────────────────────────────────────
-  const cargosLidos = useMemo(() => cargosDaPlanilha(convertidas), [convertidas]);
+  // ⚠️ Sobre os PAGANTES, não sobre `convertidas`. Um cargo que só aparece em linhas de
+  // não-pagante não vai ser importado por ninguém: pedir para pareá-lo é trabalho inútil,
+  // e "Criar novo…" ali sujaria o catálogo global com um cargo sem nenhum inscrito.
+  const cargosLidos = useMemo(() => cargosDaPlanilha(pagantes), [pagantes]);
 
   const cargosPendentes = useMemo(
     () => cargosLidos.filter((c) => !resolucoes.has(c.textoChave)),
@@ -481,53 +529,15 @@ export default function CandidatosImportar() {
   );
 
   const baixarRelatorio = () => {
-    const extrairCampoEDetalhe = (mensagem: string) => {
-      const mapeamento = [
-        { prefixo: "Nº de inscrição", campo: "Nº de Inscrição" },
-        { prefixo: "Nome", campo: "Nome" },
-        { prefixo: "Cargo", campo: "Cargo" },
-        { prefixo: "CPF", campo: "CPF" },
-        { prefixo: "E-mail", campo: "E-mail" },
-        { prefixo: "Data de nascimento", campo: "Data de Nascimento" },
-        { prefixo: "Hora de nascimento", campo: "Hora de Nascimento" },
-        { prefixo: "CEP", campo: "CEP" },
-        { prefixo: "Raça", campo: "Raça" },
-      ];
-
-      for (const map of mapeamento) {
-        if (mensagem.startsWith(map.prefixo)) {
-          return { Campo: map.campo, Detalhe: mensagem.substring(map.prefixo.length).trim() };
-        }
-      }
-      return { Campo: "Geral", Detalhe: mensagem };
-    };
-
-    const abaProblemas = [
-      ...comErro.map((l) => ({
-        Linha: l.linhaPlanilha,
-        Situação: "Não importada",
-        ...extrairCampoEDetalhe(l.erro ?? ""),
-      })),
-      ...comAviso.flatMap((l) =>
-        l.avisos.map((aviso) => ({
-          Linha: l.linhaPlanilha,
-          Situação: "Importada com ressalva",
-          ...extrairCampoEDetalhe(aviso),
-        }))
-      ),
-      ...repetidas.map((r) => ({
-        Linha: r.linhaPlanilha,
-        Situação: "Substituída por linha posterior",
-        Campo: "Chave de Identificação",
-        Detalhe: `Inscrição e cargo repetidos na planilha (${r.chave.replace("||", " / ")})`,
-      })),
-    ].sort((a, b) => a.Linha - b.Linha);
+    const abaProblemas = montarProblemasDoRelatorio(comErro, comAviso, repetidas, naoPagantes);
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(
       wb,
       XLSX.utils.json_to_sheet(
-        abaProblemas.length > 0 ? abaProblemas : [{ Linha: "", Situação: "Nenhum problema", Campo: "", Detalhe: "" }],
+        abaProblemas.length > 0
+          ? abaProblemas
+          : [{ "Nº de Inscrição": "", Situação: "Nenhum problema", Campo: "", Detalhe: "" }],
       ),
       "Problemas",
     );
@@ -536,6 +546,154 @@ export default function CandidatosImportar() {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(deParaCargos), "Cargos");
     const base = arquivo?.name?.replace(/\.(xlsx|xls|csv)$/i, "") || "importacao_candidatos";
     XLSX.writeFile(wb, `${base}_relatorio.xlsx`);
+  };
+
+  /** Respiro entre o título do timbre e a primeira coisa que o corpo escreve. */
+  const RESPIRO_APOS_TITULO = 7;
+  /** Espaço entre o fim de uma tabela e o subtítulo da próxima. */
+  const ENTRE_BLOCOS = 15;
+  /** Abaixo disto não cabe subtítulo + cabeçalho de tabela: melhor virar a página. */
+  const ALTURA_MINIMA_DE_BLOCO = 40;
+
+  /**
+   * O mesmo relatório do XLS, em documento timbrado — para anexar a processo e imprimir.
+   *
+   * A diferença de fundo entre os dois não é o formato: a planilha entrega uma lista
+   * plana para o Excel filtrar, e o PDF AGRUPA POR CAMPO, porque quem lê o PDF vai
+   * corrigir a planilha, e corrigir é trabalho por coluna. Ver
+   * `agruparProblemasPorCampo`.
+   */
+  const baixarRelatorioPDF = () => {
+    setExportandoPDF(true);
+    setErroExportacao(null);
+    try {
+      const problemasPorCampo = agruparProblemasPorCampo(
+        montarProblemasDoRelatorio(comErro, comAviso, repetidas, naoPagantes),
+      );
+
+      const doc = criarDocumentoPaisagem();
+      const alturaDaPagina = doc.internal.pageSize.getHeight();
+      const linhasDoTimbre = [
+        TIMBRE_LINHA1_PADRAO,
+        TIMBRE_LINHA2_PADRAO,
+        editalSelecionado?.nome || "EDITAL",
+      ];
+
+      const paginasTimbradas = new Set<number>();
+      let topoDoCorpo = 0;
+
+      /**
+       * Timbra a página atual UMA VEZ. O Set é o que impede o timbre duplicado: a página
+       * é timbrada tanto por quem a cria de propósito quanto pelo `didDrawPage` do
+       * autoTable, que dispara para toda página que a tabela ocupar — inclusive as que
+       * ela mesma criou ao transbordar.
+       */
+      const timbrar = () => {
+        const pagina = doc.getCurrentPageInfo().pageNumber;
+        if (paginasTimbradas.has(pagina)) return;
+        paginasTimbradas.add(pagina);
+        // Aqui o timbre tem altura FIXA (sempre 3 linhas + título), então o Y devolvido é
+        // o mesmo em toda página — guardá-lo é o que mantém `startY` e `margin.top` de
+        // acordo. Se um dia as linhas variarem por página, isto deixa de valer.
+        topoDoCorpo = desenharTimbre(doc, {
+          logoBase64,
+          linhas: linhasDoTimbre,
+          titulo: "RELATÓRIO DE IMPORTAÇÃO DE CANDIDATOS",
+        }) + RESPIRO_APOS_TITULO;
+      };
+
+      // Timbra a página 1 antes de qualquer tabela: é esta chamada que define
+      // `topoDoCorpo`, e o `margin.top` das tabelas depende dele já estar valendo.
+      timbrar();
+
+      const margensDaTabela = {
+        top: topoDoCorpo,
+        left: MARGEM_LATERAL,
+        right: MARGEM_LATERAL,
+        bottom: 15,
+      };
+
+      let y = topoDoCorpo;
+
+      const escreverSubtitulo = (texto: string) => {
+        doc.setFont("times", "bold");
+        doc.setFontSize(11);
+        doc.text(texto, MARGEM_LATERAL, y);
+        y += 5;
+      };
+
+      if (deParaCargos.length > 0) {
+        // O de-para vem primeiro por ser o registro auditável da importação: que texto
+        // sujo virou que cargo. É a mesma razão da aba "Cargos" no XLS.
+        escreverSubtitulo("Associação de Cargos");
+        autoTable(doc, {
+          startY: y,
+          head: [["Texto na Planilha", "Cargo do Sistema", "Linhas", "Origem"]],
+          body: deParaCargos.map((c) => [
+            c["Texto na planilha"],
+            c["Cargo do sistema"],
+            c.Linhas.toString(),
+            c.Origem,
+          ]),
+          theme: "grid",
+          margin: margensDaTabela,
+          styles: ESTILOS_TABELA,
+          headStyles: { ...ESTILOS_CABECALHO, minCellHeight: 8 },
+          didDrawPage: timbrar,
+        });
+        y = (doc.lastAutoTable?.finalY ?? y) + ENTRE_BLOCOS;
+      }
+
+      for (const { campo, queixas } of problemasPorCampo) {
+        if (y > alturaDaPagina - ALTURA_MINIMA_DE_BLOCO) {
+          doc.addPage();
+          timbrar();
+          y = topoDoCorpo;
+        }
+
+        // ⚠️ O título NÃO é montado aqui: `subtituloDoCampo` é quem sabe que "Pagamento"
+        // não é problema e merece texto próprio. Ver o porquê lá.
+        escreverSubtitulo(subtituloDoCampo(campo));
+        autoTable(doc, {
+          startY: y,
+          head: [["Nº de Inscrição", "Situação", "Detalhe"]],
+          body: queixas.map((p) => [p["Nº de Inscrição"], p.Situação, p.Detalhe]),
+          theme: "grid",
+          margin: margensDaTabela,
+          // ⚠️ `linebreak`, NÃO `hidden`. Com `hidden` a coluna Detalhe era CORTADA na
+          // largura da célula, sem reticências e sem aviso — e o detalhe é a única coisa
+          // que este relatório existe para entregar ("CPF tem 10 dígitos"). Um relatório
+          // de erros que corta a mensagem do erro em silêncio é perda silenciosa.
+          styles: { ...ESTILOS_TABELA, overflow: "linebreak" },
+          headStyles: { ...ESTILOS_CABECALHO, minCellHeight: 8 },
+          columnStyles: {
+            // 30mm, e não os 20 de quando a coluna se chamava "Linha": o cabeçalho
+            // "Nº de Inscrição" tem 15 caracteres e em 20mm quebraria em duas linhas.
+            0: { cellWidth: 30, halign: "center" },
+            1: { cellWidth: 60 },
+            2: { cellWidth: "auto" },
+          },
+          didDrawPage: timbrar,
+        });
+        y = (doc.lastAutoTable?.finalY ?? y) + ENTRE_BLOCOS;
+      }
+
+      // Depois de tudo, porque só agora se sabe o total.
+      numerarPaginas(doc);
+
+      const carimbo = format(new Date(), "dd-MM-yyyy HH-mm-ss");
+      const base = arquivo?.name?.replace(/\.(xlsx|xls|csv)$/i, "") || "importacao";
+      doc.save(`${base}_relatorio_${carimbo}.pdf`);
+    } catch (e) {
+      console.error(e);
+      setErroExportacao(
+        e instanceof Error
+          ? `Não foi possível gerar o PDF: ${e.message}`
+          : "Não foi possível gerar o PDF.",
+      );
+    } finally {
+      setExportandoPDF(false);
+    }
   };
 
   if (carregandoEditais) {
@@ -829,6 +987,45 @@ export default function CandidatosImportar() {
                     )}
                   </div>
 
+                  {/* 🔴 O AVISO DO FILTRO DE PAGAMENTO, e ele fica AQUI de propósito: este
+                      é o ponto em que a pessoa acabou de dizer qual coluna responde
+                      "pagou?", e é onde a consequência dessa escolha tem de aparecer.
+
+                      Aparece SEMPRE que há pagante, inclusive quando ninguém fica de fora
+                      — "0 ficam de fora" é informação, e some-lo faria o aviso surgir só
+                      às vezes, do jeito que ninguém aprende que a regra existe.
+
+                      ⚠️ Os números saem de `pagantes`/`naoPagantes`, que são pré-dedup.
+                      É o mesmo motivo de `linhasValidas` não usar `candidatos.length`: no
+                      passo 2 nenhum cargo foi resolvido, e o total final só se conhece
+                      depois do passo 3. */}
+                  {linhasValidas.length > 0 && (
+                    <Alert>
+                      <CheckCircle2 className="h-4 w-4" />
+                      <AlertTitle>
+                        Só inscrições pagas serão importadas — {pagantes.length} de{" "}
+                        {linhasValidas.length}
+                      </AlertTitle>
+                      <AlertDescription>
+                        {naoPagantes.length === 0 ? (
+                          <>
+                            Todas as linhas lidas constam como pagas na coluna{" "}
+                            <strong>Inscrição Confirmada</strong>, então ninguém fica de fora.
+                          </>
+                        ) : (
+                          <>
+                            <strong>{naoPagantes.length} linha(s)</strong> não constam como
+                            pagas na coluna <strong>Inscrição Confirmada</strong> e{" "}
+                            <strong>não serão importadas</strong>. Elas saem nomeadas no
+                            relatório final, na seção <strong>Pagamento</strong>. Se o número
+                            surpreender, confira se a coluna pareada é a certa antes de
+                            continuar.
+                          </>
+                        )}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
                   {comErro.length > 0 && (
                     <Alert variant="destructive">
                       <XCircle className="h-4 w-4" />
@@ -1061,22 +1258,27 @@ export default function CandidatosImportar() {
                     </Alert>
                   )}
 
-                  {/* ⚠️ Este aviso MUDOU DE SIGNIFICADO na etapa 5, e o texto tem de dizer
-                      isso. Antes "repetida" só podia ser repetição literal na planilha;
-                      agora, com o cargo entrando por referência, duas GRAFIAS do mesmo
-                      cargo também viram a mesma linha. Sem explicar, a pessoa vai procurar
-                      na planilha uma repetição que não está escrita lá. Ele também só pode
-                      viver aqui, e não no passo 2: depende do cargo já resolvido. */}
+                  {/* ⚠️ Este aviso MUDOU DE SIGNIFICADO DUAS VEZES, e o texto precisa
+                      acompanhar. Na etapa 5 passou a incluir duas GRAFIAS do mesmo cargo
+                      unificadas pela associação. Em 2026-08-01 a chave encolheu para o nº de
+                      inscrição, e agora "repetida" quer dizer só isso: mesmo número, ainda
+                      que o CPF, o nome ou o cargo difiram. Sem explicar, a pessoa procura na
+                      planilha uma repetição que não está escrita lá.
+
+                      ⚠️ Ele já NÃO depende mais do cargo resolvido e poderia viver no passo
+                      2. Fica aqui porque o passo 2 já carrega o aviso do filtro de pagamento,
+                      e dois avisos de descarte no mesmo ponto competem em vez de informar. */}
                   {repetidas.length > 0 && (
                     <Alert>
                       <AlertTriangle className="h-4 w-4" />
                       <AlertTitle>
-                        {repetidas.length} linha(s) da planilha viram a mesma inscrição
+                        {repetidas.length} linha(s) da planilha repetem um nº de inscrição
                       </AlertTitle>
                       <AlertDescription>
-                        Mesmo CPF, mesmo nº de inscrição e o mesmo cargo <em>depois da associação</em>{" "}
-                        — o que inclui grafias diferentes que você apontou para o mesmo cargo. Só a
-                        última ocorrência de cada uma será importada; o relatório final lista todas.
+                        O nº de inscrição identifica o candidato, então duas linhas com o mesmo
+                        número são a mesma inscrição — mesmo que o CPF, o nome ou o cargo estejam
+                        diferentes. Só a última ocorrência de cada uma será importada; o relatório
+                        final lista todas, com o número.
                       </AlertDescription>
                     </Alert>
                   )}
@@ -1194,11 +1396,17 @@ export default function CandidatosImportar() {
                 </Alert>
               )}
 
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              {/* ⚠️ "Sem pagamento" é card PRÓPRIO, e não se soma a "Não importados". As
+                  duas contagens dizem que a linha ficou de fora, mas por motivos opostos:
+                  a primeira é defeito de dado, que se corrige na planilha e se reimporta;
+                  a segunda é o filtro funcionando. Somá-las mandaria a pessoa procurar
+                  erro em 185 linhas que não têm nenhum. */}
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
                 {[
                   ["Inseridos", resultado?.inseridos ?? 0, "text-foreground"],
                   ["Removidos", resultado?.removidos ?? 0, "text-foreground"],
                   ["Não importados", comErro.length, "text-destructive"],
+                  ["Sem pagamento", naoPagantes.length, "text-muted-foreground"],
                   ["Com ressalva", comAviso.length, "text-foreground"],
                 ].map(([rotulo, valor, cor]) => (
                   <div key={rotulo as string} className="rounded-lg border p-4">
@@ -1265,13 +1473,34 @@ export default function CandidatosImportar() {
               <div className="flex flex-wrap gap-2">
                 <Button variant="outline" className="gap-2" onClick={baixarRelatorio}>
                   <FileSpreadsheet className="h-4 w-4" />
-                  Baixar relatório
+                  Baixar Planilha (XLS)
+                </Button>
+                <Button variant="outline" className="gap-2" onClick={baixarRelatorioPDF} disabled={exportandoPDF}>
+                  {exportandoPDF ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                  Baixar Documento (PDF)
                 </Button>
                 <Button className="gap-2" onClick={() => navigate("/candidatos")}>
                   Ver candidatos
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               </div>
+
+              {/* 🔴 Sem isto, um PDF que falha é indistinguível de um clique que não
+                  pegou: o botão volta ao normal e nada baixa. Os inscritos JÁ foram
+                  importados neste ponto — o que falhou é só o documento —, então o
+                  texto tem de dizer as duas coisas, senão a pessoa refaz a importação
+                  inteira achando que perdeu tudo. */}
+              {erroExportacao && (
+                <Alert variant="destructive" className="mt-4">
+                  <XCircle className="h-4 w-4" />
+                  <AlertTitle>Não foi possível gerar o documento</AlertTitle>
+                  <AlertDescription>
+                    {erroExportacao} Os inscritos já foram importados e estão salvos — não
+                    é preciso importar de novo. Tente baixar a planilha (XLS), que traz os
+                    mesmos dados.
+                  </AlertDescription>
+                </Alert>
+              )}
             </CardContent>
           </Card>
         )}
@@ -1308,15 +1537,37 @@ export default function CandidatosImportar() {
                       <div className="text-2xl font-bold">
                         {candidatos.length.toLocaleString("pt-BR")}
                       </div>
-                      <div className="text-xs text-muted-foreground">nesta planilha</div>
+                      {/* 🔴 "vão entrar", NÃO "nesta planilha". O número é pós-filtro de
+                          pagamento e pós-dedup, então ele NÃO é o tamanho da planilha —
+                          e o rótulo antigo virou promessa falsa no instante em que o
+                          filtro entrou (2026-08-01).
+
+                          Rótulo que descreve a origem do número em vez do EFEITO dele é
+                          exatamente o defeito do "limpar edital", que exibia a contagem
+                          filtrada ao lado de um botão que apagava o edital inteiro — e
+                          estava, como este, atrás da confirmação destrutiva. */}
+                      <div className="text-xs text-muted-foreground">vão entrar</div>
                     </div>
                   </div>
 
                   <p>
                     Os <strong>{inscritosHoje.toLocaleString("pt-BR")}</strong> inscritos atuais
-                    serão <strong>apagados</strong> e substituídos pelos desta planilha. A
-                    operação é feita de uma vez só: ou a lista inteira é trocada, ou nada muda.
+                    serão <strong>apagados</strong> e substituídos pelos{" "}
+                    <strong>{candidatos.length.toLocaleString("pt-BR")}</strong> desta importação.
+                    A operação é feita de uma vez só: ou a lista inteira é trocada, ou nada muda.
                   </p>
+
+                  {/* O filtro é lembrado AQUI de novo, e não é redundância: entre o aviso
+                      do passo 2 e este diálogo a pessoa atravessou o passo de cargos, que
+                      é longo. Este é o último ponto em que dá para desistir, e a diferença
+                      entre os dois números é a explicação de por que o total encolheu. */}
+                  {naoPagantes.length > 0 && (
+                    <p>
+                      <strong>{naoPagantes.length.toLocaleString("pt-BR")}</strong> linha(s) da
+                      planilha ficam de fora por não constarem como{" "}
+                      <strong>inscrição paga</strong>. Elas saem nomeadas no relatório final.
+                    </p>
+                  )}
 
                   {quedaSuspeita && (
                     <p className="rounded-md border border-destructive p-3 font-medium text-destructive">

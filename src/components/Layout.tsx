@@ -30,12 +30,10 @@ export default function Layout({ children }: LayoutProps) {
     : [];
 
   // Config geral: sempre visível, independe de módulo.
-  // "Meu Cadastro" é o caminho dos 12 que são gestor E colaborador até o próprio
-  // cadastro. Quem é só colaborador nunca vê o Layout — vai direto para
-  // /perfil-colaborador no login.
+  // ⚠️ "Meu Cadastro" NÃO está mais aqui — saiu para o menu do usuário (o "boneco") em
+  // 2026-08-01. Ver o `isColaborador &&` dentro do DropdownMenuContent abaixo.
   const linksConfig: NavLink[] = [
     { href: "/gerenciar-usuarios", label: "Usuários", icon: Users, showFor: ['superadmin'] },
-    { href: "/perfil-colaborador", label: "Meu Cadastro", icon: UserCircle, showFor: ['colaborador'] },
   ];
 
   const navLinks = [...linksModulo, ...linksConfig].filter(link => {
@@ -92,6 +90,19 @@ export default function Layout({ children }: LayoutProps) {
                   <p className="text-xs text-muted-foreground capitalize">{role}</p>
                 </div>
                 <DropdownMenuSeparator />
+                {/* ⚠️ Só para os 12 que são gestor E colaborador — quem é só colaborador
+                    nunca vê o Layout (vai direto para /perfil-colaborador no login), e
+                    quem é só gestor não tem cadastro de colaborador para ver. Movido do
+                    header em 2026-08-01: era o único link que ficava fora do menu do
+                    usuário para uma ação sobre o próprio cadastro. */}
+                {isColaborador && (
+                  <DropdownMenuItem asChild>
+                    <Link to="/perfil-colaborador" className="flex items-center">
+                      <UserCircle className="mr-2 h-4 w-4" />
+                      Meu Cadastro
+                    </Link>
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem asChild>
                   <Link to="/perfil" className="flex items-center">
                     <Settings className="mr-2 h-4 w-4" />

@@ -36,23 +36,33 @@ export interface CargoApelido {
 
 /** Um cargo com o quanto ele é usado — o que a tela de gestão precisa saber para decidir. */
 export interface CargoComUso extends Cargo {
-  /** Inscritos apontando para este cargo. É o que a FK RESTRICT protege. */
+  /** Inscritos apontando para este cargo. É o único vínculo que BARRA (FK RESTRICT). */
   candidatos: number;
-  /** Textos de planilha memorizados. ⚠️ Desde 31/07 eles BARRAM a exclusão (RESTRICT). */
+  /**
+   * Textos de planilha memorizados. ⚠️ Eles NÃO barram nada — a FK é CASCADE, então são
+   * apagados junto com o cargo. Esta contagem existe para a tela AVISAR sobre essa perda,
+   * não para decidir se dá para excluir. (Barraram entre 31/07 e 01/08.)
+   */
   apelidos: number;
 }
 
 /**
- * Cargo com menção em qualquer outra tabela é IMUTÁVEL — nem altera, nem exclui.
+ * Cargo com INSCRITO em algum edital é IMUTÁVEL — nem altera, nem exclui.
  *
- * Decisão do usuário em 2026-07-31, e a barreira de verdade é o banco (trigger `CG001` +
- * as duas FKs RESTRICT). Esta função existe para a tela ANTECIPAR a recusa: deixar o
- * usuário abrir o diálogo, digitar e só então levar erro é barrar sem orientar.
+ * Decisão do usuário em 2026-08-01, e a barreira de verdade é o banco (trigger `CG001` +
+ * `candidatos_cargo_id_fkey` RESTRICT). Esta função existe para a tela ANTECIPAR a
+ * recusa: deixar o usuário abrir o diálogo, digitar e só então levar erro é barrar sem
+ * orientar.
+ *
+ * ⚠️ **Apelido NÃO conta**, e o nome desta função é a metade que se lê primeiro. Entre
+ * 31/07 e 01/08 ela se chamava `cargoTemMencao` e somava `apelidos` — regra que travava o
+ * cargo já no passo 3 do assistente, que grava o apelido antes de qualquer inscrito
+ * existir.
  *
  * ⚠️ NÃO é pré-check de autorização: se ela discordar do banco, quem manda é o banco.
  */
-export function cargoTemMencao(cargo: CargoComUso): boolean {
-  return cargo.candidatos > 0 || cargo.apelidos > 0;
+export function cargoTemInscritos(cargo: CargoComUso): boolean {
+  return cargo.candidatos > 0;
 }
 
 /**
@@ -72,19 +82,20 @@ export function cargoTemMencao(cargo: CargoComUso): boolean {
  */
 export function mensagemErroCargo(mensagem: string): string {
   const m = mensagem.toLowerCase();
-  if (m.includes("tem menção em outra tabela")) {
-    // A mensagem do trigger CG001 já traz o nome e as duas contagens — é exatamente o que
-    // o usuário precisa. Passa adiante inteira, como manda a regra da casa.
+  if (m.includes("inscrito(s) em algum edital")) {
+    // A mensagem do trigger CG001 já traz o nome do cargo e a contagem — é exatamente o
+    // que o usuário precisa. Passa adiante inteira, como manda a regra da casa.
+    //
+    // ⚠️ Esta substring é ACOPLADA ao texto do `RAISE EXCEPTION` da migration
+    // `20260801103940`. Mexeu num, mexa no outro — senão o erro chega cru na tela.
     return mensagem;
   }
   if (m.includes("candidatos_cargo_id_fkey")) {
     return "Este cargo está em uso por candidatos e não pode ser excluído.";
   }
-  if (m.includes("cargo_apelidos_cargo_id_fkey")) {
-    // RESTRICT desde 31/07 (era CASCADE): o apelido deixou de ser levado junto e passou a
-    // barrar. Dizer QUAL vínculo bloqueia, porque a providência é outra.
-    return "Este cargo tem textos de planilha memorizados e não pode ser excluído.";
-  }
+  // ⚠️ NÃO existe ramo para `cargo_apelidos_cargo_id_fkey`, e a ausência é deliberada:
+  // desde 01/08 essa FK é CASCADE, então ela nunca recusa nada. Havia um ramo aqui entre
+  // 31/07 e 01/08, quando ela era RESTRICT. Guarda que não pode disparar é armadilha.
   if (m.includes("cargos_nome_chave_key")) {
     // A unicidade é sobre a coluna GERADA `nome_chave` (lower + btrim), então "Docente II"
     // e " docente ii " colidem. Dizer só "nome duplicado" deixaria o usuário olhando dois
@@ -342,13 +353,17 @@ export function useAtualizarCargo() {
 /**
  * Exclui um cargo.
  *
- * ⚠️ DUAS FKs apontam para `cargos`, e elas são OPOSTAS de propósito:
- *   - `candidatos.cargo_id` é RESTRICT → cargo em uso NÃO é excluível. O banco é quem
- *     barra; não há pré-check no cliente, e é assim que tem de ser (um "leio e então
+ * ⚠️ DUAS FKs apontam para `cargos`, e elas são OPOSTAS de propósito — "apelido é atalho
+ * de digitação, candidato é gente":
+ *   - `candidatos.cargo_id` é RESTRICT → cargo com inscrito NÃO é excluível. O banco é
+ *     quem barra; não há pré-check no cliente, e é assim que tem de ser (um "leio e então
  *     decido" seria uma corrida, e a mensagem do banco nomeia o obstáculo melhor).
  *   - `cargo_apelidos.cargo_id` é CASCADE → os apelidos somem JUNTO, em silêncio.
  *     Quem chama tem de avisar antes: é a memória de pré-preenchimento das próximas
- *     importações que está indo embora.
+ *     importações que está indo embora. `Cargos.tsx` avisa, e há teste guardando.
+ *
+ * ⚠️ A assimetria valeu, caiu em 31/07 (as duas viraram RESTRICT) e voltou em 01/08, com
+ * o bloqueio estreitado para inscritos. Ver a migration `20260801103940`.
  */
 export function useExcluirCargo() {
   const queryClient = useQueryClient();

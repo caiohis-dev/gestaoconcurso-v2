@@ -1,5 +1,17 @@
 # Candidatos — a chave natural e a coluna 0, em três reviravoltas
 
+> 🔴 **HOUVE UMA QUARTA REVIRAVOLTA, EM 2026-08-01, E ELA INVERTE O DESFECHO DESTE ARQUIVO.**
+> Por decisão do usuário, **o nº de inscrição é a coluna A** e a chave natural passou a ser
+> **`(edital_id, n_inscricao)`** — migration `20260801193530`. Ou seja: a simplificação que
+> este documento registra como **rejeitada por destruir dado** foi **adotada**, e o aviso
+> *"o cargo é indispensável na chave"* **não vale mais**.
+>
+> ⚠️ **Leia isto antes de usar qualquer conclusão daqui.** As medições continuam corretas —
+> o que mudou foi *qual coluna é a inscrição*, e com ela a resposta muda inteira: a coluna A
+> tem os 7.416 valores distintos que a chave precisa, e a mesma pessoa em dois cargos aparece
+> com dois números (inscrições 9 e 5208 para o CPF `05261923727`).
+> A regra vigente está em [`../../estrutura/modulos/candidatos/00-modulo.md`](../../estrutura/modulos/candidatos/00-modulo.md).
+
 > 📁 **HISTÓRICO — não leia por padrão.** Este arquivo registra um tema já entregue.
 > Abra só quando o pedido for sobre o passado (*por que ficou assim? o que se tentou?
 > que alternativa foi rejeitada?*). **Não é plano** — nada aqui é lista de tarefas.
@@ -229,7 +241,7 @@ Enquanto isso não for decidido, quem pegaria o resíduo é a **reconciliação*
 
 | | |
 |---|---|
-| ~~Renomear `cargos.nome`~~ | ❌ **NÃO é mais livre desde 2026-07-31**: cargo com menção é imutável (`CG001`). Era o ganho central do tema; ver a seção da regra nova |
+| Renomear `cargos.nome` | ✅ **Livre enquanto o cargo não tiver INSCRITO** (regra estreitada em 2026-08-01, migration `20260801103940`). ⚠️ Esta linha dizia "NÃO é mais livre desde 31/07: cargo com menção é imutável" — valeu por um dia, quando apelido também trancava |
 | Criar cargo novo | livre — é `INSERT` em `cargos` |
 | Apagar cargo em uso | já recusado pelo `ON DELETE RESTRICT` da etapa 1 |
 | Reimportar a mesma linha com o mesmo cargo | é o caminho feliz, vira `UPDATE` |

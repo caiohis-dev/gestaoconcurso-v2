@@ -35,7 +35,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Upload,
   Loader2,
   Users,
   Search,
@@ -44,7 +43,6 @@ import {
   ChevronRight,
   Eye,
   ScrollText,
-  Briefcase,
 } from "lucide-react";
 
 const POR_PAGINA = 50;
@@ -271,29 +269,14 @@ export default function Candidatos() {
   return (
     <Layout>
       <div className="space-y-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Candidatos</h1>
-            <p className="text-muted-foreground">
-              Os inscritos de cada edital. A lista é sempre carregada por importação de planilha.
-            </p>
-          </div>
-          {/* Wrapper próprio: sem ele o `justify-between` do pai empurraria cada botão
-              para uma ponta, em vez de mantê-los juntos à direita. */}
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              className="gap-2"
-              onClick={() => navigate("/candidatos/cargos")}
-            >
-              <Briefcase className="h-4 w-4" />
-              Cargos
-            </Button>
-            <Button className="gap-2" onClick={() => navigate("/candidatos/importar")}>
-              <Upload className="h-4 w-4" />
-              Importar Planilha
-            </Button>
-          </div>
+        {/* ⚠️ Os acessos a /candidatos/importar e /candidatos/cargos saíram daqui em
+            2026-08-01: as duas rotas já tinham link no headerbar (ver modulos.ts), e
+            manter os dois era duplicar a mesma ação em dois lugares da tela sem motivo. */}
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Candidatos</h1>
+          <p className="text-muted-foreground">
+            Os inscritos de cada edital. A lista é sempre carregada por importação de planilha.
+          </p>
         </div>
 
         {/* Escolha do edital — os cards mostram quantos inscritos cada um já tem. */}

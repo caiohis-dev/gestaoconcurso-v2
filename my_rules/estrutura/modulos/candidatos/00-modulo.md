@@ -33,7 +33,7 @@ Duas consequências que precisam sobreviver a qualquer refatoração:
 |---|---|
 | `src/lib/candidatos-import.ts` (699 l.) | **O cérebro do módulo.** Puro, sem React nem Supabase: campos disponíveis, rótulos de coluna, auto-pareamento, conversores (data/hora/CPF/e-mail), a distinção erro-vs-aviso, deduplicação, os **cargos da planilha** e a tradução de erro do Postgres |
 | `src/lib/candidatos-import.test.ts` (71 testes) | A bateria da lógica acima. **Todos os casos de dado sujo são medidos no arquivo real**, não inventados |
-| `src/hooks/useCandidatos.test.tsx` (28 testes) | Bateria dos hooks: paginação e o `count` do servidor, o `onConflict` da chave natural, o **join do cargo canônico** e o **recorte por cargo**, a divisão em blocos, o parar, a tradução de erro |
+| `src/hooks/useCandidatos.test.tsx` (28 testes) | Bateria dos hooks: paginação e o `count` do servidor, o **join do cargo canônico** e o **recorte por cargo**, a divisão em blocos, o parar, a tradução de erro. ⚠️ Esta linha citava *"o `onConflict` da chave natural"* até 01/08 — não há mais upsert desde a troca total (30/07) |
 | `src/hooks/useCargos.test.tsx` (26 testes) | Bateria dos cargos: a **assimetria dos dois upserts**, o `isLoading` distinguível de lista vazia, nome repetido que vira associação |
 | `src/pages/Candidatos.ui.test.tsx` (34 testes) | Bateria da listagem: total do servidor, data sem o bug de fuso, badges, busca, **o cargo canônico e o filtro por cargo**, paginação e **as duas exclusões com barreiras diferentes** |
 | `src/pages/CandidatosImportar.ui.test.tsx` (38 testes) | Bateria do assistente. Monta um `.xlsx` de verdade (com as duas colunas `NOME`) e o lê pelo caminho real da página; guarda o **impedimento quando o cargo não é pareado** |
@@ -48,6 +48,7 @@ Duas consequências que precisam sobreviver a qualquer refatoração:
 | `supabase/migrations/20260727000000_create_candidatos.sql` | O schema da tabela — coluna gerada, índices, 6 CHECKs, RLS, trigger e a RPC de contagem. ⚠️ **Os comentários de coluna dela sobre CPF e e-mail descrevem o comportamento ANTIGO** (gravar `NULL`); a `20260730100000` é que manda |
 | `supabase/migrations/20260727200000_candidatos_chave_cpf_cargo_inscricao.sql` | A chave natural ganhou o CPF, com `NULLS NOT DISTINCT` |
 | `supabase/migrations/20260728100000_candidatos_chave_cargo_id.sql` | A chave trocou o TEXTO do cargo pela REFERÊNCIA; `cargo_chave` dropada |
+| `supabase/migrations/20260801193530_candidatos_chave_edital_inscricao.sql` | 🔵 **A chave natural virou `(edital_id, n_inscricao)`** (01/08): CPF e cargo saíram da identidade, e o `NULLS NOT DISTINCT` saiu junto |
 | `supabase/migrations/20260728110000_candidatos_recusa_reapontar_cargo.sql` | ❌ Criou o trigger `RC001` — **dropado em 30/07** por `20260730140000`; a troca total o tornou incapaz de disparar |
 | `supabase/migrations/20260727210000_create_cargos.sql` | `cargos` e `cargo_apelidos` + `candidatos.cargo_id` — ver [`cargos.md`](./cargos.md) |
 | `supabase/migrations/20260730100000_candidatos_dado_invalido_entra_cru.sql` | 🔵 As 4 CHECKs de formato saíram e `raca`/`data_nascimento` viraram `text`: **dado inválido entra como veio** |
@@ -61,7 +62,9 @@ Não há Edge Function neste módulo. A única RPC é `contar_candidatos_por_edi
 
 ## Modelo de dados
 
-> **Duas tabelas do módulo vivem em doc próprio:** `cargos` e `cargo_apelidos`, em [`cargos.md`](./cargos.md). Desde **2026-07-28** elas são parte da identidade do candidato: `candidatos.cargo_id` entrou na chave natural no lugar do texto, e o passo "Cargos" do assistente é quem o preenche.
+> **Duas tabelas do módulo vivem em doc próprio:** `cargos` e `cargo_apelidos`, em [`cargos.md`](./cargos.md). O passo "Cargos" do assistente é quem preenche `candidatos.cargo_id`.
+>
+> ⚠️ **Elas deixaram de ser parte da IDENTIDADE do candidato em 2026-08-01.** De 28/07 a 31/07, `cargo_id` compunha a chave natural; hoje a chave é `(edital_id, n_inscricao)` e o cargo é **atributo**. O vínculo continua obrigatório no assistente (D4) e a `CG001` continua trancando cargo com inscritos — o que mudou é só o que *identifica* a linha.
 
 ```
 candidatos
@@ -88,21 +91,43 @@ candidatos
 
 ### ⭐ A chave natural
 
-**A unicidade é `(edital_id, cpf, cargo_id, n_inscricao)`** — índice `candidatos_cpf_cargo_id_inscricao_key`, `NULLS NOT DISTINCT`, migration `20260728100000`.
+**A unicidade é `(edital_id, n_inscricao)`** — índice `candidatos_edital_inscricao_key`, migration `20260801193530`.
 
-🔴 **`cargo_id` NÃO é redundante: é ele que garante a unicidade.** A inscrição vem do `ID` da planilha, que **repete** para quem concorre a mais de um cargo — 7.020 valores distintos em 7.416 linhas. Sem o cargo na chave, as **396 inscrições excedentes colidiriam** e sumiriam em silêncio. ⚠️ **Não simplifique para `(edital_id, n_inscricao)`** — já foi proposto aqui, com base em medição mal interpretada, e destrói dado.
+🔴 **Decisão do usuário em 2026-08-01: o que identifica a inscrição é o NÚMERO DE INSCRIÇÃO.** `cpf` e `cargo_id` **saíram** da identidade.
 
-⭐ **O cargo entra por REFERÊNCIA, não por texto** (etapa 5 do roadmap de cargos, 28/07). É isso que torna renomear cargo inofensivo para a lista: com o texto na identidade, corrigir `DOCENTE I ¿ HISTÓRIA` para `DOCENTE I — HISTÓRIA` criava **481 registros novos**; com `cargo_id` é um `UPDATE` numa linha de `cargos`. Verificado pelo PostgREST. (⚠️ Renomear cargo **em uso** é outra história — a `CG001` o proíbe; ver [`cargos.md`](./cargos.md).)
+⭐ **A regra em uma frase, e ela não mudou:** *o mesmo CPF pode ter mais de uma inscrição, desde que para cargos diferentes.* O que mudou foi o mecanismo — o cargo **não precisa estar na chave** para isso valer, porque **cada inscrição tem número próprio**. Medido no arquivo real: a mesma pessoa (CPF `05261923727`) aparece nas inscrições **9 e 5208**.
 
-⚠️ **`NULLS NOT DISTINCT` guarda a célula VAZIA.** No padrão do Postgres dois `NULL` não colidem, então linha com CPF em branco se reinseriria a cada importação. Desde 30/07 o CPF **impossível** entra cru — o índice protege o vazio, não o inválido. **Vazio ≠ impossível.**
+**Medido antes de apertar:**
 
-### 🔴 A coluna `N_INSCRICAO` da planilha é o CONTADOR do export
+| Onde | O quê | Resultado |
+|---|---|---|
+| arquivo real, 7.416 linhas | nº de inscrição repetido | **0** |
+| banco local, 7.231 candidatos | `(edital_id, n_inscricao)` repetido | **0** |
 
-**Medido: `1, 2, 3 … 7416`, sem um gap.** A inscrição está na coluna **`ID`**. A pessoa de CPF `05261923727` aparece na linha 9 e na linha 5208 — se a coluna 0 fosse inscrição, seriam dois números a 5.199 de distância.
+A chave nova é **estritamente mais apertada** que a antiga (4 colunas → 2) e mesmo assim nenhuma linha existente a viola — não houve saneamento.
 
-📌 **Quem escolhe a coluna é o USUÁRIO, no passo 2 do assistente** — `autoMapear` apenas **sugere**, e sugere a coluna 0 porque o cabeçalho tem esse nome. Por decisão do usuário (31/07) a sugestão fica como está e **não há alerta automático** de contador.
+🔴 **`edital_id` é indispensável, e por um motivo novo:** o nº de inscrição **recomeça em 1 a cada planilha** (o arquivo real vai de 1 a 7.416). Sem o edital, o segundo edital importado colidiria já na primeira linha.
 
-⚠️ **Consequência operacional: a conferência do mapeamento no passo 2 é parte do fluxo, não um remendo.** É o único ponto onde o erro é evitável, e aceitar a sugestão sem conferir grava a posição da linha como número de inscrição — sem erro, sem aviso.
+**Os dois lados aceitos da mudança**, que quem auditar vai reencontrar:
+
+- ⚠️ **Afrouxou:** a chave não barra mais o mesmo CPF duas vezes no **mesmo** cargo, se vierem com números diferentes. 0 casos no arquivo medido.
+- ⚠️ **Apertou:** se um edital futuro repetir o **mesmo número entre cargos**, as linhas viram a mesma chave e o `deduplicar()` mantém só a última. **Não é perda silenciosa** — a descartada sai nomeada na seção *Repetidas* do relatório. 0 casos no arquivo medido, e há teste fixando o comportamento.
+
+⭐ **O cargo continua entrando por REFERÊNCIA** (`cargo_id`), só que agora como **atributo**, não como identidade. O ganho de 28/07 permanece e ficou mais forte: renomear cargo é um `UPDATE` numa linha de `cargos`, onde o texto na identidade criava **481 registros novos**. (⚠️ Renomear cargo **em uso** é outra história — a `CG001` o proíbe; ver [`cargos.md`](./cargos.md).)
+
+> ⚠️ **Até 2026-08-01 esta seção afirmava o oposto**, em letras vermelhas: *"`cargo_id` NÃO é redundante: é ele que garante a unicidade… não simplifique para `(edital_id, n_inscricao)`, destrói dado"*. Aquilo valia enquanto a inscrição era lida na coluna **`ID`** da planilha (que é a pessoa, e repete 396 vezes). Com a inscrição vindo da coluna **A**, o número é único por linha e a simplificação passou a ser correta. **O aviso antigo não estava errado sobre o dado — estava certo sobre outra coluna.**
+
+> ⚠️ **O `NULLS NOT DISTINCT` também saiu**, e não por descuido: ele existia porque `cpf` e `cargo_id` são nullable. As duas colunas da chave nova são `NOT NULL`, então não há nulo a normalizar. **Não reintroduza campo nullable nesta chave sem reintroduzir a cláusula** — as linhas sem valor voltam a se multiplicar a cada reimportação.
+
+### 🔴 O nº de inscrição vem da coluna A (`N_INSCRICAO`)
+
+**Decisão do usuário, 2026-08-01.** É a coluna que o sistema grava, e o banco local confirma: 7.231 candidatos, 7.231 valores distintos, de `1` a `7416`.
+
+⚠️ **A coluna `ID` (col B) é a PESSOA, não a inscrição** — 7.020 valores distintos em 7.416 linhas, batendo 1:1 com o CPF, e repetindo para quem concorre a mais de um cargo. Confundir as duas é o erro que este módulo já cometeu em três reviravoltas.
+
+⚠️ **Propriedade do dado que vale conhecer:** a coluna A é densa, `1..7416`, na ordem do arquivo, e não acompanha a ordem de cadastro (correlação de **0,19** com o `ID`). Na prática isso quer dizer que **um novo export pode renumerar**. Como importar é **troca total**, isso não corrompe nada — a lista é substituída inteira —, mas o número impresso em lista de presença e recibo vem daí.
+
+📌 **Quem escolhe a coluna é o USUÁRIO, no passo 2 do assistente** — `autoMapear` apenas **sugere**. Com o cabeçalho real (`N_INSCRICAO`) a sugestão cai na coluna A sozinha.
 
 🧪 Os dois caminhos têm teste em `candidatos-import.test.ts` (o sugerido e o corrigido à mão).
 
@@ -117,16 +142,20 @@ candidatos
 
 > 🔵 **Corrigido em 2026-07-31.** Esta frase listava **três** lugares, incluindo *"o trigger `candidatos_recusa_reapontar_cargo`, que a calcula inline"*, e dizia que **os três** tinham de concordar. Aquele trigger **foi removido em 30/07** (migration `20260730140000`) — o banco não tem nenhum com esse nome. A parte sobre "a guarda do reapontamento afrouxa em silêncio" caiu junto: não há mais guarda a afrouxar. Achado pela verificação da Camada 1 (`npm run docs:conferir`), não por leitura.
 
-⚠️ **E por que o CPF NÃO ganhou coluna gerada.** A assimetria era deliberada: o cargo precisava de coluna porque precisava ser *normalizado*. O CPF não precisava de normalização nenhuma — `chk_candidato_cpf_formato` o obrigava a ser exatamente 11 dígitos ou `NULL` —, então uma `cpf_chave` seria só uma cópia da coluna ocupando espaço. O único problema dele era o `NULL`, e quem resolve isso é o `NULLS NOT DISTINCT` do índice.
+⚠️ **E por que o CPF NÃO ganhou coluna gerada.** A assimetria era deliberada: o cargo precisava de coluna porque precisava ser *normalizado*. O CPF não precisava de normalização nenhuma, então uma `cpf_chave` seria só uma cópia da coluna ocupando espaço.
 
-> ⚠️ **A CHECK citada acima NÃO EXISTE MAIS** (removida em 30/07). A conclusão — não criar `cpf_chave` — segue valendo, mas por outro motivo: a normalização passou a morar no `converterLinha`, que grava só os dígitos no caminho feliz e o texto cru quando não cabe. **Uma coluna gerada aqui seria pior que inútil**, porque normalizar um CPF impossível é justamente o que a decisão de 30/07 proíbe.
+> ⚠️ Esta conclusão segue valendo, mas os dois motivos originais caíram: a `chk_candidato_cpf_formato` foi removida em 30/07, e o CPF **saiu da chave** em 01/08. Hoje a razão é mais simples — o CPF não participa de nenhuma chave, então não há o que espelhar. A normalização mora no `converterLinha`, que grava só os dígitos no caminho feliz e o texto cru quando não cabe.
 
-**As QUATRO coisas que precisam concordar entre si** (eram três até 28/07; o dedup entrou), sob pena de a importação falhar o bloco de 500 inteiro com *"ON CONFLICT DO UPDATE command cannot affect row a second time"*:
+**As DUAS coisas que precisam concordar entre si**, sob pena de a importação ser recusada pelo banco:
 
-1. o índice `candidatos_cpf_cargo_id_inscricao_key`;
-2. o `onConflict` de `useImportarCandidatos` (`"edital_id,cpf,cargo_id,n_inscricao"`);
-3. a `chaveNatural()` de `candidatos-import.ts`, que deduplica o lote antes do envio;
-4. a **ordem do pipeline** — o dedup roda **depois** de resolver o cargo.
+1. o índice `candidatos_edital_inscricao_key`;
+2. a `chaveNatural()` de `candidatos-import.ts`, que deduplica o lote antes do envio.
+
+> 🔵 **Eram quatro até 2026-08-01.** Saíram: o **`onConflict` de `useImportarCandidatos`**, que não existe desde a troca total de 30/07 (não há mais upsert — a RPC faz `DELETE` + `INSERT`), e a **ordem do pipeline**, que deixou de importar para a chave quando o cargo saiu dela. O dedup ainda roda depois de `resolverLinhas`, mas por outro motivo: o que sai dele é o que vai ser gravado, e a gravação precisa do `cargo_id`.
+
+> ⚠️ **A recusa também mudou de forma, e a frase antiga citava a errada.** Não é mais *"falha o bloco de 500 com ON CONFLICT DO UPDATE cannot affect row a second time"*: os blocos de 500 vão para `candidatos_importacao`, que **não tem índice único** na chave, e passam. A recusa vem depois, no `INSERT` da RPC, como `duplicate key value violates unique constraint` — e como a RPC é uma transação, **derruba a troca inteira**. Quem traduz para o usuário é `mensagemErroImportacao()`, casando pelo **nome do índice**.
+
+🧪 **Regra de banco não tem teste na suíte** (ela mocka o Supabase). A verificação da chave é a bateria [`../../../../docs/bateria-chave-natural-candidatos.sql`](../../../../docs/bateria-chave-natural-candidatos.sql) — 5 casos com controle positivo, em transação com `ROLLBACK`.
 
 Mexeu em uma, mexa nas quatro. A quarta é a única que não depende de disciplina: `deduplicar()` só aceita `LinhaResolvida[]`, que só sai de `resolverLinhas()`, então inverter a ordem é **erro de compilação** — verificado em 28/07, não presumido.
 
@@ -202,6 +231,36 @@ O passo **Cargos** entrou em 2026-07-27 e tem doc própria: [`cargos.md`](./carg
 
 ⚠️ **Importação e Relatório eram 3 e 4; hoje são 4 e 5.** A renumeração vive em **três** lugares — a trilha, os blocos `{passo === n}` e as transições. Errar um deixa um passo inalcançável, sem erro nenhum na tela; há teste cobrindo os cinco.
 
+### 🔴 Só quem PAGOU a inscrição é importado (2026-08-01)
+
+A coluna `CONFIRMADO` da planilha diz quem pagou. Desde 01/08 ela **filtra a importação**: quem não consta como pago não entra na lista do edital. Decisão do usuário.
+
+**Medido no arquivo real** (`docs/temp/todos inscritos concurso 002-2026-SMA cabeçalho.xls`): a coluna é a de **índice 23**, e só tem dois valores — `'1'` em **7.231 linhas** e `'0'` em **185**. Sem vazio, sem terceiro valor. O filtro portanto **descarta 185 pessoas**.
+
+O pipeline ganhou um estágio, e **a posição dele é correção, não estilo**:
+
+```
+converterLinha → separarPorPagamento → resolverLinhas → deduplicar → blocos de 500
+```
+
+🔴 **O filtro roda ANTES do dedup porque `deduplicar` mantém a ÚLTIMA ocorrência da chave.** Invertido, um não-pagante que repetisse a chave de um pagante o **deslocaria** e só então seria descartado — o pagante sumiria da importação sem aparecer como erro, nem como repetida, nem como não-pagante. Há teste guardando, com o controle que mostra a perda na ordem errada.
+
+⚠️ **`confirmado` virou campo OBRIGATÓRIO no pareamento**, e não é zelo. Opcional, se a pessoa não pareasse a coluna, `parseBooleano(null)` devolveria `false` para toda linha; o filtro descartaria o arquivo inteiro; e como importar é **troca total**, a lista do edital seria apagada com ninguém no lugar, com a tela dizendo "concluída". É o mesmo precedente do `cargo` (decisão D4), pelo mesmo motivo: campo cuja ausência produz resultado errado **em silêncio** não pode ser opcional. Ao contrário do cargo, este **auto-mapeia** — o cabeçalho real é `CONFIRMADO` e não há segunda coluna candidata para o palpite errar.
+
+**Onde o usuário é informado**, e são três lugares de propósito:
+
+| Onde | O quê |
+|---|---|
+| Passo 2, ao parear | *"Só inscrições pagas serão importadas — 7.231 de 7.416"*, com quantos ficam de fora. Aparece **mesmo quando ninguém fica** — aviso que só surge às vezes é aviso que ninguém aprende a procurar |
+| Passo 4, na confirmação destrutiva | o número grande é **pós-filtro**, e o rótulo é **"vão entrar"**, não "nesta planilha" |
+| Passo 5 + relatório | card *"Sem pagamento"* próprio, e uma seção **Pagamento** no relatório, com cada pessoa **nomeada** |
+
+🔴 **O rótulo "vão entrar" é o conserto de uma promessa falsa.** Ele dizia "nesta planilha" — e no instante em que o filtro entrou, o número deixou de ser o tamanho da planilha. É exatamente o defeito do *"limpar edital"*, que exibia a contagem filtrada ao lado de um botão que apagava o edital inteiro, e estava atrás da mesma confirmação destrutiva.
+
+⚠️ **"Sem pagamento" NÃO se soma a "Não importados", e a `Situação` no relatório é própria.** As duas dizem que a linha ficou de fora, mas a providência é oposta: erro de dado se corrige na planilha e se reimporta; inscrição não paga não é defeito nenhum — é o filtro fazendo o que foi mandado. Juntá-las mandaria a pessoa caçar erro em 185 linhas que não têm nenhum.
+
+⚠️ **Consequência aceita:** com só pagantes entrando, o selo *"não confirmada"* da listagem (`Candidatos.tsx`) e a linha *"Inscrição confirmada"* da ficha ficam **inalcançáveis**. Decisão do usuário mantê-los: a coluna segue no banco como procedência e eles voltam a valer sozinhos se o filtro for afrouxado. Registrado no [`backlog.md`](../../../backlog.md) para não virar achado repetido em auditoria.
+
 ### ⭐ Erro vs. aviso: o que descarta a linha e o que entra com o dado cru
 
 **A identidade do candidato é o NÚMERO DE INSCRIÇÃO** — mais o CPF e o cargo —, não o CPF sozinho (ao contrário do colaborador, que loga com o CPF). Daí a regra:
@@ -221,9 +280,13 @@ Até 29/07 o campo impossível virava `NULL`: o inscrito entrava, mas o que a or
 
 🔴 **A mudança CORRIGIU um defeito que ninguém tinha visto, e é a parte que vale lembrar.** Os 2 CPFs impossíveis do arquivo real são **valores distintos**. Com os dois virando `NULL`, a chave natural ficava idêntica e o `deduplicar()` **fundia os dois inscritos num só** — um deles sumia da lista, exatamente o erro que a regra de aviso existe para evitar. Havia um teste **afirmando essa fusão como correta**. Gravar o cru desfaz o empate: verificado contra o PostgREST em 30/07, dois CPFs impossíveis diferentes agora são duas linhas.
 
+> 🔵 **Desde 01/08 essa fusão é impossível por construção**, e não mais por normalização: o CPF **saiu da chave natural**, então o valor dele — cru, inválido ou ausente — não consegue empatar duas pessoas. As 2 linhas estão nas inscrições **375 e 4256**, que são chaves diferentes. A decisão de gravar o cru segue valendo pelo motivo original (não perder o que a origem afirmou); o que caiu foi a dependência entre ela e a unicidade.
+
 ⚠️ **Uma regressão silenciosa saiu junto:** a guarda antiga do CPF lia `soDigitos`, que devolve `null` quando não sobra dígito nenhum — então um campo como `'abc'` era anulado **sem aviso**. Perda calada dentro da regra criada para não perder calado. Hoje o aviso lê o valor bruto.
 
 ⚠️ **O `NULLS NOT DISTINCT` do índice NÃO perdeu a razão de existir, só mudou de dono:** ele agora guarda a célula **vazia** (que continua virando `NULL`), não mais a impossível. **Vazio ≠ impossível** — um não tem dado, o outro tem dado errado.
+
+> 🔵 **Em 01/08 o `NULLS NOT DISTINCT` SAIU do índice** junto com o CPF e o cargo. Ele existia porque essas duas colunas eram nullable; as duas da chave nova (`edital_id`, `n_inscricao`) são `NOT NULL`. A distinção **vazio ≠ impossível** segue valendo para o que o relatório diz ao usuário — só não tem mais efeito nenhum sobre unicidade.
 
 #### 🔵 Três regras novas em 2026-07-30, todas medidas antes de existir
 
@@ -268,7 +331,9 @@ Por isso **o pareamento é por índice de coluna**, e o rótulo mostrado carrega
 
 ### ⚠️ O cargo NÃO é auto-pareado, de propósito
 
-`'tipoprova'` foi **removido** dos sinônimos de `cargo`. No arquivo real o cargo está na segunda coluna `NOME`, enquanto `TIPOPROVA` existe e está **100% vazia**. Adivinhar `TIPOPROVA` *pareceria acertar* e deixaria o cargo nulo em todas as linhas — e como **o cargo compõe a chave natural**, as 382 inscrições repetidas colidiriam entre si e **396 inscritos sumiriam sem erro nenhum**.
+`'tipoprova'` foi **removido** dos sinônimos de `cargo`. No arquivo real o cargo está na segunda coluna `NOME`, enquanto `TIPOPROVA` existe e está **100% vazia**. Adivinhar `TIPOPROVA` *pareceria acertar* e deixaria o cargo nulo em todas as linhas.
+
+> ⚠️ **A consequência citada aqui MUDOU DUAS VEZES.** A frase dizia que, com o cargo nulo, *"as 382 inscrições repetidas colidiriam e 396 inscritos sumiriam sem erro nenhum"*. Isso já era falso desde 28/07 (vinha de ler a inscrição na coluna `ID`), e desde 01/08 o cargo **nem está mais na chave** — cargo nulo não funde linha nenhuma. **A perda é zero.** O motivo de não adivinhar continua de pé e é outro: um cargo nulo em todas as linhas faz a lista não responder *"quantos inscritos por cargo"*, que é a pergunta que o módulo existe para responder — e faz isso **em silêncio**.
 
 Palpite que erra em silêncio é pior que palpite nenhum.
 
@@ -280,11 +345,13 @@ O auto-pareamento em geral é mais rígido que o de `CadastroLote`: casa por **i
 
 ### ⚠️ Deduplicar dentro do arquivo é obrigatório, não zelo
 
-O Postgres recusa o lote se a mesma chave aparecer duas vezes. Sem `deduplicar()`, **um arquivo com uma linha duplicada não importa nada**, e a pessoa não tem como saber por quê. Mantém-se a **última** ocorrência (quem corrige uma linha costuma reescrevê-la abaixo).
+O Postgres recusa o lote se a mesma chave aparecer duas vezes. Sem `deduplicar()`, **um arquivo com duas linhas de mesmo nº de inscrição não importa nada**, e a pessoa não tem como saber por quê. Mantém-se a **última** ocorrência (quem corrige uma linha costuma reescrevê-la abaixo).
 
 ⚠️ **Com a troca total o custo de errar isto SUBIU:** o INSERT deixou de ser um bloco de 500 e passou a ser a lista INTEIRA, dentro da transação da RPC. Uma duplicata no arquivo agora derruba a troca toda — o que é seguro (nada é apagado), mas significa que `deduplicar()` deixou de ser conveniência e virou pré-requisito.
 
-⚠️ **`chaveNatural()` tem de espelhar o índice, campo a campo** — é ela que a deduplicação usa. Hoje isso inclui o `cpf ?? ''`, que reproduz em JS o `NULLS NOT DISTINCT` do banco: sem ele, duas linhas sem CPF passariam pela deduplicação como distintas e o banco recusaria o bloco.
+⚠️ **`chaveNatural()` tem de espelhar o índice, campo a campo** — é ela que a deduplicação usa. Desde 01/08 ela devolve **só o `n_inscricao`**, e o `edital_id` não entra porque o dedup roda dentro de uma importação, que é de um edital só.
+
+> 🔵 Esta frase dizia *"hoje isso inclui o `cpf ?? ''`, que reproduz em JS o `NULLS NOT DISTINCT`"*. Os `??` **saíram** com a troca da chave. ⚠️ Não os traga de volta sem trazer também a cláusula ao índice: campo nullable na chave sem `NULLS NOT DISTINCT` faz as linhas sem valor se multiplicarem a cada reimportação.
 
 ### Gravação em blocos
 
@@ -324,4 +391,33 @@ Três coisas que precisam sobreviver a qualquer refatoração dessas telas:
 - ✅ **O acento quebrado do arquivo de origem deixou de aparecer na tela.** O texto vem `'DOCENTE I ¿ LÍNGUA INGLESA'` (o `¿` é um travessão em cp1252 lido como latin-1) e `candidatos.cargo` **continua guardando como veio**, porque é a procedência do dado — mas quem a lista e a ficha exibem é `cargos.nome`, o nome canônico do catálogo. O tema **Cargos** fechou isso em 2026-07-29: o cargo é referência a uma linha de `cargos`, o nome canônico é editável sem duplicar ninguém, e a etapa 6 fez o ganho aparecer. Ver [`cargos.md`](./cargos.md).
 - **A exclusão de um candidato não pede senha; "limpar edital" pede.** Proposital: a primeira atinge uma linha e é reversível por reimportação, a segunda atinge milhares. Pedir senha nas duas ensinaria a digitá-la no piloto automático.
 - 🔴 **"Limpar edital" já anunciou o número errado, e isso é a armadilha a lembrar.** A ação apaga por `edital_id` — o edital **inteiro** —, mas a confirmação exibia o `count` da consulta **filtrada**: com uma busca ligada, prometia remover 12 e removia 7.416. Corrigido em 2026-07-29 (passou a usar a contagem da RPC, e avisa quando há filtro ligado), com regressão guardando. ⚠️ **A regra geral: ao acrescentar filtro a uma tela, revise toda ação que age sobre o conjunto inteiro.** Contador filtrado ao lado de botão não-filtrado é promessa errada — e aqui a promessa errada estava atrás da barreira de senha, que é onde ela menos podia estar.
-- **Não há paginação no relatório de problemas** — ele sai em `.xlsx`, que é onde a pessoa vai trabalhar.
+- **Não há paginação no relatório de problemas** — ele sai em arquivo, que é onde a pessoa vai trabalhar.
+
+## O passo 5 entrega DOIS relatórios, e eles não são o mesmo arquivo em dois formatos
+
+| Botão | Formato | Forma | Para quê |
+|---|---|---|---|
+| Baixar Planilha (XLS) | `.xlsx`, duas abas (`Problemas` + `Cargos`) | lista plana, uma queixa por linha | trabalhar no Excel: filtrar, ordenar, marcar o que já corrigiu |
+| Baixar Documento (PDF) | A4 paisagem, timbrado | **agrupado por campo**, uma tabela por campo | anexar a processo e imprimir; corrigir é trabalho por coluna |
+
+As **quatro origens** das queixas: `comErro` (não entrou, falta o que identifica), `comAviso` (entrou, com dado a conferir na origem), `repetidas` (sobrescrita por linha posterior de mesma chave) e `naoPagantes` (não entrou, inscrição não paga — ver a seção do filtro acima).
+
+### 🔵 As colunas, e o que mudou em 2026-08-01
+
+**As colunas são `Nº de Inscrição · Situação · Campo · Detalhe`**, iguais nos dois exports — no XLS os nomes das propriedades de `ProblemaDoRelatorio` **viram cabeçalho** (`json_to_sheet`), então renomear qualquer uma delas muda a planilha entregue.
+
+🔴 **A coluna `Linha` SAIU** (decisão do usuário). Ela dava o endereço dentro do arquivo; o nº de inscrição identifica a **pessoa**, que é o que quem lê o relatório vai procurar.
+
+⚠️ **A ordenação continua sendo pela linha da planilha**, mesmo ela não sendo mais exibida — é a ordem de leitura do arquivo, e ordenar pela inscrição exigiria escolher entre ordem numérica e textual (`"10" < "9"` em texto). No arquivo real os dois critérios coincidem, porque a coluna A é densa e sequencial.
+
+🔴 **`LinhaConvertida.nInscricao` existe por causa disto.** A linha com `erro` tem `candidato` **nulo**, e é justamente ela que o relatório precisa identificar — sem esse campo, "Nome vazio" e "Cargo vazio" (que têm inscrição) sairiam sem nada que permitisse achar a pessoa. Quando a própria inscrição é o que falta, a coluna traz `—` e quem localiza é o texto do erro.
+
+🔴 **"Pagamento" NÃO é apresentado como problema.** O bloco do PDF sai como *"Lista de inscrições sem pagamento registrado"*, e não *"Problemas encontrados no campo: Pagamento"* — inscrição não paga não tem defeito a corrigir, e chamá-la de problema mandava a pessoa caçar erro em 185 linhas legítimas. Quem decide o título é `subtituloDoCampo()`, que casa pelo **texto exato** do `Campo`; mudá-lo em `montarProblemasDoRelatorio` sem mudar lá devolve o título genérico **em silêncio**, e há teste ligando os dois.
+
+**A parte que decide o conteúdo é pura e é a mesma para os dois:** `montarProblemasDoRelatorio()` e `agruparProblemasPorCampo()`, em [`src/lib/candidatos-import.ts`](../../../../src/lib/candidatos-import.ts), com bateria sem mock. Ela viveu **duplicada verbatim dentro do componente**, uma cópia em cada botão, até 2026-08-01 — e o custo desse arranjo era que corrigir a classificação de um campo num export deixava o outro mentindo, sem nada quebrar.
+
+⚠️ **`classificarQueixa` casa por PREFIXO do texto da mensagem**, e nada liga esse prefixo ao que `converterLinha` escreve. Mexer no texto de um aviso joga a queixa no balde "Geral" em silêncio. Ao acrescentar aviso novo, acrescente o prefixo em `PREFIXOS_POR_CAMPO` no mesmo passe.
+
+🔴 **A coluna Detalhe do PDF usa `overflow: "linebreak"`, não `"hidden"`.** Com `hidden` ela era cortada na largura da célula, sem reticências e sem aviso — e o detalhe é a única coisa que o relatório existe para entregar. Relatório de erro que corta a mensagem do erro é perda silenciosa.
+
+O timbre, o logo e a numeração vêm de [`src/lib/pdf-timbre.ts`](../../../../src/lib/pdf-timbre.ts), compartilhado com os PDFs de Aplicação de Provas — ver [`../aplicacao-provas/documentos-e-relatorios.md`](../aplicacao-provas/documentos-e-relatorios.md).

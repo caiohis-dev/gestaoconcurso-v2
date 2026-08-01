@@ -5,7 +5,7 @@ import {
   useCriarCargo,
   useAtualizarCargo,
   useExcluirCargo,
-  cargoTemMencao,
+  cargoTemInscritos,
   Cargo,
   CargoComUso,
 } from "@/hooks/useCargos";
@@ -84,10 +84,10 @@ export default function Cargos() {
           <div>
             <h1 className="text-2xl font-bold text-foreground">Cargos</h1>
             <p className="text-muted-foreground">
-              O catálogo é global: vale para todos os editais. ⚠️ <strong>Cargo com
-              qualquer menção — inscritos ou textos memorizados — não pode ser alterado
-              nem excluído.</strong> A janela para corrigir um nome é antes da primeira
-              importação que o use.
+              O catálogo é global: vale para todos os editais. ⚠️ <strong>Cargo que já
+              tem inscritos não pode ser alterado nem excluído.</strong> A janela para
+              corrigir um nome é antes da primeira importação que o use — textos
+              memorizados não impedem.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -141,9 +141,14 @@ export default function Cargos() {
                   <TableBody>
                     {cargos.map((cargo) => {
                       // ⚠️ ANTECIPA a barreira do banco; não a substitui. Quem recusa é o
-                      // trigger CG001 e as duas FKs RESTRICT — aqui é só para o usuário
-                      // não digitar um nome novo para descobrir depois que não podia.
-                      const imutavel = cargoTemMencao(cargo);
+                      // trigger CG001 e a FK `candidatos_cargo_id_fkey` RESTRICT — aqui é
+                      // só para o usuário não digitar um nome novo para descobrir depois
+                      // que não podia.
+                      //
+                      // ⚠️ Só INSCRITO tranca. Uma linha pode exibir "Textos memorizados:
+                      // 5" e ainda assim oferecer os dois botões — é o caso normal desde
+                      // 01/08, não um defeito de renderização.
+                      const imutavel = cargoTemInscritos(cargo);
                       return (
                         <TableRow key={cargo.id}>
                           <TableCell className="font-medium">{cargo.nome}</TableCell>
@@ -155,7 +160,7 @@ export default function Cargos() {
                               // Este diz por que, e a contagem ao lado diz o quanto.
                               <span className="flex items-center justify-end gap-2 text-sm text-muted-foreground">
                                 <Lock className="h-4 w-4" />
-                                Em uso — não editável
+                                Em uso por inscritos — não editável
                               </span>
                             ) : (
                               <div className="flex justify-end gap-1">
@@ -204,16 +209,15 @@ export default function Cargos() {
         isLoading={isCriando || isAtualizando}
       />
 
-      {/* Confirmação de exclusão — AlertDialog e não senha, porque o BANCO é a rede: as
-          duas FKs são RESTRICT. É o mesmo critério do módulo: excluir UM inscrito usa
-          AlertDialog; "limpar edital", que não tem rede nenhuma, é que pede senha.
+      {/* Confirmação de exclusão — AlertDialog e não senha, porque o BANCO é a rede: a FK
+          `candidatos_cargo_id_fkey` é RESTRICT e recusa apagar cargo com inscrito. É o
+          mesmo critério do módulo: excluir UM inscrito usa AlertDialog; "limpar edital",
+          que não tem rede nenhuma, é que pede senha.
 
-          ⚠️ ESTE DIÁLOGO SÓ ABRE PARA CARGO SEM MENÇÃO NENHUMA, porque desde 2026-07-31 o
-          botão Excluir não existe para os outros. Ele já teve dois ramos — "N inscritos
-          vão barrar" e "N apelidos serão apagados junto" — e os DOIS viraram inalcançáveis
-          com a regra nova: o primeiro porque o botão sumiu, o segundo porque o apelido
-          deixou de ser CASCADE e passou a BARRAR. Guarda que não pode disparar é armadilha,
-          então saíram. */}
+          ⚠️ ESTE DIÁLOGO SÓ ABRE PARA CARGO SEM INSCRITO, porque o botão Excluir não
+          existe para os outros — então NÃO há ramo "N inscritos vão barrar" aqui, e não
+          deve haver: guarda que não pode disparar é armadilha. Mas o cargo PODE ter
+          apelidos, e esse ramo é obrigatório. */}
       <AlertDialog
         open={cargoParaExcluir !== null}
         onOpenChange={(aberto) => {
@@ -223,10 +227,30 @@ export default function Cargos() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir o cargo {cargoParaExcluir?.nome}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Este cargo não tem nenhum inscrito nem texto de planilha memorizado, então
-              pode ser excluído. A ação não tem volta — mas o cargo pode ser criado de novo
-              a qualquer momento, inclusive pelo assistente de importação.
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  Nenhum inscrito usa este cargo, então ele pode ser excluído. A ação não
+                  tem volta — mas o cargo pode ser criado de novo a qualquer momento,
+                  inclusive pelo assistente de importação.
+                </p>
+
+                {/* 🔴 O aviso que não pode sumir: os apelidos vão junto, por CASCADE, e em
+                    silêncio. É a memória de "texto sujo → cargo" que pré-preenche as
+                    próximas importações; sem ela, o usuário reassocia tudo de novo.
+
+                    ⚠️ Ele saiu em 31/07, quando a FK virou RESTRICT e o ramo ficou
+                    inalcançável, e VOLTOU em 01/08 junto com o CASCADE. Se alguém mexer na
+                    FK de novo, este bloco é o primeiro lugar a conferir — sem ele, o
+                    CASCADE vira perda muda. Há teste guardando. */}
+                {cargoParaExcluir && cargoParaExcluir.apelidos > 0 && (
+                  <p className="rounded-md border border-destructive p-3 text-destructive">
+                    <strong>{cargoParaExcluir.apelidos}</strong> texto(s) de planilha
+                    memorizado(s) serão apagados junto. Nas próximas importações, esses
+                    textos voltam a aparecer sem associação.
+                  </p>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

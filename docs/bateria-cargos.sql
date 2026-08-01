@@ -52,8 +52,10 @@ WHERE schemaname = 'public'
 ORDER BY tablename, indexname;
 
 \echo ''
-\echo '-- 1.4 As FKs e suas ações. Esperado: AS DUAS RESTRICT (r) desde 31/07.'
-\echo '--     ⚠️ Até 30/07 apelidos era CASCADE (c) — a assimetria caiu com a CG001.'
+\echo '-- 1.4 As FKs e suas ações. Esperado: candidatos RESTRICT (r), apelidos CASCADE (c).'
+\echo '--     ⚠️ As duas foram RESTRICT por UM dia (31/07 → 01/08), quando a CG001 trancava'
+\echo '--     por qualquer menção. Desde 01/08 o bloqueio olha só inscritos, e a assimetria'
+\echo '--     deliberada voltou: apelido é atalho de digitação, candidato é gente.'
 SELECT c.conrelid::regclass AS tabela, c.conname, c.confdeltype AS on_delete
 FROM pg_constraint c
 WHERE c.contype = 'f' AND c.confrelid = 'public.cargos'::regclass
@@ -175,21 +177,26 @@ ROLLBACK;
 
 \echo ''
 \echo '╔════════════════════════════════════════════════════════════════════════╗'
-\echo '║ 4. AS DUAS FKs — desde 31/07 as duas são RESTRICT: menção é menção     ║'
+\echo '║ 4. AS DUAS FKs — OPOSTAS de propósito: candidato barra, apelido cede   ║'
 \echo '╚════════════════════════════════════════════════════════════════════════╝'
 
 \echo ''
-\echo '-- 4.1 Apagar cargo COM APELIDO é RECUSADO (RESTRICT). Esperado: 23503'
-\echo '--     🔴 REESCRITO em 31/07. Este caso afirmava o OPOSTO — que o DELETE passava e'
-\echo '--     levava os apelidos junto (CASCADE), com "apelidos_restantes = 0". Era'
-\echo '--     verdade até 30/07, e vinha da assimetria deliberada "apelido é atalho,'
-\echo '--     candidato é gente". A CG001 derrubou a assimetria; o caso virou o contrário.'
+\echo '-- 4.1 Apagar cargo COM APELIDO PASSA, e leva o apelido junto (CASCADE).'
+\echo '--     Esperado: DELETE 1, e apelidos_restantes = 0'
+\echo '--     🔴 ESTE CASO JÁ FOI INVERTIDO DUAS VEZES, e por isso carrega a data: era'
+\echo '--     assim até 30/07; a CG001 (31/07) o virou em recusa (23503); em 01/08 o'
+\echo '--     bloqueio passou a olhar SÓ inscritos e ele voltou ao que era.'
+\echo '--     ⚠️ O "apelidos_restantes = 0" é PERDA SILENCIOSA: some a memória de'
+\echo '--     "texto sujo → cargo" que pré-preenche as próximas importações. Quem avisa'
+\echo '--     é a UI (Cargos.tsx), e há teste guardando o aviso.'
 BEGIN;
   INSERT INTO public.cargos (id, nome)
     VALUES ('33333333-3333-3333-3333-333333333333', 'BATERIA CARGO DE TESTE');
   INSERT INTO public.cargo_apelidos (texto_origem, cargo_id)
     VALUES ('BATERIA CARGO ¿ TESTE', '33333333-3333-3333-3333-333333333333');
   DELETE FROM public.cargos WHERE id = '33333333-3333-3333-3333-333333333333';
+  SELECT count(*) AS apelidos_restantes FROM public.cargo_apelidos
+    WHERE cargo_id = '33333333-3333-3333-3333-333333333333';
 ROLLBACK;
 
 \echo ''
@@ -222,11 +229,12 @@ EXPLAIN (COSTS OFF)
 
 \echo ''
 \echo '╔════════════════════════════════════════════════════════════════════════╗'
-\echo '║ 4-bis. CARGO COM MENÇÃO É IMUTÁVEL — trigger CG001 (31/07)             ║'
-\echo '║   🔴 Esta regra REVERTE o ganho central do tema Cargos: com os 9 cargos ║'
-\echo '║   do arquivo real tendo inscritos, depois da 1a importação nenhum pode  ║'
-\echo '║   ser renomeado, e os 7 nomes com ¿ ficam permanentes. Decisão do       ║'
-\echo '║   usuário, tomada com esses números à vista.                           ║'
+\echo '║ 4-bis. CARGO COM INSCRITO É IMUTÁVEL — trigger CG001 (01/08)           ║'
+\echo '║   ⚠️ ESTREITADO em 01/08. Entre 31/07 e 01/08 a regra trancava por     ║'
+\echo '║   QUALQUER menção — e como o assistente grava os apelidos no fim do    ║'
+\echo '║   passo 3, o cargo virava imutável ANTES de existir um só inscrito:    ║'
+\echo '║   a janela fechava dentro do passo que devia abri-la. Agora só         ║'
+\echo '║   inscrito tranca, e a janela vai até a 1a importação que o use.       ║'
 \echo '╚════════════════════════════════════════════════════════════════════════╝'
 
 \echo ''
@@ -243,31 +251,42 @@ BEGIN;
 ROLLBACK;
 
 \echo ''
-\echo '-- 4b.2 Renomear cargo COM APELIDO também é recusado (esperado: CG001)'
-\echo '--     Menção é menção: a assimetria "apelido é atalho, candidato é gente" caiu.'
+\echo '-- 4b.2 ⭐ CONTROLE POSITIVO — renomear cargo com APELIDO e SEM inscrito PASSA'
+\echo '--     (esperado: UPDATE 1). É o caso que a mudança de 01/08 existe para destravar:'
+\echo '--     é exatamente a situação dos 9 cargos reais hoje. ⚠️ Este caso afirmava o'
+\echo '--     OPOSTO entre 31/07 e 01/08 (CG001 por menção); foi invertido junto com a regra.'
+\echo '--     O apelido continua apontando para o cargo — ele guarda cargo_id, não o nome.'
 BEGIN;
   INSERT INTO public.cargos (id, nome)
-    VALUES ('66666666-6666-6666-6666-666666666667', 'BATERIA CARGO COM APELIDO');
+    VALUES ('66666666-6666-6666-6666-666666666667', 'BATERIA CARGO ¿ COM APELIDO');
   INSERT INTO public.cargo_apelidos (texto_origem, cargo_id)
     VALUES ('BATERIA CARGO ¿ COM APELIDO', '66666666-6666-6666-6666-666666666667');
-  UPDATE public.cargos SET nome = 'BATERIA NOME NOVO'
+  UPDATE public.cargos SET nome = 'BATERIA CARGO — COM APELIDO'
     WHERE id = '66666666-6666-6666-6666-666666666667';
+  SELECT c.nome, a.texto_origem AS apelido_ainda_aponta
+    FROM public.cargos c JOIN public.cargo_apelidos a ON a.cargo_id = c.id
+    WHERE c.id = '66666666-6666-6666-6666-666666666667';
 ROLLBACK;
 
 \echo ''
 \echo '-- 4b.3 ⚠️ O trigger é sobre a LINHA, não a coluna: trocar `ativo` também é'
 \echo '--     recusado, mesmo sem tocar no nome (esperado: CG001)'
+\echo '--     🔴 A FIXTURE AQUI TEM DE SER UM INSCRITO, não um apelido. Com apelido este'
+\echo '--     caso passaria a PERMITIR o UPDATE desde 01/08 — e continuaria "verde"'
+\echo '--     afirmando no \echo o contrário do que o banco faz.'
 BEGIN;
   INSERT INTO public.cargos (id, nome)
     VALUES ('66666666-6666-6666-6666-666666666668', 'BATERIA CARGO ATIVO');
-  INSERT INTO public.cargo_apelidos (texto_origem, cargo_id)
-    VALUES ('BATERIA CARGO ¿ ATIVO', '66666666-6666-6666-6666-666666666668');
+  INSERT INTO public.candidatos (edital_id, n_inscricao, nome, cargo, cargo_id)
+    SELECT id, '999004', 'INSCRITO DE TESTE', 'BATERIA CARGO ATIVO',
+           '66666666-6666-6666-6666-666666666668'
+    FROM public.editais LIMIT 1;
   UPDATE public.cargos SET ativo = false
     WHERE id = '66666666-6666-6666-6666-666666666668';
 ROLLBACK;
 
 \echo ''
-\echo '-- 4b.4 CONTROLE POSITIVO — cargo SEM menção nenhuma AINDA é renomeável'
+\echo '-- 4b.4 CONTROLE POSITIVO — cargo SEM menção nenhuma é renomeável'
 \echo '--     (esperado: UPDATE 1). É a metade que prova que a regra não travou tudo:'
 \echo '--     a janela para corrigir um nome existe, e vai ATÉ a primeira importação.'
 BEGIN;
@@ -380,8 +399,11 @@ WHERE table_schema = 'public' AND table_name = 'candidatos' AND column_name = 'c
 \echo '-- 7.2 🔴 REESCRITO em 31/07 — este caso afirmava o que a CG001 TORNOU IMPOSSÍVEL.'
 \echo '--     Ele se chamava "RENOMEAR O CARGO NÃO DUPLICA CANDIDATO — o ponto inteiro da'
 \echo '--     etapa 5" e renomeava um cargo COM 3 inscritos, esperando 3 antes e 3 depois.'
-\echo '--     Desde a CG001 esse UPDATE é RECUSADO: cargo com menção é imutável. O caso'
-\echo '--     não "quebrou" — a regra mudou, e ele era a testemunha do ganho revertido.'
+\echo '--     Desde a CG001 esse UPDATE é RECUSADO: cargo com inscrito é imutável.'
+\echo '--     ⚠️ O ESTREITAMENTO DE 01/08 NÃO O RESSUSCITA. A regra deixou de trancar por'
+\echo '--     apelido, mas continua trancando por INSCRITO — e este caso tem 3. Ele segue'
+\echo '--     valendo como está; quem passou a testemunhar o ganho da etapa 5 é o 4b.2,'
+\echo '--     onde o cargo tem apelido e nenhum inscrito.'
 \echo '--     ⚠️ NÃO o restaure: um caso que só passa se a CG001 sumir vira pressão para'
 \echo '--     removê-la. Se a decisão for revista, isto se reescreve de novo, de propósito.'
 

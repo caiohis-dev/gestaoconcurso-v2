@@ -592,21 +592,30 @@ describe("mensagemErroCargo", () => {
     ).toMatch(/mai[úu]sculas e espa[çc]os/i);
   });
 
-  it("🔴 passa inteira a recusa do trigger CG001 — ela já traz nome e contagens", () => {
-    // Desde 2026-07-31 cargo com qualquer menção é IMUTÁVEL. A mensagem do banco nomeia o
-    // cargo e diz quantos inscritos e quantos textos memorizados o prendem — trocá-la por
-    // um texto genérico tiraria justamente a informação que o usuário precisa.
+  it("🔴 passa inteira a recusa do trigger CG001 — ela já traz nome e contagem", () => {
+    // Desde 2026-08-01 cargo com INSCRITO é imutável. A mensagem do banco nomeia o cargo e
+    // diz quantos inscritos o prendem — trocá-la por um texto genérico tiraria justamente
+    // a informação que o usuário precisa.
+    //
+    // ⚠️ O texto abaixo é o do `RAISE EXCEPTION` da migration `20260801103940`, e o casa
+    // por substring. Se a mensagem do trigger mudar sem este teste mudar junto, o erro
+    // chega CRU na tela e a suíte continua verde — é a armadilha 8 esperando.
     const doTrigger =
-      'O cargo "DOCENTE II" tem menção em outra tabela (3756 inscrito(s), 2 texto(s) memorizado(s)) e não pode ser alterado.';
+      'O cargo "DOCENTE II" tem 3756 inscrito(s) em algum edital e não pode ser alterado. Só cargo sem nenhum inscrito é editável.';
     expect(mensagemErroCargo(doTrigger)).toBe(doTrigger);
   });
 
-  it("distingue QUAL vínculo barrou a exclusão — as providências são diferentes", () => {
-    // `cargo_apelidos` virou RESTRICT em 31/07 (era CASCADE). Dizer só "em uso" mandaria o
-    // usuário procurar inscritos que não existem.
-    expect(
-      mensagemErroCargo('violates foreign key constraint "cargo_apelidos_cargo_id_fkey"'),
-    ).toMatch(/textos de planilha memorizados/i);
+  it("⚠️ NÃO traduz a FK dos apelidos — desde 01/08 ela é CASCADE e nunca recusa", () => {
+    // 🔴 ESTE TESTE AFIRMAVA O CONTRÁRIO entre 31/07 e 01/08, quando a FK era RESTRICT e
+    // havia um ramo próprio para ela. Com CASCADE o apelido é APAGADO junto, não barra —
+    // um ramo aqui seria guarda que não pode disparar, e este caso é o que impede alguém
+    // de "restaurar" a tradução por parecer faltando.
+    //
+    // Quem avisa sobre a perda dos apelidos é o diálogo de `Cargos.tsx`, ANTES do DELETE.
+    const daFkDeApelidos = 'violates foreign key constraint "cargo_apelidos_cargo_id_fkey"';
+    expect(mensagemErroCargo(daFkDeApelidos)).toBe(daFkDeApelidos);
+
+    // CONTROLE POSITIVO: a FK que de fato barra continua traduzida.
     expect(
       mensagemErroCargo('violates foreign key constraint "candidatos_cargo_id_fkey"'),
     ).toMatch(/em uso por candidatos/i);

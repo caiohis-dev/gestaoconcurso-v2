@@ -21,7 +21,7 @@ O projeto foi originalmente gerado pelo **Lovable** (plataforma low-code), mas e
 | Componentes | shadcn/ui (`src/components/ui/*`, configurado via `components.json`) |
 | Estado servidor | TanStack React Query 5 — usado de forma consistente na maioria dos hooks de entidade (`useQuery`/`useMutation` + `invalidateQueries`); algumas páginas fazem fetch manual com `useState`/`useEffect` em vez de React Query — `PainelDadosColaboradores.tsx`, `Dashboard.tsx` e `GerenciarColaboradoresProva.tsx` (esta última com dois efeitos que chamam `supabase...then()` cru, item aberto no backlog). **Não assuma cache automático sem checar o hook específico** |
 | Formulários | React Hook Form + Zod |
-| PDF | jsPDF + jspdf-autotable (geração 100% client-side, ver [`documentos-e-relatorios.md`](../modulos/aplicacao-provas/documentos-e-relatorios.md)) |
+| PDF | jsPDF + jspdf-autotable, 100% client-side. O timbre/logo/numeração são compartilhados em `src/lib/pdf-timbre.ts` — ver [`documentos-e-relatorios.md`](../modulos/aplicacao-provas/documentos-e-relatorios.md) |
 | Planilhas | xlsx (SheetJS) — importação em massa (`CadastroLote.tsx`, `CandidatosImportar.tsx`) e exportação de relatórios. ⚠️ Leia planilha de entrada com `{ header: 1, raw: false }`: modo objeto perde colunas de cabeçalho repetido e modo cru come zero à esquerda de CPF/CEP — ver [`candidatos/00-modulo.md`](../modulos/candidatos/00-modulo.md) |
 | Gráficos | Recharts (Dashboard) |
 | Backend/dados | Supabase (Postgres + Auth + Edge Functions), projeto `dqslqfzqukcahogkieet` |
