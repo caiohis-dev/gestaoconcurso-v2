@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { cpfValido } from "@/lib/cpf";
+import { caracteresIntrusos, cpfValido, motivoCpfInvalido } from "@/lib/cpf";
 
 /**
  * Função pura, então `.test.ts` — sem render, sem provider.
@@ -104,5 +104,66 @@ describe("cpfValido", () => {
       expect(cpfValido(null as unknown as string)).toBe(false);
       expect(cpfValido(undefined as unknown as string)).toBe(false);
     });
+  });
+});
+
+/**
+ * `motivoCpfInvalido` nasceu em 2026-08-02 para a importação de candidatos, que precisa
+ * DIZER na planilha de problemas o que corrigir — e as QUATRO recusas pedem providências
+ * diferentes. `cpfValido` passou a ser um apelido de `motivo === null`, então os casos
+ * acima continuam sendo a prova do algoritmo; aqui só se afirma a ROTULAGEM.
+ *
+ * ⚠️ O bloco "tamanho" acima (`cpfValido('abcdefghijk')`) continua correto no veredito e
+ * ficou impreciso no NOME: aquilo hoje é recusado como `caractere-invalido`. O veredito é
+ * o que aquele bloco afirma, e ele não mudou.
+ */
+describe("motivoCpfInvalido", () => {
+  it("devolve null para CPF válido — é o que sustenta `cpfValido`", () => {
+    expect(motivoCpfInvalido("529.982.247-25")).toBeNull();
+    expect(motivoCpfInvalido("01234567890")).toBeNull();
+  });
+
+  it("separa TAMANHO de dígito verificador", () => {
+    expect(motivoCpfInvalido("8631309761")).toBe("tamanho"); // 10 dígitos, do arquivo real
+    expect(motivoCpfInvalido("")).toBe("tamanho");
+  });
+
+  it("🔴 caractere intruso é CAUSA; tamanho é consequência — e a causa é que se acusa", () => {
+    // ⚠️ Estes dois casos afirmavam `"tamanho"` até 2026-08-02. Não estava errado — eles
+    // de fato não têm 11 dígitos —, mas era a resposta inútil: o campo da inscrição 4256
+    // tem 11 CARACTERES, e mandar conferir a quantidade esconde a letra corrompida.
+    expect(motivoCpfInvalido("1O778817709")).toBe("caractere-invalido"); // letra O = zero
+    expect(motivoCpfInvalido("abc")).toBe("caractere-invalido");
+    expect(motivoCpfInvalido("5299822472a")).toBe("caractere-invalido");
+  });
+
+  it("⭐ CONTROLE POSITIVO: a MÁSCARA não é caractere intruso", () => {
+    // Sem isto, ponto e hífen virariam queixa e o caminho feliz — CPF escrito como todo
+    // mundo escreve — passaria a acusar 7.231 inscritos.
+    expect(caracteresIntrusos("529.982.247-25")).toEqual([]);
+    expect(caracteresIntrusos(" 529 982 247 25 ")).toEqual([]);
+    expect(motivoCpfInvalido("529.982.247-25")).toBeNull();
+  });
+
+  it("nomeia os intrusos, sem repetir e na ordem em que aparecem", () => {
+    // É o que a mensagem do relatório interpola: precisa dizer QUAL caractere.
+    expect(caracteresIntrusos("1O778817709")).toEqual(["O"]);
+    expect(caracteresIntrusos("abc")).toEqual(["a", "b", "c"]);
+    expect(caracteresIntrusos("1O7788O7709")).toEqual(["O"]);
+    expect(caracteresIntrusos(null as unknown as string)).toEqual([]);
+  });
+
+  it("🔴 sequência repetida NÃO é 'digito-verificador' — os DV dela CONFEREM", () => {
+    // É a razão de este tipo existir. Dizer "os dígitos verificadores não conferem" para
+    // 111.111.111-11 mandaria o usuário procurar na planilha um dígito trocado que não
+    // existe: o número é recusado por ser sequência, e a aritmética o aprova.
+    expect(motivoCpfInvalido("11111111111")).toBe("sequencia-repetida");
+    expect(motivoCpfInvalido("00000000000")).toBe("sequencia-repetida");
+    expect(motivoCpfInvalido("999.999.999-99")).toBe("sequencia-repetida");
+  });
+
+  it("aponta o verificador quando é ele que falha", () => {
+    expect(motivoCpfInvalido("52998224726")).toBe("digito-verificador");
+    expect(motivoCpfInvalido("00000123456")).toBe("digito-verificador");
   });
 });

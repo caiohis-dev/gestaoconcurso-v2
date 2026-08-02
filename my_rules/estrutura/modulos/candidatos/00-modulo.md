@@ -270,7 +270,7 @@ converterLinha → separarPorPagamento → resolverLinhas → deduplicar → blo
 **A identidade do candidato é o NÚMERO DE INSCRIÇÃO** — mais o CPF e o cargo —, não o CPF sozinho (ao contrário do colaborador, que loga com o CPF). Daí a regra:
 
 - falta o que **identifica** (inscrição, nome, **cargo**) → **ERRO**, a linha não entra;
-- campo secundário impossível (CPF de 10 dígitos, e-mail sem `@`, data irreconhecível) → **AVISO**, a linha entra **com o valor como a origem mandou** e o relatório diz qual foi.
+- campo secundário impossível (**CPF que não passa na regra oficial**, e-mail sem `@`, data irreconhecível) → **AVISO**, a linha entra **com o valor como a origem mandou** e o relatório diz qual foi.
 
 ⚠️ **O cargo entrou na primeira lista em 2026-07-27** (decisão D9 do roadmap de cargos): ele compõe a identidade, e uma linha sem ele não tem o que associar no passo "Cargos". Medido: **0 das 7.416 linhas** do arquivo real caem aqui, então a regra é preventiva. **O CPF continua na segunda lista** — CPF impossível entra cru e o inscrito entra, porque perder o inscrito é pior.
 
@@ -287,6 +287,37 @@ Até 29/07 o campo impossível virava `NULL`: o inscrito entrava, mas o que a or
 > 🔵 **Desde 01/08 essa fusão é impossível por construção**, e não mais por normalização: o CPF **saiu da chave natural**, então o valor dele — cru, inválido ou ausente — não consegue empatar duas pessoas. As 2 linhas estão nas inscrições **375 e 4256**, que são chaves diferentes. A decisão de gravar o cru segue valendo pelo motivo original (não perder o que a origem afirmou); o que caiu foi a dependência entre ela e a unicidade.
 
 ⚠️ **Uma regressão silenciosa saiu junto:** a guarda antiga do CPF lia `soDigitos`, que devolve `null` quando não sobra dígito nenhum — então um campo como `'abc'` era anulado **sem aviso**. Perda calada dentro da regra criada para não perder calado. Hoje o aviso lê o valor bruto.
+
+#### 🔴 O CPF passou a valer pela REGRA OFICIAL em 2026-08-02 — decisão do usuário
+
+Até 01/08 a importação conferia **tamanho**: 11 dígitos bastavam. Então `123.456.789-00` e `111.111.111-11` passavam por bons, eram **normalizados** e gravados sem queixa nenhuma — CPF de pessoa alguma entrando como se fosse legítimo.
+
+Agora vale o **módulo 11** (dígitos verificadores), pela função `motivoCpfInvalido` de [`src/lib/cpf.ts`](../../../../src/lib/cpf.ts) — **a mesma do cadastro de colaborador**, para a regra não ter duas versões. `candidatos-import.ts` ganhou o seu **único import** por causa disso; `cpf.ts` também é puro, então a testabilidade sem mock continua valendo.
+
+**O que NÃO mudou, e é o ponto:** o inscrito continua entrando. A situação no relatório é **"Importada com ressalva"**, a mesma dos outros campos secundários.
+
+| O valor | Motivo (`cpf.ts`) | O que o relatório diz |
+|---|---|---|
+| CPF válido | `null` | *(sem queixa; gravado **normalizado**, só os dígitos)* |
+| `1O778817709` | `caractere-invalido` | tem caractere que não é dígito (`"O"`) |
+| `8631309761` | `tamanho` | tem 10 dígitos, e um CPF tem 11 |
+| `123.456.789-00` | `digito-verificador` | tem 11 dígitos, mas é inválido: os dígitos verificadores não conferem |
+| `111.111.111-11` | `sequencia-repetida` | é uma sequência de dígitos repetidos, que não é CPF de ninguém |
+
+Nos quatro casos de queixa a situação é **"Importada com ressalva"** e o valor é gravado **cru**.
+
+⚠️ **São QUATRO mensagens, e não uma, porque as providências na planilha são diferentes** — e porque duas delas seriam **falsas** se unificadas:
+
+- `111.111.111-11` **passa** na aritmética do módulo 11 (a conta está no topo de `cpf.ts`); quem o recusa é a blacklist. Acusar o verificador mandaria caçar um dígito trocado que não existe.
+- 🔴 **`1O778817709` tem 11 CARACTERES.** Até 02/08 a queixa dele era *"não tem 11 dígitos"* — verdadeira (são 10 dígitos, a letra `O` não conta) e **inútil**: quem abrisse o relatório contaria 11 e não entenderia. **A causa é a letra; o tamanho é a consequência**, e é a causa que se acusa. Por isso `motivoCpfInvalido` testa o caractere intruso **antes** do tamanho.
+
+⚠️ **A máscara NÃO é caractere intruso.** `caracteresIntrusos` ignora `.`, `-` e espaço — são escrita normal de CPF. Sem isso o caminho feliz viraria queixa em massa; há controle positivo nos dois arquivos de teste.
+
+**Sobre os dois casos reais, e vale saber:** ambos são **recuperáveis**, e nenhum é CPF inventado. Lendo o `O` como zero, a inscrição 4256 vira `107.788.177-09`, **válido**; com o zero à esquerda que se perdeu, a inscrição 375 vira `086.313.097-61`, **também válido**. São erros de transcrição, não fraude — o que reforça a decisão de gravar o cru: o valor da origem é o que permite consertar na fonte.
+
+É por isso que o motivo é público em `cpf.ts` em vez de a importação reimplementar o `/^(\d)\1{10}$/` ou a varredura de caracteres — duas cópias da mesma regra divergem.
+
+🔵 **MEDIDO nos 7.231 inscritos importados, antes de desenhar:** 2 sem 11 dígitos (os que já eram acusados) e **ZERO** com verificador errado ou sequência repetida. **A regra é guarda para o futuro, não conserto do presente** — e por isso não muda o tamanho do relatório persistido nem se aproxima do gate de 4 MB.
 
 ⚠️ **Ao acrescentar aviso novo aqui, acrescente o prefixo em `PREFIXOS_POR_CAMPO` no mesmo passe.** `classificarQueixa` casa por **prefixo de texto**, sem tipo ligando os dois lados: uma mensagem que abra diferente vai calada para o balde "Geral". As três novas começam com `CPF`, e há caso de teste afirmando que a queixa cai no campo certo.
 

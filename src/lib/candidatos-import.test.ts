@@ -380,6 +380,94 @@ describe("converterLinha — aviso mantém o inscrito na lista", () => {
     }
   });
 
+  describe("⭐ o CPF passou a valer pela REGRA OFICIAL (2026-08-02), não pelo tamanho", () => {
+    // Decisão do usuário: validar os dígitos verificadores (módulo 11). O inscrito
+    // SEGUE ENTRANDO — muda só o que o relatório acusa.
+    //
+    // 🔵 Medido nos 7.231 inscritos importados: 2 sem 11 dígitos e ZERO com verificador
+    // errado. Nenhum destes casos vem do arquivo real; são o futuro que a regra guarda.
+
+    it("CPF de 11 dígitos com verificador errado ENTRA, cru, e é acusado", () => {
+      // Até 01/08 este passava por bom e era gravado normalizado: 11 dígitos bastavam.
+      const r = converterLinha(comCargo(["214274", "FULANO", "123.456.789-00"]), m, EDITAL, 5);
+
+      expect(r.candidato).not.toBeNull();
+      expect(r.candidato?.n_inscricao).toBe("214274");
+      expect(r.candidato?.cpf).toBe("123.456.789-00");
+      expect(r.avisos.join(" ")).toMatch(/dígitos verificadores não conferem/i);
+    });
+
+    it("sequência repetida é acusada PELO MOTIVO CERTO — não por verificador", () => {
+      // 111.111.111-11 passa na aritmética do módulo 11. Culpar o verificador mandaria o
+      // usuário caçar um dígito trocado que não existe.
+      const r = converterLinha(comCargo(["214275", "FULANO", "11111111111"]), m, EDITAL, 6);
+
+      expect(r.candidato?.cpf).toBe("11111111111");
+      expect(r.avisos.join(" ")).toMatch(/sequência de dígitos repetidos/i);
+      expect(r.avisos.join(" ")).not.toMatch(/verificadores/i);
+    });
+
+    it("⭐ CONTROLE POSITIVO: CPF legítimo continua entrando NORMALIZADO e sem queixa", () => {
+      // Metade da prova é recusar; a outra é não estragar o caminho feliz. Sem este caso,
+      // uma regra estrita demais passaria despercebida — e ela acusaria 7.231 inscritos.
+      const r = converterLinha(comCargo(["214276", "FULANO", "529.982.247-25"]), m, EDITAL, 7);
+
+      expect(r.candidato?.cpf).toBe("52998224725");
+      expect(r.avisos.filter((a) => a.startsWith("CPF"))).toEqual([]);
+    });
+
+    it("⭐ CONTROLE POSITIVO: o CPF que começa com ZERO não é confundido com inválido", () => {
+      // Um CPF legítimo pode começar com 0, e é o caso em que uma implementação que trate
+      // o campo como número come o primeiro dígito e passa a acusar gente inocente.
+      const r = converterLinha(comCargo(["214277", "FULANO", "012.345.678-90"]), m, EDITAL, 8);
+
+      expect(r.candidato?.cpf).toBe("01234567890");
+      expect(r.avisos.filter((a) => a.startsWith("CPF"))).toEqual([]);
+    });
+
+    it("🔴 os DOIS casos reais do arquivo recebem mensagens DIFERENTES", () => {
+      // ⚠️ Até 2026-08-02 os dois recebiam o MESMO texto ("não tem 11 dígitos"), que
+      // descreve bem um deles e mal o outro. A inscrição 4256 tem 11 CARACTERES — quem
+      // abrisse o relatório contaria 11 e não entenderia a queixa. São defeitos de
+      // natureza diferente e a providência na planilha também é.
+      const comLetra = converterLinha(comCargo(["4256", "JOSIANE", "1O778817709"]), m, EDITAL, 10);
+      const curto = converterLinha(comCargo(["375", "CRISTIANE", "8631309761"]), m, EDITAL, 11);
+
+      const queixaLetra = comLetra.avisos.find((a) => a.startsWith("CPF"))!;
+      const queixaCurto = curto.avisos.find((a) => a.startsWith("CPF"))!;
+
+      // O intruso é NOMEADO: sem isso a pessoa procura o caractere errado num campo de 11.
+      expect(queixaLetra).toMatch(/caractere que não é dígito/i);
+      expect(queixaLetra).toContain('"O"');
+      expect(queixaLetra).not.toMatch(/tem 10 dígitos/i);
+
+      // E o curto continua sendo acusado pela QUANTIDADE, que é o defeito dele de verdade.
+      expect(queixaCurto).toMatch(/tem 10 dígitos, e um CPF tem 11/i);
+      expect(queixaCurto).not.toMatch(/caractere/i);
+
+      expect(queixaLetra).not.toBe(queixaCurto);
+    });
+
+    it("⭐ CONTROLE POSITIVO: a máscara não é acusada como caractere intruso", () => {
+      // O ponto e o hífen são escrita normal de CPF. Se contassem como intrusos, o
+      // caminho feliz viraria queixa em massa — 7.231 inscritos.
+      const r = converterLinha(comCargo(["214279", "FULANO", "529.982.247-25"]), m, EDITAL, 12);
+
+      expect(r.candidato?.cpf).toBe("52998224725");
+      expect(r.avisos.filter((a) => a.startsWith("CPF"))).toEqual([]);
+    });
+
+    it("a queixa nova cai no campo CPF do relatório, não no balde 'Geral'", () => {
+      // `classificarQueixa` casa por PREFIXO de texto, sem tipo que ligue os dois lados:
+      // um aviso novo com outra abertura iria calado para "Geral". Ver PREFIXOS_POR_CAMPO.
+      const r = converterLinha(comCargo(["214278", "FULANO", "123.456.789-00"]), m, EDITAL, 9);
+      const queixa = classificarQueixa(r.avisos.find((a) => a.startsWith("CPF"))!);
+
+      expect(queixa.Campo).toBe("CPF");
+      expect(queixa.Detalhe).toMatch(/verificadores/i);
+    });
+  });
+
   it("um CPF sem dígito nenhum também é acusado — antes saía calado", () => {
     // ⚠️ REGRESSÃO REAL, corrigida em 30/07: a guarda antiga lia `soDigitos`, que devolve
     // null quando não sobra dígito. 'abc' então não entrava no `!== null` e o campo era

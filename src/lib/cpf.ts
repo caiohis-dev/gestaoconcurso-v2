@@ -41,17 +41,66 @@ function digitoVerificador(digitos: string, pesoInicial: number): number {
 }
 
 /**
- * `true` só quando o CPF tem 11 dígitos, não é uma sequência repetida, e os dois
- * dígitos verificadores conferem.
+ * POR QUE O MOTIVO É PÚBLICO, e não só o `true/false`
+ *
+ * A importação de candidatos (2026-08-02) precisa **dizer ao usuário o que corrigir na
+ * planilha**, e as três recusas pedem providências diferentes: 10 dígitos é truncamento
+ * ou letra no meio; sequência repetida é campo preenchido com lixo; verificador errado é
+ * dígito trocado. Uma mensagem só para os três seria imprecisa, e num caso seria **falsa**
+ * — `11111111111` **passa** na aritmética (ver a conta no topo deste arquivo) e é recusado
+ * pela blacklist, não pelos verificadores.
+ *
+ * A alternativa era a importação reimplementar o `/^(\d)\1{10}$/` para escolher o texto,
+ * e é exatamente assim que uma regra ganha uma segunda cópia que depois diverge.
  */
-export function cpfValido(valor: string): boolean {
+export type MotivoCpfInvalido =
+  | "caractere-invalido"
+  | "tamanho"
+  | "sequencia-repetida"
+  | "digito-verificador";
+
+/**
+ * Os caracteres que não são dígito **nem pontuação de máscara**, sem repetição e na ordem
+ * em que aparecem. Vazio quando só há dígitos e máscara.
+ *
+ * ⚠️ A MÁSCARA NÃO É INTRUSA. `123.456.789-00` é escrita normal de CPF: ponto, hífen e
+ * espaço são formatação, e acusá-los transformaria o caminho feliz em queixa. O que esta
+ * função procura é o caractere que não tinha por que estar ali — a letra `O` no lugar do
+ * zero, o caso real da inscrição 4256.
+ */
+export function caracteresIntrusos(valor: string): string[] {
+  const intrusos = (valor ?? "").replace(/[\d.\-\s]/g, "");
+  return [...new Set(intrusos)];
+}
+
+/**
+ * O motivo da recusa, ou `null` quando o CPF é válido.
+ *
+ * A ORDEM DAS RECUSAS É A ORDEM DA CAUSA, não a da conveniência. `1O778817709` tem 11
+ * caracteres e 10 dígitos: as duas coisas são verdade, mas **a letra é a causa e o
+ * tamanho é a consequência**. Acusar o tamanho primeiro produzia a queixa que fez esta
+ * mudança existir — *"não tem 11 dígitos"* sobre um campo em que se contam 11 caracteres,
+ * verdadeira e inútil, porque não diz o que corrigir.
+ */
+export function motivoCpfInvalido(valor: string): MotivoCpfInvalido | null {
   const cpf = apenasDigitos(valor);
 
-  if (cpf.length !== 11) return false;
-  if (/^(\d)\1{10}$/.test(cpf)) return false;
+  if (caracteresIntrusos(valor).length > 0) return "caractere-invalido";
+  if (cpf.length !== 11) return "tamanho";
+  if (/^(\d)\1{10}$/.test(cpf)) return "sequencia-repetida";
 
   const dv1 = digitoVerificador(cpf.slice(0, 9), 10);
   const dv2 = digitoVerificador(cpf.slice(0, 10), 11);
 
-  return Number(cpf[9]) === dv1 && Number(cpf[10]) === dv2;
+  if (Number(cpf[9]) !== dv1 || Number(cpf[10]) !== dv2) return "digito-verificador";
+
+  return null;
+}
+
+/**
+ * `true` só quando o CPF tem 11 dígitos, não é uma sequência repetida, e os dois
+ * dígitos verificadores conferem.
+ */
+export function cpfValido(valor: string): boolean {
+  return motivoCpfInvalido(valor) === null;
 }

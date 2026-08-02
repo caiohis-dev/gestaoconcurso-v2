@@ -18,6 +18,11 @@
  * incompleta, que é o único jeito de esta tabela estar de fato errada.
  */
 
+// Único import do módulo, e de propósito: `cpf.ts` também é puro (sem Supabase, sem
+// React), então a testabilidade sem mock continua valendo. A regra do CPF mora lá porque
+// o cadastro de colaborador usa a mesma — duas cópias divergiriam.
+import { caracteresIntrusos, motivoCpfInvalido } from '@/lib/cpf';
+
 /** Um campo da tabela `candidatos` que o usuário pode preencher a partir da planilha. */
 export interface CampoCandidato {
   key: string;
@@ -455,18 +460,49 @@ export function converterLinha(
   //
   // A normalização continua acontecendo no caminho feliz: um CPF mascarado é gravado só
   // com os dígitos. O valor cru é para quando ele NÃO cabe na forma esperada.
+  // 🔴 A regra do CPF é a OFICIAL desde 2026-08-02 — decisão do usuário. Antes conferia
+  // só o TAMANHO (11 dígitos), então `123.456.789-00` e `111.111.111-11` passavam por
+  // válidos e eram gravados normalizados, sem ninguém saber que não eram CPF de pessoa
+  // alguma. Agora vale o módulo 11 de `src/lib/cpf.ts` — a mesma função do cadastro de
+  // colaborador, para a regra não ter duas versões.
+  //
+  // ⚠️ O QUE **NÃO** MUDOU, e é o ponto: o inscrito continua ENTRANDO. CPF não é a
+  // identidade do candidato (é a inscrição), e recusar a linha por causa dele deixaria a
+  // lista de inscritos incompleta — o único erro grave possível nesta tabela.
+  //
+  // 🔵 MEDIDO no dia da mudança, sobre os 7.231 inscritos importados: 2 sem 11 dígitos
+  // (já acusados antes) e **ZERO** com verificador errado. A regra é guarda para o
+  // futuro, não conserto do presente — e por isso não muda o tamanho do relatório.
   const cpfBruto = val('cpf');
   let cpf = cpfBruto;
   if (cpfBruto !== null) {
-    const digitos = soDigitos(cpfBruto);
-    if (digitos !== null && digitos.length === 11) {
-      cpf = digitos;
+    // ⚠️ Tudo aqui lê o BRUTO, não `soDigitos`. Antes de 30/07 um campo sem dígito nenhum
+    // ('abc') saía calado: `soDigitos` devolvia null e o `!== null` da guarda antiga
+    // não pegava. Era perda silenciosa dentro da regra que existia justamente para não
+    // perder em silêncio.
+    const motivo = motivoCpfInvalido(cpfBruto);
+    if (motivo === null) {
+      // Caminho feliz — e só ele normaliza: um CPF mascarado é gravado só com os dígitos.
+      cpf = soDigitos(cpfBruto);
+    } else if (motivo === 'caractere-invalido') {
+      // 🔴 Este caso era o mais mal servido pela mensagem única, e é REAL: a inscrição
+      // 4256 traz `1O778817709` — a letra O no lugar do zero. A queixa antiga dizia "não
+      // tem 11 dígitos" sobre um campo em que se contam 11 CARACTERES: verdadeira e
+      // inútil, porque mandava conferir a quantidade em vez do caractere corrompido.
+      // (Lido o O como zero, aquele CPF é válido — o dado é recuperável.)
+      const intrusos = caracteresIntrusos(cpfBruto).map((c) => `"${c}"`).join(', ');
+      avisos.push(`CPF "${cpfBruto}" tem caractere que não é dígito (${intrusos}) — gravado como veio`);
+    } else if (motivo === 'tamanho') {
+      // Aqui só chega quem é dígito e máscara: a queixa é mesmo de QUANTIDADE. O caso real
+      // é a inscrição 375, com 10 dígitos — um zero à esquerda perdido antes da planilha.
+      const quantos = soDigitos(cpfBruto)?.length ?? 0;
+      avisos.push(`CPF "${cpfBruto}" tem ${quantos} dígitos, e um CPF tem 11 — gravado como veio`);
+    } else if (motivo === 'sequencia-repetida') {
+      // ⚠️ Este caso NÃO é "verificador errado": os DV de 111.111.111-11 conferem. Dizer o
+      // contrário mandaria o usuário procurar um dígito trocado que não existe.
+      avisos.push(`CPF "${cpfBruto}" é uma sequência de dígitos repetidos, que não é CPF de ninguém — gravado como veio`);
     } else {
-      // ⚠️ O aviso lê o BRUTO, não `soDigitos`. Antes de 30/07 um campo sem dígito nenhum
-      // ('abc') saía calado: `soDigitos` devolvia null e o `!== null` da guarda antiga
-      // não pegava. Era perda silenciosa dentro da regra que existia justamente para não
-      // perder em silêncio.
-      avisos.push(`CPF "${cpfBruto}" não tem 11 dígitos — gravado como veio`);
+      avisos.push(`CPF "${cpfBruto}" tem 11 dígitos, mas é inválido: os dígitos verificadores não conferem — gravado como veio`);
     }
   }
 
