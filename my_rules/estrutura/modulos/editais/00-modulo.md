@@ -41,7 +41,7 @@ Não há Edge Function, RPC nem view neste módulo: é CRUD direto via PostgREST
 editais
   id                uuid PK
   nome              text NOT NULL      -- único case/space-insensitive (ver abaixo)
-  n_candidatos      integer NULL
+  n_candidatos      integer NULL       -- 🔵 ÓRFÃ desde 02/08: ninguém lê nem escreve (ver abaixo)
   cabecalho_linha1  text DEFAULT 'FUNDAÇÃO EDUCACIONAL DE VOLTA REDONDA'
   cabecalho_linha2  text DEFAULT 'Coordenação de Concursos e Processos Seletivos'
   created_at / updated_at  timestamptz   -- updated_at por trigger update_updated_at_column
@@ -71,9 +71,10 @@ A tabela herda os `GRANT`s do `ALTER DEFAULT PRIVILEGES` da migration `202607120
 
 ## Regras de negócio
 
+**Quantos inscritos o edital tem — 🔴 não é campo deste módulo (desde 2026-08-02).** O card de `/editais` mostra a **contagem real de `candidatos`** (`useContagemCandidatosPorEdital`), com três textos e nenhum "0": *"Contando inscritos…"* enquanto carrega, *"Nenhum inscrito importado"* sem lista, e *"N inscrito(s) importado(s)"* com lista. O número digitado à mão **saiu do formulário**, e a coluna `n_candidatos` ficou órfã — não foi dropada porque o dump (`seed.local.sql`) e o backfill do `seed.pos.sql` a listam, e dropar quebraria o `db reset` local. A decisão e o seu limite estão em [`../candidatos/00-modulo.md`](../candidatos/00-modulo.md).
+
 **Criação/edição (`EditalDialog`):**
 - Só `nome` é obrigatório (`z.string().min(1)`); é `.trim()`ado no submit.
-- `n_candidatos` chega como string do input e vira `parseInt(...)` ou `null`.
 - As duas linhas de cabeçalho **nascem pré-preenchidas com os textos da FEVRE** em edital novo; em edição, carregam o valor salvo. String vazia vira `null`.
 - O bloco de cabeçalho traz, na própria UI, a frase que explica o modelo: *"Sugestão herdada ao cadastrar uma prova sob este edital. Cada prova pode ajustar a sua."*
 
@@ -87,11 +88,12 @@ A tabela herda os `GRANT`s do `ALTER DEFAULT PRIVILEGES` da migration `202607120
 
 **A herança edital → prova é de UI, e só de UI.** Não há trigger, view nem default no banco que propague valores do edital para a prova.
 
-Ao criar uma prova **nova**, `ProvaDialog.handleEditalChange` copia `n_candidatos` e as duas linhas de cabeçalho do edital para os campos do formulário, como **sugestão editável**. A partir do save, `provas.prova_n_candidatos` e `provas.prova_cabecalho_linha1/2` são da prova. Consequências que precisam sobreviver:
+Ao criar uma prova **nova**, `ProvaDialog.handleEditalChange` copia **as duas linhas de cabeçalho** do edital para os campos do formulário, como **sugestão editável**. A partir do save, `provas.prova_cabecalho_linha1/2` são da prova. Consequências que precisam sobreviver:
 
 - **Editar o cabeçalho de um edital não altera os PDFs de provas já criadas.** É intencional: um documento emitido não deve mudar retroativamente.
 - 🔵 **E o vínculo em si não muda mais (`PE001`, 02/08):** o edital de uma prova é escolhido na criação e é **imutável** depois — trigger `check_prova_edital_imutavel`. É a mesma proteção do item acima levada à conclusão: antes, trocar o edital de uma prova antiga deixava o cabeçalho dela apontando para um concurso que não é o dela. A regra mora no módulo Aplicação de Provas; ver [`../aplicacao-provas/provas-e-unidades.md`](../aplicacao-provas/provas-e-unidades.md).
-- **A alocação lê `prova_n_candidatos`, não `edital.n_candidatos`.** Não troque a fonte (`GerenciarProva`).
+- 🔵 **A alocação NÃO lê mais número digitado (02/08).** Este item dizia *"a alocação lê `prova_n_candidatos`, não `edital.n_candidatos`; não troque a fonte"* — e era um aviso que guardava um defeito: o número da prova dizia **200** onde o edital tinha **7.231** inscritos, e o painel pintava a prova de coberta faltando 7.031 lugares. Hoje `GerenciarProva` conta os inscritos reais do edital da prova. Ver [`../candidatos/00-modulo.md`](../candidatos/00-modulo.md).
+- **`n_candidatos` saiu da herança junto com o campo.** Herdar previsão para um número que ninguém lê só espalharia cópia desatualizada. O que se herda hoje é **cabeçalho**, e nada mais.
 - **Os PDFs leem o cabeçalho da prova.** O que o PDF pega do edital é **só o nome**, via join `prova.editais.nome` (ver [`../aplicacao-provas/documentos-e-relatorios.md`](../aplicacao-provas/documentos-e-relatorios.md)).
 
 Tudo que consome edital do lado da prova — o seletor no `ProvaDialog`, o join que exibe o nome, o ciclo de vida da prova — pertence ao módulo **Aplicação de Provas**: ver [`../aplicacao-provas/provas-e-unidades.md`](../aplicacao-provas/provas-e-unidades.md).

@@ -21,9 +21,13 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Edital, EditalInsert, EditalUpdate } from "@/hooks/useEditais";
 
+// ⚠️ `n_candidatos` SAIU do formulário em 2026-08-02 e não deve voltar. Era a previsão
+// digitada à mão, e desde essa data o nº de inscritos de um edital é a contagem real de
+// `candidatos` — em toda tela. Um campo que aceita 200 e não é lido em lugar nenhum é
+// perda silenciosa de intenção do usuário. A coluna continua no banco (ver o doc do
+// módulo Editais); o que saiu é a escrita.
 export const formSchema = z.object({
   nome: z.string().min(1, "Nome do edital é obrigatório"),
-  n_candidatos: z.string().optional(),
   cabecalho_linha1: z.string().optional(),
   cabecalho_linha2: z.string().optional(),
 });
@@ -51,7 +55,6 @@ export function EditalDialog({
     resolver: zodResolver(formSchema),
     defaultValues: {
       nome: "",
-      n_candidatos: "",
       cabecalho_linha1: "FUNDAÇÃO EDUCACIONAL DE VOLTA REDONDA",
       cabecalho_linha2: "Coordenação de Concursos e Processos Seletivos",
     },
@@ -61,14 +64,12 @@ export function EditalDialog({
     if (edital) {
       form.reset({
         nome: edital.nome ?? "",
-        n_candidatos: edital.n_candidatos?.toString() ?? "",
         cabecalho_linha1: edital.cabecalho_linha1 ?? "",
         cabecalho_linha2: edital.cabecalho_linha2 ?? "",
       });
     } else {
       form.reset({
         nome: "",
-        n_candidatos: "",
         cabecalho_linha1: "FUNDAÇÃO EDUCACIONAL DE VOLTA REDONDA",
         cabecalho_linha2: "Coordenação de Concursos e Processos Seletivos",
       });
@@ -78,7 +79,6 @@ export function EditalDialog({
   const handleSubmit = (data: FormData) => {
     const formattedData: EditalInsert | EditalUpdate = {
       nome: data.nome.trim(),
-      n_candidatos: data.n_candidatos ? parseInt(data.n_candidatos) : null,
       cabecalho_linha1: data.cabecalho_linha1 || null,
       cabecalho_linha2: data.cabecalho_linha2 || null,
     };
@@ -107,20 +107,6 @@ export function EditalDialog({
                   <FormLabel>Nome do Edital *</FormLabel>
                   <FormControl>
                     <Input {...field} placeholder="Ex: Edital 001/2026 SMA" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="n_candidatos"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Número de Candidatos</FormLabel>
-                  <FormControl>
-                    <Input {...field} type="number" min="0" placeholder="Ex: 1500" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

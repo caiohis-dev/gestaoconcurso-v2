@@ -6,13 +6,16 @@ import { formSchema } from "@/components/EditalDialog";
  *
  * Cuidado ao ler: os campos aqui são os do FORMULÁRIO, não os da tabela. O form
  * trabalha com strings (é o que um <input> devolve) e o `handleSubmit` do dialog é
- * que converte para o payload do banco — `parseInt(n_candidatos)` e `|| null` nos
- * cabeçalhos. Então o schema valida a entrada crua, não o que chega ao Postgres.
+ * que converte para o payload do banco — `|| null` nos cabeçalhos. Então o schema
+ * valida a entrada crua, não o que chega ao Postgres.
+ *
+ * ⚠️ Este arquivo tinha dois casos sobre `n_candidatos` (string, e a lacuna de não
+ * validar que fosse numérico). Eles saíram em 2026-08-02 junto com o campo, e no lugar
+ * ficou o caso que guarda a decisão — ver o último bloco.
  */
 describe("formSchema do EditalDialog", () => {
   const valido = {
     nome: "Edital 001/2026 SMA",
-    n_candidatos: "1500",
     cabecalho_linha1: "FUNDAÇÃO EDUCACIONAL DE VOLTA REDONDA",
     cabecalho_linha2: "Coordenação de Concursos e Processos Seletivos",
   };
@@ -42,19 +45,19 @@ describe("formSchema do EditalDialog", () => {
     expect(formSchema.safeParse({ ...valido, nome: 123 }).success).toBe(false);
   });
 
-  it("trata n_candidatos como STRING, não número — inclusive na entrada", () => {
-    // O <input type="number"> ainda entrega string ao react-hook-form. Passar um
-    // number de verdade falha; é o formato do form que manda aqui.
-    expect(formSchema.safeParse({ ...valido, n_candidatos: 1500 }).success).toBe(false);
-    expect(formSchema.safeParse({ ...valido, n_candidatos: "1500" }).success).toBe(true);
-  });
-
-  it("NÃO valida que n_candidatos seja numérico — lacuna conhecida", () => {
-    // z.string().optional() aceita qualquer texto. Quem converte é o parseInt do
-    // handleSubmit, que devolveria NaN. Na prática o <input type="number"> segura
-    // isso na UI, mas o schema sozinho não segura — relevante se alguém reusar
-    // este schema fora do dialog.
-    expect(formSchema.safeParse({ ...valido, n_candidatos: "mil e quinhentos" }).success).toBe(true);
+  it("🔴 NÃO tem campo de nº de candidatos — a contagem real é a única fonte", () => {
+    // Guarda a decisão de 2026-08-02: quantos inscritos um edital tem é `count(candidatos)`,
+    // não um número digitado. O zod ignora chave desconhecida, então o que se afirma é o
+    // OUTPUT: se alguém devolver o campo ao schema, ele reaparece aqui e este caso cai —
+    // que é o momento certo para reabrir a decisão, em vez de voltar calado.
+    const r = formSchema.safeParse({ ...valido, n_candidatos: "1500" });
+    expect(r.success).toBe(true);
+    expect(r.data).not.toHaveProperty("n_candidatos");
+    expect(Object.keys(r.data ?? {}).sort()).toEqual([
+      "cabecalho_linha1",
+      "cabecalho_linha2",
+      "nome",
+    ]);
   });
 
   it("não faz trim: o nome com espaços passa pelo schema", () => {

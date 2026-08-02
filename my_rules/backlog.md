@@ -40,6 +40,7 @@ errada e o que cada decisão custou. Antes de reabrir qualquer tema abaixo, proc
 | ✅ 01/08 | a chave natural virou `(edital_id, n_inscricao)` — CPF e cargo saíram da identidade |
 | ✅ 02/08 | o edital de uma prova virou **imutável** depois de definido (`PE001`) |
 | ✅ 02/08 | o cadastro público passou a validar o CPF antes de consultar — e a EF perdeu um `padStart` que consultava outra pessoa |
+| ✅ 02/08 | o nº de inscritos passou a ter **uma** fonte: a lista real. A alocação dizia 200 onde havia 7.231 |
 
 ---
 
@@ -48,9 +49,11 @@ errada e o que cada decisão custou. Antes de reabrir qualquer tema abaixo, proc
 **Status:** o módulo está pronto e verificado (2026-07-27). Estes são os fios soltos que ele **não** resolveu, e nenhum bloqueia nada hoje.
 **Área:** módulo Candidatos — ver [`estrutura/modulos/candidatos/00-modulo.md`](./estrutura/modulos/candidatos/00-modulo.md)
 
-1. **Nenhuma tela consome candidato ainda.** A tabela é uma ilha: não há vínculo entre candidato e prova, unidade ou sala. Se um dia for preciso saber *em que sala cada inscrito faz prova*, isso é **feature nova com desenho próprio** — não é para pendurar `prova_id`/`sala_id` em `candidatos` sem decidir antes o que acontece quando a mesma pessoa concorre a dois cargos.
+1. **Não há vínculo entre candidato e prova, unidade ou sala.** 🔵 A tabela deixou de ser ilha em 02/08 — a alocação e `/editais` passaram a **contar** os inscritos do edital —, mas o vínculo com a prova continua não existindo. Se um dia for preciso saber *em que sala cada inscrito faz prova*, isso é **feature nova com desenho próprio** — não é para pendurar `prova_id`/`sala_id` em `candidatos` sem decidir antes o que acontece quando a mesma pessoa concorre a dois cargos.
 
-2. **`editais.n_candidatos` (digitado à mão) e a contagem real de inscritos não conversam.** São coisas diferentes — previsão do edital contra lista real —, e hoje ninguém sincroniza. O card da listagem já mostra a contagem real, vinda da RPC `contar_candidatos_por_edital`. Quem for unificar precisa **decidir qual manda**, porque `n_candidatos` alimenta a herança edital→prova e a alocação lê `prova_n_candidatos`.
+   🔴 **E é este item que destrava o outro.** A unificação do nº de inscritos vale sob a premissa afirmada pelo usuário em 02/08 de que **todo inscrito do edital faz a prova**. Prova que aplique só um recorte (dois dias, corte por cargo) não é exprimível sem este vínculo — e é por ele que o tema reabre, **nunca** por um campo digitado de volta no `ProvaDialog`.
+
+2. ✅ **`editais.n_candidatos` e a contagem real não conversavam** — **CONCLUÍDO em 2026-08-02**, no mesmo dia em que virou item próprio. A contagem real de `candidatos` é a fonte única em toda tela; os dois números digitados à mão saíram dos formulários. Registro em [`analises/concluidos/backlog-itens-concluidos.md`](./analises/concluidos/backlog-itens-concluidos.md).
 
 3. **`CadastroLote.tsx` continua lendo planilha do jeito errado** — modo objeto (perde coluna de cabeçalho repetido) e sem `raw: false` (come zero à esquerda). Não deu problema porque o template de colaboradores não tem cabeçalho repetido, mas é a mesma classe de defeito que `candidatos-import.ts` resolve. Migrar aquele fluxo para a leitura por índice é dívida conhecida.
 

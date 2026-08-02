@@ -742,3 +742,47 @@ Escrever teste para as **outras 8 EFs** esbarra numa condição do ambiente:
 **`create-admin` é o único que roda sem combinado prévio**, porque não envia e-mail (verificado) e o teste usa `@exemplo.com` com `email_confirm: true`. Expandir a cobertura exige **decidir antes** o guardrail — endereço de teste obrigatório ou SMTP de teste —, não depois.
 
 ---
+
+## ✅ CONCLUÍDO 2026-08-02 — o nº de inscritos passou a ter UMA fonte: a lista real
+
+**Área:** Candidatos × Editais × Aplicação de Provas. O item durou **algumas horas** como item próprio: foi promovido de sub-item nesta mesma data e fechado no mesmo dia, porque a medição feita ao promovê-lo revelou um defeito ativo em vez de uma inconsistência de cadastro.
+
+### O que era
+
+Três números respondiam "quantos inscritos tem este concurso", e nenhum conversava com os outros: `editais.n_candidatos` (digitado no `EditalDialog`), `provas.prova_n_candidatos` (herdado do edital na criação, editável depois) e `count(candidatos)` (a lista real importada).
+
+**Medido no banco local:**
+
+```
+Edital 001/2026 SMA     previsão 200   inscritos reais 7.231   prova 200
+Edital 002/2026 - SMA   previsão —     inscritos reais     0   prova NULL
+```
+
+A alocação (`GerenciarProva`) calculava `naoAlocados = prova_n_candidatos − alocados`, ou seja **200 − alocados** com 7.231 pessoas inscritas: o painel dizia que a prova estava coberta **faltando 7.031 lugares**. Sem erro, sem aviso — o formato de defeito que este repo mais teme.
+
+### A decisão do usuário, e o que ela dispensou
+
+Perguntado qual dos três manda, o usuário respondeu **"vale para tudo"** — a contagem real é a fonte em toda tela — e, sobre a ressalva de prova parcial, **"preocupação justa, mas não vamos cuidar dela agora: nesse momento, todo candidato inscrito faz a prova"**.
+
+Isso dispensou o que o item apontava como pré-requisito. O backlog registrava que trocar cegamente a alocação para `count(candidatos)` era a armadilha, porque *"uma prova pode não ser do edital inteiro"* e o sistema não sabe **quantos inscritos ESTA prova aplica** (não há vínculo candidato↔prova). A premissa afirmada pelo usuário torna as duas perguntas a mesma pergunta — **enquanto ela valer**.
+
+⚠️ **É o limite explícito da entrega, e está anotado nos docs dos três módulos:** quando existir prova que aplica um recorte do edital, isto reabre. E reabre pelo vínculo candidato↔prova, **não** por um campo digitado de volta.
+
+### O que foi feito
+
+- **`GerenciarProva`** passou a contar os inscritos reais do edital da prova. A conta saiu do componente para **`src/lib/alocacao.ts`** (`resumoAlocacao`), com testes próprios.
+- **O card de `/editais`** passou a mostrar a contagem real.
+- **Os dois campos digitados à mão saíram dos formulários** (`EditalDialog` e `ProvaDialog`) e das interfaces TS de `useEditais`/`useProvas` — inclusive da herança edital→prova, que hoje só carrega cabeçalho.
+- **As colunas NÃO foram dropadas.** `provas.prova_n_candidatos` aparece nos `INSERT`s do dump (`seed.local.sql`) e o backfill do `seed.pos.sql` lê ambas para reconstruir os editais — dropar quebraria o `db reset` local. Ficaram órfãs e documentadas como tal.
+
+### Três coisas que a execução ensinou
+
+1. **Nenhum estado pode virar "0".** Trocar um número sempre presente por uma contagem criou estados que não existiam: carregando, sem lista importada, prova sem edital. Um "0" em qualquer um deles pintaria a alocação de coberta — exatamente o defeito que se estava corrigindo, com outra causa. Cada um virou mensagem própria, e há caso de teste para os três.
+2. **O hook não podia ficar onde a conta estava.** `GerenciarProva` tem `return` condicional por `authLoading` no meio; chamar `useContagemCandidatosPorEdital` no ponto da conta antiga quebrou a ordem de hooks do React. **Quem pegou foi a suíte** — `guards.test.tsx` e `CadastroPublico.ui.test.tsx` falharam com "Rendered fewer hooks than expected", em arquivos que não têm nada a ver com o tema.
+3. **A RLS decide quem pode ver o painel.** `candidatos` é `has_role(admin)` e a RPC de contagem é **SECURITY INVOKER**: para coordenador ela volta **vazia sem erro**. O painel já era `isAdmin &&` por outro motivo, e isso passou a ser parte da regra — soltá-lo diria "nenhum inscrito importado" a quem tem lista.
+
+### Verificação
+
+`npm test` **1090 passando** (baseline 1089 — 11 casos caíram na mudança e foram reescritos; os que afirmavam a herança de `n_candidatos` e o payload com o campo **eram a pergunta, não obstáculo**). `tsc` limpo, `build` OK, **lint 118** contra baseline 120 (desceu: saiu código). O único erro não tratado da suíte (`CadastroPublico`, `useAuth must be used within an AuthProvider`) foi medido com `git stash` e **é pré-existente**.
+
+⚠️ **Não há bateria SQL aqui, e não faltou uma:** a mudança é toda de leitura no cliente. Nenhuma regra nova foi para o banco — o que mudou foi **de onde** a tela lê, e a RPC que ela passou a usar já existia e já era usada por `/candidatos`.

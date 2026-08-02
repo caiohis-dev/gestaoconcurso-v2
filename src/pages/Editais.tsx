@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useEditais, Edital, EditalInsert, EditalUpdate } from "@/hooks/useEditais";
 import { EditalDialog } from "@/components/EditalDialog";
+import { useContagemCandidatosPorEdital } from "@/hooks/useCandidatos";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,6 +21,8 @@ export default function Editais() {
     isUpdating,
     isDeleting,
   } = useEditais();
+  // A rota é de admin e a RLS de `candidatos` também — a contagem chega inteira aqui.
+  const { contagem, isLoading: carregandoContagem } = useContagemCandidatosPorEdital();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editalEmEdicao, setEditalEmEdicao] = useState<Edital | null>(null);
@@ -94,11 +97,17 @@ export default function Editais() {
                   <CardTitle className="text-lg">{edital.nome}</CardTitle>
                 </CardHeader>
                 <CardContent className="mt-auto space-y-3">
+                  {/* A contagem real de inscritos é a única fonte do número desde
+                      2026-08-02 — `editais.n_candidatos` era digitado à mão e não
+                      conversava com a lista importada. "0" não aparece: enquanto conta
+                      diz que está contando, e sem lista diz que não há lista. */}
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Users className="h-4 w-4" />
-                    {edital.n_candidatos != null
-                      ? `${edital.n_candidatos} candidatos`
-                      : "Nº de candidatos não informado"}
+                    {carregandoContagem
+                      ? "Contando inscritos…"
+                      : contagem[edital.id]
+                        ? `${contagem[edital.id]} inscrito(s) importado(s)`
+                        : "Nenhum inscrito importado"}
                   </div>
                   <div className="flex gap-2">
                     <Button variant="outline" size="sm" className="gap-2" onClick={() => handleEdit(edital)}>

@@ -66,19 +66,26 @@ describe("EditalDialog (interação)", () => {
       abrir();
 
       await user.type(screen.getByLabelText("Nome do Edital *"), "  Edital 003/2026  ");
-      await user.type(screen.getByLabelText("Número de Candidatos"), "1500");
       await user.click(screen.getByRole("button", { name: "Criar" }));
 
       await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+      // 🔴 O objeto INTEIRO, não um `objectContaining`: desde 2026-08-02 o payload não
+      // carrega `n_candidatos`, e é justamente a AUSÊNCIA que precisa ser afirmada.
       expect(onSubmit).toHaveBeenCalledWith({
         // O trim acontece aqui, não no schema — e a unicidade no banco é sobre
         // lower(btrim(nome)), então os dois precisam concordar.
         nome: "Edital 003/2026",
-        // String do input vira inteiro; vazio viraria null.
-        n_candidatos: 1500,
         cabecalho_linha1: CABECALHO_1,
         cabecalho_linha2: CABECALHO_2,
       });
+    });
+
+    it("🔴 não oferece campo de nº de candidatos — a contagem real é a fonte", () => {
+      abrir();
+      // O número de inscritos de um edital passou a ser `count(candidatos)` em toda tela
+      // (02/08). Um input aqui aceitaria 200 num edital com 7.231 e não seria lido por
+      // ninguém — perda silenciosa da intenção de quem digitou.
+      expect(screen.queryByLabelText("Número de Candidatos")).not.toBeInTheDocument();
     });
 
     it("manda null quando os opcionais ficam em branco", async () => {
@@ -93,7 +100,6 @@ describe("EditalDialog (interação)", () => {
       await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
       expect(onSubmit).toHaveBeenCalledWith({
         nome: "Edital 004/2026",
-        n_candidatos: null,
         cabecalho_linha1: null,
         cabecalho_linha2: null,
       });
@@ -104,7 +110,6 @@ describe("EditalDialog (interação)", () => {
     const EDITAL = {
       id: "e1",
       nome: "Edital 001/2026 SMA",
-      n_candidatos: 800,
       cabecalho_linha1: "CABEÇALHO PERSONALIZADO",
       cabecalho_linha2: "Segunda linha",
       created_at: null,
@@ -118,7 +123,6 @@ describe("EditalDialog (interação)", () => {
       expect(screen.getByRole("heading", { name: "Editar Edital" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Salvar" })).toBeInTheDocument();
       expect(screen.getByLabelText("Nome do Edital *")).toHaveValue("Edital 001/2026 SMA");
-      expect(screen.getByLabelText("Número de Candidatos")).toHaveValue(800);
       expect(screen.getByLabelText("Linha 1 do Cabeçalho")).toHaveValue("CABEÇALHO PERSONALIZADO");
     });
 

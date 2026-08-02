@@ -5,7 +5,7 @@
 ## Entidades e relação entre elas
 
 - **`editais`** — **entidade de outro módulo.** O CRUD, o schema, a unicidade do nome e o modelo "edital é template" estão em [`../editais/00-modulo.md`](../editais/00-modulo.md); não duplicado aqui. O que interessa deste lado: a prova **referencia** um edital e **herda dele apenas sugestões, na criação**.
-- **`provas`** (`useProvas.tsx`) — uma prova pertence a um edital via **`edital_id`** (FK, **1 edital → N provas**, `ON DELETE RESTRICT`). Tem data, horários, e os SEUS próprios `prova_n_candidatos` e `prova_cabecalho_linha1/2` (herdados do edital como sugestão na criação, mas editáveis e independentes depois), além do flag de ciclo de vida `prova_finalizada` (+ `finalizada_at`). O **nome do edital** exibido/usado vem do join (`prova.editais.nome`), não de uma coluna da prova.
+- **`provas`** (`useProvas.tsx`) — uma prova pertence a um edital via **`edital_id`** (FK, **1 edital → N provas**, `ON DELETE RESTRICT`). Tem data, horários, e os SEUS próprios `prova_cabecalho_linha1/2` (herdados do edital como sugestão na criação, mas editáveis e independentes depois), além do flag de ciclo de vida `prova_finalizada` (+ `finalizada_at`). 🔵 **`prova_n_candidatos` saiu em 02/08** — a coluna existe no banco, mas nenhum código lê ou escreve nela, e ela está fora das interfaces de `useProvas.tsx` de propósito (ver abaixo). O **nome do edital** exibido/usado vem do join (`prova.editais.nome`), não de uma coluna da prova.
   - **O `ProvaDialog` trava a criação se não existir nenhum edital**, mostrando um link "Cadastrar Edital" para `/editais`. Como Editais é módulo só de admin, **um coordenador não consegue destravar isso sozinho**.
   - 🔴 **O edital de uma prova é IMUTÁVEL depois de definido (`PE001`, 02/08).** O vínculo se escolhe na **criação** e nunca mais muda — decisão do usuário. Na edição (o botão **"Parâmetros Gerais"** de `/gerenciar-prova`, que abre este mesmo `ProvaDialog`) o edital aparece em **bloco de leitura**, com o nome visível e a explicação de que não muda.
     - **A garantia é o trigger `check_prova_edital_imutavel`** (migration `20260802045221`), não a tela: a escrita de `provas` é PostgREST direto, e um `PATCH` com `edital_id` novo passaria pela RLS. Bateria: [`../../../../docs/bateria-prova-edital-imutavel.sql`](../../../../docs/bateria-prova-edital-imutavel.sql).
@@ -69,6 +69,23 @@ E um contraste que vale conhecer: **`useSalasDistribuidasCapacidade` trata lista
 ## Capacidade agregada
 
 `useUnidadeCapacidade.tsx` e `useSalasDistribuidasCapacidade` (em `useSalasDistribuidas.tsx`) calculam a soma de `sala_capacidade` por unidade a partir de `salas_prova_distribuidas` — ou seja, sempre a partir do snapshot da prova, não do template. Usado em `GerenciarProva.tsx` para mostrar quantos candidatos cabem por unidade.
+
+### 🔴 O painel "Total de Inscritos / Alocados / Não Alocados" (mudou em 2026-08-02)
+
+A conta vive em **`src/lib/alocacao.ts`** (`resumoAlocacao`, com testes próprios), e não no meio do componente — porque a **fonte** dela mudou e é o tipo de semântica que regride calada:
+
+| | Antes | Desde 02/08 |
+|---|---|---|
+| Total | `prova.prova_n_candidatos` (digitado à mão) | `count(candidatos)` do **edital da prova**, via `useContagemCandidatosPorEdital` |
+
+Media-se **200** numa prova cujo edital tinha **7.231** inscritos: `naoAlocados = 200 − alocados` dizia que a prova estava coberta faltando **7.031** lugares, sem erro nenhum na tela.
+
+O que a função existe para garantir:
+
+- **Nenhum estado vira "0".** Carregando diz que está contando; sem lista importada diz que não há lista (com link para importar); prova sem `edital_id` (a coluna é NULLABLE) diz isso, e não culpa a importação.
+- **`naoAlocados` negativo é legítimo** — significa mais lugares que inscritos. Só `> 0` pinta de vermelho; um `Math.max(0, …)` "consertando" isso apagaria a distinção (há caso de teste guardando).
+- ⚠️ **O painel é `isAdmin &&`, e isso é parte da regra.** A RLS de `candidatos` é só de admin e a RPC é SECURITY INVOKER: para coordenador a contagem volta **vazia sem erro**, e a tela diria "nenhum inscrito importado" a quem tem lista.
+- ⚠️ **O hook fica no topo do componente**, junto dos outros: abaixo há `return` condicional por `authLoading`, e chamar hook depois dele quebra a ordem de hooks do React (a suíte pegou exatamente isso ao escrever a mudança).
 
 ## Ciclo de vida de uma prova
 

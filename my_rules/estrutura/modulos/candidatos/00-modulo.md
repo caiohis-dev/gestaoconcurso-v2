@@ -220,7 +220,7 @@ A listagem é: escolher o edital por card → filtrar → ver a página de 50 �
 |---|---|
 | **O cargo exibido é o CANÔNICO** (`cargos.nome`, via join), não o texto da planilha. O cru só aparece na ficha, rotulado como procedência. Detalhe e a medição do join em [`cargos.md`](./cargos.md) | desde 2026-07-29 |
 | **Busca e filtro de cargo vão ao servidor**, e é isso que mantém o contador e a paginação honestos. Filtrar no cliente é o defeito a não introduzir | — |
-| **Os contadores da tela são TRÊS coisas diferentes**: o card diz `contagem[edital]` (a RPC, sem filtro); o cabeçalho diz o `count` da consulta **filtrada**; `editais.n_candidatos` é previsão digitada à mão e não entra na tela | ⚠️ confundi-los já causou defeito — ver Pontos frágeis |
+| **Os contadores da tela são DUAS coisas diferentes**: o card diz `contagem[edital]` (a RPC, sem filtro); o cabeçalho diz o `count` da consulta **filtrada** | ⚠️ confundi-los já causou defeito — ver Pontos frágeis. 🔵 Eram TRÊS até 02/08, quando `editais.n_candidatos` deixou de existir como número concorrente |
 | **Os quatro vazios são mensagens diferentes** (`mensagemDoVazio`): edital vazio, busca sem resultado, cargo sem inscrito, e os dois juntos | — |
 
 ## A importação — as regras que não são óbvias
@@ -287,6 +287,8 @@ Até 29/07 o campo impossível virava `NULL`: o inscrito entrava, mas o que a or
 > 🔵 **Desde 01/08 essa fusão é impossível por construção**, e não mais por normalização: o CPF **saiu da chave natural**, então o valor dele — cru, inválido ou ausente — não consegue empatar duas pessoas. As 2 linhas estão nas inscrições **375 e 4256**, que são chaves diferentes. A decisão de gravar o cru segue valendo pelo motivo original (não perder o que a origem afirmou); o que caiu foi a dependência entre ela e a unicidade.
 
 ⚠️ **Uma regressão silenciosa saiu junto:** a guarda antiga do CPF lia `soDigitos`, que devolve `null` quando não sobra dígito nenhum — então um campo como `'abc'` era anulado **sem aviso**. Perda calada dentro da regra criada para não perder calado. Hoje o aviso lê o valor bruto.
+
+⚠️ **Ao acrescentar aviso novo aqui, acrescente o prefixo em `PREFIXOS_POR_CAMPO` no mesmo passe.** `classificarQueixa` casa por **prefixo de texto**, sem tipo ligando os dois lados: uma mensagem que abra diferente vai calada para o balde "Geral". As três novas começam com `CPF`, e há caso de teste afirmando que a queixa cai no campo certo.
 
 ⚠️ **O `NULLS NOT DISTINCT` do índice NÃO perdeu a razão de existir, só mudou de dono:** ele agora guarda a célula **vazia** (que continua virando `NULL`), não mais a impossível. **Vazio ≠ impossível** — um não tem dado, o outro tem dado errado.
 
@@ -373,7 +375,21 @@ Cada bloco é uma transação sua: um bloco que falha não desfaz os anteriores,
 
 ⚠️ **Mas criou uma dependência de volta que precisa ser lembrada:** `candidatos.edital_id` é `ON DELETE RESTRICT`, então **`editais` agora tem DOIS dependentes que barram exclusão** (`provas` e `candidatos`) — e candidatos é o que mais barra, porque um edital tem milhares de inscritos e poucas provas. `useEditais.tsx` distingue os dois casos na mensagem de erro; culpar "provas vinculadas" quando quem barrou foram os inscritos manda o usuário procurar no lugar errado. É a armadilha do **RESTRICT indireto** descrita em [`../../transversais/invariantes.md`](../../transversais/invariantes.md).
 
-**`editais.n_candidatos` continua sendo um número digitado à mão** e **não** é alimentado por este módulo. São coisas diferentes: aquele é a previsão do edital, este é a lista real de inscritos. Quem for unificar precisa decidir qual manda — hoje ninguém sincroniza os dois, e o card da listagem mostra a contagem real vinda da RPC, não `n_candidatos`.
+### 🔴 Este módulo é a FONTE DA VERDADE do nº de inscritos (desde 2026-08-02)
+
+**Quantos inscritos um concurso tem é `count(candidatos)` — em toda tela do sistema.** Quem quiser o número chama `useContagemCandidatosPorEdital()` (a RPC `contar_candidatos_por_edital`), inclusive fora deste módulo.
+
+Antes disso havia **três** números que não conversavam. Medido no dia da decisão:
+
+```
+Edital 001/2026 SMA    n_candidatos = 200    inscritos reais = 7.231    prova = 200
+```
+
+A alocação lia `provas.prova_n_candidatos` e calculava `naoAlocados = 200 − alocados`: dizia que a prova estava coberta **faltando 7.031 lugares**, sem erro nenhum na tela. Os dois números digitados à mão (`editais.n_candidatos` e `provas.prova_n_candidatos`) **saíram dos formulários e das interfaces TS**; as colunas continuam no banco porque o dump e o backfill do `seed.pos.sql` as usam.
+
+⚠️ **A decisão tem um limite que precisa ser lembrado:** ela vale enquanto **todo inscrito do edital faz a prova** — premissa afirmada pelo usuário em 02/08. Uma prova que aplicasse só um recorte do edital (dois dias, corte por cargo) não é exprimível hoje, porque **nada liga candidato a prova**. Quando esse vínculo existir, é o momento de reabrir — e não antes, com um campo digitado.
+
+⚠️ **Quem consome a contagem precisa ser admin.** A RLS de `candidatos` é `has_role(admin)` e a RPC é **SECURITY INVOKER**: para um coordenador ela volta **vazia, sem erro**. Por isso o painel de alocação em `GerenciarProva` é `isAdmin &&` — soltá-lo diria "nenhum inscrito importado" a quem tem lista importada.
 
 ## Acessibilidade — o que foi corrigido, e por que não pode voltar
 

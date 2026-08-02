@@ -16,7 +16,6 @@ import { ProvaDialog } from "@/components/ProvaDialog";
 const EDITAL_A = {
   id: "edital-a",
   nome: "Edital 001/2026 SMA",
-  n_candidatos: 1500,
   cabecalho_linha1: "CABEÇALHO DO EDITAL A",
   cabecalho_linha2: "Segunda linha do A",
   created_at: null,
@@ -28,7 +27,6 @@ const EDITAL_B = {
   ...EDITAL_A,
   id: "edital-b",
   nome: "Edital 002/2026 - Secretaria Municipal de Administração",
-  n_candidatos: 300,
   cabecalho_linha1: "CABEÇALHO DO EDITAL B",
   cabecalho_linha2: "Segunda linha do B",
 };
@@ -87,7 +85,10 @@ describe("ProvaDialog (interação)", () => {
   describe("herança edital → prova (D2/D3)", () => {
     beforeEach(() => setTableResult("editais", { data: [EDITAL_A, EDITAL_B], error: null }));
 
-    it("preenche os três campos ao escolher um edital numa prova NOVA", async () => {
+    it("preenche os cabeçalhos ao escolher um edital numa prova NOVA", async () => {
+      // ⚠️ Eram TRÊS campos até 2026-08-02: `Nº Candidatos` herdava `n_candidatos` do
+      // edital. O campo saiu junto com a unificação do nº de inscritos — herdar previsão
+      // para um número que ninguém lê só espalha cópia desatualizada.
       const user = userEvent.setup();
       abrir();
       await screen.findByRole("combobox");
@@ -96,9 +97,8 @@ describe("ProvaDialog (interação)", () => {
 
       // Sugestão editável — não trigger de banco, não vínculo permanente.
       await waitFor(() =>
-        expect(screen.getByLabelText("Nº Candidatos")).toHaveValue(1500),
+        expect(screen.getByLabelText("Linha 1 do Cabeçalho")).toHaveValue("CABEÇALHO DO EDITAL A"),
       );
-      expect(screen.getByLabelText("Linha 1 do Cabeçalho")).toHaveValue("CABEÇALHO DO EDITAL A");
       expect(screen.getByLabelText("Linha 2 do Cabeçalho")).toHaveValue("Segunda linha do A");
     });
 
@@ -109,12 +109,12 @@ describe("ProvaDialog (interação)", () => {
 
       await escolherEdital(user, EDITAL_A.nome);
       await waitFor(() =>
-        expect(screen.getByLabelText("Nº Candidatos")).toHaveValue(1500),
+        expect(screen.getByLabelText("Linha 1 do Cabeçalho")).toHaveValue("CABEÇALHO DO EDITAL A"),
       );
 
       await escolherEdital(user, EDITAL_B.nome);
       await waitFor(() =>
-        expect(screen.getByLabelText("Nº Candidatos")).toHaveValue(300),
+        expect(screen.getByLabelText("Linha 1 do Cabeçalho")).toHaveValue("CABEÇALHO DO EDITAL B"),
       );
     });
 
@@ -124,13 +124,26 @@ describe("ProvaDialog (interação)", () => {
       await screen.findByRole("combobox");
 
       await escolherEdital(user, EDITAL_A.nome);
-      const campo = screen.getByLabelText("Nº Candidatos");
-      await waitFor(() => expect(campo).toHaveValue(1500));
+      const campo = screen.getByLabelText("Linha 1 do Cabeçalho");
+      await waitFor(() => expect(campo).toHaveValue("CABEÇALHO DO EDITAL A"));
 
       await user.clear(campo);
-      await user.type(campo, "999");
+      await user.type(campo, "CABEÇALHO ESCRITO À MÃO");
 
-      expect(campo).toHaveValue(999);
+      expect(campo).toHaveValue("CABEÇALHO ESCRITO À MÃO");
+    });
+
+    it("🔴 não oferece campo de nº de candidatos — a alocação conta os inscritos reais", async () => {
+      // Guarda a decisão de 2026-08-02. Este campo era lido pela alocação e dizia 200 num
+      // edital com 7.231 inscritos: o painel pintava a prova de coberta faltando 7.031
+      // lugares. Ele só volta a fazer sentido junto com o vínculo candidato↔prova, quando
+      // "esta prova aplica um recorte do edital" for exprimível.
+      const user = userEvent.setup();
+      abrir();
+      await screen.findByRole("combobox");
+      await escolherEdital(user, EDITAL_A.nome);
+
+      expect(screen.queryByLabelText("Nº Candidatos")).not.toBeInTheDocument();
     });
   });
 
@@ -141,7 +154,6 @@ describe("ProvaDialog (interação)", () => {
       prova_data: "2026-03-15",
       prova_hora_inicio: "08:00",
       prova_hora_final: "12:00",
-      prova_n_candidatos: 42,
       prova_cabecalho_linha1: "CABEÇALHO PRÓPRIO DA PROVA",
       prova_cabecalho_linha2: "Linha própria",
     } as never;
@@ -151,10 +163,12 @@ describe("ProvaDialog (interação)", () => {
     it("carrega os valores da PROVA, não os do edital", async () => {
       abrir({ prova: PROVA });
 
-      expect(await screen.findByLabelText("Nº Candidatos")).toHaveValue(42);
-      expect(screen.getByLabelText("Linha 1 do Cabeçalho")).toHaveValue(
+      // O cabeçalho da prova (`CABEÇALHO PRÓPRIO DA PROVA`) difere do edital A
+      // (`CABEÇALHO DO EDITAL A`): é isso que prova que a herança não reagiu na edição.
+      expect(await screen.findByLabelText("Linha 1 do Cabeçalho")).toHaveValue(
         "CABEÇALHO PRÓPRIO DA PROVA",
       );
+      expect(screen.getByLabelText("Linha 2 do Cabeçalho")).toHaveValue("Linha própria");
     });
 
     it("🔴 NÃO oferece troca de edital — mostra o nome e explica que não muda", async () => {
@@ -187,7 +201,7 @@ describe("ProvaDialog (interação)", () => {
       // como um toast vermelho sem ter pedido nada.
       const user = userEvent.setup();
       abrir({ prova: PROVA });
-      await screen.findByLabelText("Nº Candidatos");
+      await screen.findByLabelText("Linha 1 do Cabeçalho");
 
       await user.click(screen.getByRole("button", { name: "Salvar" }));
 
@@ -196,10 +210,12 @@ describe("ProvaDialog (interação)", () => {
 
       expect(payload).not.toHaveProperty("edital_id");
       expect(payload).not.toHaveProperty("prova_edital");
+      // E também não carrega mais `prova_n_candidatos` (02/08) — o campo saiu do form.
+      expect(payload).not.toHaveProperty("prova_n_candidatos");
       // CONTROLE POSITIVO: o resto da prova continua sendo enviado — a PE001 congela o
       // edital, não o formulário inteiro.
-      expect(payload.prova_n_candidatos).toBe(42);
       expect(payload.prova_cabecalho_linha1).toBe("CABEÇALHO PRÓPRIO DA PROVA");
+      expect(payload.prova_data).toBe("2026-03-15");
     });
   });
 
@@ -242,7 +258,7 @@ describe("ProvaDialog (interação)", () => {
       expect(payload.prova_edital).not.toBe(EDITAL_B.nome);
     });
 
-    it("converte vazios em null e n_candidatos em inteiro", async () => {
+    it("converte vazios em null", async () => {
       const user = userEvent.setup();
       abrir();
       await screen.findByRole("combobox");
@@ -255,7 +271,6 @@ describe("ProvaDialog (interação)", () => {
       await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
       const payload = onSubmit.mock.calls[0][0];
 
-      expect(payload.prova_n_candidatos).toBe(1500);
       expect(payload.prova_cabecalho_linha1).toBeNull();
       expect(payload.prova_cabecalho_linha2).toBeNull();
       expect(payload.prova_data).toBeNull();

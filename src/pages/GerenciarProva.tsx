@@ -7,6 +7,8 @@ import { useProvaUnidades } from "@/hooks/useProvaUnidades";
 import { useUnidadeCapacidade } from "@/hooks/useUnidadeCapacidade";
 import { useValoresFuncaoProva } from "@/hooks/useValoresFuncaoProva";
 import { useCoordenadorUnidades } from "@/hooks/useCoordenadorUnidades";
+import { useContagemCandidatosPorEdital } from "@/hooks/useCandidatos";
+import { resumoAlocacao } from "@/lib/alocacao";
 
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
@@ -55,6 +57,21 @@ export default function GerenciarProva() {
   const unidadeIds = useMemo(() => provaUnidades.map((pu) => pu.unidade_id), [provaUnidades]);
   const { data: capacidadePorUnidade = {} } = useUnidadeCapacidade(provaId || "", unidadeIds);
   const { valoresFuncao, isLoading: isLoadingValoresFuncao } = useValoresFuncaoProva(provaId || "");
+
+  // 🔴 A fonte do "total de candidatos" é a lista real de inscritos do edital desde
+  // 2026-08-02 — antes era `prova.prova_n_candidatos`, digitado à mão, que dizia 200 num
+  // edital com 7.231 inscritos. Ver `my_rules/estrutura/modulos/candidatos/00-modulo.md`.
+  //
+  // ⚠️ Fica AQUI em cima, junto dos outros hooks: abaixo há `return` condicional
+  // (`authLoading`), e chamar hook depois dele quebra a ordem de hooks do React — foi
+  // exatamente o que a suíte pegou ao escrever isto.
+  //
+  // ⚠️ A RLS de `candidatos` é só de admin e a RPC é SECURITY INVOKER: para coordenador a
+  // contagem volta VAZIA (sem erro). Por isso o painel abaixo é — e tem de continuar
+  // sendo — `isAdmin &&`. Soltá-lo para coordenador diria "nenhum inscrito importado" a
+  // quem tem lista importada.
+  const { contagem: inscritosPorEdital, isLoading: isLoadingInscritos } =
+    useContagemCandidatosPorEdital();
 
 
   // Filter prova_unidades based on coordinator access
@@ -193,9 +210,13 @@ export default function GerenciarProva() {
 
   const isLoading = isLoadingProvas || isLoadingUnidades || isLoadingProvaUnidades || isLoadingCoordenadorUnidades;
 
-  const totalCandidatos = prova?.prova_n_candidatos || 0;
   const totalAlocados = Object.values(capacidadePorUnidade).reduce((sum, cap) => sum + cap, 0);
-  const naoAlocados = totalCandidatos - totalAlocados;
+  const resumo = resumoAlocacao({
+    editalId: prova?.edital_id,
+    inscritos: prova?.edital_id ? inscritosPorEdital[prova.edital_id] : undefined,
+    alocados: totalAlocados,
+    carregando: isLoadingProvas || isLoadingInscritos,
+  });
 
   const exportColaboradores = async () => {
     if (!provaId || !prova) return;
@@ -644,24 +665,58 @@ export default function GerenciarProva() {
               )}
             </div>
             {isAdmin && (
-              <div className="flex flex-wrap gap-4 mt-3 text-sm">
-                <div className="flex items-center gap-2 bg-muted px-3 py-1.5 rounded-md">
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-muted-foreground">Total de Candidatos:</span>
-                  <span className="font-semibold text-foreground">{totalCandidatos}</span>
-                </div>
-                <div className="flex items-center gap-2 bg-muted px-3 py-1.5 rounded-md">
-                  <span className="text-muted-foreground">Alocados:</span>
-                  <span className="font-semibold text-foreground">{totalAlocados}</span>
-                </div>
-                <div
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md ${naoAlocados > 0 ? "bg-destructive/10" : "bg-muted"}`}
-                >
-                  <span className="text-muted-foreground">Não Alocados:</span>
-                  <span className={`font-semibold ${naoAlocados > 0 ? "text-destructive" : "text-foreground"}`}>
-                    {naoAlocados}
-                  </span>
-                </div>
+              <div className="flex flex-wrap items-center gap-4 mt-3 text-sm">
+                {resumo.estado === "carregando" && (
+                  <div className="flex items-center gap-2 bg-muted px-3 py-1.5 rounded-md text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Contando os inscritos do edital…
+                  </div>
+                )}
+
+                {resumo.estado === "sem-edital" && (
+                  <div className="flex items-center gap-2 bg-muted px-3 py-1.5 rounded-md text-muted-foreground">
+                    <AlertTriangle className="h-4 w-4" />
+                    Esta prova não tem edital vinculado — não há inscritos a conferir.
+                  </div>
+                )}
+
+                {/* Sem lista importada não há o que conferir, e dizer "0" aqui seria pior
+                    que não dizer nada: pintaria a alocação de coberta. */}
+                {resumo.estado === "sem-lista" && (
+                  <div className="flex items-center gap-2 bg-muted px-3 py-1.5 rounded-md">
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-muted-foreground">
+                      Nenhum inscrito importado neste edital.
+                    </span>
+                    <Link to="/candidatos" className="font-medium text-primary hover:underline">
+                      Importar lista
+                    </Link>
+                  </div>
+                )}
+
+                {resumo.estado === "ok" && (
+                  <>
+                    <div className="flex items-center gap-2 bg-muted px-3 py-1.5 rounded-md">
+                      <Users className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-muted-foreground">Total de Inscritos:</span>
+                      <span className="font-semibold text-foreground">{resumo.inscritos}</span>
+                    </div>
+                    <div className="flex items-center gap-2 bg-muted px-3 py-1.5 rounded-md">
+                      <span className="text-muted-foreground">Alocados:</span>
+                      <span className="font-semibold text-foreground">{resumo.alocados}</span>
+                    </div>
+                    <div
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-md ${resumo.naoAlocados > 0 ? "bg-destructive/10" : "bg-muted"}`}
+                    >
+                      <span className="text-muted-foreground">Não Alocados:</span>
+                      <span
+                        className={`font-semibold ${resumo.naoAlocados > 0 ? "text-destructive" : "text-foreground"}`}
+                      >
+                        {resumo.naoAlocados}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </CardHeader>

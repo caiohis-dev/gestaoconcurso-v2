@@ -2,10 +2,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
+// ⚠️ `editais.n_candidatos` existe no banco e está fora destas interfaces de propósito
+// (02/08): quantos inscritos um edital tem é a contagem real de `candidatos`
+// (`useContagemCandidatosPorEdital`), em toda tela. Ver `useProvas.tsx` para o porquê de
+// a coluna não ter sido dropada.
 export interface Edital {
   id: string;
   nome: string;
-  n_candidatos: number | null;
   cabecalho_linha1: string | null;
   cabecalho_linha2: string | null;
   created_at: string | null;
@@ -15,14 +18,12 @@ export interface Edital {
 
 export interface EditalInsert {
   nome: string;
-  n_candidatos?: number | null;
   cabecalho_linha1?: string | null;
   cabecalho_linha2?: string | null;
 }
 
 export interface EditalUpdate {
   nome?: string;
-  n_candidatos?: number | null;
   cabecalho_linha1?: string | null;
   cabecalho_linha2?: string | null;
 }

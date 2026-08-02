@@ -5,9 +5,14 @@ import { useToast } from "@/hooks/use-toast";
 // O nome do edital vem do join com `editais` (edital_id). `prova_edital` (CHAR30) ainda
 // existe no banco e é escrito como cópia denormalizada durante a transição, até ser
 // dropado num passo posterior; os consumidores devem ler `editais?.nome`.
+//
+// ⚠️ `provas.prova_n_candidatos` e `editais.n_candidatos` EXISTEM no banco e estão fora
+// destas interfaces de propósito (02/08): o nº de inscritos é a contagem real de
+// `candidatos`, e tipo que não expõe a coluna é o que impede o reconsumo de voltar calado.
+// As colunas não foram dropadas porque o dump (`seed.local.sql`) as lista nos INSERTs e o
+// backfill do `seed.pos.sql` lê ambas — dropar quebraria o `db reset` local.
 export interface EditalDaProva {
   nome: string;
-  n_candidatos: number | null;
   cabecalho_linha1: string | null;
   cabecalho_linha2: string | null;
 }
@@ -19,7 +24,6 @@ export interface Prova {
   prova_data: string | null;
   prova_hora_inicio: string | null;
   prova_hora_final: string | null;
-  prova_n_candidatos: number | null;
   prova_finalizada: boolean;
   finalizada_at: string | null;
   created_at: string | null;
@@ -41,7 +45,6 @@ export interface ProvaInsert {
   prova_data?: string | null;
   prova_hora_inicio?: string | null;
   prova_hora_final?: string | null;
-  prova_n_candidatos?: number | null;
   prova_cabecalho_linha1?: string | null;
   prova_cabecalho_linha2?: string | null;
 }
@@ -52,7 +55,6 @@ export interface ProvaUpdate {
   prova_data?: string | null;
   prova_hora_inicio?: string | null;
   prova_hora_final?: string | null;
-  prova_n_candidatos?: number | null;
   prova_cabecalho_linha1?: string | null;
   prova_cabecalho_linha2?: string | null;
 }
@@ -66,7 +68,7 @@ export function useProvas() {
     queryFn: async () => {
       const { data: provasData, error } = await supabase
         .from("provas")
-        .select("*, editais(nome, n_candidatos, cabecalho_linha1, cabecalho_linha2)")
+        .select("*, editais(nome, cabecalho_linha1, cabecalho_linha2)")
         .order("prova_data", { ascending: false, nullsFirst: false });
 
       if (error) throw error;

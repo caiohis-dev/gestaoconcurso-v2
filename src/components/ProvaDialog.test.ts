@@ -16,7 +16,6 @@ describe("formSchema do ProvaDialog", () => {
     prova_data: "2026-03-15",
     prova_hora_inicio: "08:00",
     prova_hora_final: "12:00",
-    prova_n_candidatos: "500",
     prova_cabecalho_linha1: "FUNDAÇÃO EDUCACIONAL DE VOLTA REDONDA",
     prova_cabecalho_linha2: "Coordenação de Concursos e Processos Seletivos",
   };
@@ -56,16 +55,21 @@ describe("formSchema do ProvaDialog", () => {
     it("aceita todos vazios — a herança é sugestão, não exigência", () => {
       const r = formSchema.safeParse({
         edital_id: "e1",
-        prova_n_candidatos: "",
         prova_cabecalho_linha1: "",
         prova_cabecalho_linha2: "",
       });
       expect(r.success).toBe(true);
     });
 
-    it("trata n_candidatos como string, igual ao EditalDialog", () => {
-      expect(formSchema.safeParse({ ...valido, prova_n_candidatos: 500 }).success).toBe(false);
-      expect(formSchema.safeParse({ ...valido, prova_n_candidatos: "500" }).success).toBe(true);
+    it("🔴 o nº de candidatos NÃO é mais campo da prova", () => {
+      // Até 2026-08-02 este era o número que a alocação lia, digitado à mão — 200 num
+      // edital com 7.231 inscritos. Hoje a alocação conta os inscritos reais do edital.
+      // Afirma-se o OUTPUT porque o zod ignora chave desconhecida: se o campo voltar ao
+      // schema, ele reaparece aqui e este caso cai, que é quando a decisão deve ser
+      // reaberta (o campo só faz sentido junto com o vínculo candidato↔prova).
+      const r = formSchema.safeParse({ ...valido, prova_n_candidatos: "500" });
+      expect(r.success).toBe(true);
+      expect(r.data).not.toHaveProperty("prova_n_candidatos");
     });
   });
 

@@ -31,12 +31,16 @@ import { Button } from "@/components/ui/button";
 import { Prova, ProvaInsert, ProvaUpdate } from "@/hooks/useProvas";
 import { useEditais } from "@/hooks/useEditais";
 
+// ⚠️ `prova_n_candidatos` SAIU do formulário em 2026-08-02 e não deve voltar. Era o número
+// que a alocação lia, e era digitado à mão: dizia 200 num edital com 7.231 inscritos, e o
+// painel pintava a prova de coberta. Hoje a alocação conta os inscritos reais do edital.
+// Só volta junto com o vínculo candidato↔prova, quando "esta prova aplica um recorte do
+// edital" passar a ser exprimível — hoje não é. Ver o doc do módulo Aplicação de Provas.
 export const formSchema = z.object({
   edital_id: z.string().min(1, "Selecione um edital"),
   prova_data: z.string().optional(),
   prova_hora_inicio: z.string().optional(),
   prova_hora_final: z.string().optional(),
-  prova_n_candidatos: z.string().optional(),
   prova_cabecalho_linha1: z.string().optional(),
   prova_cabecalho_linha2: z.string().optional(),
 });
@@ -68,7 +72,6 @@ export function ProvaDialog({
       prova_data: "",
       prova_hora_inicio: "",
       prova_hora_final: "",
-      prova_n_candidatos: "",
       prova_cabecalho_linha1: "",
       prova_cabecalho_linha2: "",
     },
@@ -81,7 +84,6 @@ export function ProvaDialog({
         prova_data: prova.prova_data ?? "",
         prova_hora_inicio: prova.prova_hora_inicio ?? "",
         prova_hora_final: prova.prova_hora_final ?? "",
-        prova_n_candidatos: prova.prova_n_candidatos?.toString() ?? "",
         prova_cabecalho_linha1: prova.prova_cabecalho_linha1 ?? "",
         prova_cabecalho_linha2: prova.prova_cabecalho_linha2 ?? "",
       });
@@ -91,7 +93,6 @@ export function ProvaDialog({
         prova_data: "",
         prova_hora_inicio: "",
         prova_hora_final: "",
-        prova_n_candidatos: "",
         prova_cabecalho_linha1: "",
         prova_cabecalho_linha2: "",
       });
@@ -99,16 +100,19 @@ export function ProvaDialog({
   }, [prova, form]);
 
   // Herança de UI (D2/D3): ao escolher um edital numa prova NOVA, o edital preenche os
-  // três campos como SUGESTÃO editável.
+  // campos de cabeçalho como SUGESTÃO editável.
   //
   // ⚠️ O ramo `if (!isEditing)` SAIU em 2026-08-02 e não deve voltar: desde a PE001 o
   // edital não é escolhível na edição, então esta função só é alcançável na criação.
   // Mantê-lo daria a impressão de que existe um caminho de troca ao editar.
+  //
+  // ⚠️ `n_candidatos` saiu da herança em 2026-08-02, junto com o campo: herdar previsão
+  // para um número que ninguém mais lê só espalharia a cópia desatualizada. O que se
+  // herda é cabeçalho — e é herança de UI, sem trigger nem default no banco.
   const handleEditalChange = (id: string) => {
     form.setValue("edital_id", id, { shouldValidate: true });
     const ed = editais.find((e) => e.id === id);
     if (ed) {
-      form.setValue("prova_n_candidatos", ed.n_candidatos != null ? String(ed.n_candidatos) : "");
       form.setValue("prova_cabecalho_linha1", ed.cabecalho_linha1 ?? "");
       form.setValue("prova_cabecalho_linha2", ed.cabecalho_linha2 ?? "");
     }
@@ -122,9 +126,6 @@ export function ProvaDialog({
       prova_data: data.prova_data || null,
       prova_hora_inicio: data.prova_hora_inicio || null,
       prova_hora_final: data.prova_hora_final || null,
-      prova_n_candidatos: data.prova_n_candidatos
-        ? parseInt(data.prova_n_candidatos)
-        : null,
       prova_cabecalho_linha1: data.prova_cabecalho_linha1 || null,
       prova_cabecalho_linha2: data.prova_cabecalho_linha2 || null,
     };
@@ -237,7 +238,7 @@ export function ProvaDialog({
                 />
               )}
 
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <FormField
                   control={form.control}
                   name="prova_data"
@@ -308,25 +309,6 @@ export function ProvaDialog({
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name="prova_n_candidatos"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs">Nº Candidatos</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type="number"
-                          min="0"
-                          placeholder="Ex: 1500"
-                          className="h-9 text-sm"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
               </div>
 
               <div className="border-t pt-4 mt-4">
