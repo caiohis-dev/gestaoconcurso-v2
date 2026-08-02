@@ -541,3 +541,81 @@ Ao rodá-la, apareceu que ela afirmava coisas que deixaram de valer:
 **A CG001 não tinha caso nenhum** na bateria — a única verificação real dessas regras, já que a suíte mocka o Supabase. Ganhou a seção **4-bis**, com 4 casos: recusa com inscrito, recusa com apelido, recusa ao trocar só `ativo` (o trigger é sobre a **linha**, não a coluna) e o **controle positivo** de que cargo sem menção ainda é renomeável.
 
 ---
+## ✅ CONCLUÍDO 2026-08-01 — a CG001 passou a trancar só por INSCRITO, não por apelido
+
+**Área:** Candidatos → cargos (ver [`estrutura/modulos/candidatos/cargos.md`](../../estrutura/modulos/candidatos/cargos.md))
+
+Decisão do usuário: *"a regra de bloqueio deve corresponder somente a condições de haver candidatos associados a esse cargo em algum edital"*.
+
+🔴 **A regra larga de 31/07 fechava a janela de correção NO MOMENTO ERRADO, e isso se lia no próprio assistente:** `salvarApelidos` grava a memória no fim do **passo 3**, e só o **passo 4** escreve os inscritos. O apelido recém-gravado já tornava o cargo imutável **antes de existir um único inscrito** — enquanto a doc prometia que a janela ia até o passo 3.
+
+Migration `20260801103940`. O par trigger+função é **RENOMEADO**, não só substituído: `..._em_uso` descrevia a regra larga, e aqui vale a armadilha da casa — **o nome mente antes do código**. `cargo_apelidos.cargo_id` volta a `CASCADE`, e o aviso *"N textos memorizados serão apagados junto"* volta ao diálogo de exclusão: sem ele o CASCADE vira **perda muda**.
+
+---
+
+## ✅ CONCLUÍDO 2026-08-01 — o timbre dos PDFs virou `src/lib/pdf-timbre.ts`
+
+**Área:** transversal (Aplicação de Provas + Candidatos)
+
+Três páginas geram PDF (`DocumentosImpressao`, `OcorrenciasProva`, `CandidatosImportar`) e as três copiavam o `useEffect` do logo **verbatim**, reescrevendo a geometria a cada vez.
+
+🔴 **A geometria do helper reproduz EXATAMENTE o que as páginas antigas emitiam, conferido linha a linha** — lista de presença e recibo de pagamento são **impressos e assinados**, então espaçamento não é cosmético. `desenharTimbre` devolve o Y do **TÍTULO**, e não "o Y livre abaixo", porque `DocumentosImpressao` reserva 14mm para a linha do Coordenador Geral **mesmo quando não há coordenador** — um helper não teria como saber disso.
+
+Três defeitos do relatório de importação saíram junto da extração: o `catch` mudo virou `<Alert>` visível (dizendo que os inscritos **já estão salvos**, senão a pessoa refaz a importação inteira achando que perdeu tudo); `overflow: 'hidden'` virou `'linebreak'` na coluna Detalhe (com `hidden` a mensagem do erro era **cortada sem aviso**, e o detalhe é a única coisa que o relatório existe para entregar); e saíram os 5 `(doc.internal as any)` — `getCurrentPageInfo()` e `getNumberOfPages()` são públicos e tipados no jsPDF 4.
+
+⚠️ **Armadilha nova, que custou sujeira no repo: `doc.save()` GRAVA ARQUIVO DE VERDADE no jsdom.** O teste de exportação bem-sucedida escreveu 4 PDFs na raiz antes de alguém notar. O mock de `criarDocumentoPaisagem` neutraliza `save` num spy — que de quebra permite afirmar o nome do arquivo.
+
+⏭️ **Ficou aberto de propósito:** o PDF de ocorrências só timbra a página 1. Corrigir **muda o documento emitido**, e a extração tinha como regra não mudar nenhum. Está no [`backlog.md`](../../backlog.md).
+
+---
+
+## ✅ CONCLUÍDO 2026-08-01 — a importação passou a trazer só quem PAGOU a inscrição
+
+**Área:** Candidatos (ver [`estrutura/modulos/candidatos/00-modulo.md`](../../estrutura/modulos/candidatos/00-modulo.md))
+
+Decisão do usuário. A coluna `CONFIRMADO` da planilha passou a **filtrar** a importação.
+
+**Medido no arquivo real** (`docs/temp/todos inscritos concurso 002-2026-SMA cabeçalho.xls`): a coluna é a de **índice 23** e só tem dois valores — `'1'` em **7.231** linhas e `'0'` em **185**. Sem vazio, sem terceiro valor.
+
+🔴 **`separarPorPagamento` roda ANTES do dedup, e a posição é CORREÇÃO, não estilo.** `deduplicar` mantém a **última** ocorrência da chave; na ordem inversa, um não-pagante que repetisse a chave de um pagante o **deslocaria** e só então seria descartado — o pagante sumiria da importação sem aparecer como erro, nem como repetida, nem como não-pagante. Há teste com o controle que mostra a perda na ordem errada.
+
+🔴 **`confirmado` virou campo OBRIGATÓRIO no pareamento, e não é zelo.** Opcional e não pareado, `parseBooleano(null)` devolveria `false` para toda linha, o filtro descartaria o arquivo inteiro, e — como importar é **troca total** — a lista do edital seria apagada com ninguém no lugar e a tela dizendo *"concluída"*. É o mesmo precedente do `cargo` (decisão D4), pelo mesmo motivo: **campo cuja ausência produz resultado errado em silêncio não pode ser opcional.**
+
+⚠️ **O rótulo "nesta planilha" virou "vão entrar"** na confirmação destrutiva. O número passou a ser **pós-filtro**, e o rótulo antigo virou promessa falsa no instante em que o filtro entrou — é exatamente o defeito do *"limpar edital"*, que exibia a contagem filtrada ao lado de um botão que apagava o edital inteiro, e estava atrás da mesma confirmação.
+
+⚠️ **"Sem pagamento" NÃO se soma a "Não importados".** As duas dizem que a linha ficou de fora, mas a providência é **oposta**: erro de dado se corrige na planilha e se reimporta; inscrição não paga não é defeito nenhum. Juntá-las mandaria a pessoa caçar erro em 185 linhas que não têm nenhum.
+
+**Consequência aceita e registrada:** o selo *"não confirmada"* e a linha *"Inscrição confirmada"* ficaram inalcançáveis. Decisão do usuário mantê-los — está no [`backlog.md`](../../backlog.md). Uma `CHECK (confirmado = true)` foi **considerada e rejeitada**: a regra é sobre *o que a importação seleciona*, não sobre *o que um candidato pode ser*.
+
+---
+
+## ✅ CONCLUÍDO 2026-08-01 — a chave natural virou `(edital_id, n_inscricao)`
+
+**Área:** Candidatos (ver [`estrutura/modulos/candidatos/00-modulo.md`](../../estrutura/modulos/candidatos/00-modulo.md))
+
+Decisão do usuário: *"a chave que deve ser única para cada candidato é o `n_inscricao`; um mesmo CPF pode ter mais de uma inscrição, desde que para cargos diferentes"*. Migration `20260801193530`.
+
+🔴 **ESTE ITEM INVERTE UM AVISO QUE ESTAVA EM LETRAS VERMELHAS**, e é o motivo de ele estar registrado com tanto detalhe. A doc do módulo dizia: *"`cargo_id` NÃO é redundante: é ele que garante a unicidade… **não simplifique para `(edital_id, n_inscricao)`** — já foi proposto aqui e **destrói dado**"*. O arquivo [`candidatos-chave-natural-e-a-coluna-0.md`](./candidatos-chave-natural-e-a-coluna-0.md) registrava a mesma proposta como **rejeitada**.
+
+**O aviso não estava errado sobre o dado — estava certo sobre OUTRA COLUNA.** Ele valia enquanto a inscrição era lida na coluna `ID`, que é a **pessoa** e repete 396 vezes. Com a inscrição vindo da **coluna A** (decisão do usuário, mesma data), o número é único por linha e a simplificação passou a ser correta.
+
+⚠️ **Como o erro quase se repetiu, e o que o desfez:** ao ser consultado, medi os "382 repetidos" na coluna `ID` e concluí que a proposta fundiria 380 pagantes — a resposta errada, pela mesma confusão de três reviravoltas anteriores. O usuário insistiu duas vezes. **O que desfez não foi medir mais: foi olhar o que o banco JÁ gravava** — 7.231 candidatos, 7.231 `n_inscricao` distintos, de 1 a 7416.
+
+**Medido antes de apertar:**
+
+| Onde | O quê | Resultado |
+|---|---|---|
+| arquivo real, 7.416 linhas | nº de inscrição repetido | **0** |
+| banco local, 7.231 candidatos | `(edital_id, n_inscricao)` repetido | **0** |
+
+A chave nova é **estritamente mais apertada** (4 colunas → 2) e mesmo assim nenhuma linha existente a violava — não houve saneamento.
+
+🔴 **`edital_id` é indispensável, por um motivo NOVO:** o nº de inscrição **recomeça em 1 a cada planilha**. Sem ele, o segundo edital importado colidiria já na primeira linha.
+
+**Os dois lados aceitos**, ambos com 0 casos no arquivo medido: *afrouxou* — não barra mais o mesmo CPF duas vezes no mesmo cargo com números diferentes; *apertou* — nº repetido entre cargos passa a fundir, mantendo a última, **mas não em silêncio**: a descartada sai nomeada na seção *Repetidas* do relatório.
+
+**O que caiu junto, e não deve voltar sem cuidado:** o `NULLS NOT DISTINCT` saiu do índice (existia porque `cpf`/`cargo_id` são nullable; as duas colunas novas são `NOT NULL`) e os `??` de `chaveNatural()` saíram com ele. A **fusão dos 2 CPFs impossíveis** — o defeito de 29/07 que um teste verde afirmava como correto — virou impossível **por construção**: eles estão nas inscrições 375 e 4256.
+
+⚠️ **Verificação: a suíte MOCKA o Supabase e não exercita índice único.** A prova é [`../../../docs/bateria-chave-natural-candidatos.sql`](../../../docs/bateria-chave-natural-candidatos.sql), 5 casos com controle positivo, em transação com `ROLLBACK`. ⚠️ A guarda de colisão dentro da migration é **no-op num `db reset`** (migrations rodam antes do dump) — ela vale para push contra base já povoada.
+
+---

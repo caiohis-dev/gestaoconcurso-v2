@@ -386,8 +386,16 @@ ROLLBACK;
 \echo '╚════════════════════════════════════════════════════════════════════════╝'
 
 \echo ''
-\echo '-- 7.1 A chave natural é por cargo_id, e cargo_chave NÃO existe mais (D3)'
-\echo '--     Esperado: candidatos_cpf_cargo_id_inscricao_key presente; nenhuma cargo_chave'
+\echo '-- 7.1 🔴 REESCRITO em 2026-08-01 — o CARGO SAIU DA CHAVE NATURAL.'
+\echo '--     Este caso esperava `candidatos_cpf_cargo_id_inscricao_key` e filtrava os'
+\echo '--     índices por LIKE %cargo%. A migration 20260801193530 trocou a chave para'
+\echo '--     (edital_id, n_inscricao): o nome novo NÃO tem "cargo", então o filtro antigo'
+\echo '--     voltava VAZIO e a linha de esperado mentia — bateria que não acha nada'
+\echo '--     parece caso passando.'
+\echo '--     A chave natural agora se verifica em docs/bateria-chave-natural-candidatos.sql.'
+\echo '--     O que sobra aqui é o que É de cargos: `cargo_chave` continuar não existindo'
+\echo '--     (D3) e `cargo_id` seguir indexado para o "quem usa ESTE cargo?" da CG001.'
+\echo '--     Esperado: idx_candidatos_cargo presente; 0 colunas cargo_chave.'
 SELECT indexname FROM pg_indexes
 WHERE schemaname = 'public' AND tablename = 'candidatos' AND indexname LIKE '%cargo%'
 ORDER BY 1;

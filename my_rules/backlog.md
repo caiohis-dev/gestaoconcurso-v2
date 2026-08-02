@@ -34,6 +34,10 @@ errada e o que cada decisão custou. Antes de reabrir qualquer tema abaixo, proc
 | ✅ 30/07 | o registro órfão deixou de ser possível: importar virou TROCA TOTAL |
 | ✅ 31/07 | os grants de `anon` foram a zero, e a auditoria achou um vazamento de leitura |
 | ✅ 31/07 | as duas pontas de infraestrutura de teste |
+| ✅ 01/08 | a CG001 passou a trancar só por INSCRITO, não por apelido |
+| ✅ 01/08 | o timbre dos PDFs virou `src/lib/pdf-timbre.ts`, dono único das três páginas |
+| ✅ 01/08 | a importação passou a trazer **só quem pagou** a inscrição |
+| ✅ 01/08 | a chave natural virou `(edital_id, n_inscricao)` — CPF e cargo saíram da identidade |
 
 ---
 
@@ -268,7 +272,9 @@ Publicar a v2 em infraestrutura própria (ex.: Vercel, Netlify, ou build estáti
 
    🔴 **O item dizia "3 asserções" e eram QUATRO** — e a quarta é a que importa: `converterLinha` afirmava `n_inscricao: "214274"`, que é o `ID` da coluna B, **o identificador da PESSOA**. O teste ficava verde porque o fixture defasado mapeava `n_inscricao` para a coluna 1; ele afirmava como correto exatamente o defeito que a correção de 28/07 identificou. **Armadilha 8 de `testes.md` outra vez** — teste verde guardando defeito — e a **quarta** vez que um item deste backlog erra a contagem ou a premissa.
 
-2. **Alargar o trigger da 5b**, tirando a comparação de texto, fecharia o buraco registrado como "irredutível" — ⚠️ mas o **CONTROLE POSITIVO 1** da bateria de cargos quebra e precisa ser **reescrito** com inscrições diferentes. **Fica sem sentido se a chave mudar**, então decidir a chave ANTES de investir no trigger.
+2. ~~**Alargar o trigger da 5b**~~ — ❌ **SEM OBJETO desde 2026-08-01.** O item dizia *"fica sem sentido se a chave mudar, então decidir a chave ANTES"*. A chave **mudou** (migration `20260801193530`: agora é `(edital_id, n_inscricao)`), e o trigger em questão — `candidatos_recusa_reapontar_cargo`, o `RC001` — **já não existia**: foi dropado em 30/07 pela `20260730140000`, quando a troca total o tornou incapaz de disparar. O item sobreviveu a essa remoção por dois dias falando de um trigger que o banco não tem.
+
+   ⚠️ **É a quinta vez que um item deste backlog carrega premissa errada** — aqui, um alvo que já tinha sido removido. Conferir a premissa no código antes de executar continua sendo obrigatório.
 
 3. ~~**`anon` continua com `TRUNCATE` em `candidatos`**~~ — ✅ **RESOLVIDO em 2026-07-31** pela migration `20260731110000`: `anon` perdeu **todos** os privilégios em `public`, e o `ALTER DEFAULT PRIVILEGES` parou de reconceder. Ver ["os grants de `anon` foram a zero"](./analises/concluidos/backlog-itens-concluidos.md) no histórico — a execução do item achou, de quebra, um vazamento de leitura em 8 policies.
 
