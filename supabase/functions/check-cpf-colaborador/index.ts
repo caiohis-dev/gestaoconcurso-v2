@@ -21,7 +21,20 @@ Deno.serve(async (req) => {
       );
     }
 
-    const cpf = parsed.data.cpf.replace(/\D/g, '').padStart(11, '0');
+    // 🔴 O `.padStart(11, '0')` SAIU em 2026-08-02, e tirá-lo é o conserto de um defeito
+    // real — não é limpeza.
+    //
+    // Era exatamente o bug que `src/lib/cpf.ts` documenta como o original do
+    // `ColaboradorDialog`: preencher com zeros ANTES de conferir o tamanho faz a
+    // checagem `length !== 11` nunca falhar para entrada CURTA. Seis dígitos viravam
+    // `00000123456` — um CPF de OUTRA PESSOA — e a função consultava esse.
+    //
+    // A consequência não era só um resultado errado: se o CPF preenchido existisse, o
+    // usuário era mandado para o fluxo "você já tem cadastro", que dispara a
+    // reivindicação de acesso sobre o registro de terceiro.
+    //
+    // ⚠️ Sem o pad, `length !== 11` volta a valer para os dois lados (curto e longo).
+    const cpf = parsed.data.cpf.replace(/\D/g, '');
     if (cpf.length !== 11) {
       return new Response(
         JSON.stringify({ error: 'CPF inválido' }),

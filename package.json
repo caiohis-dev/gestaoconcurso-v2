@@ -9,6 +9,7 @@
     "build:dev": "vite build --mode development",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:ef": "bash scripts/test-ef.sh",
     "lint": "eslint .",
     "preview": "vite preview",
     "supabase:start": "supabase start",

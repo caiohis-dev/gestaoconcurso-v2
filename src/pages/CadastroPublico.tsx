@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle, ArrowLeft } from 'lucide-react';
+import { cpfValido } from '@/lib/cpf';
 import fevreLogo from '@/assets/fevre-logo.png';
 
 const formatCpf = (value: string) => {
@@ -23,7 +24,10 @@ export default function CadastroPublico() {
   const navigate = useNavigate();
   const [step, setStep] = useState<'check' | 'form' | 'ja_existe'>('check');
   const [cpf, setCpf] = useState('');
-  const [cpfValido, setCpfValido] = useState('');
+  // ⚠️ Chamava-se `cpfValido` até 2026-08-02 e o nome mentia: guarda a STRING do CPF que
+  // passou na checagem, não um booleano de validade. Renomeado porque `cpfValido` agora é
+  // a FUNÇÃO importada de `@/lib/cpf` — e o nome novo é o que ele sempre significou.
+  const [cpfConferido, setCpfConferido] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -33,8 +37,26 @@ export default function CadastroPublico() {
     setError(null);
 
     const cpfClean = cpf.replace(/\D/g, '');
+
+    // 🔴 Valida os DÍGITOS VERIFICADORES antes de consultar, e não só o tamanho.
+    //
+    // Esta era a ÚNICA porta do sistema fora do `cpfValido` — o `ColaboradorDialog` e o
+    // `CadastroLote` já usavam desde 26/07 —, e é a única aberta ao público.
+    //
+    // Duas mensagens, e a distinção não é preciosismo: "digite os 11 dígitos" para quem
+    // ainda não terminou, "confira os dígitos" para quem terminou e errou. A mensagem
+    // única de antes ("Digite um CPF válido com 11 dígitos") mentia nos dois casos —
+    // dizia "11 dígitos" a quem já tinha digitado 11.
+    //
+    // ⚠️ Isto NÃO é barreira de segurança: quem quiser sondar chama a Edge Function
+    // direto. O ganho aqui é poupar a ida ao servidor e dizer ao usuário o que corrigir.
+    // A barreira é a própria EF, que devolve só `{exists}` e nunca o e-mail.
     if (cpfClean.length !== 11) {
-      setError('Digite um CPF válido com 11 dígitos.');
+      setError('Digite os 11 dígitos do CPF.');
+      return;
+    }
+    if (!cpfValido(cpfClean)) {
+      setError('CPF inválido — confira os dígitos.');
       return;
     }
 
@@ -64,7 +86,7 @@ export default function CadastroPublico() {
         return;
       }
 
-      setCpfValido(cpfClean);
+      setCpfConferido(cpfClean);
       setStep('form');
       setDialogOpen(true);
     } catch (err: any) {
@@ -88,7 +110,7 @@ export default function CadastroPublico() {
           open={dialogOpen}
           onOpenChange={handleDialogChange}
           publicMode
-          initialCpf={cpfValido}
+          initialCpf={cpfConferido}
         />
       </div>
     );

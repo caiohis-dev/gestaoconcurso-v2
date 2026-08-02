@@ -39,6 +39,7 @@ errada e o que cada decisão custou. Antes de reabrir qualquer tema abaixo, proc
 | ✅ 01/08 | a importação passou a trazer **só quem pagou** a inscrição |
 | ✅ 01/08 | a chave natural virou `(edital_id, n_inscricao)` — CPF e cargo saíram da identidade |
 | ✅ 02/08 | o edital de uma prova virou **imutável** depois de definido (`PE001`) |
+| ✅ 02/08 | o cadastro público passou a validar o CPF antes de consultar — e a EF perdeu um `padStart` que consultava outra pessoa |
 
 ---
 
@@ -118,19 +119,6 @@ O que **existe** hoje é verificação manual da autorização de duas delas, em
 **O usuário decidiu em 2026-07-25 deixar o CI para o final.** Não é esquecimento — está registrado no item próprio abaixo ("Rodar a suíte de testes automaticamente"), que segue válido e continua sendo **o de maior alavancagem da lista**. A consequência de a decisão valer: **nada roda a suíte sozinho**, então cada tema fechado depende de alguém lembrar.
 
 ⚠️ **O custo dessa decisão cresceu.** Em 25/07 eram 376 testes; hoje são **743**, e as três camadas fechadas (hooks, diálogos, guards) só protegem quem as executa. O argumento original — "escrever mais teste rende menos até o CI existir" — agora aponta com mais força para o CI do que para a próxima camada de cobertura.
-
----
-
-## O cadastro público não valida o CPF antes de consultar o banco
-
-**Status:** pendente — **achado na auditoria de `analises/`** em 2026-07-26
-**Área:** Colaboradores (ver [`estrutura/modulos/aplicacao-provas/colaboradores.md`](./estrutura/modulos/aplicacao-provas/colaboradores.md))
-
-`/cadastro-publico` pede o CPF, apenas tira o que não é dígito (`CadastroPublico.tsx:35`) e já chama a EF `check-cpf-colaborador`. Desde 2026-07-26 existe `cpfValido` (`src/lib/cpf.ts`), usado pelo `ColaboradorDialog` e pelo `CadastroLote` — **esta porta ficou de fora**, e é a única aberta ao público.
-
-Validar antes da consulta poupa uma ida ao servidor, dá mensagem melhor ("confira os dígitos" em vez de "não encontrado") e reduz superfície de sondagem, já que a EF responde se o CPF existe.
-
-⚠️ **Armadilha ao implementar:** aquele arquivo já tem um **estado** chamado `cpfValido` (`CadastroPublico.tsx:26`), que guarda o CPF em string. Importar a função de mesmo nome colide. Renomeie o estado (`cpfConferido`, por exemplo) — não a função, que já está em uso em dois lugares.
 
 ---
 

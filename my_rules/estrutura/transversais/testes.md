@@ -210,20 +210,44 @@ O coração dessa infraestrutura é o `supabase/functions/_shared/test-utils.ts`
 
 #### Como rodar — e as duas pré-condições que ninguém tinha escrito
 
-⚠️ **`deno` NÃO é dependência do projeto e pode não estar instalado** (não estava, em 31/07). `npm test` não alcança esta camada, e nada avisa: quem nunca instalou o Deno simplesmente não roda estes testes e não recebe sinal nenhum disso. Não há script no `package.json`.
+### 🔵 Desde 2026-08-02: `npm run test:ef`
 
-Com a stack de pé (`npx supabase start`), as chaves saem de `npx supabase status`:
+Com a stack de pé, é só isso:
 
 ```bash
-export SUPABASE_URL="http://127.0.0.1:54321"
-export SUPABASE_ANON_KEY="<PUBLISHABLE_KEY>"
-export SUPABASE_SERVICE_ROLE_KEY="<SERVICE_ROLE_KEY>"
-deno test --allow-net --allow-env supabase/functions/create-admin/index.test.ts
+npm run test:ef                      # todos os testes de EF
+npm run test:ef -- supabase/functions/create-admin/index.test.ts   # um arquivo
 ```
+
+O script (`scripts/test-ef.sh`) lê as três variáveis do próprio `supabase status`, então elas não vivem copiadas em lugar nenhum. **Executado em 02/08: 8 passos, todos verdes, sem resíduo no banco** — o teste tinha 4 dias sem nunca ter rodado.
+
+**A decisão de instalar o Deno**, com o que foi medido, está em [`../../analises/concluidos/backlog-itens-concluidos.md`](../../analises/concluidos/backlog-itens-concluidos.md).
+
+⚠️ **`deno` NÃO é dependência do projeto** e não entra no `package.json` — é um binário à parte (2.9.4, em `~/.deno/bin`). O script o localiza e, se faltar, **falha com a instrução de instalação** em vez de sumir em silêncio.
+
+⚠️ **`npm test` continua sem alcançar esta camada.** Instalar o Deno resolveu *"não dá para rodar"*; **não** resolveu *"nada avisa"*. Enquanto o CI não existir, rodar `test:ef` continua dependendo de alguém lembrar — a diferença é que agora existe um comando descoberto, e não três `export` enterrados nesta doc.
+
+> O comando cru, se precisar dele fora do script:
+> ```bash
+> export SUPABASE_URL="http://127.0.0.1:54321"
+> export SUPABASE_ANON_KEY="<ANON_KEY>"
+> export SUPABASE_SERVICE_ROLE_KEY="<SERVICE_ROLE_KEY>"
+> deno test --allow-net --allow-env supabase/functions/create-admin/index.test.ts
+> ```
 
 🔴 **As três variáveis são obrigatórias, e desde 2026-07-31 a ausência LANÇA.** Antes, `callFunction` omitia o header `Authorization` quando `SUPABASE_ANON_KEY` faltava — e o caso *"A1 — Anon Key crua (401)"* passava a exercitar **"requisição sem header nenhum"**, que também dá 401. O teste seguia verde afirmando outro cenário, e o que ele existe para guardar — que **`verify_jwt` não é autorização**, porque a anon key *é* um JWT válido e público, a falha que já apareceu em `send-email` e `create-admin` — deixava de ser coberto. `getAdminClient` já lançava; `callFunction` passou a fazer igual.
 
 Para testar de propósito a ausência de header, passe `""` como token — é explícito, e não se confunde com env var faltando.
+
+### 🔴 Antes de escrever teste para OUTRA Edge Function
+
+São **9 EFs e apenas 1 tem teste** (`create-admin`). Expandir esbarra numa condição deste ambiente que não vale a pena descobrir do jeito errado:
+
+⚠️ **`public-create-colaborador`, `reivindicar-acesso`, `recuperar-senha` e `send-email` ENVIAM E-MAIL DE VERDADE daqui**, e o banco local é cópia de produção — 771 endereços reais. Um teste que dispare qualquer uma delas contra a linha errada manda e-mail com SPF/DKIM da FEVRE para a caixa de uma pessoa real. Ver [`integracoes-externas.md`](./integracoes-externas.md).
+
+**`create-admin` é o único que roda sem combinado prévio: ele não envia e-mail** (verificado em 02/08), e o teste usa endereços `@exemplo.com` com `email_confirm: true`, que suprime a confirmação nativa.
+
+⚠️ **Estes testes são de INTEGRAÇÃO e criam/apagam usuários reais no Auth local.** O de `create-admin` tem teardown e foi verificado sem deixar resíduo; se um passo estourar antes dele, sobra conta `test_runner_*` num banco que é cópia de prod.
 **Das páginas, o que está coberto é o guard, não o comportamento.** A bateria afirma quem entra e para onde o recusado é mandado; ela não exercita formulário, listagem nem ação de página nenhuma. As **4 páginas fora da matriz** são as que não têm guard a testar, todas públicas por natureza: `/auth`, `/cadastro-publico`, `/redefinir-senha` e `NotFound`.
 
 O inventário completo, com ordem de prioridade e o que **não** se testa aqui, está no [`backlog.md`](../../backlog.md) → "Completar a suíte de testes (Vitest)".

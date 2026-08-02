@@ -523,6 +523,8 @@ Agora **lança**, como o `getAdminClient` já fazia. Para exercitar de propósit
 
 🔴 **Não consegui executar os testes de EF: `deno` não está instalado** neste ambiente, não é dependência do projeto e não há script no `package.json`. A correção é de leitura e revisão, **não foi rodada**. Isso é uma lacuna maior que o item: quem nunca instalou o Deno não roda esta camada e **não recebe sinal nenhum disso**. O comando e as três variáveis obrigatórias foram documentados em `testes.md`, que não os trazia.
 
+> 🔵 **Resolvido em 2026-08-02:** o Deno foi instalado e a camada ganhou `npm run test:ef`. **A correção descrita acima foi finalmente executada e passa** — os 8 passos, sem resíduo. A lacuna que este parágrafo aponta ("nada avisa") **só foi resolvida pela metade**: `npm test` continua sem alcançar a camada. Ver a decisão no fim deste arquivo.
+
 ### 2. `bateria-cargos.sql` exigia catálogo sem os fixtures dela — **e estava desatualizada em 4 pontos**
 
 A pré-condição **foi eliminada**, não só anotada: todo fixture ganhou o prefixo `BATERIA `, que nenhuma origem produz. **Provado** povoando o catálogo com os nomes reais (`DOCENTE II`, `ARTE`, `DOCENTE I — HISTÓRIA`, `DOCENTE I ¿ HISTÓRIA`) e rodando: **zero** ocorrências de *"transaction is aborted"*, contra 2 antes.
@@ -656,5 +658,87 @@ O `db reset` completo foi rodado **com o trigger instalado** e o `seed.pos.sql` 
 **Falsificado 2 vezes:** devolver `edital_id` ao payload da edição derrubou o teste do payload; tirar a guarda do `NULL` do trigger derrubou **exatamente o caso 3** da bateria, o controle positivo do backfill.
 
 ⚠️ **Um teste da suíte inverteu**, e ficou dizendo o que afirmava: `"trocar o edital de uma prova existente NÃO sobrescreve os campos dela"` **trocava o edital** para provar que a herança não reagia. O cenário virou inalcançável. O que ele guardava — PDFs e alocação leem os campos DA prova — continua guardado por um caminho mais forte: não há troca que possa reagir.
+
+---
+## ✅ CONCLUÍDO 2026-08-02 — o cadastro público valida o CPF antes de consultar
+
+**Área:** Colaboradores (ver [`estrutura/modulos/aplicacao-provas/colaboradores.md`](../../estrutura/modulos/aplicacao-provas/colaboradores.md))
+
+Item aberto em 2026-07-26. `/cadastro-publico` conferia só o **tamanho** do CPF e já chamava a Edge Function — era a **última porta fora do `cpfValido`** e a **única aberta ao público**.
+
+**A armadilha que o item avisava era real e ainda estava lá:** o arquivo tinha um *estado* chamado `cpfValido`, que colidiria com a função importada. Renomeado para `cpfConferido` — e o nome novo é o que ele sempre significou: guarda a **string** do CPF que passou na checagem, não um booleano de validade.
+
+**Duas mensagens, no lugar de uma.** *"Digite os 11 dígitos"* para quem não terminou, *"CPF inválido — confira os dígitos"* para quem terminou e errou. A mensagem única de antes (*"Digite um CPF válido com 11 dígitos"*) mentia nos dois casos — dizia "11 dígitos" a quem já tinha digitado 11. São erros com providências diferentes: continuar digitando vs. conferir o que digitou.
+
+⚠️ **A validação da tela NÃO é barreira de segurança**, e o comentário no código diz isso: quem quer sondar chama a EF direto. O ganho é poupar a ida ao servidor e dizer o que corrigir. A barreira é a própria EF, que devolve só `{exists}`.
+
+### 🔴 O achado: a Edge Function consultava o CPF de OUTRA PESSOA
+
+Ao ler a EF para escrever o item, apareceu um defeito que não estava no backlog:
+
+```ts
+const cpf = parsed.data.cpf.replace(/\D/g, '').padStart(11, '0');
+if (cpf.length !== 11) { ... }   // nunca falha para entrada CURTA
+```
+
+É **exatamente** a classe de defeito que `src/lib/cpf.ts` documenta como o bug original do `ColaboradorDialog`: preencher com zeros **antes** de conferir o tamanho faz a checagem nunca falhar por baixo. Seis dígitos viravam `00000123456` — um CPF de terceiro — e a função consultava esse.
+
+**A consequência não era só resultado errado:** se o CPF preenchido existisse, o usuário era mandado ao fluxo *"você já tem cadastro"*, que dispara a reivindicação de acesso sobre o **registro de outra pessoa**.
+
+O `padStart` saiu. Sem ele, `length !== 11` volta a valer para os dois lados.
+
+⚠️ **A EF continua sem o módulo 11**, e é decisão: duplicar o algoritmo no Deno criaria um segundo validador que pode divergir do de `src/lib/`. O que a EF precisa garantir é não consultar a linha errada, e o tamanho resolve. Se a validação completa for necessária no servidor um dia, a saída é **compartilhar o módulo**, não copiá-lo.
+
+### Verificação
+
+**4 testes novos** em `src/pages/CadastroPublico.ui.test.tsx` — o primeiro arquivo de teste desta tela.
+
+⚠️ **O mock é do `fetch` GLOBAL, não do client do Supabase**, e o comentário do arquivo explica: esta tela não usa o client, ela monta a chamada à EF à mão (é fluxo sem login). Mockar `supabase.functions.invoke` não pegaria nada. É padrão novo no repo — não havia mock de `fetch` em lugar nenhum.
+
+O teste central é **"CPF com DV errado NÃO chega à Edge Function"**, com o **controle positivo** de que CPF válido chega — sem ele, a asserção passaria mesmo se a tela tivesse parado de chamar a EF por completo, que é o modo de falha mais fácil de introduzir aqui.
+
+**Falsificado:** tirar a chamada a `cpfValido` derrubou 2 dos 4 (o DV errado e o de dígitos repetidos) e preservou os 2 controles — exatamente o esperado.
+
+⚠️ **A mudança da EF NÃO foi executada**, e segue sem teste: não existe arquivo de teste para `check-cpf-colaborador` — só `create-admin` tem. Ela é inerte até `supabase functions deploy`.
+
+> 🔵 **O motivo mudou horas depois, no mesmo dia:** o `deno` foi **instalado** em 02/08 e a camada ganhou `npm run test:ef` (ver a decisão logo abaixo neste arquivo). O que impede verificar esta EF hoje não é mais a falta do runtime — é a falta de um teste para ela.
+
+---
+## ✅ DECIDIDO 2026-08-02 — instalar o Deno e dar um comando à camada de EF
+
+**Área:** Infraestrutura de testes (ver [`estrutura/transversais/testes.md`](../../estrutura/transversais/testes.md))
+
+Não era item de backlog — virou decisão porque **esbarramos nisso três vezes**: em 31/07 (ao consertar o `callFunction`, que não pôde ser executado), e em 02/08 ao corrigir o `padStart` do `check-cpf-colaborador`, que foi commitado **sem verificação nenhuma**.
+
+### O que foi medido antes de decidir
+
+| | |
+|---|---|
+| Edge Functions | **9** |
+| Arquivos de teste de EF | **1** (`create-admin/index.test.ts`) |
+| Já tinha rodado neste ambiente | **não**, desde que foi escrito em 28/07 |
+| Script no `package.json` | nenhum |
+
+🔴 **O argumento não foi destravar 1 arquivo — foi que as EFs são onde mora a autorização.** É lá que `verify_jwt` não é autorização, a falha que já apareceu **duas vezes** (`send-email` e `create-admin`). Mudar uma EF sem poder executá-la, com 9 delas no repo, era garantia de repetição.
+
+**Custo, medido e contido:** binário único (2.9.4, `~/.deno/bin`), **não** entra no `package.json`, não toca a suíte do Vitest. Desinstalar não deixa rastro no projeto.
+
+### O que a decisão entregou
+
+**`npm run test:ef`** (`scripts/test-ef.sh`). Ele lê as três variáveis obrigatórias do próprio `supabase status` — antes elas viviam como três `export` enterrados no `testes.md`, e quem não conhecesse o comando não rodava nada.
+
+**Resultado da primeira execução:** os 8 passos passaram, e o teardown não deixou resíduo (conferido: 0 contas `test_runner_*`/`novo_admin_*` em `auth.users`). O teste tinha 4 dias sem nunca ter rodado e **não** estava quebrado.
+
+### ⚠️ O que a decisão NÃO resolveu
+
+**Instalar o Deno resolveu *"não dá para rodar"*. NÃO resolveu *"nada avisa"*.** `npm test` continua sem alcançar a camada, e o CI segue adiado — então rodar `test:ef` ainda depende de alguém lembrar. A diferença é que agora existe um comando descoberto em vez de instruções enterradas numa doc.
+
+### 🔴 O achado que limita expandir esta camada
+
+Escrever teste para as **outras 8 EFs** esbarra numa condição do ambiente:
+
+**`public-create-colaborador`, `reivindicar-acesso`, `recuperar-senha` e `send-email` enviam e-mail de verdade daqui**, e o banco local é cópia de produção — 771 endereços reais. Um teste que dispare qualquer uma contra a linha errada manda e-mail com SPF/DKIM da FEVRE para uma pessoa real.
+
+**`create-admin` é o único que roda sem combinado prévio**, porque não envia e-mail (verificado) e o teste usa `@exemplo.com` com `email_confirm: true`. Expandir a cobertura exige **decidir antes** o guardrail — endereço de teste obrigatório ou SMTP de teste —, não depois.
 
 ---

@@ -134,7 +134,7 @@ sg docker -c 'npx supabase db reset'    # aplica migrations + os 3 seeds
 
 - Gerenciador é **npm** (não bun). `npm run dev` sobe na porta 8080.
 - Vite lê `.env` só no boot — reinicie o dev server depois de mexer nele.
-- ⚠️ **`deno` NÃO está instalado** e não é dependência do projeto. Os testes de Edge Function (`supabase/functions/**/*.test.ts`) **não rodam** sem instalá-lo, e nada avisa. Ver `estrutura/transversais/testes.md`.
+- 🔵 **`deno` ESTÁ instalado desde 2026-08-02** (2.9.4, em `~/.deno/bin`) e os testes de Edge Function rodam com **`npm run test:ef`**. ⚠️ Ele **não** é dependência do projeto e **não** entra no `package.json` — o script só o localiza e falha com instrução se faltar. `npm test` (Vitest) **continua sem alcançar** essa camada. Ver `estrutura/transversais/testes.md`.
 
 ---
 
