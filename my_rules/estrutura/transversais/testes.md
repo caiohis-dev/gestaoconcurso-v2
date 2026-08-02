@@ -148,7 +148,9 @@ A primeira custou **4 PDFs commitáveis na raiz** antes de alguém notar, em 01/
 
 ## O que está coberto (2026-07-27)
 
-**974 testes em 51 arquivos** (medido em 2026-07-30, ao fim do tema "dado inválido entra cru"; eram 965 em 29/07). O módulo Candidatos sozinho responde por **206** deles.
+**1.104 testes em 56 arquivos** (medido em 2026-08-02, ao fim dos temas "fonte única do nº de inscritos" e "CPF pela regra oficial"; eram 974 em 51 arquivos em 30/07, e 965 em 29/07).
+
+🔵 **Os dois temas de 02/08 renderam mais casos REESCRITOS do que novos**, e é o padrão a esperar quando uma regra muda: 11 casos caíram ao unificar o nº de inscritos (afirmavam a herança de `n_candidatos` e o payload com o campo) e 2 ao trocar a rotulagem do CPF inválido (afirmavam `"tamanho"` para um valor cuja causa é um caractere intruso). **Nenhum deles estava errado no veredito** — estavam certos sobre o código de ontem. Ver a armadilha 8 e a regra em destaque acima.
 
 ⚠️ **Os 9 testes novos de 30/07 quase todos AFIRMAM O CONTRÁRIO do que a suíte afirmava na véspera** — a decisão inverteu a regra (o campo impossível deixou de virar `NULL` e passou a entrar cru). **Um deles guardava um defeito**: "duas linhas com CPF impossível não viram duas" descrevia o `deduplicar()` fundindo dois inscritos distintos num só. É o caso exemplar da armadilha 8 abaixo.
 
