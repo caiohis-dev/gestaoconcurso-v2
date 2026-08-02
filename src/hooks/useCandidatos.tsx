@@ -201,6 +201,111 @@ export function useContagemCandidatosPorEdital() {
   return { contagem: query.data ?? {}, isLoading: query.isLoading };
 }
 
+/** Uma linha do relatório persistido — o shape da tabela, não o do export. */
+export interface LinhaRelatorio {
+  id: string;
+  n_inscricao: string;
+  situacao: string;
+  campo: string;
+  detalhe: string;
+}
+
+/**
+ * O relatório PERSISTIDO da última importação de um edital.
+ *
+ * ⚠️ Não confundir com o relatório de EXPORT (XLS/PDF do assistente): aquele vive na
+ * memória da sessão de importação e some ao fechar a aba. Este sobrevive, e é o único que
+ * ainda existe depois. Ver `candidatos_relatorio_importacao` (migration 20260802145848).
+ *
+ * 🔴 **É PAGINADO, e não é zelo:** o PostgREST corta a resposta em `max_rows = 1000`
+ * (config.toml). Um relatório maior que isso voltaria TRUNCADO sem erro nenhum — a
+ * pessoa veria 1.000 problemas e concluiria que são todos. O gate de tamanho da
+ * importação (`LIMITE_RELATORIO_BYTES`) permite ~32.000 linhas, então a faixa entre 1.000
+ * e 32.000 é alcançável de verdade. O `count: "exact"` é do servidor, como na listagem.
+ *
+ * ⚠️ **A ORDEM DA PLANILHA NÃO É RECUPERÁVEL, e o `ORDER BY` daqui é uma escolha.** A
+ * tabela não guarda `linhaPlanilha` nem um `ordem`, e `created_at` é o mesmo para todas
+ * as linhas (é `now()` da transação, não por linha). Sem `ORDER BY` explícito o Postgres
+ * não promete ordem alguma — a paginação passaria a repetir e pular linhas entre páginas.
+ * Ordena-se por `campo` e depois `n_inscricao` porque é o agrupamento que o PDF já usa:
+ * quem lê o relatório corrige a planilha, e corrigir é trabalho por coluna.
+ */
+export function useRelatorioImportacao({
+  editalId,
+  pagina = 0,
+  porPagina = 50,
+}: {
+  editalId: string | null;
+  pagina?: number;
+  porPagina?: number;
+}) {
+  const query = useQuery({
+    queryKey: ["relatorio-importacao", editalId, pagina, porPagina],
+    enabled: !!editalId,
+    queryFn: async () => {
+      const { data, error, count } = await supabase
+        .from("candidatos_relatorio_importacao")
+        .select("id, n_inscricao, situacao, campo, detalhe", { count: "exact" })
+        .eq("edital_id", editalId as string)
+        .order("campo", { ascending: true })
+        .order("n_inscricao", { ascending: true })
+        .range(pagina * porPagina, pagina * porPagina + porPagina - 1);
+
+      if (error) throw error;
+      return { linhas: (data ?? []) as LinhaRelatorio[], total: count ?? 0 };
+    },
+  });
+
+  return {
+    linhas: query.data?.linhas ?? [],
+    total: query.data?.total ?? 0,
+    // ⚠️ `isLoading` é lido pela tela para NÃO mostrar "nenhum problema" enquanto carrega:
+    // relatório vazio e relatório carregando são estados diferentes, e confundi-los é o
+    // padrão de defeito mais repetido deste repo.
+    isLoading: query.isLoading,
+    error: query.error,
+  };
+}
+
+/**
+ * Baixa o relatório INTEIRO de um edital, para exportar — não a página que a tela mostra.
+ *
+ * 🔴 **Pagina em laço, e isso não é otimização prematura.** O PostgREST corta em
+ * `max_rows = 1000` (config.toml), então um `select` único devolveria no máximo 1.000
+ * linhas **sem erro nenhum** — o XLS sairia truncado e a pessoa não teria como saber. É a
+ * mesma razão de a listagem de candidatos paginar; aqui o custo de errar é pior, porque o
+ * arquivo exportado vira o documento que alguém anexa a processo.
+ *
+ * ⚠️ O `ORDER BY` tem de ser o MESMO da tela (`campo`, depois `n_inscricao`): sem ordem
+ * estável o laço repetiria e pularia linhas entre as fatias. Ver `useRelatorioImportacao`.
+ */
+export async function buscarRelatorioCompleto(editalId: string): Promise<LinhaRelatorio[]> {
+  const TAMANHO_FATIA = 1000;
+  const todas: LinhaRelatorio[] = [];
+
+  for (let inicio = 0; ; inicio += TAMANHO_FATIA) {
+    const { data, error } = await supabase
+      .from("candidatos_relatorio_importacao")
+      .select("id, n_inscricao, situacao, campo, detalhe")
+      .eq("edital_id", editalId)
+      .order("campo", { ascending: true })
+      .order("n_inscricao", { ascending: true })
+      .range(inicio, inicio + TAMANHO_FATIA - 1);
+
+    if (error) throw error;
+
+    const fatia = (data ?? []) as LinhaRelatorio[];
+    todas.push(...fatia);
+
+    // Fatia menor que o pedido = acabou. Não dá para confiar num `count` obtido antes do
+    // laço: entre uma fatia e outra o relatório pode ter sido reescrito por uma
+    // reimportação concorrente, e o laço rodaria para sempre esperando um total que mudou.
+    if (fatia.length < TAMANHO_FATIA) break;
+  }
+
+  return todas;
+}
+
 export interface ResultadoBloco {
   gravados: number;
   erro: string | null;
@@ -460,6 +565,9 @@ export function useImportarCandidatos() {
         // O MESMO valor que passou pelo gate acima — nunca recalculado, para não haver
         // chance de o que foi medido divergir do que é enviado.
         p_relatorio: relatorioPersistido as unknown as Json,
+        // ⚠️ O cast continua: `p_relatorio` é `Json` no tipo gerado, e
+        // `LinhaRelatorioPersistida[]` não é atribuível a `Json` sem ele (interfaces não
+        // têm index signature). É o mesmo caso do `linha:` do preparo, logo acima.
       });
 
       if (error) {

@@ -1157,3 +1157,26 @@ export function paraRelatorioPersistido(
     detalhe: p.Detalhe,
   }));
 }
+
+/**
+ * O caminho de volta: o que veio do banco vira o formato que os exports entendem.
+ *
+ * 🔴 É a inversa de `paraRelatorioPersistido`, e as duas têm de andar juntas — o par é a
+ * ÚNICA ponte entre o formato do banco (snake_case, estável) e o do export (chaves
+ * acentuadas, que viram cabeçalho de planilha). Mexer numa sem a outra faz o relatório
+ * exportado de `/candidatos` sair com coluna vazia, sem erro nenhum.
+ *
+ * ⚠️ `Situação` volta como `string` para o campo tipado da união. O banco é `text` e não
+ * conhece a união — uma linha gravada por um caminho futuro com situação diferente ainda
+ * assim precisa aparecer no export, e não sumir por não casar com o tipo.
+ */
+export function deRelatorioPersistido(
+  linhas: LinhaRelatorioPersistida[],
+): ProblemaDoRelatorio[] {
+  return linhas.map((l) => ({
+    "Nº de Inscrição": l.n_inscricao,
+    Situação: l.situacao as ProblemaDoRelatorio["Situação"],
+    Campo: l.campo,
+    Detalhe: l.detalhe,
+  }));
+}

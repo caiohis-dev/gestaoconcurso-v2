@@ -679,6 +679,34 @@ describe("Candidatos (interação)", () => {
       expect(screen.queryByRole("button", { name: /Limpar edital/i })).not.toBeInTheDocument();
     });
 
+    it("🔴 o relatório da importação CONTINUA acessível com o edital vazio", async () => {
+      // Assimetria deliberada com "Limpar edital", que some quando não há o que limpar.
+      // O edital vazio é justamente o caso em que a pessoa mais precisa do relatório: ele
+      // é onde está escrito POR QUE ninguém entrou (todas as linhas com erro, por
+      // exemplo). Esconder o acesso aqui esconderia a explicação junto com o botão.
+      cenario({ candidatos: [], total: 0, contagem: [] });
+      const user = abrir();
+      await escolherEdital(user);
+
+      await screen.findByText("Nenhum inscrito neste edital");
+      expect(
+        screen.getByRole("button", { name: /Relatório da importação/i }),
+      ).toBeInTheDocument();
+    });
+
+    it("abre o relatório da última importação", async () => {
+      cenario();
+      const user = abrir();
+      await escolherEdital(user);
+      await screen.findByText("AGATHA LAMIM DE SOUZA");
+
+      await user.click(screen.getByRole("button", { name: /Relatório da importação/i }));
+
+      expect(
+        await screen.findByRole("heading", { name: "Relatório da última importação" }),
+      ).toBeInTheDocument();
+    });
+
     it("⭐ REGRESSÃO: a confirmação anuncia o total do EDITAL, não o da lista filtrada", async () => {
       // O defeito: "limpar edital" apaga o edital inteiro (`delete().eq('edital_id', …)`),
       // mas a confirmação anunciava `total`, que é o count da consulta FILTRADA. Com uma

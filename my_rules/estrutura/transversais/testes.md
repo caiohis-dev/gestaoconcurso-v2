@@ -97,7 +97,7 @@ telas de Candidatos foram as primeiras. O que se aprendeu ali:
   no caso de candidatos, as duas colunas de mesmo nome que são a origem da armadilha.
   Redefina `arrayBuffer` no `File` se o jsdom não o trouxer.
 
-## ⚠️ As oito armadilhas que já custaram tempo aqui
+## ⚠️ As nove armadilhas que já custaram tempo aqui
 
 **1. A sequência é consumida pela listagem antes de chegar à mutation.** A query de listagem também chama `from(<tabela>)`, então ela come a primeira entrada e o hook recebe um objeto onde espera array (`coordenadores.map is not a function`). Espere a carga inicial e **só então** instale a sequência — `setTableResultSequence` zera o contador. E a **última entrada precisa ser um array**, porque o refetch disparado pela invalidação cai nela.
 
@@ -134,6 +134,17 @@ async function carregarEDepois(sequencia) {
 > **Como detectar:** quando um teste afirma que duas coisas **colapsam**, pergunte se elas eram a mesma coisa. Fusão silenciosa é o oposto de duplicação e ninguém a procura, porque o sintoma é "tem menos linha do que eu esperava" — e quem importa 7.416 inscritos não conta.
 >
 > **A regra que fica:** ao mudar uma regra de negócio, os testes que caem **não são obstáculo, são a pergunta**. Cada um deles afirmava algo; antes de reescrever, decida se aquilo era verdade ou só era o que o código fazia.
+
+**9. ⚠️ No jsdom, gerar arquivo GRAVA ARQUIVO — a suíte suja a raiz do repo.** São duas funções, e a segunda só apareceu quando o segundo lugar passou a exportar:
+
+| Chamada | O que faz no jsdom | Como neutralizar |
+|---|---|---|
+| `doc.save(...)` (jsPDF) | escreve o `.pdf` no diretório atual | mocke `criarDocumentoPaisagem` e troque `doc.save` por um spy |
+| `XLSX.writeFile(...)` | escreve o `.xlsx` no diretório atual | mocke o módulo `xlsx` com `{ ...real, writeFile: spy }` |
+
+A primeira custou **4 PDFs commitáveis na raiz** antes de alguém notar, em 01/08. O spy não é só limpeza: é ele que permite afirmar **o nome do arquivo** e, no caso do XLS, **quais abas o workbook levou** — asserção que pegou o caso de a aba "Cargos" sair vazia onde deveria não existir.
+
+⚠️ **Vale para qualquer teste novo que exporte.** Rode `git status` depois de escrever um: arquivo gerado aparecendo como não rastreado é o sintoma.
 
 ## O que está coberto (2026-07-27)
 

@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { PasswordConfirmDialog } from "@/components/PasswordConfirmDialog";
+import { RelatorioImportacaoDialog } from "@/components/RelatorioImportacaoDialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,6 +44,7 @@ import {
   ChevronRight,
   Eye,
   ScrollText,
+  FileText,
 } from "lucide-react";
 
 const POR_PAGINA = 50;
@@ -192,6 +194,7 @@ export default function Candidatos() {
   const [candidatoAberto, setCandidatoAberto] = useState<Candidato | null>(null);
   const [candidatoParaExcluir, setCandidatoParaExcluir] = useState<Candidato | null>(null);
   const [limparEditalAberto, setLimparEditalAberto] = useState(false);
+  const [relatorioAberto, setRelatorioAberto] = useState(false);
 
   // Digitar filtra sozinho, com folga para terminar a palavra. Sem o atraso, cada tecla
   // vira uma consulta `ilike` numa tabela de milhares de linhas.
@@ -375,6 +378,19 @@ export default function Candidatos() {
                       ? `${total} de ${totalDoEdital} inscrito(s)`
                       : `${total} inscrito(s)`}
                 </span>
+                {/* ⚠️ Sem `totalDoEdital > 0`, ao contrário de "Limpar edital": o
+                    relatório é justamente onde a pessoa descobre POR QUE o edital ficou
+                    vazio (todas as linhas com erro, por exemplo). Esconder o acesso no
+                    caso de zero inscritos esconderia a explicação junto. */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => setRelatorioAberto(true)}
+                >
+                  <FileText className="h-4 w-4" />
+                  Relatório da importação
+                </Button>
                 {totalDoEdital > 0 && (
                   <Button
                     variant="ghost"
@@ -565,6 +581,17 @@ export default function Candidatos() {
           if (editalId) excluirDoEdital(editalId);
           setLimparEditalAberto(false);
         }}
+      />
+
+      {/* ⚠️ `totalDoEdital` vai junto porque a tabela de relatório guarda só PROBLEMAS:
+          zero linhas pode ser "importação limpa" OU "nunca importou", e só a contagem de
+          inscritos distingue os dois. Ver `SemRelatorio` no componente. */}
+      <RelatorioImportacaoDialog
+        open={relatorioAberto}
+        onOpenChange={setRelatorioAberto}
+        editalId={editalId}
+        editalNome={editalAtual?.nome ?? ""}
+        totalDoEdital={totalDoEdital}
       />
     </Layout>
   );

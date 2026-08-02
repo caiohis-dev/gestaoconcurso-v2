@@ -204,6 +204,44 @@ export type Database = {
           },
         ]
       }
+      candidatos_relatorio_importacao: {
+        Row: {
+          campo: string
+          created_at: string
+          detalhe: string
+          edital_id: string
+          id: string
+          n_inscricao: string
+          situacao: string
+        }
+        Insert: {
+          campo: string
+          created_at?: string
+          detalhe: string
+          edital_id: string
+          id?: string
+          n_inscricao: string
+          situacao: string
+        }
+        Update: {
+          campo?: string
+          created_at?: string
+          detalhe?: string
+          edital_id?: string
+          id?: string
+          n_inscricao?: string
+          situacao?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidatos_relatorio_importacao_edital_id_fkey"
+            columns: ["edital_id"]
+            isOneToOne: false
+            referencedRelation: "editais"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cargo_apelidos: {
         Row: {
           cargo_id: string
@@ -1256,6 +1294,7 @@ export type Database = {
         Args: {
           p_edital_id: string
           p_importacao_id: string
+          p_relatorio: Json
           p_total_esperado: number
         }
         Returns: {

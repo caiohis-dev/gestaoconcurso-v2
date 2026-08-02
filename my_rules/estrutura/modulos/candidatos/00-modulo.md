@@ -37,7 +37,9 @@ Duas consequências que precisam sobreviver a qualquer refatoração:
 | `src/hooks/useCargos.test.tsx` (26 testes) | Bateria dos cargos: a **assimetria dos dois upserts**, o `isLoading` distinguível de lista vazia, nome repetido que vira associação |
 | `src/pages/Candidatos.ui.test.tsx` (34 testes) | Bateria da listagem: total do servidor, data sem o bug de fuso, badges, busca, **o cargo canônico e o filtro por cargo**, paginação e **as duas exclusões com barreiras diferentes** |
 | `src/pages/CandidatosImportar.ui.test.tsx` (38 testes) | Bateria do assistente. Monta um `.xlsx` de verdade (com as duas colunas `NOME`) e o lê pelo caminho real da página; guarda o **impedimento quando o cargo não é pareado** |
-| `src/pages/Candidatos.tsx` (553 l.) | Listagem: escolha do edital por card, busca, **filtro por cargo**, paginação, ficha em diálogo, exclusão de um e "limpar edital" |
+| `src/pages/Candidatos.tsx` | Listagem: escolha do edital por card, busca, **filtro por cargo**, paginação, ficha em diálogo, exclusão de um, "limpar edital" e 🔵 o acesso ao **relatório da última importação** |
+| `src/components/RelatorioImportacaoDialog.tsx` + `.ui.test.tsx` (12) | 🔵 O relatório PERSISTIDO em leitura, paginado, **com XLS e PDF** (02/08) — guarda os DOIS vazios (importação limpa × nunca importada) e o export do relatório INTEIRO |
+| `src/lib/relatorio-importacao-export.ts` | 🔵 A montagem do XLS e do PDF, compartilhada pelo assistente e pela listagem (02/08). Extraída de `CandidatosImportar.tsx` reproduzindo o documento emitido |
 | `src/pages/CandidatosImportar.tsx` (1.155 l.) | O assistente de **5 passos**: arquivo → pareamento → **cargos** → importação → relatório |
 | `src/hooks/useCandidatos.tsx` | React Query: `useCandidatos` (paginada, com o cargo embutido e o recorte por cargo), `useContagemCandidatosPorEdital`, `useImportarCandidatos` (**preparo em blocos + a RPC de troca**), `useExcluirCandidatos` |
 | `supabase/migrations/20260730120000_*` e `20260730130000_*` | A tabela de preparo `candidatos_importacao` e a RPC `trocar_candidatos_do_edital`, com as três guardas |
@@ -432,7 +434,7 @@ Decisão do usuário: *"uma base de dados de relatório salvo para cada importa�
 
 1. **Só o ÚLTIMO relatório por edital**, sobrescrito a cada reimportação — **não** histórico de todas as importações já feitas.
 2. **Só os problemas** (`comErro`, `comAviso`, `repetidas`, `naoPagantes`) — **não** a Associação de Cargos. O de-para de cargos continua existindo só no export.
-3. **Só persistência.** Sem tela de consulta nesta etapa — os dados ficam no banco, prontos para uma UI futura.
+3. ~~**Só persistência.**~~ 🔵 **A tela de consulta entrou no mesmo dia**, em `/candidatos` — ver "O acesso pela listagem", abaixo.
 
 🔴 **O relatório é gravado DENTRO da mesma transação que troca os candidatos**, não numa chamada separada depois. Ele é inteiramente conhecível *antes* da troca (é o cliente que classifica erro/aviso/repetida/não-pagante, lendo a planilha), mas só pode ser gravado *se* a troca de fato acontecer — "ou tudo muda, ou nada muda" vale para os dois juntos. `trocar_candidatos_do_edital` ganhou o parâmetro `p_relatorio jsonb`, **sem default** (mesma razão de `p_total_esperado`: um default tornaria "esquecer de mandar" indistinguível de "mandar relatório vazio de propósito").
 
@@ -453,3 +455,31 @@ Ao contrário de `candidatos` (que sobe em blocos de `TAMANHO_BLOCO` por causa d
 **O gate é no CLIENTE, não no banco**, e a razão é estrutural: o estouro aconteceria no PROXY (Kong), antes do Postgres ver a requisição — nenhum SQLSTATE traduziria isso, o usuário veria falha de rede crua. `LIMITE_RELATORIO_BYTES` (`useCandidatos.tsx`, 4 MB — 80% do teto de 5 MB já medido, mesma margem, não número novo) mede o payload real em **bytes UTF-8** (`TextEncoder`, não `.length` — string acentuada em UTF-16 subcontaria) e recusa a **troca inteira** se passar do limite, com a mesma mensagem-padrão de "a lista foi mantida" das outras guardas.
 
 🔴 **Recusa a troca INTEIRA, não só deixa de persistir o relatório.** Deixar candidatos entrarem e o relatório ficar de fora quebraria a garantia que a migration inteira existe para dar — "os dois mudam juntos, ou nenhum muda". Testado com um relatório sintético de 30.000 linhas (a suíte mocka o Supabase, então não há bateria SQL para isto — o estouro é de transporte, nunca chega ao banco).
+
+### O acesso pela listagem — `RelatorioImportacaoDialog`
+
+Botão **"Relatório da importação"** na barra de `/candidatos`, ao lado de "Limpar edital". Abre um diálogo em leitura com as quatro colunas persistidas. Hook: `useRelatorioImportacao` (`useCandidatos.tsx`).
+
+⚠️ **Aparece MESMO com o edital vazio**, ao contrário de "Limpar edital" (que some quando não há o que limpar). A assimetria é deliberada: o edital vazio é justamente o caso em que a pessoa precisa do relatório — é lá que está escrito *por que* ninguém entrou. Esconder o botão esconderia a explicação junto.
+
+🔴 **O vazio são DOIS estados, e a tela não pode dar a mesma mensagem aos dois.** A tabela guarda só problemas: uma importação impecável grava zero linhas, e um edital nunca importado também tem zero. Quem desempata é `totalDoEdital` (a contagem da RPC, passada por prop) — sem inscritos diz *"ainda não tem inscritos importados"*; com inscritos diz *"não registrou nenhum problema"*.
+
+⚠️ **Há um TERCEIRO caso que as duas mensagens não cobrem:** edital importado **antes de 02/08**, quando o relatório passou a ser gravado — tem inscritos e zero linhas, e cai no ramo "não registrou problemas" sem que isso seja verdade. **Decisão do usuário em 02/08: não tratar.** A v2 sobe com a tabela já existindo, então o caso só existe em base de desenvolvimento e some na primeira reimportação. Houve uma ressalva no texto da tela por algumas horas; foi removida a pedido.
+
+🔴 **É PAGINADO, e não é zelo:** o PostgREST corta em `max_rows = 1000` (`config.toml`). Como `LIMITE_RELATORIO_BYTES` permite ~32.000 linhas, a faixa entre 1.000 e 32.000 é alcançável — sem paginação a tela mostraria 1.000 e a pessoa concluiria que são todas. O `count` é do servidor, como na listagem.
+
+⚠️ **A ORDEM DA PLANILHA NÃO É RECUPERÁVEL, e o `ORDER BY` é uma escolha.** A tabela não guarda `linhaPlanilha` nem um `ordem`, e `created_at` é `now()` da transação — igual para todas as linhas. Sem `ORDER BY` explícito o Postgres não promete ordem alguma, e a paginação passaria a **repetir e pular linhas entre páginas**. Ordena-se por `campo` e depois `n_inscricao`, que é o agrupamento que o PDF já usa.
+
+⚠️ **"Não importada (inscrição não paga)" NÃO é pintada de vermelho**, apesar de a linha ter ficado de fora — mesma razão de o card "Sem pagamento" ser separado de "Não importados" no passo 5. Erro de dado se corrige na planilha; não-pagamento é o filtro funcionando.
+
+#### Os dois exports, agora nos DOIS lugares
+
+O diálogo tem **"Baixar Planilha (XLS)"** e **"Baixar Documento (PDF)"**, os mesmos do passo 5 do assistente. A montagem dos dois saiu de `CandidatosImportar.tsx` para [`src/lib/relatorio-importacao-export.ts`](../../../../src/lib/relatorio-importacao-export.ts) — até então eram ~120 linhas dentro do componente, e só o assistente conseguia exportar.
+
+🔴 **A geometria e o conteúdo do PDF reproduzem EXATAMENTE o que o assistente emitia** antes da extração; os 48 testes dele passaram sem alteração. Mesma disciplina do `pdf-timbre.ts`: este documento é anexado a processo.
+
+🔴 **A exportação busca o relatório INTEIRO, não a página da tela** (`buscarRelatorioCompleto`, em laço de fatias de 1.000). A tela mostra 50 por página; exportar a partir dela entregaria arquivo **truncado com cara de completo** — e o arquivo é o que alguém anexa a processo. O laço para quando a fatia vem menor que o pedido, e **não** por um `count` obtido antes: entre uma fatia e outra uma reimportação concorrente pode reescrever o relatório, e o laço esperaria para sempre um total que mudou.
+
+⚠️ **A Associação de Cargos não sai nesses arquivos** — o de-para não é persistido, só existe no assistente. O diálogo diz isso na tela, e o XLS sai com **uma aba só** (`Problemas`): passar `[]` acrescentaria uma aba vazia, o que é pior que não ter, porque parece que o de-para se perdeu. Há teste cravando os nomes das abas.
+
+⚠️ **Falha de exportação vira `<Alert>` visível**, nunca só `console.error` — foi um `catch` mudo aqui que já fez o assistente parecer travado. Sem a ressalva de *"os inscritos estão salvos"* que o assistente faz: neste fluxo nada foi gravado.

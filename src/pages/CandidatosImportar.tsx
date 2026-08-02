@@ -1,19 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
-import autoTable from "jspdf-autotable";
-import { format } from "date-fns";
-import {
-  useLogoBase64,
-  criarDocumentoPaisagem,
-  desenharTimbre,
-  numerarPaginas,
-  MARGEM_LATERAL,
-  ESTILOS_TABELA,
-  ESTILOS_CABECALHO,
-  TIMBRE_LINHA1_PADRAO,
-  TIMBRE_LINHA2_PADRAO,
-} from "@/lib/pdf-timbre";
+import { useLogoBase64 } from "@/lib/pdf-timbre";
+import { exportarRelatorioPDF, exportarRelatorioXLS } from "@/lib/relatorio-importacao-export";
 import { useEditais } from "@/hooks/useEditais";
 import {
   useImportarCandidatos,
@@ -547,158 +536,32 @@ export default function CandidatosImportar() {
     [cargosLidos, cargos, resolucoes, lembrados],
   );
 
+  /**
+   * ⚠️ A MONTAGEM dos dois exports saiu daqui em 2026-08-02 para
+   * `lib/relatorio-importacao-export.ts`, porque `/candidatos` passou a exportar o mesmo
+   * documento a partir do relatório persistido. O que fica aqui é só o que é DO
+   * ASSISTENTE: o nome-base vindo do arquivo escolhido e o de-para de cargos, que não é
+   * persistido e por isso só existe neste fluxo.
+   */
   const baixarRelatorio = () => {
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.json_to_sheet(
-        relatorio.length > 0
-          ? relatorio
-          : [{ "Nº de Inscrição": "", Situação: "Nenhum problema", Campo: "", Detalhe: "" }],
-      ),
-      "Problemas",
-    );
-    // Aba própria para o de-para dos cargos: é o registro auditável de que texto virou que
-    // cargo naquela importação. Sem ela, a decisão de sanitização só existe dentro do banco.
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(deParaCargos), "Cargos");
-    const base = arquivo?.name?.replace(/\.(xlsx|xls|csv)$/i, "") || "importacao_candidatos";
-    XLSX.writeFile(wb, `${base}_relatorio.xlsx`);
+    exportarRelatorioXLS({
+      problemas: relatorio,
+      deParaCargos,
+      nomeBase: arquivo?.name?.replace(/\.(xlsx|xls|csv)$/i, "") || "importacao_candidatos",
+    });
   };
 
-  /** Respiro entre o título do timbre e a primeira coisa que o corpo escreve. */
-  const RESPIRO_APOS_TITULO = 7;
-  /** Espaço entre o fim de uma tabela e o subtítulo da próxima. */
-  const ENTRE_BLOCOS = 15;
-  /** Abaixo disto não cabe subtítulo + cabeçalho de tabela: melhor virar a página. */
-  const ALTURA_MINIMA_DE_BLOCO = 40;
-
-  /**
-   * O mesmo relatório do XLS, em documento timbrado — para anexar a processo e imprimir.
-   *
-   * A diferença de fundo entre os dois não é o formato: a planilha entrega uma lista
-   * plana para o Excel filtrar, e o PDF AGRUPA POR CAMPO, porque quem lê o PDF vai
-   * corrigir a planilha, e corrigir é trabalho por coluna. Ver
-   * `agruparProblemasPorCampo`.
-   */
   const baixarRelatorioPDF = () => {
     setExportandoPDF(true);
     setErroExportacao(null);
     try {
-      const problemasPorCampo = agruparProblemasPorCampo(relatorio);
-
-      const doc = criarDocumentoPaisagem();
-      const alturaDaPagina = doc.internal.pageSize.getHeight();
-      const linhasDoTimbre = [
-        TIMBRE_LINHA1_PADRAO,
-        TIMBRE_LINHA2_PADRAO,
-        editalSelecionado?.nome || "EDITAL",
-      ];
-
-      const paginasTimbradas = new Set<number>();
-      let topoDoCorpo = 0;
-
-      /**
-       * Timbra a página atual UMA VEZ. O Set é o que impede o timbre duplicado: a página
-       * é timbrada tanto por quem a cria de propósito quanto pelo `didDrawPage` do
-       * autoTable, que dispara para toda página que a tabela ocupar — inclusive as que
-       * ela mesma criou ao transbordar.
-       */
-      const timbrar = () => {
-        const pagina = doc.getCurrentPageInfo().pageNumber;
-        if (paginasTimbradas.has(pagina)) return;
-        paginasTimbradas.add(pagina);
-        // Aqui o timbre tem altura FIXA (sempre 3 linhas + título), então o Y devolvido é
-        // o mesmo em toda página — guardá-lo é o que mantém `startY` e `margin.top` de
-        // acordo. Se um dia as linhas variarem por página, isto deixa de valer.
-        topoDoCorpo = desenharTimbre(doc, {
-          logoBase64,
-          linhas: linhasDoTimbre,
-          titulo: "RELATÓRIO DE IMPORTAÇÃO DE CANDIDATOS",
-        }) + RESPIRO_APOS_TITULO;
-      };
-
-      // Timbra a página 1 antes de qualquer tabela: é esta chamada que define
-      // `topoDoCorpo`, e o `margin.top` das tabelas depende dele já estar valendo.
-      timbrar();
-
-      const margensDaTabela = {
-        top: topoDoCorpo,
-        left: MARGEM_LATERAL,
-        right: MARGEM_LATERAL,
-        bottom: 15,
-      };
-
-      let y = topoDoCorpo;
-
-      const escreverSubtitulo = (texto: string) => {
-        doc.setFont("times", "bold");
-        doc.setFontSize(11);
-        doc.text(texto, MARGEM_LATERAL, y);
-        y += 5;
-      };
-
-      if (deParaCargos.length > 0) {
-        // O de-para vem primeiro por ser o registro auditável da importação: que texto
-        // sujo virou que cargo. É a mesma razão da aba "Cargos" no XLS.
-        escreverSubtitulo("Associação de Cargos");
-        autoTable(doc, {
-          startY: y,
-          head: [["Texto na Planilha", "Cargo do Sistema", "Linhas", "Origem"]],
-          body: deParaCargos.map((c) => [
-            c["Texto na planilha"],
-            c["Cargo do sistema"],
-            c.Linhas.toString(),
-            c.Origem,
-          ]),
-          theme: "grid",
-          margin: margensDaTabela,
-          styles: ESTILOS_TABELA,
-          headStyles: { ...ESTILOS_CABECALHO, minCellHeight: 8 },
-          didDrawPage: timbrar,
-        });
-        y = (doc.lastAutoTable?.finalY ?? y) + ENTRE_BLOCOS;
-      }
-
-      for (const { campo, queixas } of problemasPorCampo) {
-        if (y > alturaDaPagina - ALTURA_MINIMA_DE_BLOCO) {
-          doc.addPage();
-          timbrar();
-          y = topoDoCorpo;
-        }
-
-        // ⚠️ O título NÃO é montado aqui: `subtituloDoCampo` é quem sabe que "Pagamento"
-        // não é problema e merece texto próprio. Ver o porquê lá.
-        escreverSubtitulo(subtituloDoCampo(campo));
-        autoTable(doc, {
-          startY: y,
-          head: [["Nº de Inscrição", "Situação", "Detalhe"]],
-          body: queixas.map((p) => [p["Nº de Inscrição"], p.Situação, p.Detalhe]),
-          theme: "grid",
-          margin: margensDaTabela,
-          // ⚠️ `linebreak`, NÃO `hidden`. Com `hidden` a coluna Detalhe era CORTADA na
-          // largura da célula, sem reticências e sem aviso — e o detalhe é a única coisa
-          // que este relatório existe para entregar ("CPF tem 10 dígitos"). Um relatório
-          // de erros que corta a mensagem do erro em silêncio é perda silenciosa.
-          styles: { ...ESTILOS_TABELA, overflow: "linebreak" },
-          headStyles: { ...ESTILOS_CABECALHO, minCellHeight: 8 },
-          columnStyles: {
-            // 30mm, e não os 20 de quando a coluna se chamava "Linha": o cabeçalho
-            // "Nº de Inscrição" tem 15 caracteres e em 20mm quebraria em duas linhas.
-            0: { cellWidth: 30, halign: "center" },
-            1: { cellWidth: 60 },
-            2: { cellWidth: "auto" },
-          },
-          didDrawPage: timbrar,
-        });
-        y = (doc.lastAutoTable?.finalY ?? y) + ENTRE_BLOCOS;
-      }
-
-      // Depois de tudo, porque só agora se sabe o total.
-      numerarPaginas(doc);
-
-      const carimbo = format(new Date(), "dd-MM-yyyy HH-mm-ss");
-      const base = arquivo?.name?.replace(/\.(xlsx|xls|csv)$/i, "") || "importacao";
-      doc.save(`${base}_relatorio_${carimbo}.pdf`);
+      exportarRelatorioPDF({
+        problemas: relatorio,
+        deParaCargos,
+        logoBase64,
+        nomeEdital: editalSelecionado?.nome ?? "",
+        nomeBase: arquivo?.name?.replace(/\.(xlsx|xls|csv)$/i, "") || "importacao",
+      });
     } catch (e) {
       console.error(e);
       setErroExportacao(
