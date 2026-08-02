@@ -42,6 +42,8 @@ Duas consequências que precisam sobreviver a qualquer refatoração:
 | `src/hooks/useCandidatos.tsx` | React Query: `useCandidatos` (paginada, com o cargo embutido e o recorte por cargo), `useContagemCandidatosPorEdital`, `useImportarCandidatos` (**preparo em blocos + a RPC de troca**), `useExcluirCandidatos` |
 | `supabase/migrations/20260730120000_*` e `20260730130000_*` | A tabela de preparo `candidatos_importacao` e a RPC `trocar_candidatos_do_edital`, com as três guardas |
 | `docs/bateria-troca-total-candidatos.sql` | A bateria da troca, 10 casos — inclui a prova de ATOMICIDADE, que roda fora de transação de propósito |
+| `supabase/migrations/20260802145848_*` | 🔵 O relatório da importação passa a PERSISTIR: tabela `candidatos_relatorio_importacao` + a RPC ganha o parâmetro `p_relatorio`, gravado na MESMA transação da troca |
+| `docs/bateria-relatorio-importacao.sql` | A bateria do relatório persistido, 5 casos + RLS — inclui a prova de que uma GUARDA que recusa a troca preserva o relatório ANTIGO intacto |
 | `src/hooks/useCargos.tsx` | React Query dos cargos: catálogo (com e sem contagem de uso), apelidos, criação, **renomeação e exclusão** — ver [`cargos.md`](./cargos.md) |
 | `src/pages/Cargos.tsx` + `src/components/CargoDialog.tsx` | 🔵 A gestão do catálogo em `/candidatos/cargos` (30/07): listar com o uso, criar, renomear, excluir |
 | `src/pages/Cargos.ui.test.tsx` (11) + `CargoDialog.test.ts` (6) | Bateria do CRUD e o contrato do schema |
@@ -153,7 +155,7 @@ A chave nova é **estritamente mais apertada** que a antiga (4 colunas → 2) e 
 
 > 🔵 **Eram quatro até 2026-08-01.** Saíram: o **`onConflict` de `useImportarCandidatos`**, que não existe desde a troca total de 30/07 (não há mais upsert — a RPC faz `DELETE` + `INSERT`), e a **ordem do pipeline**, que deixou de importar para a chave quando o cargo saiu dela. O dedup ainda roda depois de `resolverLinhas`, mas por outro motivo: o que sai dele é o que vai ser gravado, e a gravação precisa do `cargo_id`.
 
-> ⚠️ **A recusa também mudou de forma, e a frase antiga citava a errada.** Não é mais *"falha o bloco de 500 com ON CONFLICT DO UPDATE cannot affect row a second time"*: os blocos de 500 vão para `candidatos_importacao`, que **não tem índice único** na chave, e passam. A recusa vem depois, no `INSERT` da RPC, como `duplicate key value violates unique constraint` — e como a RPC é uma transação, **derruba a troca inteira**. Quem traduz para o usuário é `mensagemErroImportacao()`, casando pelo **nome do índice**.
+> ⚠️ **A recusa também mudou de forma, e a frase antiga citava a errada.** Não é mais *"falha o bloco de 1.000 com ON CONFLICT DO UPDATE cannot affect row a second time"*: os blocos de 1.000 vão para `candidatos_importacao`, que **não tem índice único** na chave, e passam. A recusa vem depois, no `INSERT` da RPC, como `duplicate key value violates unique constraint` — e como a RPC é uma transação, **derruba a troca inteira**. Quem traduz para o usuário é `mensagemErroImportacao()`, casando pelo **nome do índice**.
 
 🧪 **Regra de banco não tem teste na suíte** (ela mocka o Supabase). A verificação da chave é a bateria [`../../../../docs/bateria-chave-natural-candidatos.sql`](../../../../docs/bateria-chave-natural-candidatos.sql) — 5 casos com controle positivo, em transação com `ROLLBACK`.
 
@@ -240,7 +242,7 @@ A coluna `CONFIRMADO` da planilha diz quem pagou. Desde 01/08 ela **filtra a imp
 O pipeline ganhou um estágio, e **a posição dele é correção, não estilo**:
 
 ```
-converterLinha → separarPorPagamento → resolverLinhas → deduplicar → blocos de 500
+converterLinha → separarPorPagamento → resolverLinhas → deduplicar → blocos de 1.000
 ```
 
 🔴 **O filtro roda ANTES do dedup porque `deduplicar` mantém a ÚLTIMA ocorrência da chave.** Invertido, um não-pagante que repetisse a chave de um pagante o **deslocaria** e só então seria descartado — o pagante sumiria da importação sem aparecer como erro, nem como repetida, nem como não-pagante. Há teste guardando, com o controle que mostra a perda na ordem errada.
@@ -347,7 +349,7 @@ O auto-pareamento em geral é mais rígido que o de `CadastroLote`: casa por **i
 
 O Postgres recusa o lote se a mesma chave aparecer duas vezes. Sem `deduplicar()`, **um arquivo com duas linhas de mesmo nº de inscrição não importa nada**, e a pessoa não tem como saber por quê. Mantém-se a **última** ocorrência (quem corrige uma linha costuma reescrevê-la abaixo).
 
-⚠️ **Com a troca total o custo de errar isto SUBIU:** o INSERT deixou de ser um bloco de 500 e passou a ser a lista INTEIRA, dentro da transação da RPC. Uma duplicata no arquivo agora derruba a troca toda — o que é seguro (nada é apagado), mas significa que `deduplicar()` deixou de ser conveniência e virou pré-requisito.
+⚠️ **Com a troca total o custo de errar isto SUBIU:** o INSERT deixou de ser um bloco de 1.000 e passou a ser a lista INTEIRA, dentro da transação da RPC. Uma duplicata no arquivo agora derruba a troca toda — o que é seguro (nada é apagado), mas significa que `deduplicar()` deixou de ser conveniência e virou pré-requisito.
 
 ⚠️ **`chaveNatural()` tem de espelhar o índice, campo a campo** — é ela que a deduplicação usa. Desde 01/08 ela devolve **só o `n_inscricao`**, e o `edital_id` não entra porque o dedup roda dentro de uma importação, que é de um edital só.
 
@@ -421,3 +423,33 @@ As **quatro origens** das queixas: `comErro` (não entrou, falta o que identific
 🔴 **A coluna Detalhe do PDF usa `overflow: "linebreak"`, não `"hidden"`.** Com `hidden` ela era cortada na largura da célula, sem reticências e sem aviso — e o detalhe é a única coisa que o relatório existe para entregar. Relatório de erro que corta a mensagem do erro é perda silenciosa.
 
 O timbre, o logo e a numeração vêm de [`src/lib/pdf-timbre.ts`](../../../../src/lib/pdf-timbre.ts), compartilhado com os PDFs de Aplicação de Provas — ver [`../aplicacao-provas/documentos-e-relatorios.md`](../aplicacao-provas/documentos-e-relatorios.md).
+
+### 🔵 Desde 2026-08-02: o relatório também PERSISTE no banco
+
+Decisão do usuário: *"uma base de dados de relatório salvo para cada importação. A reimportação apaga os candidatos e por isso deve apagar e escrever novo relatório."*
+
+**Escopo decidido** (as três perguntas que definiam o schema, respondidas antes de escrever a migration):
+
+1. **Só o ÚLTIMO relatório por edital**, sobrescrito a cada reimportação — **não** histórico de todas as importações já feitas.
+2. **Só os problemas** (`comErro`, `comAviso`, `repetidas`, `naoPagantes`) — **não** a Associação de Cargos. O de-para de cargos continua existindo só no export.
+3. **Só persistência.** Sem tela de consulta nesta etapa — os dados ficam no banco, prontos para uma UI futura.
+
+🔴 **O relatório é gravado DENTRO da mesma transação que troca os candidatos**, não numa chamada separada depois. Ele é inteiramente conhecível *antes* da troca (é o cliente que classifica erro/aviso/repetida/não-pagante, lendo a planilha), mas só pode ser gravado *se* a troca de fato acontecer — "ou tudo muda, ou nada muda" vale para os dois juntos. `trocar_candidatos_do_edital` ganhou o parâmetro `p_relatorio jsonb`, **sem default** (mesma razão de `p_total_esperado`: um default tornaria "esquecer de mandar" indistinguível de "mandar relatório vazio de propósito").
+
+⚠️ **As colunas do relatório persistido são snake_case (`n_inscricao`, `situacao`, `campo`, `detalhe`) e NÃO os rótulos do export** (`"Nº de Inscrição"`, `"Situação"`...). Usar os rótulos acoplaria o schema do banco a um texto de cabeçalho de planilha, que muda por motivo cosmético — foi renomeado de "Linha" para "Nº de Inscrição" dias antes desta mudança. A ponte entre os dois formatos é `paraRelatorioPersistido()` em [`src/lib/candidatos-import.ts`](../../../../src/lib/candidatos-import.ts), a **única** função que conhece as duas formas.
+
+🔴 **`edital_id` é `ON DELETE CASCADE` aqui, ao contrário de `candidatos`/`provas` (que são `RESTRICT`).** Não é atalho: candidatos e provas são registro operacional que interessa por si; este relatório é o log **transiente** da última importação, descartável e reescrito a cada nova. Se o edital some, não sobra nada para ele descrever.
+
+⚠️ **Não é tocado por "limpar edital" nem por excluir um candidato avulso** — só a RPC de troca mexe nele. Ele descreve a **última importação**, não "o estado atual de candidatos"; as duas coisas podem divergir se alguém limpar a lista sem reimportar depois, e isso é aceito.
+
+🧪 **A suíte mocka o Supabase e não exercita a transação** — a prova de atomicidade é [`../../../../docs/bateria-relatorio-importacao.sql`](../../../../docs/bateria-relatorio-importacao.sql): reimportar apaga o relatório anterior e grava só o novo; uma guarda que recusa a troca (`IM003`) preserva o relatório **antigo** intacto; apagar o edital leva o relatório junto (CASCADE); RLS bloqueia coordenador.
+
+### 🔴 2026-08-02, no mesmo dia: `p_relatorio` NÃO é chunked, e isso tem teto
+
+Ao contrário de `candidatos` (que sobe em blocos de `TAMANHO_BLOCO` por causa do limite de 5 MB do Kong — **medido**: 5,40 MB para 7.416 linhas), `p_relatorio` viaja **inteiro numa chamada só**. Foi decisão consciente: o volume real medido contra o arquivo de 7.416 linhas é **238 linhas de problema, 37,8 KB** — três ordens de grandeza abaixo do teto. Chunkar algo que nunca chega perto seria complexidade sem uso.
+
+⚠️ **Mas "nunca chega perto" não é "não pode".** Uma linha do relatório pesa ~163 bytes medidos; a ~32.000 linhas o payload encosta em 5 MB. Como `comAviso.flatMap` pode gerar várias queixas por linha da planilha, um arquivo **patologicamente sujo** — não necessariamente um edital grande — chegaria lá antes de qualquer teto de `candidatos`.
+
+**O gate é no CLIENTE, não no banco**, e a razão é estrutural: o estouro aconteceria no PROXY (Kong), antes do Postgres ver a requisição — nenhum SQLSTATE traduziria isso, o usuário veria falha de rede crua. `LIMITE_RELATORIO_BYTES` (`useCandidatos.tsx`, 4 MB — 80% do teto de 5 MB já medido, mesma margem, não número novo) mede o payload real em **bytes UTF-8** (`TextEncoder`, não `.length` — string acentuada em UTF-16 subcontaria) e recusa a **troca inteira** se passar do limite, com a mesma mensagem-padrão de "a lista foi mantida" das outras guardas.
+
+🔴 **Recusa a troca INTEIRA, não só deixa de persistir o relatório.** Deixar candidatos entrarem e o relatório ficar de fora quebraria a garantia que a migration inteira existe para dar — "os dois mudam juntos, ou nenhum muda". Testado com um relatório sintético de 30.000 linhas (a suíte mocka o Supabase, então não há bateria SQL para isto — o estouro é de transporte, nunca chega ao banco).

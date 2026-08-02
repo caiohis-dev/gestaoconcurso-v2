@@ -269,7 +269,7 @@ export default function CandidatosImportar() {
   /**
    * Estágios 2 a 4 do pipeline, juntos e reativos às resoluções do passo Cargos:
    *
-   *     converterLinha → separarPorPagamento → resolverLinhas → deduplicar → blocos de 500
+   *     converterLinha → separarPorPagamento → resolverLinhas → deduplicar → blocos de 1.000
    *
    * ⚠️ Em 2026-08-01 a chave natural encolheu para `(edital_id, n_inscricao)`, e com isso
    * o dedup deixou de depender do cargo: rodá-lo antes ou depois de `resolverLinhas` dá o
@@ -290,6 +290,20 @@ export default function CandidatosImportar() {
   // que nem vai ser importada é ruído — manda a pessoa corrigir na origem algo que não
   // entrou. O motivo de a linha ficar de fora já é dito, com nome, na seção Pagamento.
   const comAviso = pagantes.filter((l) => l.avisos.length > 0);
+
+  /**
+   * 🔴 ÚNICA fonte do relatório, usada em TRÊS lugares: a persistência (dentro da mesma
+   * chamada que troca os candidatos), o botão XLS e o botão PDF.
+   *
+   * Antes de 2026-08-02 `montarProblemasDoRelatorio(...)` era chamada duas vezes, uma em
+   * cada botão de export, com os MESMOS quatro argumentos — puro acaso não ter divergido.
+   * Um `useMemo` só não é economia de CPU (a função é barata): é a garantia de que a
+   * pessoa baixa e o banco grava o MESMO relatório, porque os dois leem esta variável.
+   */
+  const relatorio = useMemo(
+    () => montarProblemasDoRelatorio(comErro, comAviso, repetidas, naoPagantes),
+    [comErro, comAviso, repetidas, naoPagantes],
+  );
 
   /**
    * ⚠️ O sinal de arquivo truncado: a planilha traz menos da METADE do que já existe.
@@ -502,9 +516,14 @@ export default function CandidatosImportar() {
     //
     // ⚠️ `editalId` vai EXPLÍCITO: é o edital cuja lista será apagada, e uma operação
     // destrutiva não deve deduzir seu alvo de `candidatos[0]`.
+    //
+    // 🔴 `relatorio` É O MESMO que os botões de export usam (o `useMemo` acima) — não
+    // recalculado aqui. É o que garante que o relatório PERSISTIDO é idêntico ao que a
+    // pessoa baixaria clicando XLS/PDF neste exato momento, mesmo que ela nunca clique.
     const res = await importar({
       editalId,
       candidatos,
+      relatorio,
       onProgresso: setProgresso,
       deveParar: () => pararRef.current,
     });
@@ -529,14 +548,12 @@ export default function CandidatosImportar() {
   );
 
   const baixarRelatorio = () => {
-    const abaProblemas = montarProblemasDoRelatorio(comErro, comAviso, repetidas, naoPagantes);
-
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(
       wb,
       XLSX.utils.json_to_sheet(
-        abaProblemas.length > 0
-          ? abaProblemas
+        relatorio.length > 0
+          ? relatorio
           : [{ "Nº de Inscrição": "", Situação: "Nenhum problema", Campo: "", Detalhe: "" }],
       ),
       "Problemas",
@@ -567,9 +584,7 @@ export default function CandidatosImportar() {
     setExportandoPDF(true);
     setErroExportacao(null);
     try {
-      const problemasPorCampo = agruparProblemasPorCampo(
-        montarProblemasDoRelatorio(comErro, comAviso, repetidas, naoPagantes),
-      );
+      const problemasPorCampo = agruparProblemasPorCampo(relatorio);
 
       const doc = criarDocumentoPaisagem();
       const alturaDaPagina = doc.internal.pageSize.getHeight();

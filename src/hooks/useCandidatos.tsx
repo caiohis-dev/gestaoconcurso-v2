@@ -2,7 +2,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import { useToast } from "@/hooks/use-toast";
-import { CandidatoResolvido, mensagemErroImportacao } from "@/lib/candidatos-import";
+import {
+  CandidatoResolvido,
+  ProblemaDoRelatorio,
+  mensagemErroImportacao,
+  paraRelatorioPersistido,
+} from "@/lib/candidatos-import";
 
 /** O cargo canônico do catálogo, trazido pelo join da listagem. */
 export interface CargoDoCandidato {
@@ -81,6 +86,18 @@ export interface Candidato {
  * diferentes, e confundi-las levaria alguém a "resolver" o problema mexendo neste número.
  */
 export const TAMANHO_BLOCO = 1000;
+
+/**
+ * Teto de segurança para `p_relatorio` em `trocar_candidatos_do_edital` — ele NÃO é
+ * chunked como `candidatos` (ver o comentário do gate em `useImportarCandidatos`).
+ *
+ * MEDIDO contra o arquivo real (7.416 linhas): o relatório inteiro (238 linhas de
+ * problema) pesa 37,8 KB — ~163 bytes/linha. 4 MB é 80% do limite de 5 MB do Kong já
+ * medido para `candidatos` (a mesma margem, e não um número novo inventado), deixando
+ * espaço para os outros parâmetros da RPC (irrelevantes em tamanho) e para o envelope
+ * JSON-RPC do PostgREST.
+ */
+export const LIMITE_RELATORIO_BYTES = 4 * 1024 * 1024;
 
 export interface FiltroCandidatos {
   editalId: string | null;
@@ -279,6 +296,17 @@ async function subirPreparo({
  * tudo numa transação só. Decisão do usuário em 2026-07-30, roadmap
  * `my_rules/analises/roadmap-importacao-troca-total.yaml`.
  *
+ * 🔵 Desde 2026-08-02 a MESMA chamada também troca o relatório da importação, persistido
+ * em `candidatos_relatorio_importacao` — ver o parâmetro `relatorio` e a migration
+ * `20260802145848`. ⚠️ Há DOIS "relatórios" que não devem se confundir: o EXPORT (XLS/PDF
+ * que a pessoa baixa, vive só na memória da sessão) e o PERSISTIDO (esta tabela, sobrevive
+ * ao fechar a aba). Este hook lê o primeiro para escrever o segundo.
+ *
+ * ⚠️ `relatorio` NÃO é chunked como `candidatos` — viaja inteiro em `p_relatorio`. Um
+ * gate próprio (`LIMITE_RELATORIO_BYTES`) recusa a troca INTEIRA se ele passar de 4 MB,
+ * porque o estouro aconteceria no proxy, antes do Postgres ver a requisição, e nenhum
+ * SQLSTATE saberia traduzir isso. Ver o comentário do gate mais abaixo.
+ *
  * ── POR QUE DEIXOU DE SER UPSERT ────────────────────────────────────────────────────
  *
  * O upsert casava a linha pela chave natural. Como CPF, cargo e inscrição compunham essa
@@ -317,6 +345,7 @@ export function useImportarCandidatos() {
     mutationFn: async ({
       editalId,
       candidatos,
+      relatorio,
       onProgresso,
       deveParar,
     }: {
@@ -330,6 +359,12 @@ export function useImportarCandidatos() {
       // SEM `cargo_id` de chegar aqui. Esse campo compõe a chave natural — mandar o lote
       // não-resolvido gravaria linhas com a identidade incompleta, e o TS recusa antes.
       candidatos: CandidatoResolvido[];
+      // 🔴 Desde 2026-08-02: o relatório persiste JUNTO com a troca, na mesma transação
+      // — ver `trocar_candidatos_do_edital`. Vai no formato de EXPORT
+      // (`ProblemaDoRelatorio`, com as chaves acentuadas); é este hook que traduz para o
+      // formato de persistência com `paraRelatorioPersistido` logo abaixo, para o
+      // chamador não precisar saber que os dois formatos existem.
+      relatorio: ProblemaDoRelatorio[];
       onProgresso?: (p: ProgressoImportacao) => void;
       deveParar?: () => boolean;
     }): Promise<ResultadoImportacao> => {
@@ -381,6 +416,38 @@ export function useImportarCandidatos() {
         return semTroca(`O envio falhou no bloco ${blocoComErro.bloco}: ${blocoComErro.erro}`);
       }
 
+      // ── 🔴 O GATE DO RELATÓRIO: ele NÃO é chunked, ao contrário de `candidatos` ────
+      //
+      // `candidatos` sobe em blocos de `TAMANHO_BLOCO` justamente porque um lote inteiro
+      // não cabe no limite de 5 MB do Kong (medido: 5,40 MB para 7.416 linhas). O
+      // relatório viaja INTEIRO numa chamada só, dentro de `p_relatorio` — decisão
+      // tomada porque o volume real medido (238 linhas para as mesmas 7.416, 37,8 KB) é
+      // três ordens de grandeza menor que o limite. Chunkar algo que nunca chega perto
+      // do teto seria complexidade sem uso — mas "nunca chega perto" não é "não pode".
+      //
+      // Uma linha do relatório pesa ~163 bytes (medido); a ~32.000 linhas o payload
+      // encosta nos 5 MB. Como `comAviso.flatMap` pode gerar VÁRIAS queixas por linha da
+      // planilha, um arquivo patologicamente sujo — não necessariamente um edital
+      // GRANDE — poderia chegar lá antes de qualquer guarda de `candidatos` disparar.
+      //
+      // Sem este gate, o estouro aconteceria no PROXY (Kong), antes do Postgres ver a
+      // requisição — nenhum código SQLSTATE nem `mensagemErroImportacao` saberia traduzir
+      // isso; o usuário veria uma falha de rede crua. Por isso a guarda é no CLIENTE, e
+      // por isso ela recusa a TROCA INTEIRA (não só "não persiste o relatório"): deixar
+      // candidatos entrar e o relatório ficar de fora quebraria a garantia que a
+      // migration 20260802145848 existe para dar — os dois mudam juntos, ou nenhum muda.
+      const relatorioPersistido = paraRelatorioPersistido(relatorio);
+      const bytesDoRelatorio = new TextEncoder().encode(JSON.stringify(relatorioPersistido)).length;
+      if (bytesDoRelatorio > LIMITE_RELATORIO_BYTES) {
+        await limparPreparo();
+        const mb = (bytesDoRelatorio / 1024 / 1024).toFixed(1);
+        return semTroca(
+          `O relatório desta importação (${mb} MB, ${relatorioPersistido.length} linha(s) de problema) ` +
+            "é grande demais para ser salvo numa única operação. A lista atual do edital foi mantida — " +
+            "nada foi alterado. Isto foge do uso normal do sistema; avise o time de desenvolvimento antes de tentar de novo.",
+        );
+      }
+
       // ── A troca ────────────────────────────────────────────────────────────────────
       // `p_total_esperado` é a conferência que o banco faz contra o preparo. Ela NÃO é
       // redundante com o gate acima: o gate garante que ESTE cliente enviou tudo; a
@@ -390,6 +457,9 @@ export function useImportarCandidatos() {
         p_edital_id: editalId,
         p_importacao_id: importacaoId,
         p_total_esperado: candidatos.length,
+        // O MESMO valor que passou pelo gate acima — nunca recalculado, para não haver
+        // chance de o que foi medido divergir do que é enviado.
+        p_relatorio: relatorioPersistido as unknown as Json,
       });
 
       if (error) {

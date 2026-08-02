@@ -701,13 +701,13 @@ export type ResolucaoCargos = Map<string, string>;
  * Carimba em cada candidato o `cargo_id` que o usuário decidiu para o texto daquela linha.
  *
  * É o estágio 2 do pipeline da importação:
- *   converterLinha → **aplicarResolucoes** → deduplicar → blocos de 500
+ *   converterLinha → **aplicarResolucoes** → deduplicar → blocos de 1.000
  *
  * ⚠️ A ORDEM É CONTRATO, não estilo — e é o que muda de lugar na etapa 5. Hoje a página
  * deduplica sobre o texto do cargo; quando a chave natural passar a ser `cargo_id`, dois
  * textos sujos diferentes apontando para o MESMO cargo viram a MESMA chave no banco, e um
  * dedup feito antes desta função os deixaria passar como distintos — o Postgres então
- * recusaria o bloco de 500 inteiro com "cannot affect row a second time". Deduplicar
+ * recusaria o bloco de 1.000 inteiro com "cannot affect row a second time". Deduplicar
  * DEPOIS de resolver é o que evita isso.
  *
  * Resolução faltante não lança e não é silenciada: a linha sai com `cargo_id: null`, que é
@@ -749,7 +749,7 @@ export interface SeparacaoPorPagamento {
  * seria descartado — e o pagante sumiria da importação sem aparecer em lugar nenhum. O
  * pipeline é:
  *
- *     converterLinha → separarPorPagamento → resolverLinhas → deduplicar → blocos de 500
+ *     converterLinha → separarPorPagamento → resolverLinhas → deduplicar → blocos de 1.000
  *
  * ⚠️ **Linha com `erro` não entra em NENHUM dos dois.** Ela já é contada em `comErro`, e
  * classificá-la também aqui faria o relatório acusar a mesma linha por dois motivos — a
@@ -839,15 +839,15 @@ export interface Deduplicacao {
  * importação não grava NADA. Sem esta passagem, uma única linha duplicada na planilha
  * derruba a importação inteira.
  *
- * ⚠️ **Não é mais "falha o bloco de 500".** Até 2026-07-30 a gravação era um upsert direto
+ * ⚠️ **Não é mais "falha o bloco de 1.000".** Até 2026-07-30 a gravação era um upsert direto
  * em `candidatos`, e a recusa vinha como "ON CONFLICT DO UPDATE command cannot affect row a
- * second time", num bloco só. Hoje os blocos de 500 vão para `candidatos_importacao`, que
+ * second time", num bloco só. Hoje os blocos de 1.000 vão para `candidatos_importacao`, que
  * NÃO tem índice único na chave natural — eles passam. A recusa acontece depois, no INSERT
  * da RPC, e derruba a troca inteira. O mecanismo mudou; a necessidade do dedup, não.
  *
  * ELE RODA DEPOIS DA RESOLUÇÃO:
  *
- *     converterLinha → separarPorPagamento → resolverLinhas → deduplicar → blocos de 500
+ *     converterLinha → separarPorPagamento → resolverLinhas → deduplicar → blocos de 1.000
  *
  * ⚠️ **O motivo dessa ordem mudou em 2026-08-01, e o motivo antigo NÃO vale mais.** Até
  * então o cargo compunha a chave natural, e deduplicar antes de resolver deixava passar
@@ -1122,4 +1122,38 @@ export function agruparProblemasPorCampo(
   return [...porCampo.entries()]
     .map(([campo, queixas]) => ({ campo, queixas }))
     .sort((a, b) => a.campo.localeCompare(b.campo, "pt-BR"));
+}
+
+/**
+ * Uma linha do relatório no formato que `candidatos_relatorio_importacao` grava — snake_case,
+ * SEM relação com os rótulos de coluna que o export mostra.
+ *
+ * ⚠️ Existe como tipo próprio, e não como sinônimo de `ProblemaDoRelatorio`, de propósito:
+ * as chaves de `ProblemaDoRelatorio` ("Nº de Inscrição", "Situação"...) viram cabeçalho da
+ * planilha XLS e mudam por motivo cosmético — foi renomeada de "Linha" para "Nº de
+ * Inscrição" há poucos dias. Se o schema do banco copiasse esses rótulos, a próxima
+ * renomeação de coluna do export quebraria a persistência em silêncio.
+ */
+export interface LinhaRelatorioPersistida {
+  n_inscricao: string;
+  situacao: string;
+  campo: string;
+  detalhe: string;
+}
+
+/**
+ * Traduz o relatório (formato de export) para o formato de persistência.
+ *
+ * 🔴 É a ÚNICA ponte entre os dois formatos — se um dia `ProblemaDoRelatorio` ganhar uma
+ * chave nova que precise persistir, ela entra AQUI, não direto na chamada da RPC.
+ */
+export function paraRelatorioPersistido(
+  problemas: ProblemaDoRelatorio[],
+): LinhaRelatorioPersistida[] {
+  return problemas.map((p) => ({
+    n_inscricao: p["Nº de Inscrição"],
+    situacao: p.Situação,
+    campo: p.Campo,
+    detalhe: p.Detalhe,
+  }));
 }

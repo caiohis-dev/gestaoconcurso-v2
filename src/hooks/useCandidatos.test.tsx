@@ -36,7 +36,7 @@ import {
   type QueryResult,
 } from "@/test/supabase-mock";
 import { renderHookWithProviders } from "@/test/utils";
-import type { CandidatoResolvido } from "@/lib/candidatos-import";
+import type { CandidatoResolvido, ProblemaDoRelatorio } from "@/lib/candidatos-import";
 
 vi.mock("@/integrations/supabase/client", async () => {
   const { supabaseMock } = await import("@/test/supabase-mock");
@@ -54,6 +54,7 @@ import {
   useImportarCandidatos,
   useExcluirCandidatos,
   TAMANHO_BLOCO,
+  LIMITE_RELATORIO_BYTES,
   type Candidato,
   type ResultadoImportacao,
 } from "@/hooks/useCandidatos";
@@ -167,6 +168,15 @@ function paraImportar(n: number): CandidatoResolvido {
 
 const lote = (quantidade: number) =>
   Array.from({ length: quantidade }, (_, i) => paraImportar(i));
+
+/**
+ * Um relatório mínimo, no formato de EXPORT (`ProblemaDoRelatorio`) — o mesmo que
+ * `handleImportar` monta antes de chamar `importar()`. Os testes daqui não escrevem
+ * relatório de verdade; usam este fixture só para provar que ELE VIAJA até a RPC.
+ */
+const RELATORIO: ProblemaDoRelatorio[] = [
+  { "Nº de Inscrição": "9", Situação: "Não importada", Campo: "Nome", Detalhe: "Nome vazio" },
+];
 
 describe("useCandidatos", () => {
   beforeEach(() => {
@@ -411,7 +421,7 @@ describe("useCandidatos", () => {
       const { result } = renderHookWithProviders(() => useImportarCandidatos());
 
       await act(async () => {
-        await result.current.importar({ editalId: EDITAL, candidatos: lote(2) });
+        await result.current.importar({ editalId: EDITAL, candidatos: lote(2), relatorio: RELATORIO });
       });
 
       expect(buildersQueChamaram("candidatos_importacao", "insert").length).toBeGreaterThan(0);
@@ -427,7 +437,7 @@ describe("useCandidatos", () => {
       const { result } = renderHookWithProviders(() => useImportarCandidatos());
 
       await act(async () => {
-        await result.current.importar({ editalId: EDITAL, candidatos: lote(3) });
+        await result.current.importar({ editalId: EDITAL, candidatos: lote(3), relatorio: RELATORIO });
       });
 
       const chamadas = supabaseMock.rpc.mock.calls.filter(
@@ -443,6 +453,34 @@ describe("useCandidatos", () => {
       );
     });
 
+    it("🔴 traduz o relatório de EXPORT para o formato de PERSISTÊNCIA, na mesma chamada", async () => {
+      // A ponte entre os dois formatos é `paraRelatorioPersistido` — este teste garante
+      // que o HOOK a usa de verdade, e não manda as chaves acentuadas do export direto
+      // para a RPC (o que quebraria `jsonb_to_recordset` no banco, em silêncio).
+      setTableResult("candidatos_importacao", { data: null, error: null });
+      trocaOk(0, 1);
+      const { result } = renderHookWithProviders(() => useImportarCandidatos());
+
+      await act(async () => {
+        await result.current.importar({
+          editalId: EDITAL,
+          candidatos: lote(1),
+          relatorio: [
+            { "Nº de Inscrição": "42", Situação: "Não importada", Campo: "Cargo", Detalhe: "Cargo vazio" },
+          ],
+        });
+      });
+
+      const chamadas = supabaseMock.rpc.mock.calls.filter(
+        ([nome]) => nome === "trocar_candidatos_do_edital",
+      );
+      expect(chamadas[0][1]).toMatchObject({
+        p_relatorio: [
+          { n_inscricao: "42", situacao: "Não importada", campo: "Cargo", detalhe: "Cargo vazio" },
+        ],
+      });
+    });
+
     it("devolve os números vindos do BANCO, não contagem do cliente", async () => {
       setTableResult("candidatos_importacao", { data: null, error: null });
       trocaOk(7416, 7413);
@@ -450,7 +488,7 @@ describe("useCandidatos", () => {
 
       let res!: ResultadoImportacao;
       await act(async () => {
-        res = await result.current.importar({ editalId: EDITAL, candidatos: lote(2) });
+        res = await result.current.importar({ editalId: EDITAL, candidatos: lote(2), relatorio: RELATORIO });
       });
 
       expect(res.trocou).toBe(true);
@@ -469,6 +507,7 @@ describe("useCandidatos", () => {
         await result.current.importar({
           editalId: EDITAL,
           candidatos: lote(TAMANHO_BLOCO + 1),
+          relatorio: RELATORIO,
         });
       });
 
@@ -491,6 +530,7 @@ describe("useCandidatos", () => {
         await result.current.importar({
           editalId: EDITAL,
           candidatos: lote(TAMANHO_BLOCO + 1),
+          relatorio: RELATORIO,
         });
       });
 
@@ -506,7 +546,7 @@ describe("useCandidatos", () => {
       const { result } = renderHookWithProviders(() => useImportarCandidatos());
 
       await act(async () => {
-        await result.current.importar({ editalId: EDITAL, candidatos: lote(1) });
+        await result.current.importar({ editalId: EDITAL, candidatos: lote(1), relatorio: RELATORIO });
       });
 
       expect(supabaseMock.auth.getUser).toHaveBeenCalled();
@@ -527,6 +567,7 @@ describe("useCandidatos", () => {
         await result.current.importar({
           editalId: EDITAL,
           candidatos: lote(TAMANHO_BLOCO + 1),
+          relatorio: RELATORIO,
           onProgresso,
         });
       });
@@ -555,7 +596,7 @@ describe("useCandidatos", () => {
 
       let res!: ResultadoImportacao;
       await act(async () => {
-        res = await result.current.importar({ editalId: EDITAL, candidatos: lote(1) });
+        res = await result.current.importar({ editalId: EDITAL, candidatos: lote(1), relatorio: RELATORIO });
       });
 
       expect(res.trocou).toBe(false);
@@ -581,6 +622,7 @@ describe("useCandidatos", () => {
         res = await result.current.importar({
           editalId: EDITAL,
           candidatos: lote(TAMANHO_BLOCO * 3),
+          relatorio: RELATORIO,
           onProgresso: () => {
             blocosEnviados += 1;
           },
@@ -609,12 +651,93 @@ describe("useCandidatos", () => {
 
       let res!: ResultadoImportacao;
       await act(async () => {
-        res = await result.current.importar({ editalId: EDITAL, candidatos: lote(1) });
+        res = await result.current.importar({ editalId: EDITAL, candidatos: lote(1), relatorio: RELATORIO });
       });
 
       expect(res.trocou).toBe(false);
       expect(res.motivoNaoTrocou).toMatch(/MANTIDA|mantida/);
       expect(res.motivoNaoTrocou).toMatch(/incompleto/i);
+    });
+
+    describe("🔴 o gate do relatório — ele NÃO é chunked como candidatos", () => {
+      /**
+       * Um relatório sintético grande o bastante para estourar `LIMITE_RELATORIO_BYTES`
+       * (4 MB) com folga — não é o volume real medido (238 linhas, 37,8 KB para 7.416
+       * candidatos), é um arquivo patologicamente sujo, exatamente o caso que o gate
+       * existe para pegar. 30.000 linhas de ~200 bytes cada ≈ 6 MB, folgado acima do teto.
+       */
+      const relatorioGigante: ProblemaDoRelatorio[] = Array.from({ length: 30000 }, (_, i) => ({
+        "Nº de Inscrição": String(i),
+        Situação: "Importada com ressalva" as const,
+        Campo: "CPF",
+        Detalhe: "x".repeat(150),
+      }));
+
+      it("🔴 recusa a troca INTEIRA — não só deixa de persistir o relatório", async () => {
+        // A garantia da migration 20260802145848 é "os dois mudam juntos, ou nenhum
+        // muda". Se este gate deixasse candidatos entrarem e só descartasse o
+        // relatório, essa garantia quebraria — o relatório persistido mentiria sobre a
+        // importação mais recente.
+        setTableResult("candidatos_importacao", { data: null, error: null });
+        trocaOk(999, 999); // se a RPC for chamada, o teste abaixo denuncia
+        const { result } = renderHookWithProviders(() => useImportarCandidatos());
+
+        let res!: ResultadoImportacao;
+        await act(async () => {
+          res = await result.current.importar({
+            editalId: EDITAL,
+            candidatos: lote(1),
+            relatorio: relatorioGigante,
+          });
+        });
+
+        expect(res.trocou).toBe(false);
+        expect(res.motivoNaoTrocou).toMatch(/grande demais/i);
+        expect(res.motivoNaoTrocou).toMatch(/mantida/i);
+        expect(
+          supabaseMock.rpc.mock.calls.filter(([n]) => n === "trocar_candidatos_do_edital"),
+        ).toHaveLength(0);
+        // O preparo dos CANDIDATOS (que já tinha subido, antes do gate do relatório
+        // rodar) é limpo — senão ele sobra e atrapalha a próxima tentativa.
+        expect(buildersQueChamaram("candidatos_importacao", "delete").length).toBeGreaterThan(0);
+      });
+
+      it("CONTROLE POSITIVO: o relatório REAL (238 linhas, 37,8 KB) passa pelo gate sem problema", async () => {
+        // O volume medido contra o arquivo real fica a três ordens de grandeza do
+        // limite. Este teste prova que o gate não é falso-positivo para uso normal.
+        setTableResult("candidatos_importacao", { data: null, error: null });
+        trocaOk(1, 1);
+        const { result } = renderHookWithProviders(() => useImportarCandidatos());
+        const relatorioReal = Array.from({ length: 238 }, (_, i) => ({
+          "Nº de Inscrição": String(i),
+          Situação: "Importada com ressalva" as const,
+          Campo: "CPF",
+          Detalhe: "tem 10 dígitos",
+        }));
+
+        let res!: ResultadoImportacao;
+        await act(async () => {
+          res = await result.current.importar({
+            editalId: EDITAL,
+            candidatos: lote(1),
+            relatorio: relatorioReal,
+          });
+        });
+
+        expect(res.trocou).toBe(true);
+        const chamadas = supabaseMock.rpc.mock.calls.filter(
+          ([n]) => n === "trocar_candidatos_do_edital",
+        );
+        expect(chamadas).toHaveLength(1);
+        expect((chamadas[0][1] as { p_relatorio: unknown[] }).p_relatorio).toHaveLength(238);
+      });
+
+      it("⚠️ o limite é em BYTES reais (UTF-8), não em contagem de linha", () => {
+        // Não testa o hook — testa a CONSTANTE, para que ninguém a troque por um número
+        // "redondo" sem refazer a medição contra o Kong. 4 MB é 80% do limite de 5 MB já
+        // medido para `candidatos` — a mesma margem, não um número novo inventado.
+        expect(LIMITE_RELATORIO_BYTES).toBe(4 * 1024 * 1024);
+      });
     });
   });
 

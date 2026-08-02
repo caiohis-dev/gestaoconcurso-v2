@@ -26,6 +26,7 @@ import {
   letraDaColuna,
   mapeamentoCompleto,
   mensagemErroImportacao,
+  paraRelatorioPersistido,
   pareceSujo,
   parseBooleano,
   parseDataBr,
@@ -38,6 +39,7 @@ import {
   type CandidatoImportado,
   type CandidatoResolvido,
   type Mapeamento,
+  type ProblemaDoRelatorio,
   type ResolucaoCargos,
 } from "./candidatos-import";
 
@@ -637,7 +639,7 @@ describe("deduplicar", () => {
     // gravação roda dentro da RPC `trocar_candidatos`, o erro aborta a TROCA INTEIRA — o
     // DELETE volta atrás junto e nada é importado.
     // ⚠️ Até 30/07 a recusa vinha do upsert ("cannot affect row a second time") e derrubava
-    // um bloco de 500; hoje os blocos vão para o preparo, que não tem índice único, e a
+    // um bloco de 1.000; hoje os blocos vão para o preparo, que não tem índice único, e a
     // recusa acontece depois. O mecanismo mudou, a necessidade do dedup não.
     const { candidatos, repetidas } = pipeline(
       [
@@ -1348,6 +1350,42 @@ describe("subtituloDoCampo", () => {
     };
     const [p] = montarProblemasDoRelatorio([], [], [], [naoPagante]);
     expect(subtituloDoCampo(p.Campo)).toBe("Lista de inscrições sem pagamento registrado");
+  });
+});
+
+describe("paraRelatorioPersistido", () => {
+  it("🔴 troca as chaves acentuadas do export pelas snake_case do banco", () => {
+    // A ÚNICA ponte entre os dois formatos. Se este teste passar a exigir chaves
+    // diferentes, `jsonb_to_recordset` na RPC para de casar em silêncio — o INSERT do
+    // relatório grava NULL em toda coluna, sem erro nenhum (a função não valida NOT NULL
+    // contra o texto de origem, só contra o valor final).
+    const problemas: ProblemaDoRelatorio[] = [
+      {
+        "Nº de Inscrição": "9",
+        Situação: "Não importada",
+        Campo: "Nome",
+        Detalhe: "Nome vazio",
+      },
+    ];
+    expect(paraRelatorioPersistido(problemas)).toEqual([
+      { n_inscricao: "9", situacao: "Não importada", campo: "Nome", detalhe: "Nome vazio" },
+    ]);
+  });
+
+  it("preserva a ORDEM e a QUANTIDADE — não filtra nem reordena", () => {
+    const problemas: ProblemaDoRelatorio[] = [
+      { "Nº de Inscrição": "1", Situação: "Não importada", Campo: "Nome", Detalhe: "a" },
+      { "Nº de Inscrição": "2", Situação: "Importada com ressalva", Campo: "CPF", Detalhe: "b" },
+    ];
+    const linhas = paraRelatorioPersistido(problemas);
+    expect(linhas.map((l) => l.n_inscricao)).toEqual(["1", "2"]);
+  });
+
+  it("lista vazia devolve lista vazia — é o caso 'importação sem problema nenhum'", () => {
+    // ⚠️ Não é caso degenerado: é o resultado normal de uma planilha limpa, e a RPC
+    // precisa gravar isto como '[]', não pular a chamada — senão um relatório velho e
+    // sujo de uma importação anterior sobreviveria a uma reimportação impecável.
+    expect(paraRelatorioPersistido([])).toEqual([]);
   });
 });
 

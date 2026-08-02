@@ -30,6 +30,7 @@ import {
   resetSupabaseMock,
   erroPostgrest,
   buildersDaTabela,
+  supabaseMock,
 } from "@/test/supabase-mock";
 import { renderWithProviders } from "@/test/utils";
 
@@ -985,6 +986,33 @@ describe("CandidatosImportar (interação)", () => {
       expect(buildersDaTabela("candidatos").filter((b) => b.upsert.mock.calls.length > 0)).toEqual(
         [],
       );
+    });
+
+    it("🔴 o relatório PERSISTIDO vai na MESMA chamada da troca, e bate com o que a tela mostraria", async () => {
+      // Fecha o circuito inteiro: passo 2 filtra a AGATHA por não-pagamento -> a tela usa
+      // o MESMO `relatorio` (useMemo) para export e para a persistência -> a RPC recebe a
+      // linha dela, já traduzida para o formato snake_case do banco.
+      const user = await abrir();
+      await irParaCargos(user, MATRIZ_COM_NAO_PAGANTE);
+      await associar(user, "DOCENTE I - HISTÓRIA", "DOCENTE I — HISTÓRIA");
+      await user.click(await screen.findByRole("button", { name: /Importar 2 candidato\(s\)/i }));
+      await user.click(await screen.findByRole("button", { name: /Substituir os inscritos/i }));
+      await screen.findByText("Lista do edital substituída");
+
+      const chamada = supabaseMock.rpc.mock.calls.find(
+        ([nome]) => nome === "trocar_candidatos_do_edital",
+      );
+      const relatorioEnviado = (chamada?.[1] as { p_relatorio: unknown[] }).p_relatorio;
+      expect(relatorioEnviado).toContainEqual(
+        expect.objectContaining({
+          situacao: "Não importada (inscrição não paga)",
+          campo: "Pagamento",
+          detalhe: expect.stringContaining("AGATHA LAMIM"),
+        }),
+      );
+      // ⚠️ NÃO os rótulos do export ("Situação", "Campo" com acento) — se este assert
+      // falhar com as chaves acentuadas, o hook parou de traduzir antes de mandar.
+      expect(Object.keys(relatorioEnviado[0])).toEqual(["n_inscricao", "situacao", "campo", "detalhe"]);
     });
 
     it("🔴 bloco que falha: a tela diz que NINGUÉM foi removido", async () => {

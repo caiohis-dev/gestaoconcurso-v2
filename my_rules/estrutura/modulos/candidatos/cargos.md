@@ -170,14 +170,14 @@ Carimba o `cargo_id` decidido, casando pelo `textoChave`. Resolução faltante *
 ### ⚠️ A ordem do pipeline é contrato — e desde a etapa 5 quem a garante é o TYPE CHECKER
 
 ```
-converterLinha → resolverLinhas → deduplicar → blocos de 500
+converterLinha → resolverLinhas → deduplicar → blocos de 1.000
 ```
 
 Até a etapa 4 a página deduplicava **antes** de resolver, e isso estava **correto** enquanto a chave natural era o texto. Com `cargo_id` na chave virou defeito: dois textos sujos apontando para o mesmo cargo são a **mesma** chave no banco, e um dedup sobre o texto os deixaria passar como distintos.
 
 > 🔵 **Desde 2026-08-01 a ordem já não é o que protege isso** — o cargo saiu da chave, então deduplicar antes ou depois de resolver dá o mesmo resultado. O dedup continua rodando depois por outro motivo: o que sai dele é o que vai ser gravado, e a gravação precisa do `cargo_id`. Quem impede a inversão continua sendo o **tipo** (`LinhaResolvida` só sai de `resolverLinhas`).
 >
-> ⚠️ A recusa citada aqui (*"o Postgres recusaria o bloco de 500 com cannot affect row a second time"*) descreve o **upsert**, que não existe desde a troca total de 30/07. Hoje os blocos de 500 vão para `candidatos_importacao`, que não tem índice único, e a recusa vem depois — no `INSERT` da RPC, derrubando a troca inteira.
+> ⚠️ A recusa citada aqui (*"o Postgres recusaria o bloco de 1.000 com cannot affect row a second time"*) descreve o **upsert**, que não existe desde a troca total de 30/07. Hoje os blocos de 1.000 vão para `candidatos_importacao`, que não tem índice único, e a recusa vem depois — no `INSERT` da RPC, derrubando a troca inteira.
 
 ⭐ **A ordem não depende mais de disciplina.** `deduplicar()` só aceita `LinhaResolvida[]`, que só sai de `resolverLinhas()`. **Verificado em 28/07, não presumido:** trocar a chamada de volta para `deduplicar(convertidas)` dá `TS2345` — é erro de compilação, não defeito silencioso.
 
