@@ -305,7 +305,19 @@ Desde que a importação passa a trazer **só quem pagou a inscrição**, todo `
 
 `OcorrenciasProva.exportPdf` chama o timbre **uma vez**, antes da tabela. O `didDrawPage` dela só escreve o rodapé. Uma prova com ocorrências que transbordem para a segunda página gera um documento em que **da página 2 em diante não há logo, nem fundação, nem nome do edital** — folhas soltas sem identificação.
 
+🔴 **É SÓ ESTE dos três documentos, e confundi-los já custou uma investigação (02/08).** O sistema tem três páginas que geram PDF, e as outras duas timbram tudo:
+
+| Página | Timbra todas? | Como |
+|---|---|---|
+| `CandidatosImportar` | ✅ | `didDrawPage: timbrar` + `Set` de páginas já timbradas |
+| `DocumentosImpressao` | ✅ | pagina à mão e chama `addHeader()` a cada folha (`:207`) |
+| **`OcorrenciasProva`** | ❌ | `desenharTimbre` **uma vez**, antes da tabela |
+
+⚠️ **Antes de reabrir isto suspeitando do `pdf-timbre.ts`: a extração NÃO causou o problema.** Verificado em 02/08 por três vias — leitura (`OcorrenciasProva.tsx:360` e `:394`), execução (reproduzida a sequência com 120 ocorrências: 6 páginas, timbre só na 1) e histórico (`git show 969c659` mostra que o código anterior também chamava `addHeader()` uma única vez). O comportamento é **anterior** ao `pdf-timbre.ts`.
+
 Não foi corrigido junto com a extração porque **corrigir muda o documento emitido**, e a extração tinha como regra não mudar nenhum. As duas coisas não deviam viajar no mesmo passe: se o leiaute mudasse junto, ninguém saberia depois se foi a extração que estragou.
+
+📌 **Reafirmado em 2026-08-02 pelo usuário: fica como está** — a medição de quantas ocorrências cabem numa folha continua não feita, e é ela que diz se o item vale.
 
 - **A correção é pequena:** trocar a chamada única por `didDrawPage: timbrar`, com o mesmo `Set` de páginas já timbradas que `CandidatosImportar` usa — o padrão está lá, pronto para copiar.
 - ⚠️ **Junto vem o `margin.top`:** sem ele, a tabela que continua na página 2 começa no topo e passa **por baixo** do timbre novo. É o mesmo par que `CandidatosImportar` resolve com `topoDoCorpo`.
