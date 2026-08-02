@@ -38,6 +38,7 @@ errada e o que cada decisão custou. Antes de reabrir qualquer tema abaixo, proc
 | ✅ 01/08 | o timbre dos PDFs virou `src/lib/pdf-timbre.ts`, dono único das três páginas |
 | ✅ 01/08 | a importação passou a trazer **só quem pagou** a inscrição |
 | ✅ 01/08 | a chave natural virou `(edital_id, n_inscricao)` — CPF e cargo saíram da identidade |
+| ✅ 02/08 | o edital de uma prova virou **imutável** depois de definido (`PE001`) |
 
 ---
 
@@ -183,17 +184,6 @@ Junto com a refatoração, **corrigir a funcionalidade de "Faltou"**: quando uma
 
 ---
 
-## Uma prova nunca pode ter seu Edital modificado
-
-**Status:** pendente — adicionado em 2026-07-26
-**Área:** Aplicação de Provas / Editais (ver [`estrutura/modulos/aplicacao-provas/provas-e-unidades.md`](./estrutura/modulos/aplicacao-provas/provas-e-unidades.md) e [`estrutura/modulos/editais/00-modulo.md`](./estrutura/modulos/editais/00-modulo.md))
-
-Na rota `/gerenciar-prova` há um botão **"Parâmetros Gerais"** que permite alterar o cadastro da prova. Toda prova tem um edital associado a ela. O botão "Parâmetros Gerais" permite alterar o Edital.
-
-**O que vamos mudar:** uma prova **nunca** pode ter seu Edital modificado. O campo de vinculação ao Edital deve ser permitido apenas no momento do cadastro/criação da prova, ficando travado/inviabilizado para alteração quando a prova for editada posteriormente via "Parâmetros Gerais". O valor da vinculação com o Edital segue sendo visualizado na UI conduzida atraves de Parametros Gerais. Apenas visualizado.
-
----
-
 ## Sanear as contas do Auth (3 dívidas abertas pelo backfill)
 
 **Status:** pendente — aberto em 2026-07-14, ao vincular os colaboradores que já eram usuários
@@ -246,7 +236,7 @@ Enquanto (2) não estiver resolvido, não é possível criar o `CHECK` que amarr
 
 O projeto novo no supabase.com já foi criado, mas o repo **não é linkado a ele** — e não deve ser, até o dia de colocar a v2 no ar (regra combinada em 2026-07-12: o repo fica deslinkado por padrão, e produção só é atualizada em versões estáveis).
 
-O schema já está pronto para subir quando for a hora: as **108** migrations reproduzem o banco local do zero (validado por `db reset` em 2026-07-31). ⚠️ **Este número já envelheceu duas vezes** — foi escrito como 69, corrigido para 85, e estava em 85 quando o real era 106. Confira com `npm run docs:conferir` em vez de confiar na leitura. O roteiro completo dos **9 passos** (link → `prod:push:dry` → `prod:push` → carga do `seed.local.sql` → **`seed.pos.sql`** → auth no dashboard → edge functions + secrets SMTP → `.env` do frontend → **unlink**) está em [`banco-producao.md`](./banco-producao.md).
+O schema já está pronto para subir quando for a hora: as **109** migrations reproduzem o banco local do zero (validado por `db reset` em 2026-07-31). ⚠️ **Este número já envelheceu duas vezes** — foi escrito como 69, corrigido para 85, e estava em 85 quando o real era 106. Confira com `npm run docs:conferir` em vez de confiar na leitura. O roteiro completo dos **9 passos** (link → `prod:push:dry` → `prod:push` → carga do `seed.local.sql` → **`seed.pos.sql`** → auth no dashboard → edge functions + secrets SMTP → `.env` do frontend → **unlink**) está em [`banco-producao.md`](./banco-producao.md).
 
 Falta apenas, no dia: a **ref do projeto novo** no Supabase.
 

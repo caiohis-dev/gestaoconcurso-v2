@@ -13,6 +13,7 @@ import {
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -98,27 +99,26 @@ export function ProvaDialog({
   }, [prova, form]);
 
   // Herança de UI (D2/D3): ao escolher um edital numa prova NOVA, o edital preenche os
-  // três campos como SUGESTÃO editável. Ao EDITAR, não sobrescreve — a prova já tem os
-  // seus, e são eles que a alocação e os PDFs leem.
+  // três campos como SUGESTÃO editável.
+  //
+  // ⚠️ O ramo `if (!isEditing)` SAIU em 2026-08-02 e não deve voltar: desde a PE001 o
+  // edital não é escolhível na edição, então esta função só é alcançável na criação.
+  // Mantê-lo daria a impressão de que existe um caminho de troca ao editar.
   const handleEditalChange = (id: string) => {
     form.setValue("edital_id", id, { shouldValidate: true });
-    if (!isEditing) {
-      const ed = editais.find((e) => e.id === id);
-      if (ed) {
-        form.setValue("prova_n_candidatos", ed.n_candidatos != null ? String(ed.n_candidatos) : "");
-        form.setValue("prova_cabecalho_linha1", ed.cabecalho_linha1 ?? "");
-        form.setValue("prova_cabecalho_linha2", ed.cabecalho_linha2 ?? "");
-      }
+    const ed = editais.find((e) => e.id === id);
+    if (ed) {
+      form.setValue("prova_n_candidatos", ed.n_candidatos != null ? String(ed.n_candidatos) : "");
+      form.setValue("prova_cabecalho_linha1", ed.cabecalho_linha1 ?? "");
+      form.setValue("prova_cabecalho_linha2", ed.cabecalho_linha2 ?? "");
     }
   };
 
+  /** O edital da prova em edição — é o que a tela mostra em leitura. */
+  const editalDaProva = isEditing ? editais.find((e) => e.id === prova?.edital_id) : undefined;
+
   const handleSubmit = (data: FormData) => {
-    const edital = editais.find((e) => e.id === data.edital_id);
-    const formattedData: ProvaInsert | ProvaUpdate = {
-      edital_id: data.edital_id,
-      // Cópia denormalizada só para o NOT NULL de prova_edital (CHAR(30)) enquanto a
-      // coluna não é dropada. Truncada a 30 por segurança; a fonte de verdade é edital_id.
-      prova_edital: (edital?.nome ?? "").slice(0, 30),
+    const camposDaProva = {
       prova_data: data.prova_data || null,
       prova_hora_inicio: data.prova_hora_inicio || null,
       prova_hora_final: data.prova_hora_final || null,
@@ -127,6 +127,27 @@ export function ProvaDialog({
         : null,
       prova_cabecalho_linha1: data.prova_cabecalho_linha1 || null,
       prova_cabecalho_linha2: data.prova_cabecalho_linha2 || null,
+    };
+
+    // 🔴 PE001: na EDIÇÃO o payload NÃO carrega `edital_id` nem `prova_edital`.
+    //
+    // Isto é mais forte que desabilitar o campo — não há valor de edital viajando, então
+    // nem um bug de estado no formulário consegue reescrever o vínculo. O trigger
+    // `check_prova_edital_imutavel` recusaria de qualquer jeito; aqui a intenção é a tela
+    // nunca chegar a PEDIR a troca, porque erro que o banco recusa vira toast vermelho
+    // para um usuário que não pediu nada.
+    if (isEditing) {
+      onSubmit(camposDaProva as ProvaUpdate);
+      return;
+    }
+
+    const edital = editais.find((e) => e.id === data.edital_id);
+    const formattedData: ProvaInsert = {
+      edital_id: data.edital_id,
+      // Cópia denormalizada só para o NOT NULL de prova_edital (CHAR(30)) enquanto a
+      // coluna não é dropada. Truncada a 30 por segurança; a fonte de verdade é edital_id.
+      prova_edital: (edital?.nome ?? "").slice(0, 30),
+      ...camposDaProva,
     };
     onSubmit(formattedData);
   };
@@ -139,10 +160,13 @@ export function ProvaDialog({
         <DialogHeader>
           <DialogTitle>{isEditing ? "Editar Prova" : "Nova Prova"}</DialogTitle>
           <DialogDescription>
+            {/* ⚠️ O texto de edição dizia "Trocar o edital não sobrescreve os campos já
+                preenchidos" até 2026-08-02. Virou falso com a PE001 — e pior que falso:
+                ensinava uma ação que a tela não oferece mais. */}
             {semEditais
               ? "É preciso ter um edital cadastrado antes de criar uma prova."
               : isEditing
-                ? "Atualize os dados da prova. Trocar o edital não sobrescreve os campos já preenchidos."
+                ? "Atualize os dados da prova. O edital é definido na criação e não muda."
                 : "Escolha o edital: os dados dele entram como ponto de partida e podem ser ajustados."}
           </DialogDescription>
         </DialogHeader>
@@ -165,30 +189,53 @@ export function ProvaDialog({
         ) : (
           <Form {...form}>
             <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="edital_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Edital *</FormLabel>
-                    <Select value={field.value} onValueChange={handleEditalChange}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione um edital" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {editais.map((e) => (
-                          <SelectItem key={e.id} value={e.id}>
-                            {e.nome}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {/* 🔴 PE001 — na EDIÇÃO o edital é MOSTRADO, nunca oferecido.
+                  O item do backlog pede exatamente isto: "o valor da vinculação com o
+                  Edital segue sendo visualizado na UI... apenas visualizado".
+
+                  ⚠️ É um bloco de leitura, e não um <Select disabled>, de propósito: um
+                  select acinzentado diz "isto poderia mudar, mas não agora" e convida a
+                  procurar como habilitar. Aqui não há quando — o vínculo é da criação. Por
+                  isso o texto explica o porquê em vez de só travar.
+
+                  A GARANTIA não é isto: é o trigger `check_prova_edital_imutavel`
+                  (migration 20260802045221). Esta tela é a conveniência. */}
+              {isEditing ? (
+                <FormItem>
+                  <FormLabel>Edital</FormLabel>
+                  <div className="rounded-md border bg-muted/50 px-3 py-2 text-sm">
+                    {editalDaProva?.nome ?? "—"}
+                  </div>
+                  <FormDescription>
+                    O edital é definido ao criar a prova e não pode ser alterado depois.
+                  </FormDescription>
+                </FormItem>
+              ) : (
+                <FormField
+                  control={form.control}
+                  name="edital_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Edital *</FormLabel>
+                      <Select value={field.value} onValueChange={handleEditalChange}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione um edital" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {editais.map((e) => (
+                            <SelectItem key={e.id} value={e.id}>
+                              {e.nome}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               <div className="grid grid-cols-4 gap-3">
                 <FormField

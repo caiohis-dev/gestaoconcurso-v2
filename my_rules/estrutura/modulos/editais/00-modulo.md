@@ -90,6 +90,7 @@ A tabela herda os `GRANT`s do `ALTER DEFAULT PRIVILEGES` da migration `202607120
 Ao criar uma prova **nova**, `ProvaDialog.handleEditalChange` copia `n_candidatos` e as duas linhas de cabeçalho do edital para os campos do formulário, como **sugestão editável**. A partir do save, `provas.prova_n_candidatos` e `provas.prova_cabecalho_linha1/2` são da prova. Consequências que precisam sobreviver:
 
 - **Editar o cabeçalho de um edital não altera os PDFs de provas já criadas.** É intencional: um documento emitido não deve mudar retroativamente.
+- 🔵 **E o vínculo em si não muda mais (`PE001`, 02/08):** o edital de uma prova é escolhido na criação e é **imutável** depois — trigger `check_prova_edital_imutavel`. É a mesma proteção do item acima levada à conclusão: antes, trocar o edital de uma prova antiga deixava o cabeçalho dela apontando para um concurso que não é o dela. A regra mora no módulo Aplicação de Provas; ver [`../aplicacao-provas/provas-e-unidades.md`](../aplicacao-provas/provas-e-unidades.md).
 - **A alocação lê `prova_n_candidatos`, não `edital.n_candidatos`.** Não troque a fonte (`GerenciarProva`).
 - **Os PDFs leem o cabeçalho da prova.** O que o PDF pega do edital é **só o nome**, via join `prova.editais.nome` (ver [`../aplicacao-provas/documentos-e-relatorios.md`](../aplicacao-provas/documentos-e-relatorios.md)).
 

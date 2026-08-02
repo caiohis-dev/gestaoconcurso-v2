@@ -619,3 +619,42 @@ A chave nova é **estritamente mais apertada** (4 colunas → 2) e mesmo assim n
 ⚠️ **Verificação: a suíte MOCKA o Supabase e não exercita índice único.** A prova é [`../../../docs/bateria-chave-natural-candidatos.sql`](../../../docs/bateria-chave-natural-candidatos.sql), 5 casos com controle positivo, em transação com `ROLLBACK`. ⚠️ A guarda de colisão dentro da migration é **no-op num `db reset`** (migrations rodam antes do dump) — ela vale para push contra base já povoada.
 
 ---
+## ✅ CONCLUÍDO 2026-08-02 — o edital de uma prova virou imutável (`PE001`)
+
+**Área:** Aplicação de Provas / Editais (ver [`estrutura/modulos/aplicacao-provas/provas-e-unidades.md`](../../estrutura/modulos/aplicacao-provas/provas-e-unidades.md))
+
+Item aberto em 2026-07-26. Decisão do usuário: *"uma prova **nunca** pode ter seu Edital modificado. O campo de vinculação ao Edital deve ser permitido apenas no momento do cadastro/criação da prova… O valor segue sendo visualizado na UI. Apenas visualizado."*
+
+**Premissa conferida antes de executar** (obrigatório aqui — item de backlog com premissa errada já aconteceu 5 vezes): o botão **"Parâmetros Gerais"** de `/gerenciar-prova` abre o **mesmo `ProvaDialog`** da listagem, com `prova` preenchida. Uma mudança no componente cobriu as duas portas.
+
+### 🔴 O achado que definiu o desenho: o backfill do `seed.pos.sql`
+
+A trava óbvia — *"`edital_id` não pode mudar"* — **quebraria todo `db reset`**. O `seed.pos.sql` (linhas 96-99) faz `UPDATE provas SET edital_id = … WHERE p.edital_id IS NULL`, reconstruindo o vínculo a partir da coluna velha `prova_edital` a cada carga do dump do v1 — e roda **depois** das migrations, com o trigger já instalado.
+
+**A condição correta é `edital_id JÁ TINHA valor E mudou`.** Atribuir pela primeira vez não é modificar. O caminho de volta (`valor → NULL`) também é recusado, senão a trava teria porta dos fundos em dois passos.
+
+O sintoma de errar isso seria traiçoeiro: as provas do dump ficariam permanentemente sem edital e apareceria como *"o seed falhou"*, não como *"o trigger está errado"*.
+
+**Medido antes de apertar:** 2 provas no banco local, 2 com edital, 0 sem — nenhuma linha existente viola a regra.
+
+### Onde a regra mora
+
+**No banco**, migration `20260802045221`: trigger `check_prova_edital_imutavel` + função `provas_recusa_trocar_edital()`, SQLSTATE **`PE001`**, `SECURITY INVOKER` (é regra de coerência, não de permissão — vale inclusive para `service_role`). A escrita de `provas` é PostgREST direto: um `PATCH` com `edital_id` novo passaria pela RLS, então a tela sozinha não seria regra nenhuma.
+
+**Na tela**, o `ProvaDialog` mostra o edital em **bloco de leitura** ao editar — e não um `<Select disabled>`, de propósito: um select acinzentado diz *"isto poderia mudar, mas não agora"* e convida a procurar como habilitar. Aqui não há quando.
+
+⚠️ **O payload da edição deixou de carregar `edital_id`/`prova_edital`.** É mais forte que desabilitar o campo: sem valor viajando, nem um bug de estado do formulário vira uma tentativa de troca — que o trigger recusaria, virando toast vermelho para quem não pediu nada.
+
+⚠️ **`prova_edital` ficou fora da regra**, de propósito: é dívida de transição que o `seed.pos.sql` ainda lê, e amarrá-la criaria uma segunda regra sobre uma coluna que deve sumir.
+
+### Verificação
+
+Bateria [`../../../docs/bateria-prova-edital-imutavel.sql`](../../../docs/bateria-prova-edital-imutavel.sql) — 5 casos, **3 deles controle positivo**: `NULL → valor` (o backfill), editar os outros campos (o que "Parâmetros Gerais" faz o tempo todo) e reescrever o **mesmo** `edital_id` (o `PATCH` pode reenviar a coluna sem intenção de trocar — por isso a condição é `IS DISTINCT FROM`, não *"veio no payload"*).
+
+O `db reset` completo foi rodado **com o trigger instalado** e o `seed.pos.sql` preencheu as 2 provas normalmente — a prova real de que o `NULL → valor` sobreviveu.
+
+**Falsificado 2 vezes:** devolver `edital_id` ao payload da edição derrubou o teste do payload; tirar a guarda do `NULL` do trigger derrubou **exatamente o caso 3** da bateria, o controle positivo do backfill.
+
+⚠️ **Um teste da suíte inverteu**, e ficou dizendo o que afirmava: `"trocar o edital de uma prova existente NÃO sobrescreve os campos dela"` **trocava o edital** para provar que a herança não reagia. O cenário virou inalcançável. O que ele guardava — PDFs e alocação leem os campos DA prova — continua guardado por um caminho mais forte: não há troca que possa reagir.
+
+---

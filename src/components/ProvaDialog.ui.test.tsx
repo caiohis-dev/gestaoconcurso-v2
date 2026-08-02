@@ -134,7 +134,7 @@ describe("ProvaDialog (interação)", () => {
     });
   });
 
-  describe("edição: a herança NÃO se aplica", () => {
+  describe("edição: a herança NÃO se aplica, e o edital é IMUTÁVEL (PE001)", () => {
     const PROVA = {
       id: "prova-1",
       edital_id: EDITAL_A.id,
@@ -157,20 +157,49 @@ describe("ProvaDialog (interação)", () => {
       );
     });
 
-    it("⚠️ trocar o edital de uma prova existente NÃO sobrescreve os campos dela", async () => {
-      // A regra que protege o histórico: os PDFs e a alocação leem os campos DA
-      // PROVA. Se a edição herdasse de novo, trocar o edital de uma prova antiga
-      // reescreveria o cabeçalho de documentos já emitidos.
+    it("🔴 NÃO oferece troca de edital — mostra o nome e explica que não muda", async () => {
+      // ⚠️ ESTE TESTE AFIRMAVA O CONTRÁRIO ATÉ 2026-08-02. Ele se chamava "trocar o edital
+      // de uma prova existente NÃO sobrescreve os campos dela" e TROCAVA o edital para
+      // provar que a herança não reagia. A troca deixou de existir (PE001, decisão do
+      // usuário), então o cenário que ele montava é inalcançável.
+      //
+      // O que ele guardava continua guardado, e por um caminho mais forte: os PDFs e a
+      // alocação leem os campos DA PROVA, e trocar o edital reescreveria o cabeçalho de
+      // documentos já emitidos. Antes isso dependia de a herança não reagir; agora não há
+      // troca que possa reagir.
+      abrir({ prova: PROVA });
+
+      // O valor continua VISÍVEL — é o pedido explícito do item ("apenas visualizado").
+      expect(await screen.findByText(EDITAL_A.nome)).toBeInTheDocument();
+      expect(
+        screen.getByText(/O edital é definido ao criar a prova e não pode ser alterado/i),
+      ).toBeInTheDocument();
+
+      // E não há combobox NENHUM no formulário de edição: o único que existia era o do
+      // edital. Se algum dia outro campo virar select, esta asserção precisa mirar nele.
+      expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    });
+
+    it("🔴 o payload da edição NÃO carrega edital_id nem prova_edital", async () => {
+      // A trava de tela é conveniência; esta asserção é sobre o que sai no fio. Mesmo que
+      // o formulário guarde o edital_id no estado, ele não pode viajar no PATCH — senão um
+      // bug de estado vira uma tentativa de troca, que o trigger recusa e o usuário vê
+      // como um toast vermelho sem ter pedido nada.
       const user = userEvent.setup();
       abrir({ prova: PROVA });
-      await screen.findByRole("combobox");
+      await screen.findByLabelText("Nº Candidatos");
 
-      await escolherEdital(user, EDITAL_B.nome);
+      await user.click(screen.getByRole("button", { name: "Salvar" }));
 
-      expect(screen.getByLabelText("Nº Candidatos")).toHaveValue(42);
-      expect(screen.getByLabelText("Linha 1 do Cabeçalho")).toHaveValue(
-        "CABEÇALHO PRÓPRIO DA PROVA",
-      );
+      await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+      const payload = onSubmit.mock.calls[0][0];
+
+      expect(payload).not.toHaveProperty("edital_id");
+      expect(payload).not.toHaveProperty("prova_edital");
+      // CONTROLE POSITIVO: o resto da prova continua sendo enviado — a PE001 congela o
+      // edital, não o formulário inteiro.
+      expect(payload.prova_n_candidatos).toBe(42);
+      expect(payload.prova_cabecalho_linha1).toBe("CABEÇALHO PRÓPRIO DA PROVA");
     });
   });
 
