@@ -74,6 +74,8 @@ E um contraste que vale conhecer: **`useSalasDistribuidasCapacidade` trata lista
 
 A conta vive em **`src/lib/alocacao.ts`** (`resumoAlocacao`, com testes próprios), e não no meio do componente — porque a **fonte** dela mudou e é o tipo de semântica que regride calada:
 
+> 🔵 **São DUAS baterias, com objetos diferentes** (02/08): `lib/alocacao.test.ts` prova a **aritmética** (função pura), e `pages/GerenciarProva.ui.test.tsx` (8 casos) prova a **ligação** — que a página pega o edital certo, entrega os números certos à função e respeita quem pode ver o painel. Falsificada nas duas direções: ler a contagem do edital errado derruba 4 casos, e tirar o `isAdmin` derruba exatamente o do coordenador.
+
 | | Antes | Desde 02/08 |
 |---|---|---|
 | Total | `prova.prova_n_candidatos` (digitado à mão) | `count(candidatos)` do **edital da prova**, via `useContagemCandidatosPorEdital` |

@@ -148,7 +148,7 @@ A primeira custou **4 PDFs commitáveis na raiz** antes de alguém notar, em 01/
 
 ## O que está coberto (2026-07-27)
 
-**1.104 testes em 56 arquivos** (medido em 2026-08-02, ao fim dos temas "fonte única do nº de inscritos" e "CPF pela regra oficial"; eram 974 em 51 arquivos em 30/07, e 965 em 29/07).
+**1.117 testes em 58 arquivos** (medido em 2026-08-02, ao fim dos temas "fonte única do nº de inscritos", "CPF pela regra oficial" e das duas baterias de página que fecharam o dia; eram 974 em 51 arquivos em 30/07, e 965 em 29/07).
 
 🔵 **Os dois temas de 02/08 renderam mais casos REESCRITOS do que novos**, e é o padrão a esperar quando uma regra muda: 11 casos caíram ao unificar o nº de inscritos (afirmavam a herança de `n_candidatos` e o payload com o campo) e 2 ao trocar a rotulagem do CPF inválido (afirmavam `"tamanho"` para um valor cuja causa é um caractere intruso). **Nenhum deles estava errado no veredito** — estavam certos sobre o código de ontem. Ver a armadilha 8 e a regra em destaque acima.
 
@@ -207,7 +207,18 @@ Duas coisas a fazer nesse momento, e as duas são fáceis de esquecer:
 | **Hooks de cargos** | `hooks/useCargos.test.tsx` — a **assimetria dos dois upserts** (`ignoreDuplicates` em `cargos`, `merge` em `cargo_apelidos`), o `isLoading` distinguível de lista vazia, e o nome repetido que vira associação em vez de erro |
 | **Páginas de candidatos** | `pages/Candidatos.ui.test.tsx` (34) e `pages/CandidatosImportar.ui.test.tsx` (38) — os **primeiros testes de comportamento de página** do projeto (até aqui, das páginas só o guard era testado). O do assistente monta um `.xlsx` real e guarda o alerta que impede a perda silenciosa de inscritos; o da listagem guarda o **cargo canônico** (com o par negativo: o texto sujo NÃO aparece mais) e a **regressão do "limpar edital"**, que anunciava o total filtrado numa ação que apaga o edital inteiro |
 
+| 🔵 **Nº de inscritos nas telas** | `pages/Editais.ui.test.tsx` (5) e `pages/GerenciarProva.ui.test.tsx` (8), de **2026-08-02** — a ligação entre as telas e a contagem real de inscritos. Guardam que **nenhum estado vira "0"** (carregando, sem lista, prova sem edital), que a contagem casa com o **edital certo** quando há mais de um, e que o painel de alocação **só existe para admin**. A aritmética não está aqui: é `lib/alocacao.test.ts`, função pura |
+
 **A camada de hooks fechou em 2026-07-26** — os 20 hooks de dados têm teste (`use-mobile` e `use-toast` são utilitários do shadcn, fora da conta). **Os 12 diálogos estão cobertos.**
+
+### ⭐ O que a bateria de `GerenciarProva` ensinou sobre FIXTURE
+
+Duas coisas que valem para qualquer teste de página nova, e que só apareceram ao escrever:
+
+1. 🔴 **Fixture com números que coincidem não prova nada.** A primeira versão deixou a capacidade das salas em zero — então "Total de Inscritos" e "Não Alocados" davam **ambos 7231**, e a asserção não distinguia um do outro. Quem denunciou foi o `getByText` ambíguo da RTL, não o resultado. **Escolha números que só batem se a ligação estiver certa** (aqui: 7231 inscritos, 5000 lugares, 2231 faltando), e ponha no fixture um **segundo edital com outra contagem**, para que pegar a chave errada apareça como falha em vez de acerto por sorte.
+2. ⚠️ **`GerenciarProva` abre um dialog sozinho** quando a prova não tem valor de função (`useEffect` deliberado da página). Sem um `valores_funcao_prova` no fixture, o modal cobre a tela e toda asserção falha por um motivo que não tem nada a ver com o que se está medindo.
+
+**A âncora dos dois arquivos é TEXTO, não classe** — `findByRole("heading")` + `closest("div.rounded-lg")` do primitivo `Card`, e o rótulo do contador para achar o número ao lado. ⚠️ Ancorar em classe de layout da página não funciona: o `CardHeader` também é `div.flex`, então um `closest("div.flex")` devolve o cabeçalho e as asserções vão procurar, fora do card, um texto que está no `CardContent`.
 
 ### Edge Functions (Deno)
 

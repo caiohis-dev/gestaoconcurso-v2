@@ -143,7 +143,7 @@ sg docker -c 'npx supabase db reset'    # aplica migrations + os 3 seeds
 **Não há CI.** Nada roda a suíte sozinho; cada tema fechado depende de alguém lembrar. É o item de maior alavancagem do backlog, adiado por decisão do usuário.
 
 ```bash
-npm test                                  # 1104 testes em 56 arquivos
+npm test                                  # 1117 testes em 58 arquivos
 npx tsc --noEmit -p tsconfig.app.json     # tem de sair limpo
 npm run build
 npm run lint                              # baseline 118 (64 erros, 54 avisos)
