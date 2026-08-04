@@ -39,7 +39,7 @@ Duas consequências que precisam sobreviver a qualquer refatoração:
 | `src/pages/CandidatosImportar.ui.test.tsx` (38 testes) | Bateria do assistente. Monta um `.xlsx` de verdade (com as duas colunas `NOME`) e o lê pelo caminho real da página; guarda o **impedimento quando o cargo não é pareado** |
 | `src/pages/Candidatos.tsx` | Listagem: escolha do edital por card, busca, **filtro por cargo**, paginação, ficha em diálogo, exclusão de um, "limpar edital" e 🔵 o acesso ao **relatório da última importação** |
 | `src/components/RelatorioImportacaoDialog.tsx` + `.ui.test.tsx` (12) | 🔵 O relatório PERSISTIDO em leitura, paginado, **com XLS e PDF** (02/08) — guarda os DOIS vazios (importação limpa × nunca importada) e o export do relatório INTEIRO |
-| `src/lib/relatorio-importacao-export.ts` | 🔵 A montagem do XLS e do PDF, compartilhada pelo assistente e pela listagem (02/08). Extraída de `CandidatosImportar.tsx` reproduzindo o documento emitido |
+| `src/lib/relatorio-importacao-export.ts` + `.test.ts` (9) | 🔵 A montagem do XLS e do PDF, compartilhada pelo assistente e pela listagem (02/08). Extraída de `CandidatosImportar.tsx` reproduzindo o documento emitido. A bateria própria nasceu em 04/08, com **as três frases do bloco de sala especial vazio** |
 | `src/pages/CandidatosImportar.tsx` (1.155 l.) | O assistente de **5 passos**: arquivo → pareamento → **cargos** → importação → relatório |
 | `src/hooks/useCandidatos.tsx` | React Query: `useCandidatos` (paginada, com o cargo embutido e o recorte por cargo), `useContagemCandidatosPorEdital`, `useImportarCandidatos` (**preparo em blocos + a RPC de troca**), `useExcluirCandidatos` |
 | `supabase/migrations/20260730120000_*` e `20260730130000_*` | A tabela de preparo `candidatos_importacao` e a RPC `trocar_candidatos_do_edital`, com as três guardas |
@@ -282,6 +282,22 @@ Decisão do usuário: a importação passa a trazer o **pedido de atendimento es
 ⚠️ **Os sinônimos de auto-pareamento são o ÚNICO palpite não medido do módulo.** As 29 colunas do arquivo real **não têm** esta coluna: ela virá de um export futuro, com cabeçalho que ninguém viu. O palpite é seguro porque `autoMapear` casa por **igualdade exata** — cabeçalho diferente deixa o campo em branco esperando o usuário, e nada é escrito errado. ⚠️ **Não acrescente `'sala'` sozinho à lista**: uma coluna chamada só `SALA` é muito mais provavelmente a sala de **prova**, que não é isto e nem existe no modelo.
 
 **No relatório, a linha lista quem PEDIU e ENTROU** (`inscritosComSalaEspecial`), e os três filtros são o que a tornam verdadeira: fora a linha com erro, fora o não-pagante, e fora a **linha substituída** por outra de mesma inscrição. 🔴 **O terceiro é o que se esquece** — sem ele a mesma pessoa apareceria duas vezes, uma delas com o texto que o banco não guardou.
+
+#### 🔵 O bloco aparece MESMO sem pedido nenhum (decisão do usuário, 04/08)
+
+Antes, com zero pedidos o assunto simplesmente **não existia** no documento — e quem lia não tinha como distinguir *"ninguém pediu"* de *"este relatório não cobre isso"*. **Ausência não informa nada.** Hoje o bloco sai sempre: no PDF, o subtítulo com uma frase no lugar da tabela; no XLS, uma linha com o `Campo` preenchido (é por ele que se filtra no Excel).
+
+🔴 **E são TRÊS frases, não uma** — `SalaEspecialNoRelatorio` em `relatorio-importacao-export.ts`:
+
+| Estado | Quando | O que o documento diz |
+|---|---|---|
+| `pareada` | a coluna foi apontada e ninguém pediu | *"Nenhuma sala especial solicitada."* |
+| `nao-pareada` | a coluna **não** foi apontada | *"A coluna … não foi indicada no pareamento desta importação — nenhum pedido pôde ser lido."* |
+| `desconhecida` | veio do **banco** (`/candidatos`) | *"Nenhuma sala especial registrada neste relatório."* |
+
+⚠️ **Unificar na primeira seria afirmar fato falso, e hoje em 100% dos casos:** o arquivo real não tem a coluna, então toda importação feita agora é `nao-pareada`. Um documento que vai para processo não pode registrar ausência de pedidos que ninguém chegou a ler. Só o **assistente** sabe o estado (o relatório persistido guarda problemas, não o pareamento), e por isso o default do parâmetro é `desconhecida` — o mais cauteloso dos três: quem esquecer de informar emite a afirmação **mais fraca**, não a mais forte.
+
+⚠️ **A sentinela de "Nenhum problema" do XLS NÃO foi substituída.** As duas dizem coisas diferentes, e um relatório limpo leva as duas linhas.
 
 ⚠️ **A consequência que o `text` sem teto traz, e que está aceita:** o pedido viaja inteiro para o `Detalhe` do relatório, e o relatório **tem** teto (`LIMITE_RELATORIO_BYTES`, 4 MB no cliente, que recusa a importação inteira). Medido antes desta coluna: 163 bytes por linha, 37,8 KB no arquivo real — três ordens de grandeza de folga. Com o texto do pedido dentro, a ~500 caracteres por pedido o teto fica em **~7.300 pedidos**. Continua improvável, mas **deixou de ser inalcançável**. Se um dia doer, o lugar de cortar é o `Detalhe` do relatório, **nunca** o valor gravado.
 

@@ -2,7 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
 import { useLogoBase64 } from "@/lib/pdf-timbre";
-import { exportarRelatorioPDF, exportarRelatorioXLS } from "@/lib/relatorio-importacao-export";
+import {
+  exportarRelatorioPDF,
+  exportarRelatorioXLS,
+  type SalaEspecialNoRelatorio,
+} from "@/lib/relatorio-importacao-export";
 import { useEditais } from "@/hooks/useEditais";
 import {
   useImportarCandidatos,
@@ -557,10 +561,25 @@ export default function CandidatosImportar() {
    * ASSISTENTE: o nome-base vindo do arquivo escolhido e o de-para de cargos, que não é
    * persistido e por isso só existe neste fluxo.
    */
+  /**
+   * O que o relatório pode AFIRMAR sobre a sala especial quando ninguém pediu.
+   *
+   * 🔴 Só o assistente sabe isto — o relatório persistido guarda os problemas, não o
+   * pareamento. Sem esta distinção o documento diria "nenhuma sala especial solicitada" em
+   * toda importação feita sem a coluna, que é a maioria delas hoje: o arquivo real de
+   * 7.416 linhas não a tem. Afirmar ausência de pedido onde nada foi lido é inventar fato
+   * num documento que vai para processo.
+   */
+  const salaEspecialNoRelatorio: SalaEspecialNoRelatorio =
+    mapeamento.sala_especial === null || mapeamento.sala_especial === undefined
+      ? "nao-pareada"
+      : "pareada";
+
   const baixarRelatorio = () => {
     exportarRelatorioXLS({
       problemas: relatorio,
       deParaCargos,
+      salaEspecial: salaEspecialNoRelatorio,
       nomeBase: arquivo?.name?.replace(/\.(xlsx|xls|csv)$/i, "") || "importacao_candidatos",
     });
   };
@@ -572,6 +591,7 @@ export default function CandidatosImportar() {
       exportarRelatorioPDF({
         problemas: relatorio,
         deParaCargos,
+        salaEspecial: salaEspecialNoRelatorio,
         logoBase64,
         nomeEdital: editalSelecionado?.nome ?? "",
         nomeBase: arquivo?.name?.replace(/\.(xlsx|xls|csv)$/i, "") || "importacao",

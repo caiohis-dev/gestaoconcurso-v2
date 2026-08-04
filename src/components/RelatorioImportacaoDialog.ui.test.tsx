@@ -217,7 +217,7 @@ describe("RelatorioImportacaoDialog", () => {
 
   describe("exportação", () => {
     beforeEach(() =>
-      setTableResult("candidatos_relatorio_importacao", resultado(LINHAS, 2)),
+      setTableResult("candidatos_relatorio_importacao", resultado(LINHAS, 3)),
     );
 
     it("🔴 exporta o relatório INTEIRO, não a página que está na tela", async () => {
@@ -227,7 +227,7 @@ describe("RelatorioImportacaoDialog", () => {
       // fatias de 1.000, que é o teto do PostgREST.
       const user = userEvent.setup();
       abrir();
-      await screen.findByText("2 ocorrência(s) registrada(s)");
+      await screen.findByText("3 ocorrência(s) registrada(s)");
 
       await user.click(screen.getByRole("button", { name: /Baixar Planilha/i }));
 
@@ -245,7 +245,7 @@ describe("RelatorioImportacaoDialog", () => {
       // de-para se perdeu. Ele simplesmente não existe fora do assistente.
       const user = userEvent.setup();
       abrir();
-      await screen.findByText("2 ocorrência(s) registrada(s)");
+      await screen.findByText("3 ocorrência(s) registrada(s)");
 
       await user.click(screen.getByRole("button", { name: /Baixar Planilha/i }));
 
@@ -257,7 +257,7 @@ describe("RelatorioImportacaoDialog", () => {
     it("o PDF é gerado e nomeado pelo edital", async () => {
       const user = userEvent.setup();
       abrir();
-      await screen.findByText("2 ocorrência(s) registrada(s)");
+      await screen.findByText("3 ocorrência(s) registrada(s)");
 
       await user.click(screen.getByRole("button", { name: /Baixar Documento/i }));
 
@@ -270,7 +270,7 @@ describe("RelatorioImportacaoDialog", () => {
       pdfDeveFalhar.valor = true;
       const user = userEvent.setup();
       abrir();
-      await screen.findByText("2 ocorrência(s) registrada(s)");
+      await screen.findByText("3 ocorrência(s) registrada(s)");
 
       await user.click(screen.getByRole("button", { name: /Baixar Documento/i }));
 

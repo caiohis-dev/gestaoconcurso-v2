@@ -1091,8 +1091,15 @@ export function subtituloDoCampo(campo: string): string {
 /** O `Campo` das linhas descartadas pelo filtro de pagamento. Ver `subtituloDoCampo`. */
 const CAMPO_PAGAMENTO = "Pagamento";
 
-/** O `Campo` dos pedidos de sala especial. Ver `subtituloDoCampo`. */
-const CAMPO_SALA_ESPECIAL = "Sala Especial";
+/**
+ * O `Campo` dos pedidos de sala especial. Ver `subtituloDoCampo`.
+ *
+ * ⚠️ Exportado porque os EXPORTS precisam dele: o bloco de sala especial aparece no
+ * relatório **mesmo quando não há pedido nenhum** (decisão do usuário, 2026-08-04), e para
+ * saber se já existe bloco eles precisam comparar pelo mesmo texto que é escrito aqui.
+ * Deixá-lo privado obrigaria o export a repetir o literal — e duas cópias divergem.
+ */
+export const CAMPO_SALA_ESPECIAL = "Sala Especial";
 
 /**
  * De que campo fala uma mensagem de erro/aviso — por PREFIXO do texto.

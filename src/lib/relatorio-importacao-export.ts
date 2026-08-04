@@ -32,6 +32,7 @@ import {
   numerarPaginas,
 } from "@/lib/pdf-timbre";
 import {
+  CAMPO_SALA_ESPECIAL,
   agruparProblemasPorCampo,
   subtituloDoCampo,
   type ProblemaDoRelatorio,
@@ -59,6 +60,67 @@ export interface DeParaCargo {
 }
 
 /**
+ * O que se sabe sobre a coluna de sala especial NAQUELA importação.
+ *
+ * Existe porque o bloco de sala especial passou a aparecer no relatório **mesmo sem
+ * pedido nenhum** (decisão do usuário, 2026-08-04) — e aí o relatório precisa AFIRMAR
+ * alguma coisa sobre o vazio. As três respostas possíveis não são a mesma:
+ *
+ *   • `"pareada"`      — a coluna foi apontada e ninguém pediu. *Isso* é "nenhuma solicitada".
+ *   • `"nao-pareada"`  — a coluna não foi apontada, então **nada pôde ser lido**. Dizer
+ *                        "nenhuma solicitada" aqui seria afirmar como fato a consequência
+ *                        de um campo em branco. 🔴 Hoje este é o caso NORMAL: o arquivo
+ *                        real de 7.416 linhas não tem a coluna.
+ *   • `"desconhecida"` — o relatório veio do BANCO (`/candidatos`), que guarda só os
+ *                        problemas e não registra o que foi pareado. O texto então fala do
+ *                        RELATÓRIO, não da realidade.
+ */
+export type SalaEspecialNoRelatorio = "pareada" | "nao-pareada" | "desconhecida";
+
+/**
+ * O que o bloco de sala especial diz quando não há pedido nenhum.
+ *
+ * ⚠️ As três frases são diferentes de propósito — ver `SalaEspecialNoRelatorio`. Unificá-las
+ * na primeira faria o documento afirmar que ninguém pediu sala especial em toda importação
+ * feita sem a coluna, que é a maioria delas hoje. O relatório é anexado a processo.
+ */
+function mensagemSemSalaEspecial(estado: SalaEspecialNoRelatorio): string {
+  if (estado === "nao-pareada") {
+    return (
+      "A coluna de sala especial não foi indicada no pareamento desta importação — " +
+      "nenhum pedido pôde ser lido."
+    );
+  }
+  if (estado === "desconhecida") {
+    return "Nenhuma sala especial registrada neste relatório.";
+  }
+  return "Nenhuma sala especial solicitada.";
+}
+
+/**
+ * Os blocos do relatório, garantindo que o de **sala especial exista sempre**.
+ *
+ * 🔴 O bloco vazio é o ponto: até 2026-08-04 ele simplesmente não aparecia quando ninguém
+ * pedia, e quem lia o documento não tinha como distinguir "ninguém pediu" de "o relatório
+ * não cobre isso". Ausência não informa nada — é justamente o formato de erro que este
+ * módulo mais evita.
+ *
+ * O bloco entra na lista ANTES da ordenação por campo, e não emendado no fim: assim ele
+ * aparece no MESMO lugar tendo pedidos ou não. Posição que muda conforme o conteúdo faria
+ * quem confere dois relatórios seguidos procurar o bloco onde ele não está.
+ */
+function blocosDoRelatorio(
+  problemas: ProblemaDoRelatorio[],
+): { campo: string; queixas: ProblemaDoRelatorio[] }[] {
+  const blocos = agruparProblemasPorCampo(problemas);
+  if (blocos.some((b) => b.campo === CAMPO_SALA_ESPECIAL)) return blocos;
+
+  return [...blocos, { campo: CAMPO_SALA_ESPECIAL, queixas: [] }].sort((a, b) =>
+    a.campo.localeCompare(b.campo, "pt-BR"),
+  );
+}
+
+/**
  * O relatório em `.xlsx` — lista plana, para trabalhar no Excel.
  *
  * ⚠️ As CHAVES de `ProblemaDoRelatorio` viram o cabeçalho das colunas (`json_to_sheet` usa
@@ -68,25 +130,47 @@ export interface DeParaCargo {
 export function exportarRelatorioXLS({
   problemas,
   deParaCargos,
+  salaEspecial = "desconhecida",
   nomeBase,
 }: {
   problemas: ProblemaDoRelatorio[];
   /** Omitido quando a origem é o banco: o de-para não é persistido. */
   deParaCargos?: DeParaCargo[];
+  /** O que se sabe da coluna de sala especial. Omitido = `"desconhecida"`. */
+  salaEspecial?: SalaEspecialNoRelatorio;
   nomeBase: string;
 }): void {
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(
-    wb,
-    XLSX.utils.json_to_sheet(
-      problemas.length > 0
-        ? problemas
-        : // Uma planilha sem NENHUMA linha abriria no Excel sem cabeçalho, parecendo
-          // arquivo corrompido. A linha-sentinela diz que o vazio é o resultado.
-          [{ "Nº de Inscrição": "", Situação: "Nenhum problema", Campo: "", Detalhe: "" }],
-    ),
-    "Problemas",
-  );
+
+  /**
+   * ⚠️ `Record<keyof ProblemaDoRelatorio, string>` e NÃO `ProblemaDoRelatorio[]`: as duas
+   * sentinelas abaixo não são problemas, e a `Situação` delas está de propósito fora da
+   * união (`""` e `"Nenhum problema"`). O `keyof` mantém cravados os quatro NOMES de
+   * coluna, que é o que de fato não pode divergir — eles viram o cabeçalho da planilha.
+   */
+  const linhas: Record<keyof ProblemaDoRelatorio, string>[] = [...problemas];
+
+  // ⚠️ A sentinela do relatório INTEIRAMENTE vazio continua valendo e vem PRIMEIRO: uma
+  // planilha sem nenhuma linha abriria no Excel sem cabeçalho, parecendo arquivo
+  // corrompido. Ela não foi substituída pela de sala especial — as duas dizem coisas
+  // diferentes, e um relatório limpo sem coluna de sala especial precisa das duas.
+  if (problemas.length === 0) {
+    linhas.push({ "Nº de Inscrição": "", Situação: "Nenhum problema", Campo: "", Detalhe: "" });
+  }
+
+  // 🔵 2026-08-04: o assunto "sala especial" aparece MESMO sem pedido. No PDF isso é um
+  // subtítulo com uma frase; aqui, numa lista plana que o Excel filtra, é uma linha com o
+  // Campo preenchido — é o `Campo` que a pessoa filtra para achar o assunto.
+  if (!problemas.some((p) => p.Campo === CAMPO_SALA_ESPECIAL)) {
+    linhas.push({
+      "Nº de Inscrição": "",
+      Situação: "",
+      Campo: CAMPO_SALA_ESPECIAL,
+      Detalhe: mensagemSemSalaEspecial(salaEspecial),
+    });
+  }
+
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(linhas), "Problemas");
 
   // Aba própria para o de-para dos cargos: é o registro auditável de que texto virou que
   // cargo naquela importação. Sem ela, a decisão de sanitização só existe dentro do banco.
@@ -110,17 +194,20 @@ export function exportarRelatorioXLS({
 export function exportarRelatorioPDF({
   problemas,
   deParaCargos,
+  salaEspecial = "desconhecida",
   logoBase64,
   nomeEdital,
   nomeBase,
 }: {
   problemas: ProblemaDoRelatorio[];
   deParaCargos?: DeParaCargo[];
+  /** O que se sabe da coluna de sala especial. Omitido = `"desconhecida"`. */
+  salaEspecial?: SalaEspecialNoRelatorio;
   logoBase64: string;
   nomeEdital: string;
   nomeBase: string;
 }): void {
-  const problemasPorCampo = agruparProblemasPorCampo(problemas);
+  const problemasPorCampo = blocosDoRelatorio(problemas);
 
   const doc = criarDocumentoPaisagem();
   const alturaDaPagina = doc.internal.pageSize.getHeight();
@@ -202,6 +289,18 @@ export function exportarRelatorioPDF({
     // ⚠️ O título NÃO é montado aqui: `subtituloDoCampo` é quem sabe que "Pagamento" não é
     // problema e merece texto próprio. Ver o porquê lá.
     escreverSubtitulo(subtituloDoCampo(campo));
+
+    // 🔵 2026-08-04: o bloco de sala especial existe mesmo VAZIO, e aí não há tabela — só
+    // o subtítulo e uma frase. Uma tabela de uma linha só, com as três colunas vazias e um
+    // aviso dentro, pareceria um pedido malformado; a frase corrida diz o que é.
+    if (queixas.length === 0) {
+      doc.setFont("times", "normal");
+      doc.setFontSize(10);
+      doc.text(mensagemSemSalaEspecial(salaEspecial), MARGEM_LATERAL, y);
+      y += ENTRE_BLOCOS;
+      continue;
+    }
+
     autoTable(doc, {
       startY: y,
       head: [["Nº de Inscrição", "Situação", "Detalhe"]],
