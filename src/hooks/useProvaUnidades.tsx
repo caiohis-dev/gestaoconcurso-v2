@@ -8,6 +8,14 @@ export interface ProvaUnidade {
   unidade_id: string;
   created_at: string | null;
   created_by: string | null;
+  /**
+   * Segundo nível do ciclo de vida, escrito por `finalizar_prova_unidade` — que o
+   * COORDENADOR também pode chamar. Desde 2026-08-03 congela as salas daquela unidade
+   * (trigger `check_sala_de_prova_finalizada`, PF001). Já vinha no `select("*")`; só não
+   * estava declarado aqui.
+   */
+  unidade_finalizada: boolean;
+  unidade_finalizada_at: string | null;
 }
 
 export interface ProvaUnidadeWithDetails extends ProvaUnidade {

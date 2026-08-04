@@ -21,6 +21,8 @@ Esses UUIDs literais identificam quais linhas de `funcoes_colaboradores` contam 
 
 **E há uma segunda tela acoplada a estas linhas, por outro caminho:** `useFiscaisSala` (em `useSalasDistribuidas.tsx`) identifica o fiscal pelo **nome**, com `includes("fiscal") && includes("sala")`. Renomear a função esvazia aquela lista sem erro. Duas telas, dois acoplamentos diferentes, ambos silenciosos — ver o ponto frágil 1 do [contrato do módulo](./00-modulo.md).
 
+> 🔴 **E é assim que o banco está HOJE (medido em 03/08):** a função cadastrada é **"Fiscal"**, sem "de sala", então o seletor de fiscal de `/gerenciar-salas-distribuidas` está **vazio em todas as provas** — 456 alocações como Fiscal, 0 fiscais atribuídos em 58 salas. Ficou anotado sem correção por decisão do usuário; números e as duas saídas em [`../../../backlog.md`](../../../backlog.md).
+
 ### ✅ Excluir uma função em uso é recusado PELO BANCO (desde 2026-07-26)
 
 As três FKs que apontam para `funcoes_colaboradores` eram **destrutivas, não protetivas** — `SET NULL` em `colaboradores_prova`, `CASCADE` nas outras duas. Excluir uma função em uso **não dava erro**: apagava metas e valores de pagamento de várias provas em silêncio, e deixava alocações de provas já realizadas sem função. A única barreira era o cliente, então uma chamada direta ao PostgREST por um admin passava reto.
@@ -60,7 +62,20 @@ Verifica se uma função está referenciada em qualquer uma de três tabelas (`v
 
 ## `valores_funcao_prova` — valor de pagamento por função, por prova
 
-`useValoresFuncaoProva.tsx`: upsert simples (`funcaoId` + `valorPagamento`) por prova. Gerido no dialog `ValoresFuncaoProvaDialog` a partir de `GerenciarProva.tsx` — inclusive abre automaticamente se a prova ainda não tem nenhum valor cadastrado (`useEffect` em `GerenciarProva.tsx` checando `valoresFuncao.length === 0`).
+`useValoresFuncaoProva.tsx`: upsert simples (`funcaoId` + `valorPagamento`) por prova. Gerido no dialog `ValoresFuncaoProvaDialog`, aberto a partir de `GerenciarProva.tsx` pelo botão **"Cadastrar Funções dos Colaboradores"** (`isAdmin &&`). O título do dialog fala em colaboradores, mas o que ele gere são os **valores** — não a tabela `colaboradores`.
+
+### 🔴 A abertura AUTOMÁTICA foi abolida (02/08) — não reintroduza
+
+Até 02/08 um `useEffect` em `GerenciarProva.tsx` abria esse modal sozinho quando a prova não tinha nenhum valor cadastrado. **Foi removido por decisão do usuário, "em qualquer cenário"** — e a página deixou junto de ler `valores_funcao_prova`, porque o efeito era o único leitor (o dialog carrega os seus próprios dados ao abrir).
+
+Ele tinha dois defeitos, e o segundo é o que importa guardar:
+
+1. **Tapava a página** de quem entrou para fazer outra coisa, a cada visita, enquanto a prova seguisse sem valores. Foi o que motivou a remoção.
+2. ⚠️ **`[]` não significa "prova sem valores".** A policy de leitura é `admin OR is_coordenador_prova(prova_id)` (`20260726270000`), então para o **coordenador de outra prova** a lista volta **vazia sem erro** — e o modal disparava numa prova que tinha 17 valores cadastrados. Uma guarda `isAdmin` chegou a ser aplicada nesse dia e fechava esse caso, mas foi substituída pela remoção do efeito inteiro.
+
+⚠️ **A lição sobrevive ao efeito, e vale para a próxima condição escrita nesta página:** leitura vazia por RLS é indistinguível de ausência de dado. É a mesma razão do `isAdmin &&` do painel de alocação, logo abaixo.
+
+> 🧪 Guardado por quatro casos em `pages/GerenciarProva.ui.test.tsx`, falsificados nos dois sentidos: **reintroduzir** qualquer abertura automática derruba os três casos de repouso (admin com valores, admin sem valores, coordenador), e **quebrar o botão** derruba exatamente o controle positivo do clique.
 
 ## `meta_colaboradores_unidade` — meta de headcount por função, por unidade da prova
 

@@ -4,6 +4,7 @@ import {
   supabaseMock,
   setTableResult,
   setTableResultSequence,
+  setRpcResult,
   resetSupabaseMock,
   buildersDaTabela,
   builderQueChamou,
@@ -24,6 +25,7 @@ import {
   useSalasDistribuidasCapacidade,
   useFiscaisSala,
   avisoFiscalDeSala,
+  mensagemErroSalvarSalas,
 } from "@/hooks/useSalasDistribuidas";
 
 const TABELA = "salas_prova_distribuidas";
@@ -104,17 +106,26 @@ describe("useSalasDistribuidas", () => {
     });
   });
 
+  /**
+   * 🔴 **Este bloco mudou de objeto em 2026-08-03, e os testes que caíram eram a
+   * pergunta.** Ele afirmava três coisas como se fossem o contrato: um UPDATE por sala,
+   * sala sem `id` ignorada em silêncio, e "o lote não é transacional". As três descreviam
+   * um defeito com voz de regra — e a segunda e a terceira eram, elas mesmas, avisos de
+   * perda de dado. Hoje o lote é uma chamada só à RPC `salvar_salas_distribuidas`.
+   *
+   * ⚠️ **O que estes testes NÃO alcançam:** a suíte mocka o Supabase, então nada aqui
+   * prova que a troca de números passa, que a unicidade foi adiada ou que o rollback
+   * acontece. Isso é banco, e se verifica em `docs/bateria-salas-renumeracao.sql`. O que
+   * se prova daqui é o que é do cliente: o lote sai INTEIRO numa chamada só (é o que dá
+   * ao banco a chance de checar no fim) e a recusa chega legível.
+   */
   describe("salvar alterações em lote", () => {
-    it("dispara um UPDATE por sala, cada um filtrado pelo próprio id", async () => {
-      const { result } = await carregarEDepois([
-        { data: null, error: null },
-        { data: null, error: null },
-        { data: [], error: null },
-      ]);
+    it("manda o lote inteiro numa ÚNICA chamada, com os campos editáveis", async () => {
+      const { result } = await carregarEDepois([{ data: [], error: null }]);
 
       result.current.updateSalas([
-        { id: "s1", sala_capacidade: 40, sala_fiscal_1: "cp-1" },
-        { id: "s2", sala_capacidade: 25 },
+        { id: "s1", sala_numero: 102, sala_capacidade: 40, sala_fiscal_1: "cp-1" },
+        { id: "s2", sala_numero: 101, sala_capacidade: 25 },
       ]);
 
       await waitFor(() =>
@@ -123,62 +134,107 @@ describe("useSalasDistribuidas", () => {
         ),
       );
 
-      const updates = chamadasDe(TABELA, "update");
-      expect(updates).toHaveLength(2);
-      expect(updates[0][0]).toMatchObject({ sala_capacidade: 40, sala_fiscal_1: "cp-1" });
+      // Nenhum UPDATE direto na tabela: o caminho agora é a RPC.
+      expect(chamadasDe(TABELA, "update")).toHaveLength(0);
+      expect(supabaseMock.rpc).toHaveBeenCalledTimes(1);
 
-      const ids = chamadasDe(TABELA, "eq")
-        .filter((c) => c[0] === "id")
-        .map((c) => c[1]);
-      expect(ids).toEqual(["s1", "s2"]);
+      const [nome, args] = supabaseMock.rpc.mock.calls[0];
+      expect(nome).toBe("salvar_salas_distribuidas");
+      expect(args.p_salas).toHaveLength(2);
+      expect(args.p_salas[0]).toMatchObject({
+        id: "s1",
+        sala_numero: 102,
+        sala_capacidade: 40,
+        sala_fiscal_1: "cp-1",
+      });
     });
 
-    it("ignora em silêncio qualquer sala sem id", async () => {
-      // `if (!sala.id) return null` — não é erro, não é aviso: a sala simplesmente não
-      // é gravada. Se um formulário passar a mandar linha nova por aqui, ela some sem
-      // ninguém perceber. Para sala nova o caminho é `addSala`.
-      const { result } = await carregarEDepois([
-        { data: null, error: null },
-        { data: [], error: null },
+    it("⭐ a TROCA de números viaja junta — as duas salas na mesma chamada", async () => {
+      // Este é o caso que motivou a mudança: 101 ↔ 102 era impossível, porque cada UPDATE
+      // saía sozinho e o índice único é checado linha a linha. A parte que o cliente
+      // garante é esta — as duas linhas vão juntas, e o banco decide vendo o estado final.
+      const { result } = await carregarEDepois([{ data: [], error: null }]);
+
+      result.current.updateSalas([
+        { id: "s1", sala_numero: 102 },
+        { id: "s2", sala_numero: 101 },
       ]);
+
+      await waitFor(() => expect(supabaseMock.rpc).toHaveBeenCalledTimes(1));
+
+      const enviadas = supabaseMock.rpc.mock.calls[0][1].p_salas as { sala_numero: number }[];
+      const numeros = enviadas.map((s) => s.sala_numero);
+      expect(numeros).toEqual([102, 101]);
+    });
+
+    it("✅ sala sem id NÃO some mais no cliente — vai para o banco recusar o lote", async () => {
+      // Era `if (!sala.id) return null`: sumia sem erro e sem aviso, e a pessoa via
+      // "Alterações salvas". Agora ela viaja com `id: null` e a RPC recusa o lote inteiro
+      // comparando pedidas × encontradas — a recusa é do banco, não da tela.
+      const { result } = await carregarEDepois([{ data: [], error: null }]);
 
       result.current.updateSalas([{ sala_capacidade: 40 }, { id: "s1", sala_capacidade: 25 }]);
 
-      await waitFor(() =>
-        expect(toastMock).toHaveBeenCalledWith(
-          expect.objectContaining({ title: "Alterações salvas" }),
-        ),
-      );
+      await waitFor(() => expect(supabaseMock.rpc).toHaveBeenCalledTimes(1));
 
-      expect(chamadasDe(TABELA, "update")).toHaveLength(1);
+      const enviadas = supabaseMock.rpc.mock.calls[0][1].p_salas;
+      expect(enviadas).toHaveLength(2);
+      expect(enviadas[0].id).toBeNull();
     });
 
-    it("⚠️ ATENÇÃO: o lote não é transacional — uma falha no meio deixa o resto salvo", async () => {
-      // Os UPDATEs saem em paralelo (`Promise.all`), um por sala. Se um falhar, os
-      // outros JÁ FORAM. O usuário vê "Erro ao salvar" e conclui que nada foi gravado
-      // — mas parte da edição está no banco.
-      //
-      // É a mesma classe do que acontece em useProvaUnidades, e a saída real também
-      // seria a mesma: uma RPC que faça tudo numa transação.
-      const { result } = await carregarEDepois([
-        { data: null, error: null }, // s1 grava
-        { data: null, error: erroPostgrest("23514", "capacidade inválida") }, // s2 falha
-        { data: [], error: null },
-      ]);
+    it("🔴 número repetido chega TRADUZIDO, nomeando a sala", async () => {
+      // O que chegava antes: `duplicate key value violates unique constraint
+      // "salas_prova_distribuidas_prova_unidade_numero_key"`.
+      setRpcResult("salvar_salas_distribuidas", {
+        data: null,
+        error: {
+          code: "23505",
+          message: `duplicate key value violates unique constraint "${"salas_prova_distribuidas_prova_unidade_numero_key"}"`,
+          details:
+            "Key (prova_id, sala_fk_unidade, sala_numero)=(prova-1, unid-1, 203) already exists.",
+          hint: "",
+        },
+      });
+      const { result } = await carregarEDepois([{ data: [], error: null }]);
 
-      result.current.updateSalas([
-        { id: "s1", sala_capacidade: 40 },
-        { id: "s2", sala_capacidade: -1 },
-      ]);
+      result.current.updateSalas([{ id: "s1", sala_numero: 203 }]);
 
       await waitFor(() =>
         expect(toastMock).toHaveBeenCalledWith(
-          expect.objectContaining({ title: "Erro ao salvar", variant: "destructive" }),
+          expect.objectContaining({
+            title: "Erro ao salvar",
+            description: expect.stringContaining("número 203"),
+            variant: "destructive",
+          }),
         ),
       );
+      // O jargão não pode sobrar em lugar nenhum da mensagem.
+      const { description } = toastMock.mock.calls.at(-1)![0];
+      expect(description).not.toMatch(/duplicate key|unique constraint/);
+    });
 
-      // A prova de que o primeiro foi gravado assim mesmo: os dois UPDATEs saíram.
-      expect(chamadasDe(TABELA, "update")).toHaveLength(2);
+    it("⭐ CONTROLE POSITIVO: a mensagem da RPC passa adiante intacta", async () => {
+      // A tradução vale só para o 23505 daquela chave. As mensagens que a própria RPC
+      // escreve já estão em português e dizem o que fazer — engoli-las repetiria o erro
+      // que `mensagemErroRemocaoValor` existe para não deixar acontecer de novo.
+      setRpcResult("salvar_salas_distribuidas", {
+        data: null,
+        error: erroPostgrest(
+          "P0001",
+          "Nenhuma alteração foi salva: 1 de 2 salas não foram encontradas. Recarregue a página e tente de novo.",
+        ),
+      });
+      const { result } = await carregarEDepois([{ data: [], error: null }]);
+
+      result.current.updateSalas([{ id: "sumida", sala_capacidade: 40 }]);
+
+      await waitFor(() =>
+        expect(toastMock).toHaveBeenCalledWith(
+          expect.objectContaining({
+            description: expect.stringContaining("não foram encontradas"),
+          }),
+        ),
+      );
     });
   });
 
@@ -403,5 +459,67 @@ describe("avisoFiscalDeSala", () => {
   it("cai num sujeito genérico se o nome não vier", () => {
     expect(avisoFiscalDeSala(undefined, [201])).toContain("Este colaborador está como fiscal");
     expect(avisoFiscalDeSala("   ", [201])).toContain("Este colaborador está como fiscal");
+  });
+});
+
+/**
+ * A tradução da recusa por número repetido. Função pura de propósito: é a parte que
+ * precisa de teste, e renderizar a página para conferir uma frase seria desproporcional
+ * — mesma decisão de `avisoFiscalDeSala`.
+ */
+describe("mensagemErroSalvarSalas", () => {
+  const duplicado = (details: string) =>
+    Object.assign(
+      new Error(
+        'duplicate key value violates unique constraint "salas_prova_distribuidas_prova_unidade_numero_key"',
+      ),
+      { code: "23505", details },
+    );
+
+  it("nomeia o número da sala que já existe", () => {
+    const msg = mensagemErroSalvarSalas(
+      duplicado("Key (prova_id, sala_fk_unidade, sala_numero)=(p-1, u-1, 203) already exists."),
+    );
+
+    expect(msg).toContain("número 203");
+    expect(msg).toContain("Nenhuma alteração foi salva");
+    // O jargão do Postgres não pode vazar para a tela.
+    expect(msg).not.toMatch(/duplicate key|unique constraint/);
+  });
+
+  it("⭐ sem `details` legível, avisa SEM inventar número", () => {
+    // Ler texto de erro é frágil por natureza. Falhar por omissão é a única forma
+    // aceitável: uma mensagem que aponta a sala errada é pior que uma genérica.
+    const msg = mensagemErroSalvarSalas(duplicado("formato que ninguém previu"));
+
+    expect(msg).toContain("mesmo número");
+    expect(msg).not.toMatch(/\d/);
+  });
+
+  it("reconhece a duplicata pelo nome da chave mesmo sem `code`", () => {
+    // Nem todo caminho entrega o `code` — o erro pode chegar como Error puro vindo do
+    // RAISE da própria transação.
+    const semCode = new Error(
+      'duplicate key value violates unique constraint "salas_prova_distribuidas_prova_unidade_numero_key"',
+    );
+
+    expect(mensagemErroSalvarSalas(semCode)).toContain("mesmo número");
+  });
+
+  it("🔴 CONTROLE POSITIVO: qualquer outra mensagem passa adiante INTACTA", () => {
+    // A regra da casa é repassar o que o banco explicou; a tradução acima é a exceção
+    // estreita, para uma mensagem que não explica nada a quem renumera salas.
+    const daRpc = new Error(
+      "Nenhuma alteração foi salva: 1 de 2 salas não foram encontradas. Recarregue a página e tente de novo.",
+    );
+
+    expect(mensagemErroSalvarSalas(daRpc)).toBe(daRpc.message);
+    expect(mensagemErroSalvarSalas(new Error("Apenas administradores podem alterar as salas distribuídas."))).toBe(
+      "Apenas administradores podem alterar as salas distribuídas.",
+    );
+  });
+
+  it("cai num texto próprio só quando não há mensagem nenhuma", () => {
+    expect(mensagemErroSalvarSalas(new Error(""))).toBe("Erro ao salvar");
   });
 });
