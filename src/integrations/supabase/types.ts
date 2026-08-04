@@ -81,6 +81,7 @@ export type Database = {
           numero: string | null
           portador_deficiencia: boolean
           raca: string | null
+          sala_especial: string | null
           sexo: string | null
           telefone: string | null
           uf: string | null
@@ -114,6 +115,7 @@ export type Database = {
           numero?: string | null
           portador_deficiencia?: boolean
           raca?: string | null
+          sala_especial?: string | null
           sexo?: string | null
           telefone?: string | null
           uf?: string | null
@@ -147,6 +149,7 @@ export type Database = {
           numero?: string | null
           portador_deficiencia?: boolean
           raca?: string | null
+          sala_especial?: string | null
           sexo?: string | null
           telefone?: string | null
           uf?: string | null

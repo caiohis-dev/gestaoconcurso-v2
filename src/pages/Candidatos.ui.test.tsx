@@ -132,6 +132,7 @@ const AGATHA = {
   hora_nascimento: "12:43:00",
   sexo: "1",
   raca: "2",
+  sala_especial: null,
   portador_deficiencia: false,
   confirmado: true,
   concurso_id_origem: "242",
@@ -343,6 +344,41 @@ describe("Candidatos (interação)", () => {
       expect(within(ficha).getByText("AÇUDE")).toBeInTheDocument();
       // O código 2 de RACA_MAP é "Branca" — a ficha traduz em vez de exibir o número.
       expect(within(ficha).getByText("Branca")).toBeInTheDocument();
+    });
+
+    it("⭐ a ficha mostra a SALA ESPECIAL, inteira e sem cortar", async () => {
+      // 🔴 O campo só existe para ser LIDO por quem vai providenciar a sala. Gravá-lo e
+      // não exibi-lo é o mesmo defeito que a decisão de 30/07 corrigiu no dado impossível:
+      // o valor existe no banco e é invisível, sem quebrar teste nenhum.
+      //
+      // O texto do fixture é longo de propósito — a coluna é `text` sem teto (decisão de
+      // 04/08), e um `truncate` no `dd` faria a ficha entregar meia instrução.
+      const pedido =
+        "Ledor e transcritor, prova ampliada em fonte 24, sala térrea com acesso para " +
+        "cadeira de rodas e tempo adicional de 60 minutos conforme laudo apresentado.";
+      setTableResult(
+        "candidatos",
+        pagina([{ ...AGATHA, id: "cand-sala", sala_especial: pedido }]),
+      );
+      const user = abrir();
+      await escolherEdital(user);
+      await user.click(await screen.findByRole("button", { name: /^Ver ficha de / }));
+
+      const ficha = await screen.findByRole("dialog");
+      expect(within(ficha).getByText("Sala especial")).toBeInTheDocument();
+      expect(within(ficha).getByText(pedido)).toBeInTheDocument();
+    });
+
+    it("sem pedido, a Sala especial aparece como vazia — e não some da ficha", async () => {
+      // CONTROLE: o campo é opcional e a maioria das fichas não terá nada. Escondê-lo
+      // quando vazio faria quem consulta não saber se a pessoa não pediu ou se o sistema
+      // deixou de mostrar. O traço é o vazio desta ficha desde sempre.
+      const user = abrir();
+      await escolherEdital(user);
+      await user.click(await screen.findByRole("button", { name: /^Ver ficha de / }));
+
+      const ficha = await screen.findByRole("dialog");
+      expect(within(ficha).getByText("Sala especial")).toBeInTheDocument();
     });
 
     it("🔴 a ficha mostra o dado IMPOSSÍVEL como veio — é o ponto da decisão de 30/07", async () => {

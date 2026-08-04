@@ -43,7 +43,8 @@ Duas consequências que precisam sobreviver a qualquer refatoração:
 | `src/pages/CandidatosImportar.tsx` (1.155 l.) | O assistente de **5 passos**: arquivo → pareamento → **cargos** → importação → relatório |
 | `src/hooks/useCandidatos.tsx` | React Query: `useCandidatos` (paginada, com o cargo embutido e o recorte por cargo), `useContagemCandidatosPorEdital`, `useImportarCandidatos` (**preparo em blocos + a RPC de troca**), `useExcluirCandidatos` |
 | `supabase/migrations/20260730120000_*` e `20260730130000_*` | A tabela de preparo `candidatos_importacao` e a RPC `trocar_candidatos_do_edital`, com as três guardas |
-| `docs/bateria-troca-total-candidatos.sql` | A bateria da troca, 10 casos — inclui a prova de ATOMICIDADE, que roda fora de transação de propósito |
+| `docs/bateria-troca-total-candidatos.sql` | A bateria da troca, 12 casos — inclui a prova de ATOMICIDADE, que roda fora de transação de propósito. 🔴 **Ficou QUEBRADA de 02/08 a 04/08**: a RPC ganhou o 4º parâmetro e as 9 chamadas daqui seguiram na assinatura antiga, então o arquivo falhava na primeira e nenhum caso rodava. Nem `npm test` nem `docs:conferir` alcançam isto — **quem verifica bateria é rodá-la** |
+| `supabase/migrations/20260804101346_candidatos_sala_especial.sql` | 🔵 A coluna `sala_especial` (04/08): `text`, sem teto, sem validação |
 | `supabase/migrations/20260802145848_*` | 🔵 O relatório da importação passa a PERSISTIR: tabela `candidatos_relatorio_importacao` + a RPC ganha o parâmetro `p_relatorio`, gravado na MESMA transação da troca |
 | `docs/bateria-relatorio-importacao.sql` | A bateria do relatório persistido, 5 casos + RLS — inclui a prova de que uma GUARDA que recusa a troca preserva o relatório ANTIGO intacto |
 | `src/hooks/useCargos.tsx` | React Query dos cargos: catálogo (com e sem contagem de uso), apelidos, criação, **renomeação e exclusão** — ver [`cargos.md`](./cargos.md) |
@@ -87,6 +88,8 @@ candidatos
                                      --    e é critério LEGAL de desempate — ver o aviso na migration
   sexo                  text         -- '0'/'1' na origem, guardado cru
   raca                  text         -- ⚠️ TEXT desde 30/07 (era smallint): código desconhecido entra CRU
+  sala_especial         text         -- 🔵 04/08: pedido de atendimento especial, texto livre
+                                     --    SEM TETO e SEM validação — ver a seção própria
   portador_deficiencia  boolean NOT NULL DEFAULT false
   confirmado            boolean NOT NULL DEFAULT false
   concurso_id_origem    text         -- rastro da procedência ('242')
@@ -265,6 +268,23 @@ converterLinha → separarPorPagamento → resolverLinhas → deduplicar → blo
 
 ⚠️ **Consequência aceita:** com só pagantes entrando, o selo *"não confirmada"* da listagem (`Candidatos.tsx`) e a linha *"Inscrição confirmada"* da ficha ficam **inalcançáveis**. Decisão do usuário mantê-los: a coluna segue no banco como procedência e eles voltam a valer sozinhos se o filtro for afrouxado. Registrado no [`backlog.md`](../../../backlog.md) para não virar achado repetido em auditoria.
 
+### 🔵 Sala especial — o campo que não é problema de ninguém (2026-08-04)
+
+Decisão do usuário: a importação passa a trazer o **pedido de atendimento especial** do inscrito (ledor, prova ampliada, sala térrea, tempo adicional). Campo **não obrigatório**, texto livre, que entra no pareamento, na ficha e — **linha por linha** — nos dois relatórios.
+
+**É o campo mais simples do módulo, e é isso que precisa sobreviver:** não tem conversor, não tem normalização, não gera aviso e não descarta linha. Texto livre não tem forma esperada da qual divergir. Se alguém acrescentar validação aqui, a pergunta a fazer primeiro é *"validar contra o quê?"*.
+
+🔴 **É `text`, e NÃO o `varchar(2000)` do pedido original** — decisão do usuário no desenho, e o segundo motivo é o que pesa:
+
+1. `candidatos` não tem opinião sobre formato desde a migration `20260730100000`. Um `varchar(n)` reintroduziria opinião.
+2. **`varchar(n)` no Postgres RECUSA o valor maior — não trunca.** E a gravação inteira roda dentro da transação de `trocar_candidatos_do_edital`: **uma célula de 2.001 caracteres derrubaria a troca do edital inteiro**, 7.416 inscritos, por causa do campo mais periférico da tabela. O `CASO 6b` da bateria grava 5.000 caracteres exatamente para travar essa decisão — se alguém puser um teto, é ali que quebra.
+
+⚠️ **Os sinônimos de auto-pareamento são o ÚNICO palpite não medido do módulo.** As 29 colunas do arquivo real **não têm** esta coluna: ela virá de um export futuro, com cabeçalho que ninguém viu. O palpite é seguro porque `autoMapear` casa por **igualdade exata** — cabeçalho diferente deixa o campo em branco esperando o usuário, e nada é escrito errado. ⚠️ **Não acrescente `'sala'` sozinho à lista**: uma coluna chamada só `SALA` é muito mais provavelmente a sala de **prova**, que não é isto e nem existe no modelo.
+
+**No relatório, a linha lista quem PEDIU e ENTROU** (`inscritosComSalaEspecial`), e os três filtros são o que a tornam verdadeira: fora a linha com erro, fora o não-pagante, e fora a **linha substituída** por outra de mesma inscrição. 🔴 **O terceiro é o que se esquece** — sem ele a mesma pessoa apareceria duas vezes, uma delas com o texto que o banco não guardou.
+
+⚠️ **A consequência que o `text` sem teto traz, e que está aceita:** o pedido viaja inteiro para o `Detalhe` do relatório, e o relatório **tem** teto (`LIMITE_RELATORIO_BYTES`, 4 MB no cliente, que recusa a importação inteira). Medido antes desta coluna: 163 bytes por linha, 37,8 KB no arquivo real — três ordens de grandeza de folga. Com o texto do pedido dentro, a ~500 caracteres por pedido o teto fica em **~7.300 pedidos**. Continua improvável, mas **deixou de ser inalcançável**. Se um dia doer, o lugar de cortar é o `Detalhe` do relatório, **nunca** o valor gravado.
+
 ### ⭐ Erro vs. aviso: o que descarta a linha e o que entra com o dado cru
 
 **A identidade do candidato é o NÚMERO DE INSCRIÇÃO** — mais o CPF e o cargo —, não o CPF sozinho (ao contrário do colaborador, que loga com o CPF). Daí a regra:
@@ -364,7 +384,7 @@ Segunda leva do mesmo tema, no mesmo dia. **Todas são AVISO** — nenhuma desca
 
 Por isso **o pareamento é por índice de coluna**, e o rótulo mostrado carrega a letra (`NOME (coluna AC)`) quando o cabeçalho se repete ou está vazio.
 
-⚠️ **Cada campo do pareamento precisa continuar com `htmlFor`/`id` ligando o `<label>` ao `SelectTrigger`.** São 25 comboboxes idênticos numa tela só: sem a associação, um leitor de tela anuncia 25 vezes "combobox" e a tela fica inoperável para quem depende dele — foi assim que ela nasceu, e foi corrigido em 2026-07-27. Funciona porque `<button>` é elemento rotulável. O asterisco dos obrigatórios é `aria-hidden` (decoração); quem informa a obrigatoriedade é o `required` do `Select`, que o Radix transforma em `aria-required` no gatilho. Duas regressões em `CandidatosImportar.ui.test.tsx` guardam isso.
+⚠️ **Cada campo do pareamento precisa continuar com `htmlFor`/`id` ligando o `<label>` ao `SelectTrigger`.** São 26 comboboxes idênticos numa tela só: sem a associação, um leitor de tela anuncia 26 vezes "combobox" e a tela fica inoperável para quem depende dele — foi assim que ela nasceu, e foi corrigido em 2026-07-27. Funciona porque `<button>` é elemento rotulável. O asterisco dos obrigatórios é `aria-hidden` (decoração); quem informa a obrigatoriedade é o `required` do `Select`, que o Radix transforma em `aria-required` no gatilho. Duas regressões em `CandidatosImportar.ui.test.tsx` guardam isso.
 
 ### ⚠️ O cargo NÃO é auto-pareado, de propósito
 
@@ -451,7 +471,9 @@ Três coisas que precisam sobreviver a qualquer refatoração dessas telas:
 | Baixar Planilha (XLS) | `.xlsx`, duas abas (`Problemas` + `Cargos`) | lista plana, uma queixa por linha | trabalhar no Excel: filtrar, ordenar, marcar o que já corrigiu |
 | Baixar Documento (PDF) | A4 paisagem, timbrado | **agrupado por campo**, uma tabela por campo | anexar a processo e imprimir; corrigir é trabalho por coluna |
 
-As **quatro origens** das queixas: `comErro` (não entrou, falta o que identifica), `comAviso` (entrou, com dado a conferir na origem), `repetidas` (sobrescrita por linha posterior de mesma chave) e `naoPagantes` (não entrou, inscrição não paga — ver a seção do filtro acima).
+As **cinco origens** das queixas: `comErro` (não entrou, falta o que identifica), `comAviso` (entrou, com dado a conferir na origem), `repetidas` (sobrescrita por linha posterior de mesma chave), `naoPagantes` (não entrou, inscrição não paga — ver a seção do filtro acima) e 🔵 `comSalaEspecial` (entrou **sem defeito nenhum**, e está ali porque alguém tem de providenciar a sala — ver a seção própria).
+
+> ⚠️ **Eram quatro até 2026-08-04.** A quinta é a primeira que não fala de nada errado, e é por isso que o texto ao redor dela importa mais que o dela: `subtituloDoCampo` dá ao bloco o título *"Lista de inscritos com pedido de sala especial"*, e a `Situação` é própria (`"Importada com sala especial"`), justamente para não ser lida como ressalva.
 
 ### 🔵 As colunas, e o que mudou em 2026-08-01
 

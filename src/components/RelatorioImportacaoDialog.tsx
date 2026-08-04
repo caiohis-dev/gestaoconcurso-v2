@@ -38,6 +38,15 @@ const POR_PAGINA = 50;
  * foi mandado. Pintá-la de vermelho mandaria a pessoa caçar erro em linhas legítimas, que
  * é exatamente o que a separação entre "Sem pagamento" e "Não importados" existe para
  * evitar (ver o card do passo 5 do assistente).
+ *
+ * ⚠️ "Importada com sala especial" (2026-08-04) cai no mesmo balde neutro, e o motivo é
+ * ainda mais claro: aquela linha entrou INTEIRA e sem defeito nenhum. Ela está no
+ * relatório porque alguém precisa providenciar a sala, não porque haja o que corrigir.
+ *
+ * 🔴 A LISTA É POSITIVA — nomeia quem é vermelho — e é isso que faz o comportamento certo
+ * ser o padrão: uma situação nova cai em `secondary` sozinha. Se fosse ao contrário
+ * ("tudo é vermelho menos estas"), cada origem nova do relatório nasceria acusando a
+ * pessoa de um problema que não existe, sem ninguém perceber.
  */
 function varianteDaSituacao(situacao: string): "destructive" | "secondary" | "outline" {
   if (situacao === "Não importada") return "destructive";
@@ -215,7 +224,14 @@ export function RelatorioImportacaoDialog({
                       <Badge variant={varianteDaSituacao(l.situacao)}>{l.situacao}</Badge>
                     </TableCell>
                     <TableCell>{l.campo}</TableCell>
-                    <TableCell className="text-muted-foreground">{l.detalhe}</TableCell>
+                    {/* `whitespace-pre-wrap break-words` desde 2026-08-04: o detalhe de uma
+                        linha de sala especial carrega o pedido INTEIRO, que é texto livre
+                        sem teto. Sem isto ele estica a tabela para fora do diálogo. Quebrar
+                        é a saída certa — cortar seria o mesmo defeito do `overflow: hidden`
+                        que já engoliu a mensagem do erro no PDF. */}
+                    <TableCell className="whitespace-pre-wrap break-words text-muted-foreground">
+                      {l.detalhe}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

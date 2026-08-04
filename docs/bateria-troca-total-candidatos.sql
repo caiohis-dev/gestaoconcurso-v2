@@ -13,6 +13,17 @@
 --
 -- ⚠️ Roda como `postgres` (superusuário), então NÃO exercita RLS — ela é verificada à
 -- parte, pelo PostgREST com JWT forjado. O que esta bateria cobre é a LÓGICA da função.
+--
+-- 🔴 ESTA BATERIA FICOU QUEBRADA POR DOIS DIAS, e o motivo vale mais que o conserto.
+-- Em 2026-08-02 a RPC ganhou o 4º parâmetro (`p_relatorio jsonb`) e a migration DROPOU a
+-- assinatura de 3 argumentos. Todas as 9 chamadas daqui continuaram na forma antiga, então
+-- o arquivo inteiro falhava na primeira chamada com "function does not exist" — nenhum
+-- caso chegava a ser exercitado. Corrigido em 2026-08-04.
+--
+-- ⚠️ A lição para quem mexer na assinatura da RPC: `npm test` NÃO pega isto (a suíte
+-- mocka o Supabase) e `npm run docs:conferir` também não — ele confere doc contra código,
+-- e bateria não é doc. **Quem verifica a bateria é rodá-la.** Ao mudar a assinatura de uma
+-- função, procure as chamadas em `docs/bateria-*.sql` no mesmo passe.
 -- ─────────────────────────────────────────────────────────────────────────────────────
 
 \set ON_ERROR_STOP off
@@ -49,7 +60,7 @@ SAVEPOINT c1;
 SELECT 'CASO 1 — lote vazio (espera IM001)' AS caso;
 SELECT * FROM trocar_candidatos_do_edital(
   'aaaaaaaa-0000-0000-0000-000000000001',
-  'bbbbbbbb-0000-0000-0000-00000000dead', 1);
+  'bbbbbbbb-0000-0000-0000-00000000dead', 1, '[]'::jsonb);
 ROLLBACK TO c1;
 
 SELECT 'CASO 1 — a lista sobreviveu' AS verificacao,
@@ -71,7 +82,7 @@ INSERT INTO public.candidatos_importacao (importacao_id, edital_id, linha) VALUE
 SELECT 'CASO 2 — preparo misturado (espera IM002)' AS caso;
 SELECT * FROM trocar_candidatos_do_edital(
   'aaaaaaaa-0000-0000-0000-000000000001',
-  'bbbbbbbb-0000-0000-0000-000000000002', 2);
+  'bbbbbbbb-0000-0000-0000-000000000002', 2, '[]'::jsonb);
 ROLLBACK TO c2;
 
 SELECT 'CASO 2 — a lista sobreviveu' AS verificacao,
@@ -92,7 +103,7 @@ INSERT INTO public.candidatos_importacao (importacao_id, edital_id, linha) VALUE
 SELECT 'CASO 3 — a troca (espera removidos=3, inseridos=2)' AS caso;
 SELECT * FROM trocar_candidatos_do_edital(
   'aaaaaaaa-0000-0000-0000-000000000001',
-  'bbbbbbbb-0000-0000-0000-000000000003', 2);
+  'bbbbbbbb-0000-0000-0000-000000000003', 2, '[]'::jsonb);
 
 SELECT 'CASO 3 — quem ficou' AS verificacao, n_inscricao, nome, cpf
   FROM candidatos WHERE edital_id='aaaaaaaa-0000-0000-0000-000000000001'
@@ -132,7 +143,7 @@ INSERT INTO public.candidatos_importacao (importacao_id, edital_id, linha) VALUE
 SELECT 'CASO 4b — preparo INCOMPLETO, 2 de 3 (espera IM003)' AS caso;
 SELECT * FROM trocar_candidatos_do_edital(
   'aaaaaaaa-0000-0000-0000-000000000001',
-  'bbbbbbbb-0000-0000-0000-00000000004b', 3);
+  'bbbbbbbb-0000-0000-0000-00000000004b', 3, '[]'::jsonb);
 ROLLBACK TO c4b;
 
 SELECT '⭐ CASO 4b — a lista sobreviveu' AS verificacao,
@@ -155,7 +166,7 @@ INSERT INTO public.candidatos_importacao (importacao_id, edital_id, linha) VALUE
 SELECT 'CASO 4c — preparo DUPLICADO, 2 de 1 (espera IM003)' AS caso;
 SELECT * FROM trocar_candidatos_do_edital(
   'aaaaaaaa-0000-0000-0000-000000000001',
-  'bbbbbbbb-0000-0000-0000-00000000004c', 1);
+  'bbbbbbbb-0000-0000-0000-00000000004c', 1, '[]'::jsonb);
 ROLLBACK TO c4c;
 
 SELECT 'CASO 4c — a lista sobreviveu' AS verificacao,
@@ -174,7 +185,7 @@ INSERT INTO public.candidatos_importacao (importacao_id, edital_id, linha) VALUE
 SELECT 'CASO 4d — total esperado = 0 (espera IM001)' AS caso;
 SELECT * FROM trocar_candidatos_do_edital(
   'aaaaaaaa-0000-0000-0000-000000000001',
-  'bbbbbbbb-0000-0000-0000-00000000004d', 0);
+  'bbbbbbbb-0000-0000-0000-00000000004d', 0, '[]'::jsonb);
 ROLLBACK TO c4d;
 
 SELECT 'CASO 4d — a lista sobreviveu' AS verificacao,
@@ -191,7 +202,7 @@ INSERT INTO public.candidatos_importacao (importacao_id, edital_id, linha) VALUE
 
 SELECT * FROM trocar_candidatos_do_edital(
   'aaaaaaaa-0000-0000-0000-000000000001',
-  'bbbbbbbb-0000-0000-0000-000000000005', 1);
+  'bbbbbbbb-0000-0000-0000-000000000005', 1, '[]'::jsonb);
 
 SELECT 'CASO 5 — edital B intocado' AS verificacao,
        count(*) AS deve_ser_2 FROM candidatos
@@ -213,11 +224,61 @@ INSERT INTO public.candidatos_importacao (importacao_id, edital_id, linha) VALUE
 
 SELECT * FROM trocar_candidatos_do_edital(
   'aaaaaaaa-0000-0000-0000-000000000001',
-  'bbbbbbbb-0000-0000-0000-000000000006', 1);
+  'bbbbbbbb-0000-0000-0000-000000000006', 1, '[]'::jsonb);
 
 SELECT '⭐ CASO 6 — o campo novo chegou sozinho' AS verificacao, n_inscricao, campo_futuro
   FROM candidatos WHERE edital_id='aaaaaaaa-0000-0000-0000-000000000001';
 ROLLBACK TO c6;
+
+-- ═════════════════════════════════════════════════════════════════════════════════════
+-- CASO 6b — ⭐ a previsão do CASO 6 ACONTECEU: `sala_especial` (2026-08-04)
+--
+-- O caso acima prova o mecanismo com uma coluna sintética. Este prova com a coluna REAL
+-- que nasceu depois dele, e sem ALTER nenhum: nem `candidatos_importacao` nem a RPC foram
+-- tocadas pela migration 20260804101346, e mesmo assim o valor tem de chegar.
+--
+-- 🔴 O TEXTO LONGO É O PONTO, não enfeite. Ele guarda a decisão de a coluna ser `text` e
+-- não `varchar(2000)`: com um teto, esta linha seria RECUSADA pelo Postgres (varchar não
+-- trunca, recusa) e — por a troca ser uma transação só — derrubaria o edital INTEIRO por
+-- causa do campo mais periférico da tabela. Se alguém puser um teto, é aqui que quebra.
+-- ═════════════════════════════════════════════════════════════════════════════════════
+SAVEPOINT c6b;
+
+INSERT INTO public.candidatos_importacao (importacao_id, edital_id, linha)
+SELECT 'bbbbbbbb-0000-0000-0000-00000000006b', 'aaaaaaaa-0000-0000-0000-000000000001',
+       jsonb_build_object(
+         'n_inscricao', 'S001',
+         'nome',        'PEDIDO LONGO',
+         'cargo',       'DOCENTE II',
+         'sala_especial', repeat('A', 5000)
+       );
+
+SELECT * FROM trocar_candidatos_do_edital(
+  'aaaaaaaa-0000-0000-0000-000000000001',
+  'bbbbbbbb-0000-0000-0000-00000000006b', 1, '[]'::jsonb);
+
+SELECT '⭐ CASO 6b — sala_especial atravessou INTEIRA (espera 5000)' AS verificacao,
+       n_inscricao, length(sala_especial) AS caracteres
+  FROM candidatos WHERE edital_id='aaaaaaaa-0000-0000-0000-000000000001';
+
+-- CONTROLE POSITIVO: quem NÃO manda o campo entra com NULL, sem erro. Sem esta metade, um
+-- DEFAULT ou um NOT NULL acidental na coluna passaria despercebido — e travaria a troca
+-- de toda planilha que não trouxer a coluna, que é o caso do arquivo real de hoje.
+ROLLBACK TO c6b;
+SAVEPOINT c6c;
+
+INSERT INTO public.candidatos_importacao (importacao_id, edital_id, linha) VALUES
+  ('bbbbbbbb-0000-0000-0000-00000000006c', 'aaaaaaaa-0000-0000-0000-000000000001',
+   '{"n_inscricao":"S002","nome":"SEM PEDIDO","cargo":"DOCENTE II"}');
+
+SELECT * FROM trocar_candidatos_do_edital(
+  'aaaaaaaa-0000-0000-0000-000000000001',
+  'bbbbbbbb-0000-0000-0000-00000000006c', 1, '[]'::jsonb);
+
+SELECT '⭐ CASO 6c — sem pedido entra NULO (espera t)' AS verificacao,
+       n_inscricao, sala_especial IS NULL AS deve_ser_true
+  FROM candidatos WHERE edital_id='aaaaaaaa-0000-0000-0000-000000000001';
+ROLLBACK TO c6c;
 
 -- ═════════════════════════════════════════════════════════════════════════════════════
 -- CASO 7 — grants: `anon` não tem nada na tabela de preparo nem na função
@@ -229,8 +290,8 @@ SELECT 'CASO 7 — privilégios de anon' AS verificacao, table_name, privilege_t
  ORDER BY table_name, privilege_type;
 
 SELECT 'CASO 7 — anon pode EXECUTAR a troca?' AS verificacao,
-       has_function_privilege('anon', 'public.trocar_candidatos_do_edital(uuid,uuid,integer)', 'EXECUTE') AS deve_ser_false,
-       has_function_privilege('authenticated', 'public.trocar_candidatos_do_edital(uuid,uuid,integer)', 'EXECUTE') AS deve_ser_true;
+       has_function_privilege('anon', 'public.trocar_candidatos_do_edital(uuid,uuid,integer,jsonb)', 'EXECUTE') AS deve_ser_false,
+       has_function_privilege('authenticated', 'public.trocar_candidatos_do_edital(uuid,uuid,integer,jsonb)', 'EXECUTE') AS deve_ser_true;
 
 ROLLBACK;
 
@@ -264,7 +325,7 @@ INSERT INTO public.candidatos_importacao (importacao_id, edital_id, linha) VALUE
 SELECT 'CASO 4 — INSERT sabotado (espera violação de CHECK)' AS caso;
 SELECT * FROM trocar_candidatos_do_edital(
   'cccccccc-0000-0000-0000-000000000004',
-  'dddddddd-0000-0000-0000-000000000004', 2);
+  'dddddddd-0000-0000-0000-000000000004', 2, '[]'::jsonb);
 
 -- ⭐ A asserção que vale por toda a bateria.
 SELECT '⭐ CASO 4 — NINGUÉM foi apagado' AS verificacao,

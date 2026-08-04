@@ -100,6 +100,13 @@ describe("RelatorioImportacaoDialog", () => {
       campo: "E-mail",
       detalhe: '"x@y,com" é inválido — gravado como veio',
     },
+    {
+      id: "r3",
+      n_inscricao: "1043",
+      situacao: "Importada com sala especial",
+      campo: "Sala Especial",
+      detalhe: "MARIA SOARES — Ledor e prova ampliada em fonte 24",
+    },
   ];
 
   describe("o vazio, que são DOIS estados diferentes", () => {
@@ -128,13 +135,13 @@ describe("RelatorioImportacaoDialog", () => {
 
   describe("com relatório", () => {
     beforeEach(() =>
-      setTableResult("candidatos_relatorio_importacao", resultado(LINHAS, 2)),
+      setTableResult("candidatos_relatorio_importacao", resultado(LINHAS, 3)),
     );
 
     it("mostra as quatro colunas e o total de ocorrências", async () => {
       abrir();
 
-      expect(await screen.findByText("2 ocorrência(s) registrada(s)")).toBeInTheDocument();
+      expect(await screen.findByText("3 ocorrência(s) registrada(s)")).toBeInTheDocument();
       expect(screen.getByRole("columnheader", { name: "Nº de Inscrição" })).toBeInTheDocument();
       expect(screen.getByRole("columnheader", { name: "Detalhe" })).toBeInTheDocument();
       expect(screen.getByText("DANIEL MARQUES — inscrição não consta como paga")).toBeInTheDocument();
@@ -152,12 +159,26 @@ describe("RelatorioImportacaoDialog", () => {
       expect(comRessalva.className).not.toMatch(/destructive/);
     });
 
+    it("🔴 'sala especial' NÃO é vermelha — a linha entrou SEM defeito nenhum", async () => {
+      // Um grau além do não-pagamento: aqui não há sequer linha de fora. O inscrito
+      // entrou inteiro, e a linha existe no relatório porque alguém tem de providenciar a
+      // sala. Vermelho aqui mandaria procurar problema onde há trabalho a fazer.
+      abrir();
+
+      const salaEspecial = await screen.findByText("Importada com sala especial");
+      expect(salaEspecial.className).not.toMatch(/destructive/);
+      // E o pedido chega INTEIRO à tela: é a única coisa que esta linha entrega.
+      expect(
+        screen.getByText("MARIA SOARES — Ledor e prova ampliada em fonte 24"),
+      ).toBeInTheDocument();
+    });
+
     it("⚠️ pede ao servidor a fatia paginada, e ORDENADA — senão a paginação repete linha", async () => {
       // A tabela não guarda a ordem da planilha (não há coluna `ordem`, e `created_at` é
       // igual para todas as linhas da transação). Sem ORDER BY explícito o Postgres não
       // promete ordem nenhuma, e páginas diferentes podem trazer a mesma linha duas vezes.
       abrir();
-      await screen.findByText("2 ocorrência(s) registrada(s)");
+      await screen.findByText("3 ocorrência(s) registrada(s)");
 
       const builder = buildersDaTabela("candidatos_relatorio_importacao")[0];
       expect(builder.eq).toHaveBeenCalledWith("edital_id", EDITAL);

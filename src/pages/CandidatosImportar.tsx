@@ -31,6 +31,7 @@ import {
   cargosDaPlanilha,
   converterLinha,
   deduplicar,
+  inscritosComSalaEspecial,
   mapeamentoCompleto,
   montarProblemasDoRelatorio,
   pareceSujo,
@@ -281,6 +282,19 @@ export default function CandidatosImportar() {
   const comAviso = pagantes.filter((l) => l.avisos.length > 0);
 
   /**
+   * Quem pediu sala especial E entrou na lista — a quinta origem do relatório (2026-08-04).
+   *
+   * ⚠️ Depende de `repetidas`, e é por isso que fica DEPOIS do dedup: sem tirar as linhas
+   * substituídas, a mesma pessoa apareceria duas vezes, uma delas com o texto que o banco
+   * não guardou. Os outros dois filtros (linha com erro, não-pagante) já vêm de graça em
+   * `pagantes`. Ver `inscritosComSalaEspecial`.
+   */
+  const comSalaEspecial = useMemo(
+    () => inscritosComSalaEspecial(pagantes, repetidas),
+    [pagantes, repetidas],
+  );
+
+  /**
    * 🔴 ÚNICA fonte do relatório, usada em TRÊS lugares: a persistência (dentro da mesma
    * chamada que troca os candidatos), o botão XLS e o botão PDF.
    *
@@ -290,8 +304,8 @@ export default function CandidatosImportar() {
    * pessoa baixa e o banco grava o MESMO relatório, porque os dois leem esta variável.
    */
   const relatorio = useMemo(
-    () => montarProblemasDoRelatorio(comErro, comAviso, repetidas, naoPagantes),
-    [comErro, comAviso, repetidas, naoPagantes],
+    () => montarProblemasDoRelatorio(comErro, comAviso, repetidas, naoPagantes, comSalaEspecial),
+    [comErro, comAviso, repetidas, naoPagantes, comSalaEspecial],
   );
 
   /**
@@ -1279,13 +1293,19 @@ export default function CandidatosImportar() {
                   a primeira é defeito de dado, que se corrige na planilha e se reimporta;
                   a segunda é o filtro funcionando. Somá-las mandaria a pessoa procurar
                   erro em 185 linhas que não têm nenhum. */}
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+              {/* ⚠️ "Com sala especial" segue a mesma regra do card acima, e por um motivo
+                  ainda mais forte: ele não conta linha que ficou de fora NEM linha com
+                  defeito — conta gente que entrou perfeitamente e cujo pedido alguém tem
+                  de atender. Por isso não é `text-destructive`: número vermelho aqui
+                  mandaria procurar problema onde há trabalho a fazer. */}
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
                 {[
                   ["Inseridos", resultado?.inseridos ?? 0, "text-foreground"],
                   ["Removidos", resultado?.removidos ?? 0, "text-foreground"],
                   ["Não importados", comErro.length, "text-destructive"],
                   ["Sem pagamento", naoPagantes.length, "text-muted-foreground"],
                   ["Com ressalva", comAviso.length, "text-foreground"],
+                  ["Com sala especial", comSalaEspecial.length, "text-foreground"],
                 ].map(([rotulo, valor, cor]) => (
                   <div key={rotulo as string} className="rounded-lg border p-4">
                     <div className={`text-2xl font-bold ${cor as string}`}>{valor as number}</div>

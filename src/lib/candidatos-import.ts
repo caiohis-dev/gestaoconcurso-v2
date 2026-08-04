@@ -68,6 +68,24 @@ export const CAMPOS_CANDIDATO: CampoCandidato[] = [
   { key: 'sexo', label: 'Sexo', obrigatorio: false, sinonimos: ['sexo', 'genero'] },
   { key: 'raca', label: 'Raça', obrigatorio: false, sinonimos: ['raca', 'cor'] },
   { key: 'portador_deficiencia', label: 'Portador de Deficiência', obrigatorio: false, sinonimos: ['portadordeficiencia', 'deficiente', 'pcd', 'deficiencia'] },
+  // O pedido de atendimento especial do inscrito, em texto livre (ledor, prova ampliada,
+  // sala térrea, tempo adicional…). NÃO obrigatório — decisão do usuário em 2026-08-04.
+  //
+  // ⚠️ OS SINÔNIMOS AQUI SÃO PALPITE NÃO MEDIDO, e é a única coisa deste campo que não foi
+  // conferida contra dado real: as 29 colunas do arquivo de 7.416 linhas NÃO têm coluna de
+  // sala especial (ver `CABECALHO_REAL` no teste). Ela virá de um export futuro, com
+  // cabeçalho que ninguém viu ainda.
+  //
+  // Por que o palpite é seguro mesmo assim: `autoMapear` casa por IGUALDADE EXATA do
+  // cabeçalho normalizado, não por `includes` — cabeçalho diferente do previsto deixa o
+  // campo EM BRANCO esperando o usuário, que é o comportamento certo. O risco que o cargo
+  // corre (adivinhar a coluna errada e preencher tudo com nulo em silêncio) não existe
+  // aqui: um palpite que não casa não escreve nada.
+  //
+  // ⚠️ NÃO acrescente `'sala'` sozinho a esta lista. Uma coluna chamada só `SALA` num
+  // export futuro é muito mais provavelmente a sala de PROVA da pessoa — que não é isto,
+  // e que nem existe no modelo (nada em `candidatos` liga a `provas`).
+  { key: 'sala_especial', label: 'Sala Especial', obrigatorio: false, sinonimos: ['salaespecial', 'atendimentoespecial', 'necessidadeespecial'] },
   // 🔴 OBRIGATÓRIO desde 2026-08-01, e o motivo NÃO é zelo: desde esta data só o inscrito
   // com a inscrição paga é importado (`separarPorPagamento`), e quem responde "pagou?" é
   // esta coluna. Se ela ficasse opcional e o usuário não a pareasse, `parseBooleano(null)`
@@ -300,6 +318,14 @@ export interface CandidatoImportado {
   sexo: string | null;
   /** TEXT, não number: valor impossível entra cru (migration 20260730100000). */
   raca: string | null;
+  /**
+   * O pedido de atendimento especial, em texto livre e SEM TETO (`text` no banco).
+   *
+   * Não é validado, não é normalizado e não gera aviso: não há forma esperada da qual ele
+   * possa divergir. Entra como a origem mandou, como todo o resto desta tabela desde
+   * 2026-07-30 — só que aqui por não haver regra nenhuma, e não por a regra ter saído.
+   */
+  sala_especial: string | null;
   portador_deficiencia: boolean;
   confirmado: boolean;
   concurso_id_origem: string | null;
@@ -586,6 +612,11 @@ export function converterLinha(
     hora_nascimento: horaNascimento,
     sexo: val('sexo'),
     raca,
+    // Sem conversor e sem aviso, ao contrário de todos os campos acima: o pedido de
+    // atendimento especial é texto livre, então não há forma esperada da qual ele possa
+    // divergir. `bruto` já apara as pontas e transforma célula vazia em null — é tudo o
+    // que se pode afirmar sobre este valor sem inventar regra.
+    sala_especial: val('sala_especial'),
     portador_deficiencia: parseBooleano(val('portador_deficiencia')),
     confirmado: parseBooleano(val('confirmado')),
     concurso_id_origem: val('concurso_id_origem'),
@@ -918,6 +949,41 @@ export function deduplicar(linhas: LinhaResolvida[]): Deduplicacao {
 }
 
 /**
+ * Os inscritos que PEDIRAM sala especial e de fato entraram na lista.
+ *
+ * Alimenta a quinta origem do relatório (ver `montarProblemasDoRelatorio`), que lista uma
+ * linha por pedido — é assim que a coordenação sabe quantas salas especiais preparar sem
+ * abrir a planilha de volta.
+ *
+ * 🔴 A FUNÇÃO É QUASE TODA FILTRO, e cada exclusão é o que a torna verdadeira. Listar quem
+ * NÃO entrou faria a coordenação preparar sala para gente que não vai fazer a prova:
+ *
+ *   • linha com ERRO — nem chega aqui: `pagantes` sai de `separarPorPagamento`, que já
+ *     descarta `candidato === null`. Sem candidato não há campo que se possa ler;
+ *   • NÃO-PAGANTE — não entra na lista do edital desde 2026-08-01, então o pedido dela não
+ *     é um pedido a atender. Por isso o parâmetro é `pagantes`, e não todas as linhas;
+ *   • SUBSTITUÍDA por linha posterior de mesma chave — o `deduplicar` mantém a última, e é
+ *     a última que foi gravada. A versão antiga do pedido não vale mais.
+ *
+ * ⚠️ O terceiro é o único que precisa de argumento próprio, e é o mais fácil de esquecer:
+ * sem ele, uma planilha com a mesma inscrição repetida geraria DUAS linhas de sala especial
+ * para a mesma pessoa — uma delas com o texto que o banco não guardou. `repetidas` traz a
+ * `linhaPlanilha` da ocorrência DESCARTADA, que é exatamente o que se tira daqui.
+ */
+export function inscritosComSalaEspecial(
+  pagantes: LinhaConvertida[],
+  repetidas: Deduplicacao['repetidas'],
+): LinhaConvertida[] {
+  const descartadas = new Set(repetidas.map((r) => r.linhaPlanilha));
+  return pagantes.filter(
+    (l) =>
+      l.candidato !== null &&
+      l.candidato.sala_especial !== null &&
+      !descartadas.has(l.linhaPlanilha),
+  );
+}
+
+/**
  * Traduz o erro do Postgres para o que a pessoa tem de corrigir NA PLANILHA.
  *
  * Ter as CHECKs no banco só ajuda se a mensagem chegar legível (regra 4 de invariantes.md):
@@ -993,7 +1059,12 @@ export interface ProblemaDoRelatorio {
     | "Não importada"
     | "Importada com ressalva"
     | "Substituída por linha posterior"
-    | "Não importada (inscrição não paga)";
+    | "Não importada (inscrição não paga)"
+    // ⚠️ NÃO é ressalva, e o texto tem de deixar isso claro sozinho: a linha entrou
+    // inteira e não há nada a corrigir na planilha. Ela está no relatório porque alguém
+    // precisa PROVIDENCIAR a sala — é informação operacional, não queixa. Mesma natureza
+    // de "Não importada (inscrição não paga)", que também não é defeito de dado.
+    | "Importada com sala especial";
   Campo: string;
   Detalhe: string;
 }
@@ -1010,11 +1081,18 @@ export interface ProblemaDoRelatorio {
  */
 export function subtituloDoCampo(campo: string): string {
   if (campo === CAMPO_PAGAMENTO) return "Lista de inscrições sem pagamento registrado";
+  // Mesma razão do pagamento, e o mesmo cuidado: pedido de atendimento especial não é
+  // defeito na planilha. Chamá-lo de "Problemas encontrados no campo: Sala Especial"
+  // mandaria a pessoa CORRIGIR o que ela precisa é PROVIDENCIAR.
+  if (campo === CAMPO_SALA_ESPECIAL) return "Lista de inscritos com pedido de sala especial";
   return `Problemas encontrados no campo: ${campo}`;
 }
 
 /** O `Campo` das linhas descartadas pelo filtro de pagamento. Ver `subtituloDoCampo`. */
 const CAMPO_PAGAMENTO = "Pagamento";
+
+/** O `Campo` dos pedidos de sala especial. Ver `subtituloDoCampo`. */
+const CAMPO_SALA_ESPECIAL = "Sala Especial";
 
 /**
  * De que campo fala uma mensagem de erro/aviso — por PREFIXO do texto.
@@ -1058,12 +1136,14 @@ export function classificarQueixa(mensagem: string): { Campo: string; Detalhe: s
  * custo desse arranjo é que corrigir a classificação de um campo num export deixava o
  * outro mentindo, sem nada quebrar.
  *
- * As quatro origens são deliberadamente diferentes em natureza:
- *   - `comErro`      → a linha NÃO entrou, porque falta o que a identifica;
- *   - `comAviso`     → a linha entrou inteira, com dado a conferir na origem (uma linha
- *                      pode render VÁRIAS queixas, por isso `flatMap`);
- *   - `repetidas`    → a linha entrou e foi sobrescrita por uma posterior de mesma chave;
- *   - `naoPagantes`  → a linha NÃO entrou, porque a inscrição não está paga.
+ * As cinco origens são deliberadamente diferentes em natureza:
+ *   - `comErro`         → a linha NÃO entrou, porque falta o que a identifica;
+ *   - `comAviso`        → a linha entrou inteira, com dado a conferir na origem (uma linha
+ *                         pode render VÁRIAS queixas, por isso `flatMap`);
+ *   - `repetidas`       → a linha entrou e foi sobrescrita por uma posterior de mesma chave;
+ *   - `naoPagantes`     → a linha NÃO entrou, porque a inscrição não está paga;
+ *   - `comSalaEspecial` → a linha entrou SEM defeito nenhum, e está aqui porque alguém tem
+ *                         de providenciar a sala. Ver a nota abaixo.
  *
  * ⚠️ `repetidas` inclui repetição que NÃO se vê como tal na planilha: desde 2026-08-01 a
  * chave é só o nº de inscrição, então duas linhas com o mesmo número colidem ainda que
@@ -1077,12 +1157,24 @@ export function classificarQueixa(mensagem: string): { Campo: string; Detalhe: s
  *
  * ⚠️ Sem esta origem o descarte seria MUDO: 185 pessoas do arquivo real sumiriam da
  * importação sem aparecer em lugar nenhum. É o formato de erro que este repo mais teme.
+ *
+ * 🔴 `comSalaEspecial` é a ÚNICA origem que não fala de nada errado, e por isso é a que
+ * mais depende de o texto ao redor dela estar certo. A linha entrou inteira, o dado está
+ * correto e não há o que corrigir na planilha — ela aparece porque o relatório é o único
+ * lugar em que os pedidos de atendimento especial ficam juntos, um por linha, para quem
+ * vai preparar as salas. Quem dá o título honesto ao bloco é `subtituloDoCampo`.
+ *
+ * ⚠️ Ela também não passa por `classificarQueixa` — o `Campo` é escrito direto, como o do
+ * pagamento. Logo NÃO precisa de entrada em `PREFIXOS_POR_CAMPO`; a lista de prefixos só
+ * serve ao que nasce como texto de erro/aviso em `converterLinha`, e a sala especial não
+ * gera nem um nem outro.
  */
 export function montarProblemasDoRelatorio(
   comErro: LinhaConvertida[],
   comAviso: LinhaConvertida[],
   repetidas: Deduplicacao["repetidas"],
   naoPagantes: LinhaConvertida[] = [],
+  comSalaEspecial: LinhaConvertida[] = [],
 ): ProblemaDoRelatorio[] {
   /** '—' e não '' : célula vazia num relatório impresso parece falha de geração. */
   const inscricao = (valor: string | null | undefined) => valor ?? "—";
@@ -1121,6 +1213,20 @@ export function montarProblemasDoRelatorio(
         },
       })),
     ),
+    ...comSalaEspecial.map((l) => ({
+      ordem: l.linhaPlanilha,
+      problema: {
+        "Nº de Inscrição": inscricao(l.nInscricao),
+        Situação: "Importada com sala especial" as const,
+        Campo: CAMPO_SALA_ESPECIAL,
+        // Nomeia a pessoa ANTES do pedido, como faz o bloco de pagamento: quem vai montar
+        // as salas precisa saber de quem é cada pedido, e o nº de inscrição sozinho não
+        // diz. O texto do pedido sai INTEIRO — é a única coisa que este bloco entrega, e
+        // cortá-lo repetiria o defeito do `overflow: "hidden"` que já custou o detalhe das
+        // queixas no PDF. Quem cuida da largura é o `linebreak` do autoTable.
+        Detalhe: `${l.candidato?.nome ?? "—"} — ${l.candidato?.sala_especial ?? ""}`,
+      },
+    })),
     ...repetidas.map((r) => ({
       ordem: r.linhaPlanilha,
       problema: {

@@ -22,7 +22,9 @@ import {
   chaveDeCargo,
   chaveNatural,
   converterLinha,
+  deRelatorioPersistido,
   deduplicar,
+  inscritosComSalaEspecial,
   letraDaColuna,
   mapeamentoCompleto,
   mensagemErroImportacao,
@@ -1419,6 +1421,15 @@ describe("subtituloDoCampo", () => {
     expect(subtituloDoCampo("Pagamento")).not.toMatch(/problema/i);
   });
 
+  it("🔴 'Sala Especial' também NÃO é apresentada como problema", () => {
+    // Mesma razão do pagamento, e um grau mais forte: a linha entrou inteira e sem
+    // defeito nenhum. O bloco existe para PROVIDENCIAR a sala, não para corrigir dado.
+    expect(subtituloDoCampo("Sala Especial")).toBe(
+      "Lista de inscritos com pedido de sala especial",
+    );
+    expect(subtituloDoCampo("Sala Especial")).not.toMatch(/problema/i);
+  });
+
   it("CONTROLE POSITIVO: os demais campos seguem com o título de problema", () => {
     expect(subtituloDoCampo("CPF")).toBe("Problemas encontrados no campo: CPF");
   });
@@ -1546,6 +1557,7 @@ describe("separarPorPagamento", () => {
       hora_nascimento: null,
       sexo: null,
       raca: null,
+      sala_especial: null,
       portador_deficiencia: false,
       confirmado,
       concurso_id_origem: null,
@@ -1658,5 +1670,198 @@ describe("separarPorPagamento", () => {
       "Não importada",
     ]);
     expect(new Set(problemas.map((p) => p.Campo)).size).toBe(2);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────
+// SALA ESPECIAL (2026-08-04) — o campo que não é problema de ninguém
+// ─────────────────────────────────────────────────────────────────────────────────────
+
+describe("sala especial — o pareamento", () => {
+  const MAPA = mapa({ n_inscricao: 0, nome: 1, cargo: 2, confirmado: 3, sala_especial: 4 });
+  const LINHA = ["300", "FULANA SOUZA", "DOCENTE II", "1", "  Ledor e prova ampliada  "];
+
+  it("grava o texto CRU, apenas com as pontas aparadas, e sem aviso nenhum", () => {
+    const r = converterLinha(LINHA, MAPA, EDITAL, 2);
+    expect(r.candidato?.sala_especial).toBe("Ledor e prova ampliada");
+    // ⚠️ A ausência de aviso é o ponto, não um detalhe: texto livre não tem forma
+    // esperada da qual divergir. Se alguém acrescentar validação aqui, é este teste que
+    // cai — e a pergunta certa vai ser "validar contra o quê?".
+    expect(r.avisos).toEqual([]);
+    expect(r.erro).toBeNull();
+  });
+
+  it("célula vazia vira null, e a linha entra igual", () => {
+    const r = converterLinha(["300", "FULANA SOUZA", "DOCENTE II", "1", ""], MAPA, EDITAL, 2);
+    expect(r.candidato?.sala_especial).toBeNull();
+    expect(r.avisos).toEqual([]);
+  });
+
+  it("⭐ texto LONGO atravessa inteiro — a coluna é `text`, sem teto", () => {
+    // Guarda a decisão do usuário de 2026-08-04 contra o `varchar(2000)` do pedido
+    // original. Um teto no banco recusaria — varchar no Postgres NÃO trunca — e como a
+    // gravação é uma transação só, uma célula longa derrubaria a troca do edital INTEIRO.
+    const pedido = "A".repeat(5000);
+    const r = converterLinha(["300", "FULANA SOUZA", "DOCENTE II", "1", pedido], MAPA, EDITAL, 2);
+    expect(r.candidato?.sala_especial).toHaveLength(5000);
+    expect(r.avisos).toEqual([]);
+  });
+
+  it("NÃO é obrigatório: o pareamento completa sem ele", () => {
+    const semSalaEspecial: Mapeamento = {};
+    for (const campo of CAMPOS_CANDIDATO) {
+      semSalaEspecial[campo.key] = campo.key === "sala_especial" ? null : 0;
+    }
+    expect(mapeamentoCompleto(semSalaEspecial)).toBe(true);
+
+    // CONTROLE POSITIVO: a mesma montagem, deixando de fora um campo que É obrigatório,
+    // tem de recusar. Sem ele a asserção acima passaria mesmo se `mapeamentoCompleto`
+    // aceitasse qualquer coisa.
+    expect(mapeamentoCompleto({ ...semSalaEspecial, confirmado: null })).toBe(false);
+  });
+
+  it("auto-mapeia `SALA_ESPECIAL`, e NÃO se contenta com `SALA`", () => {
+    expect(autoMapear(rotulosDeColunas(["SALA_ESPECIAL"])).sala_especial).toBe(0);
+    expect(autoMapear(rotulosDeColunas(["Sala Especial"])).sala_especial).toBe(0);
+
+    // 🔴 CONTROLE NEGATIVO, e é a decisão que ele guarda: `'sala'` sozinho ficou FORA dos
+    // sinônimos de propósito. Uma coluna chamada só `SALA` num export futuro é muito mais
+    // provavelmente a sala de PROVA da pessoa — que não é isto e nem existe no modelo.
+    expect(autoMapear(rotulosDeColunas(["SALA"])).sala_especial).toBeNull();
+  });
+
+  it("⚠️ o arquivo REAL não tem esta coluna — o campo fica em branco, como deve", () => {
+    // MEDIDO: as 29 colunas do arquivo de 7.416 linhas não trazem sala especial (ver
+    // `CABECALHO_REAL`). Os sinônimos deste campo são o único palpite não medido do
+    // módulo, e este teste fixa a consequência de errar o palpite: nada é preenchido,
+    // nada é escrito errado, e o usuário aponta a coluna à mão no passo 2.
+    expect(autoMapear(rotulosDeColunas(CABECALHO_REAL)).sala_especial).toBeNull();
+  });
+});
+
+describe("inscritosComSalaEspecial", () => {
+  const comPedido = (
+    linhaPlanilha: number,
+    confirmado: boolean,
+    salaEspecial: string | null,
+  ): LinhaConvertida => ({
+    linhaPlanilha,
+    nInscricao: String(300 + linhaPlanilha),
+    candidato: {
+      n_inscricao: String(300 + linhaPlanilha),
+      nome: `PESSOA ${linhaPlanilha}`,
+      confirmado,
+      sala_especial: salaEspecial,
+    } as CandidatoImportado,
+    erro: null,
+    avisos: [],
+  });
+
+  it("lista quem pediu e entrou — e ignora quem não pediu", () => {
+    const { pagantes } = separarPorPagamento([
+      comPedido(1, true, "Ledor"),
+      comPedido(2, true, null),
+    ]);
+    const lista = inscritosComSalaEspecial(pagantes, []);
+    expect(lista.map((l) => l.candidato?.nome)).toEqual(["PESSOA 1"]);
+  });
+
+  it("⭐ NÃO lista o não-pagante, mesmo que ele tenha pedido", () => {
+    // A pessoa não entra na lista do edital desde 2026-08-01, então o pedido dela não é
+    // um pedido a atender. Listá-la faria a coordenação preparar sala para quem não vai
+    // fazer a prova — e o motivo da ausência já está dito, com nome, na seção Pagamento.
+    const { pagantes } = separarPorPagamento([
+      comPedido(1, false, "Ledor"),
+      comPedido(2, true, "Sala térrea"),
+    ]);
+    const lista = inscritosComSalaEspecial(pagantes, []);
+    expect(lista.map((l) => l.candidato?.nome)).toEqual(["PESSOA 2"]);
+  });
+
+  it("⭐ NÃO lista a linha SUBSTITUÍDA por outra de mesma inscrição", () => {
+    // 🔴 O filtro que ninguém lembra. `deduplicar` mantém a ÚLTIMA ocorrência da chave, e
+    // é ela que o banco guarda. Sem esta exclusão, a mesma pessoa apareceria DUAS vezes
+    // no relatório — uma delas com o texto que o banco descartou —, e quem fosse montar
+    // as salas contaria dois pedidos onde há um.
+    const primeira = comPedido(1, true, "Ledor");
+    const segunda = { ...comPedido(2, true, "Sala térrea"), nInscricao: "301" };
+    segunda.candidato = { ...segunda.candidato!, n_inscricao: "301" };
+
+    const { pagantes } = separarPorPagamento([primeira, segunda]);
+    const { repetidas } = deduplicar(resolverLinhas(pagantes, new Map()));
+    expect(repetidas).toEqual([{ linhaPlanilha: 1, chave: "301" }]);
+
+    const lista = inscritosComSalaEspecial(pagantes, repetidas);
+    expect(lista.map((l) => l.candidato?.sala_especial)).toEqual(["Sala térrea"]);
+
+    // CONTROLE POSITIVO: sem a colisão, a primeira linha aparece normalmente. Sem ele,
+    // um filtro que descartasse tudo passaria neste teste.
+    expect(inscritosComSalaEspecial(pagantes, []).map((l) => l.linhaPlanilha)).toEqual([1, 2]);
+  });
+});
+
+describe("sala especial no relatório", () => {
+  const pedido = (linhaPlanilha: number, nome: string, texto: string): LinhaConvertida => ({
+    linhaPlanilha,
+    nInscricao: String(300 + linhaPlanilha),
+    candidato: { nome, sala_especial: texto, confirmado: true } as CandidatoImportado,
+    erro: null,
+    avisos: [],
+  });
+
+  it("⭐ sai como linha própria, NOMEADA e com o pedido inteiro", () => {
+    const [p] = montarProblemasDoRelatorio([], [], [], [], [pedido(2, "FULANA", "Ledor")]);
+
+    expect(p["Nº de Inscrição"]).toBe("302");
+    expect(p.Campo).toBe("Sala Especial");
+    expect(p.Detalhe).toContain("FULANA");
+    expect(p.Detalhe).toContain("Ledor");
+  });
+
+  it("🔴 a Situação NÃO é 'ressalva' — a linha entrou sem defeito nenhum", () => {
+    // Ressalva quer dizer "confira este dado na origem". Aqui não há nada a conferir: o
+    // dado está certo, e o que existe é trabalho a fazer. Trocar o texto por uma das
+    // situações de queixa faria o relatório acusar 40 pessoas de um erro que não há.
+    const [p] = montarProblemasDoRelatorio([], [], [], [], [pedido(2, "FULANA", "Ledor")]);
+    expect(p.Situação).toBe("Importada com sala especial");
+    expect(p.Situação).not.toMatch(/ressalva|não importada/i);
+  });
+
+  it("⚠️ liga o Campo ao título do bloco do PDF", () => {
+    // O mesmo par frágil do pagamento: nada de tipo liga `montarProblemasDoRelatorio` a
+    // `subtituloDoCampo`. Mudar o texto do `Campo` sem mudar lá devolve o título genérico
+    // ("Problemas encontrados no campo: …") EM SILÊNCIO.
+    const [p] = montarProblemasDoRelatorio([], [], [], [], [pedido(2, "FULANA", "Ledor")]);
+    expect(subtituloDoCampo(p.Campo)).toBe("Lista de inscritos com pedido de sala especial");
+  });
+
+  it("é ordenada pela linha da planilha, junto das outras origens", () => {
+    const problemas = montarProblemasDoRelatorio(
+      [{ linhaPlanilha: 9, nInscricao: "700", candidato: null, erro: "Nome vazio", avisos: [] }],
+      [],
+      [],
+      [],
+      [pedido(2, "FULANA", "Ledor"), pedido(20, "BELTRANO", "Sala térrea")],
+    );
+    expect(problemas.map((p) => p["Nº de Inscrição"])).toEqual(["302", "700", "320"]);
+  });
+
+  it("⭐ atravessa a persistência inteira, ida e volta", () => {
+    // O par `paraRelatorioPersistido`/`deRelatorioPersistido` é a ÚNICA ponte entre o
+    // formato do banco e o do export. Um pedido longo que se perdesse ou fosse cortado
+    // no caminho sumiria do relatório consultável em /candidatos sem erro nenhum.
+    const texto = "Ledor, prova ampliada fonte 24 e tempo adicional de 60 minutos";
+    const original = montarProblemasDoRelatorio([], [], [], [], [pedido(2, "FULANA", texto)]);
+    const volta = deRelatorioPersistido(paraRelatorioPersistido(original));
+
+    expect(volta).toEqual(original);
+    expect(volta[0].Detalhe).toContain(texto);
+  });
+
+  it("sem ninguém pedindo, o relatório não ganha linha nenhuma", () => {
+    // CONTROLE: a origem nova não pode inventar linha quando não há pedido — senão o
+    // relatório "impecável" (zero linhas) deixaria de existir, e o diálogo de
+    // /candidatos perderia a distinção entre importação limpa e edital nunca importado.
+    expect(montarProblemasDoRelatorio([], [], [], [], [])).toEqual([]);
   });
 });

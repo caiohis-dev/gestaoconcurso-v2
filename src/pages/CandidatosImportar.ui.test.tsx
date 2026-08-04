@@ -157,6 +157,24 @@ const MATRIZ_COM_NAO_PAGANTE = [
   ["3", "214274", "AGATHA LAMIM", "22940161739", "DOCENTE II", "0"],
 ];
 
+/**
+ * A mesma matriz com a coluna de SALA ESPECIAL (2026-08-04), preenchida em UMA linha.
+ *
+ * ⚠️ Fixture próprio pelo mesmo motivo do não-pagante: uma variável por vez. Acrescentar a
+ * coluna ao `MATRIZ` padrão faria todos os testes anteriores passarem a exercitar também a
+ * origem nova do relatório, e um deles que falhasse não diria qual das duas coisas quebrou.
+ *
+ * ⚠️ A coluna vem em G, DEPOIS de `CONFIRMADO`, e preenchida só na CASSIA da linha 2 — a
+ * primeira das duas inscrições dela. Isso põe o pedido numa pessoa que tem OUTRA inscrição
+ * no mesmo arquivo, que é o caso em que um filtro mal escrito duplicaria a linha.
+ */
+const MATRIZ_COM_SALA_ESPECIAL = [
+  ["   ", "ID", "NOME", "CPF", "NOME", "CONFIRMADO", "SALA_ESPECIAL"],
+  ["1", "213946", "CASSIA ANDREA", "99528037704", "DOCENTE II", "1", "Ledor e prova ampliada"],
+  ["2", "213947", "CASSIA ANDREA", "99528037704", "DOCENTE I - HISTÓRIA", "1", ""],
+  ["3", "214274", "AGATHA LAMIM", "22940161739", "DOCENTE II", "1", ""],
+];
+
 /** O catálogo de cargos já cadastrados, que o passo 3 oferece no Select. */
 const CATALOGO = [
   {
@@ -391,6 +409,34 @@ describe("CandidatosImportar (interação)", () => {
       expect(comboboxDoCampo("Cargo")).toHaveAttribute("aria-required", "true");
       // CONTROLE POSITIVO: campo de fato opcional não se anuncia como obrigatório.
       expect(comboboxDoCampo("CPF")).not.toHaveAttribute("aria-required", "true");
+    });
+
+    it("⭐ Sala Especial é campo do pareamento, alcançável e OPCIONAL", async () => {
+      // O campo entrou em 2026-08-04. Ele aparece na tela sem ninguém tocar no JSX: o
+      // passo 2 itera `CAMPOS_CANDIDATO`. O que este teste guarda é o que NÃO é
+      // automático — que ele tenha rótulo próprio (senão vira mais um "combobox" na
+      // fileira de 26) e que NÃO se anuncie como obrigatório.
+      const user = await abrir();
+      await irParaPareamento(user, MATRIZ_COM_SALA_ESPECIAL);
+
+      const campo = comboboxDoCampo("Sala Especial");
+      expect(campo).toHaveAttribute("role", "combobox");
+      expect(campo).not.toHaveAttribute("aria-required", "true");
+      // E auto-mapeia quando o cabeçalho é o previsto.
+      expect(campo).toHaveTextContent("SALA_ESPECIAL");
+    });
+
+    it("⚠️ sem a coluna na planilha, Sala Especial fica em branco e não trava o passo", async () => {
+      // MEDIDO: o arquivo real de 7.416 linhas NÃO tem esta coluna. O comportamento certo
+      // é o campo ficar vazio e o assistente seguir — se um dia ele passar a barrar, esta
+      // planilha (a mesma de todos os outros testes) deixa de importar.
+      const user = await abrir();
+      await irParaPareamento(user);
+
+      expect(comboboxDoCampo("Sala Especial")).toHaveTextContent("— não importar —");
+      await escolher(user, "Cargo", "NOME (coluna E)");
+      await user.click(await screen.findByRole("button", { name: /^Continuar$/i }));
+      expect(await screen.findByRole("heading", { name: "Cargos" })).toBeInTheDocument();
     });
 
     it("adivinha os campos óbvios sozinho", async () => {
@@ -1013,6 +1059,56 @@ describe("CandidatosImportar (interação)", () => {
       // ⚠️ NÃO os rótulos do export ("Situação", "Campo" com acento) — se este assert
       // falhar com as chaves acentuadas, o hook parou de traduzir antes de mandar.
       expect(Object.keys(relatorioEnviado[0])).toEqual(["n_inscricao", "situacao", "campo", "detalhe"]);
+    });
+
+    it("⭐ o pedido de SALA ESPECIAL chega ao relatório persistido, uma linha por pedido", async () => {
+      // O circuito inteiro do campo novo (2026-08-04): a coluna auto-mapeia no passo 2 ->
+      // `converterLinha` guarda o texto cru -> `inscritosComSalaEspecial` monta a quinta
+      // origem -> a MESMA variável que alimenta os exports vai para a RPC.
+      const user = await abrir();
+      await irParaCargos(user, MATRIZ_COM_SALA_ESPECIAL);
+      await associar(user, "DOCENTE I - HISTÓRIA", "DOCENTE I — HISTÓRIA");
+      await importarEConfirmar(user);
+      await screen.findByText("Lista do edital substituída");
+
+      const chamada = supabaseMock.rpc.mock.calls.find(
+        ([nome]) => nome === "trocar_candidatos_do_edital",
+      );
+      const relatorioEnviado = (chamada?.[1] as { p_relatorio: unknown[] }).p_relatorio;
+
+      const pedidos = relatorioEnviado.filter(
+        (l) => (l as { campo: string }).campo === "Sala Especial",
+      );
+      // UMA linha, e não duas: a CASSIA tem duas inscrições no arquivo, e só uma delas
+      // trouxe pedido. Duas linhas aqui significariam que o pedido vazou para a outra.
+      expect(pedidos).toHaveLength(1);
+      expect(pedidos[0]).toEqual(
+        expect.objectContaining({
+          situacao: "Importada com sala especial",
+          campo: "Sala Especial",
+          detalhe: expect.stringContaining("Ledor e prova ampliada"),
+        }),
+      );
+      // O NOME junto do pedido: quem vai montar as salas precisa saber de quem é cada um.
+      expect((pedidos[0] as { detalhe: string }).detalhe).toContain("CASSIA ANDREA");
+    });
+
+    it("🔴 quem NÃO pediu sala especial não vira linha do relatório", async () => {
+      // CONTROLE: sem este teste, um filtro invertido (listar quem tem o campo NULO)
+      // encheria o relatório com a lista inteira de inscritos e o teste acima passaria.
+      const user = await abrir();
+      await irParaCargos(user, MATRIZ_COM_SALA_ESPECIAL);
+      await associar(user, "DOCENTE I - HISTÓRIA", "DOCENTE I — HISTÓRIA");
+      await importarEConfirmar(user);
+      await screen.findByText("Lista do edital substituída");
+
+      const chamada = supabaseMock.rpc.mock.calls.find(
+        ([nome]) => nome === "trocar_candidatos_do_edital",
+      );
+      const relatorioEnviado = (chamada?.[1] as { p_relatorio: unknown[] }).p_relatorio;
+      expect(
+        relatorioEnviado.filter((l) => (l as { detalhe: string }).detalhe.includes("AGATHA")),
+      ).toEqual([]);
     });
 
     it("🔴 bloco que falha: a tela diz que NINGUÉM foi removido", async () => {

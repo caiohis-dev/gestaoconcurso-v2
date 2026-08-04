@@ -84,7 +84,7 @@ function racaLabel(raca: string | null): string {
 }
 
 /**
- * O traço é o vazio da ficha: dos 25 campos, 20 são opcionais na planilha.
+ * O traço é o vazio da ficha: dos 26 campos, 21 são opcionais na planilha.
  *
  * Existe como função — e não como um `?? "—"` repetido 20 vezes — porque um campo vazio é
  * uma decisão de exibição, não um ramo de lógica. Além de nomear a decisão, mantém
@@ -94,7 +94,7 @@ function racaLabel(raca: string | null): string {
 const ou = (valor: string | null | undefined) => valor ?? "—";
 
 /**
- * Os 25 campos da ficha, na ordem em que aparecem.
+ * Os 26 campos da ficha, na ordem em que aparecem.
  *
  * Fora do componente porque é dado, não render — e porque manter a lista aqui é o que
  * permite ao Cargo ter DUAS linhas sem encher a árvore de JSX de condicional.
@@ -134,6 +134,10 @@ function camposDaFicha(c: Candidato): [string, string][] {
     ["UF", ou(c.uf)],
     ["CEP", ou(c.cep)],
     ["PcD", c.portador_deficiencia ? "Sim" : "Não"],
+    // Ao lado do PcD porque é onde quem lê a ficha vai procurar, mas ⚠️ os dois NÃO se
+    // implicam: há pedido de atendimento especial de quem não se declara PcD (lactante,
+    // fratura recente) e PcD que não pede nada. Nunca derive um do outro.
+    ["Sala especial", ou(c.sala_especial)],
     ["Inscrição confirmada", c.confirmado ? "Sim" : "Não"],
     ["Concurso na origem", ou(c.concurso_id_origem)],
   );
@@ -514,7 +518,7 @@ export default function Candidatos() {
         )}
       </div>
 
-      {/* Ficha completa — a tabela mostra 5 colunas, e a inscrição tem 25 campos. */}
+      {/* Ficha completa — a tabela mostra 5 colunas, e a inscrição tem 26 campos. */}
       <Dialog open={!!candidatoAberto} onOpenChange={(o) => !o && setCandidatoAberto(null)}>
         <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
@@ -529,7 +533,14 @@ export default function Candidatos() {
               {camposDaFicha(candidatoAberto).map(([rotulo, valor]) => (
                 <div key={rotulo}>
                   <dt className="text-muted-foreground">{rotulo}</dt>
-                  <dd className="font-medium text-foreground">{valor}</dd>
+                  {/* `whitespace-pre-wrap break-words` por causa da Sala especial, que é
+                      `text` sem teto e o único campo da ficha que pode trazer um parágrafo
+                      inteiro (ou uma palavra longa sem espaço). Sem isto, o texto vaza da
+                      célula da grade — e o que está escrito ali é o que alguém precisa
+                      providenciar, então cortá-lo na largura seria perda silenciosa. */}
+                  <dd className="whitespace-pre-wrap break-words font-medium text-foreground">
+                    {valor}
+                  </dd>
                 </div>
               ))}
             </dl>

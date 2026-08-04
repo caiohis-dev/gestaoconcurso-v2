@@ -57,6 +57,14 @@ export interface Candidato {
   sexo: string | null;
   /** TEXT desde 30/07: o código impossível entra cru, então não presuma número. */
   raca: string | null;
+  /**
+   * O pedido de atendimento especial, em texto livre e sem teto (2026-08-04).
+   *
+   * ⚠️ Pode ser LONGO — é `text` no banco, de propósito. Ao exibi-lo, deixe quebrar; não
+   * corte com `truncate` sem dar acesso ao texto inteiro em algum lugar, porque o que está
+   * escrito aqui é o que alguém tem de providenciar.
+   */
+  sala_especial: string | null;
   portador_deficiencia: boolean;
   confirmado: boolean;
   concurso_id_origem: string | null;
