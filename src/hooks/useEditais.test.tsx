@@ -32,7 +32,7 @@ const EDITAL = {
   nome: "Edital 001/2026 SMA",
   n_candidatos: 1500,
   cabecalho_linha1: "FUNDAÇÃO EDUCACIONAL DE VOLTA REDONDA",
-  cabecalho_linha2: "Coordenação de Concursos e Processos Seletivos",
+  cabecalho_linha2: "Departamento de Concurso e Implementação Tecnológica",
   created_at: "2026-07-24T00:00:00Z",
   updated_at: "2026-07-24T00:00:00Z",
   created_by: "user-teste-1",

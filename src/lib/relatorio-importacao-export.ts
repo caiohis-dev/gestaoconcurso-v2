@@ -176,7 +176,7 @@ export function exportarRelatorioPDF({
     escreverSubtitulo("Associação de Cargos");
     autoTable(doc, {
       startY: y,
-      head: [["Texto na Planilha", "Cargo do Sistema", "Linhas", "Origem"]],
+      head: [["Texto na Planilha", "Cargo do Sistema", "Pagantes", "Origem"]],
       body: deParaCargos.map((c) => [
         c["Texto na planilha"],
         c["Cargo do sistema"],

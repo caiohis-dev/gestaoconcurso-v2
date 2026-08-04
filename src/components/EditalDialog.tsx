@@ -56,7 +56,7 @@ export function EditalDialog({
     defaultValues: {
       nome: "",
       cabecalho_linha1: "FUNDAÇÃO EDUCACIONAL DE VOLTA REDONDA",
-      cabecalho_linha2: "Coordenação de Concursos e Processos Seletivos",
+      cabecalho_linha2: "Departamento de Concurso e Implementação Tecnológica",
     },
   });
 
@@ -71,7 +71,7 @@ export function EditalDialog({
       form.reset({
         nome: "",
         cabecalho_linha1: "FUNDAÇÃO EDUCACIONAL DE VOLTA REDONDA",
-        cabecalho_linha2: "Coordenação de Concursos e Processos Seletivos",
+        cabecalho_linha2: "Departamento de Concurso e Implementação Tecnológica",
       });
     }
   }, [edital, form]);
@@ -142,7 +142,7 @@ export function EditalDialog({
                   <FormItem className="mt-3">
                     <FormLabel>Linha 2 do Cabeçalho</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="Ex: Coordenação de Concursos e Processos Seletivos" />
+                      <Input {...field} placeholder="Ex: Departamento de Concurso e Implementação Tecnológica" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

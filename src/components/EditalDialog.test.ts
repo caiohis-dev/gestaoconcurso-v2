@@ -17,7 +17,7 @@ describe("formSchema do EditalDialog", () => {
   const valido = {
     nome: "Edital 001/2026 SMA",
     cabecalho_linha1: "FUNDAÇÃO EDUCACIONAL DE VOLTA REDONDA",
-    cabecalho_linha2: "Coordenação de Concursos e Processos Seletivos",
+    cabecalho_linha2: "Departamento de Concurso e Implementação Tecnológica",
   };
 
   it("aceita um payload completo", () => {

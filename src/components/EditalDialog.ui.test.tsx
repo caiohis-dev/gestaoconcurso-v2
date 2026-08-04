@@ -12,7 +12,7 @@ import { EditalDialog } from "@/components/EditalDialog";
  */
 describe("EditalDialog (interação)", () => {
   const CABECALHO_1 = "FUNDAÇÃO EDUCACIONAL DE VOLTA REDONDA";
-  const CABECALHO_2 = "Coordenação de Concursos e Processos Seletivos";
+  const CABECALHO_2 = "Departamento de Concurso e Implementação Tecnológica";
 
   let onSubmit: ReturnType<typeof vi.fn>;
   let onOpenChange: ReturnType<typeof vi.fn>;

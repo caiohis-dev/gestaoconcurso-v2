@@ -17,7 +17,7 @@ describe("formSchema do ProvaDialog", () => {
     prova_hora_inicio: "08:00",
     prova_hora_final: "12:00",
     prova_cabecalho_linha1: "FUNDAÇÃO EDUCACIONAL DE VOLTA REDONDA",
-    prova_cabecalho_linha2: "Coordenação de Concursos e Processos Seletivos",
+    prova_cabecalho_linha2: "Departamento de Concurso e Implementação Tecnológica",
   };
 
   it("aceita um payload completo", () => {

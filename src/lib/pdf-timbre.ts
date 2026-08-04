@@ -43,7 +43,7 @@ export const LOGO_FEVRE = fevreLogo;
 
 /** Fallback quando a prova não traz cabeçalho próprio. Ver `prova_cabecalho_linha1/2`. */
 export const TIMBRE_LINHA1_PADRAO = "FUNDAÇÃO EDUCACIONAL DE VOLTA REDONDA";
-export const TIMBRE_LINHA2_PADRAO = "Coordenação de Concursos e Processos Seletivos";
+export const TIMBRE_LINHA2_PADRAO = "Departamento de Concurso e Implementação Tecnológica";
 
 export const MARGEM_LATERAL = 15;
 

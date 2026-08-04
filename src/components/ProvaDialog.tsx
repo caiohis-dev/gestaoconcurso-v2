@@ -342,7 +342,7 @@ export function ProvaDialog({
                       <FormControl>
                         <Input
                           {...field}
-                          placeholder="Ex: Coordenação de Concursos e Processos Seletivos"
+                          placeholder="Ex: Departamento de Concurso e Implementação Tecnológica"
                         />
                       </FormControl>
                       <FormMessage />
