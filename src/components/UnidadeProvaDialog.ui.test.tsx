@@ -16,7 +16,6 @@ describe("UnidadeProvaDialog (interação)", () => {
     unid_nome: "Escola Central",
     // Vem do banco com espaços: a coluna é CHAR e o valor fica preenchido à direita.
     unid_sigla: "EC        ",
-    unid_andares: 3,
     created_at: null,
     updated_at: null,
     created_by: null,
@@ -36,29 +35,23 @@ describe("UnidadeProvaDialog (interação)", () => {
     );
 
   describe("modo criação", () => {
-    it("anuncia-se como nova, com o andar já em 1", () => {
-      // Andar 1 como padrão evita o erro mais provável: salvar com 0 e depois não
-      // conseguir cadastrar sala nenhuma.
+    it("anuncia-se como nova", () => {
       abrir();
       expect(screen.getByRole("heading", { name: "Nova Unidade de Prova" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Criar" })).toBeInTheDocument();
-      expect(screen.getByLabelText("Quantidade de Andares")).toHaveValue(1);
     });
 
-    it("entrega os três campos ao submeter", async () => {
+    it("entrega os dois campos ao submeter", async () => {
       const user = userEvent.setup();
       abrir();
       await user.type(screen.getByLabelText("Nome"), "Anexo Norte");
       await user.type(screen.getByLabelText("Sigla"), "AN");
-      await user.clear(screen.getByLabelText("Quantidade de Andares"));
-      await user.type(screen.getByLabelText("Quantidade de Andares"), "4");
       await user.click(screen.getByRole("button", { name: "Criar" }));
 
       await waitFor(() =>
         expect(onSubmit).toHaveBeenCalledWith({
           unid_nome: "Anexo Norte",
           unid_sigla: "AN",
-          unid_andares: 4,
         }),
       );
     });
@@ -73,43 +66,20 @@ describe("UnidadeProvaDialog (interação)", () => {
       expect(onSubmit).not.toHaveBeenCalled();
     });
 
-    it("com o campo de andares vazio, mostra a mensagem do app", async () => {
-      // Unidade com 0 andares não aceitaria sala nenhuma. Campo vazio passa pela
-      // validação nativa (não é `required`), então o Zod é quem barra — e a mensagem
-      // que aparece é a nossa, em português.
-      const user = userEvent.setup();
+    /**
+     * 🔴 **Dois casos do campo de andares saíram em 2026-08-03, com a coluna.**
+     *
+     * Um deles era "digitar 0 é barrado pelo NAVEGADOR, antes de o Zod rodar" — a
+     * ilustração viva da armadilha 7 (`min={1}` nativo dentro de `<form>` esconde a
+     * mensagem em português). ⚠️ **A armadilha continua valendo**, e segue documentada em
+     * `testes.md`; o que sumiu foi este campo, não o fenômeno. Foi exatamente ele que, em
+     * `/salas-prova`, fez o campo de andar parecer morto.
+     */
+    it("🔴 CONTROLE POSITIVO: o campo de andares não existe mais", () => {
       abrir();
-      await user.type(screen.getByLabelText("Nome"), "Anexo");
-      await user.type(screen.getByLabelText("Sigla"), "AN");
-      await user.clear(screen.getByLabelText("Quantidade de Andares"));
-      await user.click(screen.getByRole("button", { name: "Criar" }));
 
-      expect(await screen.findByText("Mínimo 1 andar")).toBeInTheDocument();
-      expect(onSubmit).not.toHaveBeenCalled();
-    });
-
-    it("digitar 0 é barrado pelo NAVEGADOR, antes de o Zod rodar", async () => {
-      // Contraste que vale registrar, porque é o oposto do ValoresFuncaoProvaDialog:
-      // ali `min="0"` não barra nada, porque não há <form> — o clique chama o handler
-      // direto. Aqui HÁ form com botão submit, então a validação nativa do `min={1}`
-      // impede o evento de submit, e o Zod nem é consultado.
-      //
-      // Consequência prática: com 0 digitado o usuário vê o balão do NAVEGADOR (no
-      // idioma dele), não o nosso "Mínimo 1 andar". Não é falha — a gravação é
-      // impedida —, mas explica por que aquela mensagem não aparece neste caminho.
-      const user = userEvent.setup();
-      abrir();
-      await user.type(screen.getByLabelText("Nome"), "Anexo");
-      await user.type(screen.getByLabelText("Sigla"), "AN");
-      await user.clear(screen.getByLabelText("Quantidade de Andares"));
-      await user.type(screen.getByLabelText("Quantidade de Andares"), "0");
-      await user.click(screen.getByRole("button", { name: "Criar" }));
-
-      expect(onSubmit).not.toHaveBeenCalled();
-      expect(screen.queryByText("Mínimo 1 andar")).not.toBeInTheDocument();
-      // A prova de que foi o nativo: o campo está inválido pelo `min`.
-      const campo = screen.getByLabelText("Quantidade de Andares") as HTMLInputElement;
-      expect(campo.validity.rangeUnderflow).toBe(true);
+      expect(screen.queryByLabelText("Quantidade de Andares")).not.toBeInTheDocument();
+      expect(screen.queryByText(/andar/i)).not.toBeInTheDocument();
     });
   });
 
@@ -120,7 +90,6 @@ describe("UnidadeProvaDialog (interação)", () => {
       expect(screen.getByRole("heading", { name: "Editar Unidade de Prova" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Salvar" })).toBeInTheDocument();
       expect(screen.getByLabelText("Nome")).toHaveValue("Escola Central");
-      expect(screen.getByLabelText("Quantidade de Andares")).toHaveValue(3);
     });
 
     it("apara os espaços da sigla vinda do banco", () => {
@@ -142,12 +111,12 @@ describe("UnidadeProvaDialog (interação)", () => {
           open
           onOpenChange={onOpenChange}
           onSubmit={onSubmit}
-          unidade={{ ...UNIDADE, id: "u-2", unid_nome: "Anexo Sul", unid_andares: 1 }}
+          unidade={{ ...UNIDADE, id: "u-2", unid_nome: "Anexo Sul" }}
         />,
       );
 
       await waitFor(() => expect(screen.getByLabelText("Nome")).toHaveValue("Anexo Sul"));
-      expect(screen.getByLabelText("Quantidade de Andares")).toHaveValue(1);
+      expect(screen.getByLabelText("Sigla")).toHaveValue("EC");
     });
   });
 
@@ -169,11 +138,13 @@ describe("UnidadeProvaDialog (interação)", () => {
     });
   });
 
-  it("explica para que serve o número de andares", () => {
-    // O campo parece decorativo, mas é ele que limita em que andar a sala pode ficar.
+  it("🔵 a descrição não promete mais nada sobre andares", () => {
+    // ⚠️ Este caso afirmava o contrário até 03/08: guardava a frase "o número de andares
+    // limita em que andar as salas podem ficar", que era a explicação honesta de um
+    // acoplamento que hoje não existe. Ela precisava sair junto com o campo — descrição
+    // que promete uma regra morta é pior que descrição nenhuma.
     abrir();
-    expect(
-      screen.getByText(/número de andares limita em que andar as salas podem ficar/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Cadastre o local onde as provas são aplicadas/)).toBeInTheDocument();
+    expect(screen.queryByText(/limita em que andar/)).not.toBeInTheDocument();
   });
 });

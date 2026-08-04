@@ -108,7 +108,6 @@ export default function UnidadesProva() {
                 <TableRow>
                   <TableHead>Nome</TableHead>
                   <TableHead>Sigla</TableHead>
-                  <TableHead className="text-center">Andares</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -117,7 +116,6 @@ export default function UnidadesProva() {
                   <TableRow key={unidade.id}>
                     <TableCell className="font-medium">{unidade.unid_nome}</TableCell>
                     <TableCell>{unidade.unid_sigla.trim()}</TableCell>
-                    <TableCell className="text-center">{unidade.unid_andares}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Button variant="ghost" size="icon" asChild title="Gerenciar salas">

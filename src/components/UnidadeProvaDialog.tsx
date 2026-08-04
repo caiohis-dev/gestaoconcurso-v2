@@ -22,10 +22,16 @@ import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { UnidadeProva, UnidadeProvaInsert, UnidadeProvaUpdate } from "@/hooks/useUnidadesProva";
 
+/**
+ * ⚠️ **`unid_andares` saiu em 2026-08-03** (coluna dropada, migration `20260804001559`).
+ * O cadastro pedia o número de andares do prédio e esse número virava **teto** para criar
+ * salas em `/salas-prova` — em que andar a sala podia ficar. Como 7 das 11 unidades
+ * ficaram com o default `1` que ninguém revisava, o teto recusava tudo além do térreo. A
+ * unidade não declara mais andares; o andar é atributo da SALA, e só.
+ */
 export const formSchema = z.object({
   unid_nome: z.string().min(1, "Nome é obrigatório").max(30, "Máximo 30 caracteres"),
   unid_sigla: z.string().min(1, "Sigla é obrigatória").max(10, "Máximo 10 caracteres"),
-  unid_andares: z.coerce.number().min(1, "Mínimo 1 andar").max(99, "Máximo 99 andares"),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -52,7 +58,6 @@ export function UnidadeProvaDialog({
     defaultValues: {
       unid_nome: "",
       unid_sigla: "",
-      unid_andares: 1,
     },
   });
 
@@ -61,13 +66,11 @@ export function UnidadeProvaDialog({
       form.reset({
         unid_nome: unidade.unid_nome,
         unid_sigla: unidade.unid_sigla.trim(),
-        unid_andares: unidade.unid_andares,
       });
     } else {
       form.reset({
         unid_nome: "",
         unid_sigla: "",
-        unid_andares: 1,
       });
     }
   }, [unidade, form]);
@@ -85,8 +88,8 @@ export function UnidadeProvaDialog({
           </DialogTitle>
           <DialogDescription>
             {isEditing
-              ? "Atualize o local onde as provas são aplicadas. O número de andares limita em que andar as salas podem ficar."
-              : "Cadastre o local onde as provas são aplicadas. O número de andares limita em que andar as salas podem ficar."}
+              ? "Atualize o local onde as provas são aplicadas."
+              : "Cadastre o local onde as provas são aplicadas."}
           </DialogDescription>
         </DialogHeader>
 
@@ -114,20 +117,6 @@ export function UnidadeProvaDialog({
                   <FormLabel>Sigla</FormLabel>
                   <FormControl>
                     <Input placeholder="Sigla" {...field} maxLength={10} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="unid_andares"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Quantidade de Andares</FormLabel>
-                  <FormControl>
-                    <Input type="number" min={1} max={99} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

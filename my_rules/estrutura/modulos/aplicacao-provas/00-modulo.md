@@ -70,8 +70,8 @@ Até 2026-07-25 as validações viviam **só** no Zod dos formulários, e uma ch
 
 | Tabela | Garantido |
 |---|---|
-| `unidades_prova` | nome e sigla não-vazios (após `trim`); `unid_andares >= 1` |
-| `sala_prova` | capacidade e número positivos; `sala_andar >= 1` quando informado |
+| `unidades_prova` | nome e sigla não-vazios (após `trim`) — ⚠️ o `unid_andares >= 1` saiu em 03/08 **com a coluna** (`20260804001559`) |
+| `sala_prova` | capacidade e número positivos; `sala_andar >= 1` quando informado; 🔵 **`sala_numero` = `sala_andar` × 100 + (1..99)** quando há andar (`chk_sala_numero_casa_com_andar`, 03/08) |
 | `provas` | edital denormalizado não-vazio; candidatos positivos; **`hora_final > hora_inicio`** |
 | `funcoes_colaboradores` | `cargo_nome` não-vazio |
 | `colaboradores` | nome não-vazio; **CPF exatamente 11 dígitos**; telefone positivo; nº da casa não-negativo; e-mail com formato mínimo |
@@ -88,7 +88,11 @@ Três coisas que valem saber antes de mexer aqui:
 
 **O piso é `>= 0`, não `> 0`, nos dois casos.** `quantidade_meta = 0` é como se **zera** uma meta, e `valor_pagamento = 0` cobre função voluntária — o que não se defende é o negativo, que só pode ser engano.
 
-**Ficaram de fora, de propósito:** o teto de `sala_andar` (depende de `unid_andares` de *outra* tabela — `CHECK` não expressa, e um `CHECK` com função consultando outra tabela **não é reavaliado** quando ela muda, virando mentira silenciosa); o dígito verificador do CPF (algoritmo, não formato); e o teto de 99 andares (número redondo de formulário, não limite de prédio).
+**Ficaram de fora, de propósito:** o teto de `sala_andar` (dependia de `unid_andares` de *outra* tabela — `CHECK` não expressa, e um `CHECK` com função consultando outra tabela **não é reavaliado** quando ela muda, virando mentira silenciosa);
+
+> 🔵 **Em 2026-08-03 o problema deixou de existir em vez de ser resolvido:** `unid_andares` foi dropada e **não há mais teto de andar por unidade**. A regra entre tabelas que nenhum `CHECK` conseguia expressar simplesmente não é mais uma regra. O que ficou no banco é a coerência número↔andar dentro da própria linha (`chk_sala_numero_casa_com_andar`), que um `CHECK` expressa muito bem.
+
+Também ficaram de fora: o dígito verificador do CPF (algoritmo, não formato); e o teto de 99 andares (número redondo de formulário, não limite de prédio).
 
 ## Tabelas que o módulo possui
 
@@ -126,6 +130,8 @@ Todas `SECURITY DEFINER`, chamadas via `supabase.rpc(...)`:
 | `acquire_prova_lock`, `update_prova_lock_activity`, `release_prova_lock` | `useProvaLock` | chamadas com cast `(supabase.rpc as any)` — ⚠️ **o cast é resíduo, não necessidade** (ver abaixo) |
 | `get_coordenador_colaboradores` | `useColaboradores` | recorte do coordenador |
 | `get_coordenador_prova_unidade_ids` | `useCoordenadorUnidades` | idem |
+| `vincular_unidade_a_prova`, `desvincular_unidade_da_prova` | `useProvaUnidades` | transacionais desde 26/07 — ver `provas-e-unidades.md` |
+| `salvar_salas_distribuidas` | `useSalasDistribuidas` | 🔵 **03/08** — o lote de salas numa transação, com renumeração em dois passos; é o que permite **trocar o número de duas salas** |
 
 > 🔵 **Corrigido em 2026-07-31 — o cast das RPCs de lock.** Esta tabela afirmava que as três *"não estão no `types.ts` gerado"*, e era isso que justificava o `(supabase.rpc as any)` em `useProvaLock`. **As três estão** — `acquire_prova_lock` tem `Args` e `Returns` completos na linha ~1137. O `types.ts` foi regerado em algum momento e a justificativa caducou junto.
 >
@@ -138,7 +144,7 @@ Todas `SECURITY DEFINER`, chamadas via `supabase.rpc(...)`:
 | Hook | Área |
 |---|---|
 | `useColaboradores`, `useBancos` | colaboradores |
-| `useProvas`, `useProvaUnidades`, `useUnidadesProva`, `useSalasProva`, `useSalasDistribuidas`, `useUnidadeCapacidade`, `useProvaLock` | provas e unidades |
+| `useProvas`, `useProvaUnidades`, `useUnidadesProva`, `useSalasProva` (+ `useCapacidadeTemplateUnidades`), `useSalasDistribuidas`, `useUnidadeCapacidade`, `useProvaLock` | provas e unidades |
 | `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useColaboradoresProva`, `useCoordenadoresProva`, `useCoordenadorUnidades` | alocação e funções |
 | `useOcorrencias` | ocorrências |
 
@@ -150,8 +156,11 @@ Ver [`../../transversais/testes.md`](../../transversais/testes.md) para infra e 
 
 | Coberto | Sem cobertura |
 |---|---|
-| `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas`, `useFuncoesColaboradores`, `useFuncoesAssociadas` | `useUnidadesProva`, `useSalasProva`, `useUnidadeCapacidade` |
+| **Todos os hooks de dados do módulo** — `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas`, `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUnidadesProva`, `useSalasProva` (+ `useCapacidadeTemplateUnidades`), `useUnidadeCapacidade` | — |
 | Schemas Zod: `ColaboradorDialog`, `UnidadeProvaDialog`, `SalaProvaDialog`, `FuncaoColaboradorDialog`, `ProvaDialog` | UI dos diálogos, exceto `ProvaDialog` |
+| Páginas: `GerenciarProva.ui.test.tsx` (17) · `GerenciarSalasDistribuidas.ui.test.tsx` (13) — **comportamento**, não guard | as demais páginas do módulo |
+
+> ⚠️ **Corrigido em 2026-08-03.** A primeira linha listava `useUnidadesProva`, `useSalasProva` e `useUnidadeCapacidade` como **sem cobertura**: os três têm arquivo de teste, e a camada de hooks fechou em 2026-07-26 (ver [`../../transversais/testes.md`](../../transversais/testes.md)). Doc que subestima cobertura faz alguém reescrever teste que já existe.
 
 Não há mais teste marcado `⚠️ DEFEITO` neste módulo: os dois de `useProvaLock` que afirmavam o `isLoading` preso viraram teste de regressão quando o bug foi corrigido, em 2026-07-25.
 
@@ -174,6 +183,8 @@ Fora do módulo, em `src/components/`: `Layout`, `NavLink`, `PasswordConfirmDial
 1. **Papel identificado por dado editável — em dois lugares, de dois jeitos.** É a mesma fragilidade com duas caras, e as duas falham **em silêncio**:
    - **Por UUID:** `useCoordenadoresProva.tsx` traz `FUNCOES_COORDENACAO` hardcoded. Recriar essas linhas de `funcoes_colaboradores` quebra a elegibilidade de coordenador. Detalhe em [`alocacao-e-funcoes.md`](./alocacao-e-funcoes.md).
    - **Por NOME, via substring:** `useFiscaisSala` (em `useSalasDistribuidas.tsx`) decide quem é fiscal de sala com `nome.includes("fiscal") && nome.includes("sala")`, em minúsculas e no JS. Não há id nem flag no banco marcando isso. Logo: "Fiscal de Corredor" **não** entra, "fiscal volante de sala" entra, e **renomear a função no cadastro esvazia a lista sem erro nenhum**. Fixado por teste em `useSalasDistribuidas.test.tsx`.
+
+     > 🔴 **Isto DEIXOU DE SER hipótese — está acontecendo (medido em 2026-08-03).** A única função de fiscal cadastrada chama-se **"Fiscal"**, sem "de sala": das 15 funções com alocação, **nenhuma** casa com as duas palavras, e os seletores "Fiscal 1/2" de `/gerenciar-salas-distribuidas` mostram só "Nenhum" — com **456 pessoas alocadas como Fiscal** e **0 fiscais atribuídos** nas 58 salas. Não corrigir foi **decisão do usuário em 03/08**; o item, os números e as duas saídas possíveis estão em [`../../../backlog.md`](../../../backlog.md).
 
    Ao mexer no cadastro de funções, lembre-se de que **duas telas dependem do conteúdo daquelas linhas**, não só da existência delas.
 2. **Template vs. snapshot de sala** — confundir `sala_prova` com `salas_prova_distribuidas` é o erro mais fácil deste módulo. Ver [`provas-e-unidades.md`](./provas-e-unidades.md).

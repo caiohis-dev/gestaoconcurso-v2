@@ -105,8 +105,8 @@ O que **existe** hoje é verificação manual da autorização de duas delas, em
 
 **Três coisas que só apareceram ao escrever, e que valem para quem continuar:**
 
-- **`useSalasProva` esconde regra de negócio numa mutation:** `número = andar × 100 + sequência`, calculada no cliente. Continua do **maior número daquele andar** — buraco de sala excluída não é reaproveitado. `⚠️ ATENÇÃO` no teto de **99 salas por andar**.
-- **O teto de andar da sala só existe no cliente** — regra entre tabelas, deixada fora dos CHECKs de propósito. O `SalaProvaDialog` é a única barreira.
+- ~~**`useSalasProva` esconde regra de negócio numa mutation:** `número = andar × 100 + sequência`, calculada no cliente.~~ 🔵 **Resolvido em 2026-08-03:** a regra saiu para `lib/salas.ts` (`numerosDoLote`, pura), o teto de 99 por andar passou a **recusar antes de escrever**, e a coerência número↔andar virou CHECK no banco (`chk_sala_numero_casa_com_andar`). Continua valendo o que já era certo: a sequência vem do **maior número daquele andar**, e buraco de sala excluída não é reaproveitado.
+- ~~**O teto de andar da sala só existe no cliente** — regra entre tabelas, deixada fora dos CHECKs de propósito.~~ 🔵 **Não é mais regra (2026-08-03):** `unid_andares` foi dropada e o teto por unidade acabou. Sala em qualquer andar é legítima; o que o banco garante é a coerência número↔andar (`chk_sala_numero_casa_com_andar`).
 - **`cargo_editavel === false` trava o nome da função**, protegendo as duas funções de coordenação identificadas por UUID fixo.
 
 **Efeito colateral na infra:** o mock ganhou `FunctionErrorLike` (erro de EF não é erro do PostgREST) e o `supabase-mock.test.ts` ganhou dois testes por isso.
@@ -227,7 +227,7 @@ Enquanto (2) não estiver resolvido, não é possível criar o `CHECK` que amarr
 
 O projeto novo no supabase.com já foi criado, mas o repo **não é linkado a ele** — e não deve ser, até o dia de colocar a v2 no ar (regra combinada em 2026-07-12: o repo fica deslinkado por padrão, e produção só é atualizada em versões estáveis).
 
-O schema já está pronto para subir quando for a hora: as **110** migrations reproduzem o banco local do zero (validado por `db reset` em 2026-07-31). ⚠️ **Este número já envelheceu duas vezes** — foi escrito como 69, corrigido para 85, e estava em 85 quando o real era 106. Confira com `npm run docs:conferir` em vez de confiar na leitura. O roteiro completo dos **9 passos** (link → `prod:push:dry` → `prod:push` → carga do `seed.local.sql` → **`seed.pos.sql`** → auth no dashboard → edge functions + secrets SMTP → `.env` do frontend → **unlink**) está em [`banco-producao.md`](./banco-producao.md).
+O schema já está pronto para subir quando for a hora: as **114** migrations reproduzem o banco local do zero (validado por `db reset` em 2026-07-31). ⚠️ **Este número já envelheceu duas vezes** — foi escrito como 69, corrigido para 85, e estava em 85 quando o real era 106. Confira com `npm run docs:conferir` em vez de confiar na leitura. O roteiro completo dos **9 passos** (link → `prod:push:dry` → `prod:push` → carga do `seed.local.sql` → **`seed.pos.sql`** → auth no dashboard → edge functions + secrets SMTP → `.env` do frontend → **unlink**) está em [`banco-producao.md`](./banco-producao.md).
 
 Falta apenas, no dia: a **ref do projeto novo** no Supabase.
 
@@ -305,6 +305,48 @@ Não foi corrigido junto com a extração porque **corrigir muda o documento emi
 - **Medir antes:** não sei quantas ocorrências cabem numa página nem se alguma prova real já passou disso. Se nunca passou, o item vale menos do que parece — mas o custo de não saber é um documento oficial saindo errado sem ninguém ver.
 
 ⚠️ O comportamento está anotado em [`estrutura/modulos/aplicacao-provas/ocorrencias.md`](./estrutura/modulos/aplicacao-provas/ocorrencias.md) e em `documentos-e-relatorios.md`. **Se este item for fechado, os dois avisos saem no mesmo passe** — aviso envelhecido é pior que aviso nenhum.
+
+---
+
+## 🔴 O seletor de fiscal de sala está VAZIO — 456 pessoas alocadas, nenhuma atribuível
+
+**Status:** medido em 2026-08-03, ao ler `/gerenciar-salas-distribuidas`. **Não corrigido por decisão do usuário no mesmo dia** — anotado aqui, sem prazo.
+**Área:** Aplicação de Provas
+
+Os dois seletores "Fiscal 1" e "Fiscal 2" de `/gerenciar-salas-distribuidas/:provaId/:unidadeId` oferecem **apenas "Nenhum"**, em todas as provas do banco. Não é falta de gente: é o critério que escolhe quem aparece.
+
+`useFiscaisSala` (em `src/hooks/useSalasDistribuidas.tsx`) decide quem é fiscal **por substring do nome da função**, no JS:
+
+```ts
+funcao.includes("fiscal") && funcao.includes("sala")
+```
+
+**MEDIDO no banco local recém-resetado (03/08) — as alocações por função:**
+
+| função cadastrada | alocações | entra no seletor? |
+|---|---|---|
+| **Fiscal** | **456** | ❌ |
+| Equipe de Apoio | 28 | ❌ |
+| Auxiliar de Coordenação | 14 | ❌ |
+| Ledor/ Marcador | 13 | ❌ |
+| Coordenador Geral | 10 | ❌ |
+| outras 10 funções | 21 | ❌ |
+| **total** | **554** | **0 entram** |
+
+A única função de fiscal cadastrada chama-se **"Fiscal"**, sem "de sala" — e nenhuma das 15 casa com a exigência das **duas** palavras. Consequência conferida no dado: **0 fiscais atribuídos** nas 58 salas distribuídas.
+
+🔴 **Não é bug novo: é um risco que a doc já previa, acontecido.** [`estrutura/modulos/aplicacao-provas/00-modulo.md`](./estrutura/modulos/aplicacao-provas/00-modulo.md) (ponto frágil 1) e [`alocacao-e-funcoes.md`](./estrutura/modulos/aplicacao-provas/alocacao-e-funcoes.md) já avisavam que *"renomear a função no cadastro esvazia aquela lista sem erro nenhum"*. É o padrão **"o NOME mente"** do §8 do CLAUDE.md — não existe id nem flag marcando "esta função é fiscal de sala"; existe um palpite sobre o texto.
+
+**As duas saídas, e por que elas não são equivalentes:**
+
+- **Afrouxar a heurística** (exigir só `includes("fiscal")`) devolve a lista hoje e custa uma linha — mas mantém a adivinhação de pé, e passa a incluir qualquer coisa que tenha "fiscal" no nome ("Fiscal de Corredor", se existir).
+- **Marcar a função explicitamente** no cadastro de `funcoes_colaboradores` (flag/coluna) tira a decisão do texto. É a correção que fecha o padrão, e é maior: mexe no CRUD de funções, na migration e no ponto frágil que a doc descreve.
+
+⚠️ **Medir antes de escolher:** conferir se alguma prova real já teve fiscal atribuído (hoje são **0** — então não há histórico a preservar) e se o cadastro de funções deve distinguir "fiscal de sala" de outros fiscais. É essa resposta que decide entre as duas saídas.
+
+**Achado irmão, do mesmo dia e da mesma tela — menor, mas do mesmo tipo:** a deduplicação de fiscal só olha as salas da **unidade aberta** (`isFiscalAvailable` varre `editableSalas`), enquanto a lista de candidatos vem da **prova inteira**. Duas unidades abertas em sequência aceitam a mesma pessoa como fiscal nas duas, e o banco não impede — o comentário de `avisoFiscalDeSala` já assume isso ao usar plural. Enquanto o seletor estiver vazio, é inalcançável; quando ele voltar, volta junto.
+
+⚠️ **Se este item for fechado, os avisos de `00-modulo.md` e `alocacao-e-funcoes.md` saem no mesmo passe** — aviso envelhecido é pior que aviso nenhum.
 
 ---
 

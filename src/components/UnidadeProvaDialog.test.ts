@@ -10,48 +10,31 @@ import { formSchema } from "@/components/UnidadeProvaDialog";
  * as CHECK constraints precisarão espelhar.
  */
 describe("formSchema do UnidadeProvaDialog", () => {
-  const valido = { unid_nome: "Escola Municipal XYZ", unid_sigla: "EMXYZ", unid_andares: 3 };
+  const valido = { unid_nome: "Escola Municipal XYZ", unid_sigla: "EMXYZ" };
 
   it("aceita um payload válido", () => {
     expect(formSchema.safeParse(valido).success).toBe(true);
   });
 
-  it("coage andares de string para número (o <input> devolve string)", () => {
-    const r = formSchema.safeParse({ ...valido, unid_andares: "3" });
+  it("⚠️ REMOVIDO com a coluna: a coerção de andares de string para número", () => {
+    const r = formSchema.safeParse({ ...valido });
     expect(r.success).toBe(true);
-    expect(r.data?.unid_andares).toBe(3);
+    expect(r.success).toBe(true);
   });
 
-  describe("unid_andares: faixa 1..99", () => {
-    it.each([1, 50, 99])("aceita %i", (n) => {
-      expect(formSchema.safeParse({ ...valido, unid_andares: n }).success).toBe(true);
-    });
-
-    it("rejeita 0 com a mensagem da tela", () => {
-      const r = formSchema.safeParse({ ...valido, unid_andares: 0 });
-      expect(r.success).toBe(false);
-      expect(r.error?.issues[0].message).toBe("Mínimo 1 andar");
-    });
-
-    it("rejeita negativo — o caso que o banco hoje aceitaria", () => {
-      expect(formSchema.safeParse({ ...valido, unid_andares: -5 }).success).toBe(false);
-    });
-
-    it("rejeita 100", () => {
-      const r = formSchema.safeParse({ ...valido, unid_andares: 100 });
-      expect(r.success).toBe(false);
-      expect(r.error?.issues[0].message).toBe("Máximo 99 andares");
-    });
-
-    it("NÃO exige inteiro — lacuna: 2.5 andares passa", () => {
-      // Não há .int() na cadeia. A coluna é SMALLINT, então o Postgres arredonda
-      // em vez de recusar. Se um dia entrar CHECK, vale entrar .int() junto.
-      expect(formSchema.safeParse({ ...valido, unid_andares: 2.5 }).success).toBe(true);
-    });
-
-    it("rejeita texto não numérico", () => {
-      expect(formSchema.safeParse({ ...valido, unid_andares: "três" }).success).toBe(false);
-    });
+  /**
+   * 🔵 **O bloco `unid_andares: faixa 1..99` foi REMOVIDO em 2026-08-03**, com a coluna.
+   * Eram 6 casos (aceita 1/50/99, rejeita 0, negativo, 100, texto; e a lacuna do
+   * fracionário). Nenhum deles estava errado — o campo existia e era validado assim. O que
+   * mudou é que a unidade **não declara mais andares**: o número virava teto para criar
+   * salas, e o teto era o defeito. Ver `provas-e-unidades.md`.
+   */
+  it("⭐ CONTROLE POSITIVO: o schema NÃO conhece mais unid_andares", () => {
+    // Um valor extra é ignorado pelo Zod (não é `.strict()`), então o que se afirma é que
+    // ele não SAI no dado parseado — reintroduzir o campo derruba este caso.
+    const r = formSchema.safeParse({ ...valido, unid_andares: 3 });
+    expect(r.success).toBe(true);
+    expect(r.data).not.toHaveProperty("unid_andares");
   });
 
   describe("campos de texto", () => {

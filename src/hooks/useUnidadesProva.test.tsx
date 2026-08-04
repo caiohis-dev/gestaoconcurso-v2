@@ -31,7 +31,6 @@ describe("useUnidadesProva", () => {
     id: "u-1",
     unid_nome: "Escola Central",
     unid_sigla: "EC",
-    unid_andares: 3,
     created_at: null,
     updated_at: null,
     created_by: null,
@@ -86,7 +85,7 @@ describe("useUnidadesProva", () => {
         { data: [UNIDADE], error: null },
       ]);
 
-      result.current.create({ unid_nome: "Anexo", unid_sigla: "AN", unid_andares: 2 });
+      result.current.create({ unid_nome: "Anexo", unid_sigla: "AN" });
 
       await waitFor(() =>
         expect(toastMock).toHaveBeenCalledWith(
@@ -99,10 +98,33 @@ describe("useUnidadesProva", () => {
         expect.objectContaining({
           unid_nome: "Anexo",
           unid_sigla: "AN",
-          unid_andares: 2,
           created_by: "user-teste-1",
         }),
       );
+    });
+
+    it("🔴 NÃO manda `unid_andares` — a coluna não existe mais (2026-08-03)", async () => {
+      // ⚠️ Não é zelo: a coluna era `NOT NULL` **sem default**. Enquanto existiu, todo
+      // INSERT era obrigado a mandar um número — e era esse número que virava teto para
+      // criar salas. Se alguém reintroduzir o campo no formulário, é aqui que aparece.
+      // O `objectContaining` do caso acima NÃO pegaria isso: ele ignora chave a mais.
+      const { result } = await carregarEDepois([
+        { data: { ...UNIDADE, id: "u-2" }, error: null },
+        { data: [UNIDADE], error: null },
+      ]);
+
+      result.current.create({ unid_nome: "Anexo", unid_sigla: "AN" });
+
+      await waitFor(() =>
+        expect(toastMock).toHaveBeenCalledWith(
+          expect.objectContaining({ title: "Unidade criada" }),
+        ),
+      );
+      const builder = builderQueChamou("unidades_prova", "insert");
+      const payload = (builder.insert as unknown as { mock: { calls: unknown[][] } }).mock
+        .calls[0][0] as Record<string, unknown>;
+      expect(payload).not.toHaveProperty("unid_andares");
+      expect(Object.keys(payload).sort()).toEqual(["created_by", "unid_nome", "unid_sigla"]);
     });
 
     it("erro do banco chega ao usuário com a mensagem, não genérico", async () => {
@@ -111,7 +133,7 @@ describe("useUnidadesProva", () => {
         { data: [UNIDADE], error: null },
       ]);
 
-      result.current.create({ unid_nome: "Anexo", unid_sigla: "EC", unid_andares: 1 });
+      result.current.create({ unid_nome: "Anexo", unid_sigla: "EC" });
 
       await waitFor(() =>
         expect(toastMock).toHaveBeenCalledWith(
@@ -128,11 +150,11 @@ describe("useUnidadesProva", () => {
   describe("atualizar e excluir", () => {
     it("atualiza pelo id, mandando só o que mudou", async () => {
       const { result } = await carregarEDepois([
-        { data: { ...UNIDADE, unid_andares: 5 }, error: null },
+        { data: { ...UNIDADE, unid_nome: "Anexo Norte" }, error: null },
         { data: [UNIDADE], error: null },
       ]);
 
-      result.current.update({ id: "u-1", data: { unid_andares: 5 } });
+      result.current.update({ id: "u-1", data: { unid_nome: "Anexo Norte" } });
 
       await waitFor(() =>
         expect(toastMock).toHaveBeenCalledWith(
@@ -141,7 +163,7 @@ describe("useUnidadesProva", () => {
       );
       // `builderQueChamou`, não `.at(-1)`: o refetch da invalidação viraria o último.
       const builder = builderQueChamou("unidades_prova", "update");
-      expect(builder.update).toHaveBeenCalledWith({ unid_andares: 5 });
+      expect(builder.update).toHaveBeenCalledWith({ unid_nome: "Anexo Norte" });
       expect(builder.eq).toHaveBeenCalledWith("id", "u-1");
     });
 

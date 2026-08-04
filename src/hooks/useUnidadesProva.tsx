@@ -2,11 +2,14 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
+/**
+ * ⚠️ **`unid_andares` saiu em 2026-08-03** (migration `20260804001559`). A unidade não
+ * declara mais quantos andares tem: o andar é atributo da sala. Ver `provas-e-unidades.md`.
+ */
 export interface UnidadeProva {
   id: string;
   unid_nome: string;
   unid_sigla: string;
-  unid_andares: number;
   created_at: string | null;
   updated_at: string | null;
   created_by: string | null;
@@ -15,13 +18,11 @@ export interface UnidadeProva {
 export interface UnidadeProvaInsert {
   unid_nome: string;
   unid_sigla: string;
-  unid_andares: number;
 }
 
 export interface UnidadeProvaUpdate {
   unid_nome?: string;
   unid_sigla?: string;
-  unid_andares?: number;
 }
 
 /**

@@ -956,7 +956,6 @@ export type Database = {
           created_by: string | null
           id: string
           sala_andar: number | null
-          sala_arcondicionado: boolean | null
           sala_capacidade: number
           sala_descricao: string | null
           sala_fk_unidade: string
@@ -968,7 +967,6 @@ export type Database = {
           created_by?: string | null
           id?: string
           sala_andar?: number | null
-          sala_arcondicionado?: boolean | null
           sala_capacidade: number
           sala_descricao?: string | null
           sala_fk_unidade: string
@@ -980,7 +978,6 @@ export type Database = {
           created_by?: string | null
           id?: string
           sala_andar?: number | null
-          sala_arcondicionado?: boolean | null
           sala_capacidade?: number
           sala_descricao?: string | null
           sala_fk_unidade?: string
@@ -1076,7 +1073,6 @@ export type Database = {
           created_at: string | null
           created_by: string | null
           id: string
-          unid_andares: number
           unid_nome: string
           unid_sigla: string
           updated_at: string | null
@@ -1085,7 +1081,6 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           id?: string
-          unid_andares: number
           unid_nome: string
           unid_sigla: string
           updated_at?: string | null
@@ -1094,7 +1089,6 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           id?: string
-          unid_andares?: number
           unid_nome?: string
           unid_sigla?: string
           updated_at?: string | null
@@ -1285,11 +1279,16 @@ export type Database = {
         Args: { p_prova_unidade_id: string; p_user_id: string }
         Returns: boolean
       }
+      recusa_sala_se_finalizada: {
+        Args: { p_prova_id: string; p_unidade_id: string }
+        Returns: undefined
+      }
       release_prova_lock: {
         Args: { p_prova_id: string; p_user_id: string }
         Returns: boolean
       }
       revogar_coordenador: { Args: { p_user_id: string }; Returns: undefined }
+      salvar_salas_distribuidas: { Args: { p_salas: Json }; Returns: number }
       trocar_candidatos_do_edital: {
         Args: {
           p_edital_id: string

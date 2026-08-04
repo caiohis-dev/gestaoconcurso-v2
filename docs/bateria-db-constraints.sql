@@ -55,25 +55,39 @@ INSERT INTO _casos (constraint_, descricao, tabela, comando) VALUES
    'unidades_prova',
    'UPDATE unidades_prova SET unid_sigla = '''' WHERE id = (SELECT id FROM unidades_prova LIMIT 1)'),
 
-  ('chk_unid_andares_min',
-   'unidade com 0 andares',
-   'unidades_prova',
-   'UPDATE unidades_prova SET unid_andares = 0 WHERE id = (SELECT id FROM unidades_prova LIMIT 1)'),
-
-  ('chk_unid_andares_min',
-   'unidade com andares negativos (o caso que motivou o tema)',
-   'unidades_prova',
-   'UPDATE unidades_prova SET unid_andares = -5 WHERE id = (SELECT id FROM unidades_prova LIMIT 1)'),
+  -- ⚠️ **DOIS CASOS REMOVIDOS EM 2026-08-03**, com a coluna: 'unidade com 0 andares' e
+  -- 'unidade com andares negativos (o caso que motivou o tema)', ambos de
+  -- `chk_unid_andares_min`. `unidades_prova.unid_andares` foi dropada (migration
+  -- 20260804001559) porque o número virava teto para criar salas em `/salas-prova`, e o
+  -- teto era o defeito. Os casos não falhariam: **quebrariam a bateria inteira**, com
+  -- erro de coluna inexistente. Bateria é ferramenta que se executa.
 
   ('chk_sala_capacidade_positiva',
    'sala com capacidade 0',
    'sala_prova',
    'UPDATE sala_prova SET sala_capacidade = 0 WHERE id = (SELECT id FROM sala_prova LIMIT 1)'),
 
+  -- 🔴 **A bateria pegou uma SOBREPOSIÇÃO em 2026-08-03, e o caso teve de ser afinado.**
+  -- Com `SET sala_numero = -1` sozinho, quem barrava passou a ser
+  -- `chk_sala_numero_casa_com_andar` (de 03/08), não a constraint que este caso quer
+  -- provar: nenhuma linha do banco tem `sala_andar` nulo, e −1 não casa com andar × 100 +
+  -- sequência. A linha continuava recusada — mas por outra regra, e a bateria acusou
+  -- FALHOU justamente por comparar QUAL constraint disparou. Zerar o andar no mesmo
+  -- UPDATE isola o caso: com `sala_andar IS NULL` a CHECK nova se cala (por desenho) e
+  -- sobra a de sinal.
+  --
+  -- ⚠️ A lição vale além daqui: **CHECK nova pode ofuscar CHECK antiga**, e sem uma
+  -- bateria que afirme o NOME de quem barrou isso passa despercebido — o dia em que a
+  -- regra nova for afrouxada, a antiga volta a ser a única, e ninguém saberá desde quando.
   ('chk_sala_numero_positivo',
-   'sala com número negativo',
+   'sala com número negativo (andar nulo, para isolar da CHECK de coerência)',
    'sala_prova',
-   'UPDATE sala_prova SET sala_numero = -1 WHERE id = (SELECT id FROM sala_prova LIMIT 1)'),
+   'UPDATE sala_prova SET sala_numero = -1, sala_andar = NULL WHERE id = (SELECT id FROM sala_prova LIMIT 1)'),
+
+  ('chk_sala_numero_casa_com_andar',
+   'sala com número negativo E andar informado — quem barra é a coerência (03/08)',
+   'sala_prova',
+   'UPDATE sala_prova SET sala_numero = -1 WHERE id = (SELECT id FROM sala_prova WHERE sala_andar IS NOT NULL LIMIT 1)'),
 
   ('chk_sala_andar_min',
    'sala no andar 0 (opcional, mas quando informado é 1+)',
@@ -238,6 +252,12 @@ ROLLBACK;
 --
 -- Resultado: **HTTP 400** com corpo JSON `{"code":"23514", "message":"new row for
 -- relation \"unidades_prova\" violates check constraint \"chk_unid_andares_min\""}`.
+--
+-- ⚠️ **Este registro é de 25/07 e a coluna não existe mais desde 03/08** — repetir o
+-- comando hoje dá 400 por outro motivo (coluna inexistente, PGRST204). O que ele
+-- continua provando, e por isso fica: violação de CHECK chega ao cliente como **4xx
+-- nomeando a constraint**, não como 5xx. Para reproduzir, troque por um CHECK vivo
+-- (`{"unid_nome": "   "}` → chk_unid_nome_preenchido).
 -- Idem para `colab_cpf = 'abcdefghijk'` → 400 / 23514 / chk_colab_cpf_numerico.
 -- Nenhuma linha foi alterada nos dois casos. É o comportamento desejado: erro de
 -- cliente, nomeando a constraint — dá para o frontend traduzir em mensagem amigável,

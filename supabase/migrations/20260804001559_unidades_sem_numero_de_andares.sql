@@ -1,0 +1,28 @@
+-- `unidades_prova.unid_andares` sai — 2026-08-04, decisão do usuário.
+--
+-- O QUE ELA FAZIA, E POR QUE ERA UM PROBLEMA
+-- ------------------------------------------
+-- O cadastro da unidade pedia "número de andares", e esse número virava **teto** para o
+-- cadastro de salas em `/salas-prova`: não dava para criar sala num andar que a unidade
+-- "não tinha". Na prática o teto atrapalhava mais do que protegia — 7 das 11 unidades
+-- estavam cadastradas com 1 andar (o default do formulário, que ninguém revisava), e o
+-- efeito era o campo de andar recusar tudo além de 1 sem que a pessoa entendesse por quê.
+--
+-- O andar da SALA continua existindo (`sala_prova.sala_andar`), e continua amarrado ao
+-- número pela CHECK `chk_sala_numero_casa_com_andar` (migration 20260803234944). O que
+-- deixa de existir é a lista de andares "permitidos" por unidade.
+--
+-- `chk_unid_andares_min` (`unid_andares >= 1`, da migration 20260725202722) cai junto com
+-- a coluna, automaticamente — não precisa de DROP CONSTRAINT.
+--
+-- ⚠️ POR QUE A COLUNA SOME EM VEZ DE FICAR SEM USO
+-- ------------------------------------------------
+-- Ela é `NOT NULL` **sem default**: enquanto existir, todo INSERT de unidade é obrigado a
+-- mandar um valor. Mantê-la "só no banco" obrigaria o app a inventar um número que
+-- ninguém digitou e ninguém lê — dado falso por construção. Sair inteira é o único jeito
+-- de a remoção ser verdadeira.
+--
+-- 🔴 O dump (`supabase/seed.local.sql`) nomeia a coluna nos 11 INSERT de `unidades_prova`,
+-- e carrega DEPOIS das migrations: o DROP e a edição do dump são o mesmo passe. Verificado
+-- com `db reset` completo.
+ALTER TABLE public.unidades_prova DROP COLUMN unid_andares;
