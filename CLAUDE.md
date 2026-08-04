@@ -113,10 +113,20 @@ Aconteceu **quatro vezes**: guards lendo papéis de `modulos.ts` (teria **afroux
 - Em produção ele **não roda sozinho** — é passo manual do bootstrap. Esquecê-lo é falha **silenciosa**: schema certo, dado errado.
 - Ao editar o dump, edite **posicionalmente pela coluna**, nunca por busca/substituição de texto: o mesmo valor aparece em colunas diferentes (uma colaboradora tem o e-mail gravado também como `colab_chave_pix`) e em tabelas de log histórico, que não se tocam.
 
+### 🔴 `DROP COLUMN` exige cirurgia no dump — no MESMO passe
+
+O dump nomeia as colunas em cada `INSERT` e carrega **depois** das migrations. Dropar uma coluna sem tirá-la do dump **quebra todo `db reset`** — e o bootstrap de produção, que carrega o mesmo arquivo. Aconteceu duas vezes em 03/08 (`sala_arcondicionado`, 42 linhas; `unid_andares`, 11).
+
+- Edite **posicionalmente pela coluna** (ache o índice do nome, remova o valor da mesma posição) — nunca por busca de texto.
+- **O controle de que a posição estava certa é olhar os valores removidos.** Se saírem só `'false'`, ou só `'1'` e `'2'`, o alinhamento estava certo; se sair um UUID, não estava.
+- O dump **não é versionado**: faça backup antes.
+- Verifique com `db reset` completo. Em transação também dá (`DROP` + `DELETE` + replay das linhas + `ROLLBACK`), mas o reset é a prova.
+
 ### Migrations
 
 - **Nunca edite uma migration já aplicada.** Isso é absoluto — integridade do histórico. Para remover algo, escreva uma migration nova de `DROP`.
 - Use `npx supabase migration new <slug>` para o timestamp no padrão do projeto.
+- ⚠️ **O timestamp do nome é UTC.** Uma migration criada às 21h vira `2026080400…`. Ao datar doc e memória, use a data **local** da sessão — senão a doc inventa um dia que não houve.
 - Atualize o doc de `estrutura/` afetado **no mesmo passe**.
 
 ---
@@ -156,7 +166,7 @@ npm run docs:conferir                     # docs × código/banco — tem de sai
 
 ### `npm run docs:conferir` — o que ele pega, e o que não pega
 
-Extrai a verdade estrutural (530 fatos do banco + o `App.tsx`) e confere as docs vivas contra ela: **arquivo citado existe · tabela existe · identificador de banco existe · contagem bate · a matriz de rota × papéis do doc bate com o `RequireAcesso` do `App.tsx`**.
+Extrai a verdade estrutural (528 fatos do banco + o `App.tsx`) e confere as docs vivas contra ela: **arquivo citado existe · tabela existe · identificador de banco existe · contagem bate · a matriz de rota × papéis do doc bate com o `RequireAcesso` do `App.tsx`**.
 
 🔴 **A checagem de guards é a mais importante, e pega os DOIS sentidos** — doc que envelheceu *e* **guard removido do código**. Foi falsificada nas duas direções antes de ser aceita. Ela existe porque em 31/07 um doc afirmava que *"guard é escrito à mão, um por arquivo"* e mandava copiar o par bounce-por-login + bounce-por-papel — o padrão que já falhou **3 vezes** e que a centralização de 26/07 eliminou. **Doc errada sobre guard ensina a reabrir buraco de autorização.**
 
@@ -229,6 +239,7 @@ Fora de `my_rules/`: **`docs/`** guarda as baterias de teste manual (`bateria-*.
 - ⚠️ **"Vazio enquanto carrega"** e **"vários passos sem transação"** são os dois padrões de defeito que mais se repetiram aqui.
 - ⚠️ **Perda silenciosa** é o formato de erro que este repo mais teme: não dá erro, some dado — *parece* ter funcionado. Ao mexer numa regra de "não perder calado", **varra os campos irmãos**.
 - ⚠️ **Ao acrescentar filtro a uma tela, revise toda ação que age sobre o conjunto inteiro.** Uma confirmação de "limpar edital" já prometeu remover 12 inscritos e removia 7.416.
+- ⚠️ **CHECK nova pode OFUSCAR CHECK antiga.** Em 03/08 uma CHECK de coerência passou a barrar `sala_numero = -1` antes da CHECK de sinal: a linha seguia recusada, mas por outra regra, e a cobertura da antiga virou fantasma. Quem pegou foi a bateria — porque ela afirma **o NOME de quem barrou**, não só que houve recusa. Vale o padrão: ao apertar uma regra, veja quais casos existentes deixaram de exercitar o que diziam exercitar.
 - ⚠️ **`verify_jwt` NÃO é autorização** — a anon key é um JWT válido e público. A mesma falha já apareceu 2× (`send-email`, `create-admin`).
 
 ---
