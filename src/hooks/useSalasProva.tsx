@@ -1,13 +1,19 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { numerosDoLote, resumoDoLote } from "@/lib/salas";
 
+/**
+ * ⚠️ **`sala_arcondicionado` saiu em 2026-08-03** — coluna dropada (migration
+ * `20260803...`), decisão do usuário ("é lixo, não existe mais"). As 52 salas do banco
+ * tinham `false`; ninguém nunca usou. Não a reintroduza: ela também **nunca existiu** em
+ * `salas_prova_distribuidas`, ou seja, jamais chegou a uma prova.
+ */
 export interface SalaProva {
   id: string;
   sala_fk_unidade: string;
   sala_numero: number;
   sala_descricao: string | null;
-  sala_arcondicionado: boolean | null;
   sala_capacidade: number;
   sala_andar: number | null;
   created_at: string | null;
@@ -19,23 +25,29 @@ export interface SalaProvaInsert {
   sala_fk_unidade: string;
   sala_numero: number;
   sala_descricao?: string | null;
-  sala_arcondicionado?: boolean;
   sala_capacidade: number;
   sala_andar?: number | null;
 }
 
+/**
+ * 🔵 **A faixa `andar_de..andar_ate` é de 2026-08-03.** `quantidade` é **por andar**: o
+ * total gravado é `quantidade × (andar_ate − andar_de + 1)`. Antes havia um `sala_andar`
+ * só, e o lote inteiro caía nele.
+ */
 export interface SalaProvaCreateMultiple {
   sala_fk_unidade: string;
   quantidade: number;
   sala_capacidade: number;
-  sala_andar: number;
+  andar_de: number;
+  andar_ate: number;
 }
 
 export interface SalaProvaUpdate {
   sala_numero?: number;
   sala_descricao?: string | null;
-  sala_arcondicionado?: boolean;
   sala_capacidade?: number;
+  // 🔴 `null`, não `undefined`: chave com `undefined` some no `JSON.stringify` e o PATCH
+  // sai sem a coluna — o toast dizia "Sala atualizada" e o andar continuava lá.
   sala_andar?: number | null;
 }
 
@@ -67,6 +79,59 @@ export function mensagemErroSala(
     : 'Já existe sala com esse número nesta unidade. Escolha outro número.';
 }
 
+/**
+ * ⚠️ Referência estável para o caso vazio. `?? {}` devolveria objeto novo a cada render, e
+ * é a mesma bomba que o `?? []` de `useSalasDistribuidas` armou em 03/08: quem puser este
+ * valor em deps de `useEffect` ganha um laço infinito. Ver `provas-e-unidades.md`.
+ */
+const SEM_CAPACIDADES: Readonly<Record<string, number>> = Object.freeze({});
+
+/**
+ * Capacidade **do cadastro** de cada unidade: a soma de `sala_capacidade` das salas de
+ * `sala_prova`, que é o template reutilizável.
+ *
+ * 🔴 **Não confundir com `useUnidadeCapacidade`**, que soma `salas_prova_distribuidas` — o
+ * snapshot de UMA prova. Os dois respondem "quantos lugares tem esta unidade" e dão
+ * números diferentes de propósito: medido em 03/08, a CGV tem 480 no cadastro e 960
+ * somando as duas provas do dump. Este hook é o certo para falar de unidade que **ainda
+ * não foi vinculada** a prova nenhuma (o seletor de `/gerenciar-prova`); o outro é o certo
+ * para falar dos lugares de uma prova.
+ *
+ * Traz o catálogo inteiro numa consulta só (52 linhas em 03/08) em vez de uma por unidade:
+ * a agregação é no cliente, como em `useUnidadeCapacidade`. ⚠️ Se `sala_prova` passar de
+ * 1.000 linhas, o limite padrão do PostgREST trunca e a soma fica calada a menos — nesse
+ * dia isto vira uma RPC de agregação, não uma paginação no cliente.
+ */
+export function useCapacidadeTemplateUnidades() {
+  const query = useQuery({
+    queryKey: ["sala_prova_capacidade"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("sala_prova")
+        .select("sala_fk_unidade, sala_capacidade");
+
+      if (error) throw error;
+
+      const porUnidade: Record<string, number> = {};
+      (data ?? []).forEach((sala) => {
+        porUnidade[sala.sala_fk_unidade] =
+          (porUnidade[sala.sala_fk_unidade] ?? 0) + sala.sala_capacidade;
+      });
+
+      return porUnidade;
+    },
+  });
+
+  return {
+    capacidades: query.data ?? SEM_CAPACIDADES,
+    isLoading: query.isLoading,
+    // 🔴 O erro FAZ PARTE do contrato: consulta que falhou devolve o mesmo `{}` de
+    // "nenhuma sala cadastrada", e quem exibir um sem olhar o outro afirma que as
+    // unidades estão vazias quando na verdade não deu para perguntar.
+    error: query.error,
+  };
+}
+
 export function useSalasProva(unidadeId: string) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -90,7 +155,7 @@ export function useSalasProva(unidadeId: string) {
     mutationFn: async (params: SalaProvaCreateMultiple) => {
       const { data: userData } = await supabase.auth.getUser();
       
-      // Buscar salas existentes no andar para determinar a sequência
+      // As salas que já existem na unidade — é delas que sai a sequência de cada andar.
       const { data: existingSalas, error: fetchError } = await supabase
         .from("sala_prova")
         .select("sala_numero")
@@ -98,52 +163,55 @@ export function useSalasProva(unidadeId: string) {
 
       if (fetchError) throw fetchError;
 
-      // Filtrar salas do mesmo andar (primeiro dígito = andar)
-      const andarPrefix = params.sala_andar * 100;
-      const salasNoAndar = (existingSalas ?? [])
-        .map(s => s.sala_numero)
-        .filter(num => num >= andarPrefix && num < andarPrefix + 100);
+      // A numeração mora em `lib/salas.ts`, pura e com teste próprio: é ela que sabe do
+      // esquema `andar × 100 + sequência` e do teto de 99 salas por andar.
+      const calculo = numerosDoLote(
+        {
+          quantidade: params.quantidade,
+          andarDe: params.andar_de,
+          andarAte: params.andar_ate,
+        },
+        (existingSalas ?? []).map((s) => s.sala_numero),
+      );
 
-      // Encontrar o maior número sequencial no andar
-      let maxSequencia = 0;
-      salasNoAndar.forEach(num => {
-        const sequencia = num % 100;
-        if (sequencia > maxSequencia) {
-          maxSequencia = sequencia;
-        }
-      });
+      // ⚠️ Recusa ANTES de escrever. Sem isto, o estouro de andar virava colisão no índice
+      // único e chegava ao usuário como corrida entre dois admins.
+      if (calculo.erro) throw new Error(calculo.erro);
 
-      // Criar as salas com números sequenciais
-      const salasToInsert: SalaProvaInsert[] = [];
-      for (let i = 0; i < params.quantidade; i++) {
-        const sequencia = maxSequencia + 1 + i;
-        // Formato: andar * 100 + sequência (ex: andar 1 + seq 1 = 101)
-        const salaNumero = andarPrefix + sequencia;
-        
-        salasToInsert.push({
-          sala_fk_unidade: params.sala_fk_unidade,
-          sala_numero: salaNumero,
-          sala_capacidade: params.sala_capacidade,
-          sala_andar: params.sala_andar,
-          created_by: userData.user?.id,
-        } as SalaProvaInsert & { created_by: string | undefined });
-      }
+      const salasToInsert = calculo.andares.flatMap(({ andar, numeros }) =>
+        numeros.map(
+          (sala_numero) =>
+            ({
+              sala_fk_unidade: params.sala_fk_unidade,
+              sala_numero,
+              sala_capacidade: params.sala_capacidade,
+              sala_andar: andar,
+              created_by: userData.user?.id,
+            }) as SalaProvaInsert & { created_by: string | undefined },
+        ),
+      );
 
+      // Um único INSERT: uma instrução é atômica, então não há lote pela metade.
       const { data, error } = await supabase
         .from("sala_prova")
         .insert(salasToInsert)
         .select();
 
       if (error) throw error;
-      return data;
+      return { salas: data, resumo: resumoDoLote(calculo.andares) };
     },
-    onSuccess: (data) => {
+    onSuccess: ({ salas: data, resumo }) => {
       queryClient.invalidateQueries({ queryKey: ["salas_prova", unidadeId] });
+      // Mexer nas salas muda a capacidade do cadastro, que outra tela exibe.
+      queryClient.invalidateQueries({ queryKey: ["sala_prova_capacidade"] });
       toast({
         title: data.length === 1 ? "Sala criada" : "Salas criadas",
-        description: data.length === 1 
-          ? "A sala foi criada com sucesso." 
-          : `${data.length} salas foram criadas com sucesso.`,
+        // Os números entram na mensagem: com a faixa de andares, "30 salas criadas" não
+        // diz onde elas foram parar.
+        description:
+          data.length === 1
+            ? `A sala ${resumo} foi criada com sucesso.`
+            : `${data.length} salas criadas: ${resumo}.`,
       });
     },
     onError: (error: Error) => {
@@ -169,6 +237,8 @@ export function useSalasProva(unidadeId: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["salas_prova", unidadeId] });
+      // Mexer nas salas muda a capacidade do cadastro, que outra tela exibe.
+      queryClient.invalidateQueries({ queryKey: ["sala_prova_capacidade"] });
       toast({
         title: "Sala atualizada",
         description: "A sala foi atualizada com sucesso.",
@@ -194,6 +264,8 @@ export function useSalasProva(unidadeId: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["salas_prova", unidadeId] });
+      // Mexer nas salas muda a capacidade do cadastro, que outra tela exibe.
+      queryClient.invalidateQueries({ queryKey: ["sala_prova_capacidade"] });
       toast({
         title: "Sala excluída",
         description: "A sala foi excluída com sucesso.",

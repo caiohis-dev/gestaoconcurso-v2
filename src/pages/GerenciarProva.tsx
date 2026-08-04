@@ -1,14 +1,15 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { Navigate, useParams, Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useProvas, ProvaUpdate } from "@/hooks/useProvas";
 import { useUnidadesProva } from "@/hooks/useUnidadesProva";
 import { useProvaUnidades } from "@/hooks/useProvaUnidades";
 import { useUnidadeCapacidade } from "@/hooks/useUnidadeCapacidade";
-import { useValoresFuncaoProva } from "@/hooks/useValoresFuncaoProva";
+import { useCapacidadeTemplateUnidades } from "@/hooks/useSalasProva";
 import { useCoordenadorUnidades } from "@/hooks/useCoordenadorUnidades";
 import { useContagemCandidatosPorEdital } from "@/hooks/useCandidatos";
 import { resumoAlocacao } from "@/lib/alocacao";
+import { rotuloUnidadeDisponivel } from "@/lib/unidades";
 
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
@@ -56,7 +57,23 @@ export default function GerenciarProva() {
 
   const unidadeIds = useMemo(() => provaUnidades.map((pu) => pu.unidade_id), [provaUnidades]);
   const { data: capacidadePorUnidade = {} } = useUnidadeCapacidade(provaId || "", unidadeIds);
-  const { valoresFuncao, isLoading: isLoadingValoresFuncao } = useValoresFuncaoProva(provaId || "");
+
+  // 🔴 Duas capacidades DIFERENTES convivem nesta página, e trocá-las é o erro fácil do
+  // módulo: a de cima é o snapshot da prova (a coluna "Capacidade" da tabela de unidades
+  // vinculadas); esta é a do CADASTRO da unidade, e é a única que existe para a unidade que
+  // ainda não foi vinculada — o snapshot dela é vazio por definição. Ver
+  // `provas-e-unidades.md` (template vs. snapshot).
+  const {
+    capacidades: capacidadeDoCadastro,
+    isLoading: isLoadingCapacidadeCadastro,
+    error: erroCapacidadeCadastro,
+  } = useCapacidadeTemplateUnidades();
+  // Carregando e falhou dão o mesmo `{}`: nos dois casos a resposta honesta é não falar de
+  // capacidade, e não dizer que a unidade está sem salas.
+  const capacidadeConhecida = !isLoadingCapacidadeCadastro && !erroCapacidadeCadastro;
+  // ⚠️ A página NÃO lê mais `valores_funcao_prova` (02/08): o único leitor era o efeito de
+  // abertura automática, que foi abolido. Quem carrega os valores é o próprio
+  // `ValoresFuncaoProvaDialog`, quando aberto — uma query a menos no load da página.
 
   // 🔴 A fonte do "total de candidatos" é a lista real de inscritos do edital desde
   // 2026-08-02 — antes era `prova.prova_n_candidatos`, digitado à mão, que dizia 200 num
@@ -95,12 +112,15 @@ export default function GerenciarProva() {
   const [finalizarDialogOpen, setFinalizarDialogOpen] = useState(false);
   const [reabrirDialogOpen, setReabrirDialogOpen] = useState(false);
 
-  // Abre automaticamente o dialog de funções se não houver nenhuma cadastrada
-  useEffect(() => {
-    if (!isLoadingValoresFuncao && valoresFuncao.length === 0 && provaId) {
-      setValoresDialogOpen(true);
-    }
-  }, [isLoadingValoresFuncao, valoresFuncao.length, provaId]);
+  // 🔴 NÃO existe mais abertura automática do dialog de valores (02/08, decisão do
+  // usuário: "abolido em qualquer cenário"). Até aqui um `useEffect` abria o
+  // `ValoresFuncaoProvaDialog` sozinho quando a prova não tinha nenhum valor cadastrado.
+  // O único caminho para ele é o botão "Cadastrar Funções dos Colaboradores", que é
+  // `isAdmin &&`. Não reintroduza o efeito: além de tapar a página de quem entrou para
+  // fazer outra coisa, ele não conseguia distinguir "prova sem valores" de "a RLS não me
+  // deixa ver os valores" — as duas chegam como `[]` (a policy de leitura é
+  // `admin OR is_coordenador_prova`), e por isso ele disparava para coordenador em prova
+  // que TINHA valores. Guardado por `GerenciarProva.ui.test.tsx`.
 
   if (authLoading) {
     return (
@@ -740,7 +760,14 @@ export default function GerenciarProva() {
                   <SelectContent>
                     {unidadesDisponiveis.map((unidade) => (
                       <SelectItem key={unidade.id} value={unidade.id}>
-                        {unidade.unid_sigla.trim()} - {unidade.unid_nome}
+                        {rotuloUnidadeDisponivel(
+                          unidade.unid_sigla,
+                          unidade.unid_nome,
+                          // `null` enquanto conta (ou se a consulta falhou): um
+                          // "(capacidade: 0)" transitório diria que a unidade não tem sala
+                          // nenhuma.
+                          capacidadeConhecida ? (capacidadeDoCadastro[unidade.id] ?? 0) : null,
+                        )}
                       </SelectItem>
                     ))}
                   </SelectContent>

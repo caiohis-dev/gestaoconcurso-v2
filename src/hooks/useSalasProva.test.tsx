@@ -19,7 +19,7 @@ vi.mock("@/integrations/supabase/client", async () => {
   return { supabase: supabaseMock };
 });
 
-import { useSalasProva } from "@/hooks/useSalasProva";
+import { useSalasProva, useCapacidadeTemplateUnidades } from "@/hooks/useSalasProva";
 
 /**
  * Salas de uma unidade. O que faz este hook merecer teste de verdade não é o CRUD, é a
@@ -94,6 +94,12 @@ describe("useSalasProva", () => {
     });
   });
 
+  /**
+   * 🔵 **Reescrito em 2026-08-03**, quando o lote passou a receber uma FAIXA de andares.
+   * A conta em si mudou de casa: mora em `lib/salas.ts` (`numerosDoLote`, função pura com
+   * bateria própria). O que se mede AQUI é a ligação — que a mutation leia as salas
+   * existentes, entregue os números certos ao `insert` e recuse antes de escrever.
+   */
   describe("numeração automática do createMultiple", () => {
     it("no andar vazio começa em 1 — andar 1 vira 101", async () => {
       const { result } = await carregarEDepois([
@@ -106,7 +112,8 @@ describe("useSalasProva", () => {
         sala_fk_unidade: UNIDADE,
         quantidade: 1,
         sala_capacidade: 30,
-        sala_andar: 1,
+        andar_de: 1,
+        andar_ate: 1,
       });
 
       await waitFor(() => expect(toastMock).toHaveBeenCalled());
@@ -118,6 +125,34 @@ describe("useSalasProva", () => {
         sala_fk_unidade: UNIDADE,
         created_by: "user-teste-1",
       });
+    });
+
+    it("🔵 a faixa multiplica, e cada linha leva o SEU andar", async () => {
+      // A asserção que importa não é a contagem (6), é o par número↔andar de cada linha:
+      // gravar 6 salas todas com `sala_andar: 1` passaria por qualquer teste de tamanho.
+      const { result } = await carregarEDepois([
+        { data: [], error: null },
+        { data: [], error: null },
+        { data: [], error: null },
+      ]);
+
+      result.current.createMultiple({
+        sala_fk_unidade: UNIDADE,
+        quantidade: 2,
+        sala_capacidade: 30,
+        andar_de: 1,
+        andar_ate: 3,
+      });
+
+      await waitFor(() => expect(toastMock).toHaveBeenCalled());
+      expect(linhasInseridas().map((l) => [l.sala_numero, l.sala_andar])).toEqual([
+        [101, 1],
+        [102, 1],
+        [201, 2],
+        [202, 2],
+        [301, 3],
+        [302, 3],
+      ]);
     });
 
     it("continua a sequência DAQUELE andar, ignorando os outros", async () => {
@@ -133,7 +168,8 @@ describe("useSalasProva", () => {
         sala_fk_unidade: UNIDADE,
         quantidade: 2,
         sala_capacidade: 25,
-        sala_andar: 1,
+        andar_de: 1,
+        andar_ate: 1,
       });
 
       await waitFor(() => expect(toastMock).toHaveBeenCalled());
@@ -153,16 +189,22 @@ describe("useSalasProva", () => {
         sala_fk_unidade: UNIDADE,
         quantidade: 1,
         sala_capacidade: 30,
-        sala_andar: 1,
+        andar_de: 1,
+        andar_ate: 1,
       });
 
       await waitFor(() => expect(toastMock).toHaveBeenCalled());
       expect(linhasInseridas().map((l) => l.sala_numero)).toEqual([104]);
     });
 
-    it("no térreo (andar 0) a numeração é 1, 2, 3…", async () => {
+    it("🔴 andar 0 é RECUSADO — e o teste anterior afirmava o contrário", async () => {
+      // ⚠️ Armadilha 8 em estado puro. Até 03/08 havia aqui um caso verde chamado "no
+      // térreo (andar 0) a numeração é 1, 2, 3…", afirmando que o hook gravava
+      // `sala_andar: 0`. O banco NUNCA aceitou isso: `chk_sala_andar_min` exige
+      // `sala_andar IS NULL OR sala_andar >= 1`. O teste descrevia o que o código fazia,
+      // não o que era correto — e o formulário só não deixava chegar lá por causa do
+      // `min` nativo do input.
       const { result } = await carregarEDepois([
-        { data: [sala(1, { sala_andar: 0 })], error: null },
         { data: [], error: null },
         { data: [], error: null },
       ]);
@@ -171,23 +213,26 @@ describe("useSalasProva", () => {
         sala_fk_unidade: UNIDADE,
         quantidade: 2,
         sala_capacidade: 30,
-        sala_andar: 0,
+        andar_de: 0,
+        andar_ate: 1,
       });
 
-      await waitFor(() => expect(toastMock).toHaveBeenCalled());
-      expect(linhasInseridas().map((l) => l.sala_numero)).toEqual([2, 3]);
+      await waitFor(() =>
+        expect(toastMock).toHaveBeenCalledWith(
+          expect.objectContaining({ title: "Erro ao criar salas", variant: "destructive" }),
+        ),
+      );
+      expect(() => builderQueChamou("sala_prova", "insert")).toThrow();
     });
 
-    it("⚠️ ATENÇÃO: o esquema comporta 99 salas por andar, e não avisa ao estourar", async () => {
-      // `número = andar × 100 + sequência` implica sequência de 1 a 99. Com a sala 199 já
-      // existente, a próxima do andar 1 vira 200 — que é o número do andar 2. Nada barra:
-      // não é erro, é o limite do esquema de numeração se manifestando em silêncio.
-      //
-      // Não abre item de backlog: 99 salas num mesmo andar é caso extremo. Fica
-      // registrado para quem for mexer na numeração não achar que pode ignorar o teto.
+    it("🔴 o estouro de 99 salas por andar recusa ANTES de inserir", async () => {
+      // ⚠️ Este caso também está invertido de propósito. Ele se chamava "o esquema
+      // comporta 99 salas por andar, e não avisa ao estourar" e afirmava que a próxima
+      // sala depois da 199 era a **200** — o número da primeira do andar 2. Não era
+      // teoria: colidia com o índice único, e o 23505 chegava traduzido como
+      // "provavelmente outra pessoa criou salas ao mesmo tempo".
       const { result } = await carregarEDepois([
         { data: [sala(199)], error: null },
-        { data: [], error: null },
         { data: [], error: null },
       ]);
 
@@ -195,32 +240,43 @@ describe("useSalasProva", () => {
         sala_fk_unidade: UNIDADE,
         quantidade: 1,
         sala_capacidade: 30,
-        sala_andar: 1,
+        andar_de: 1,
+        andar_ate: 1,
       });
 
-      await waitFor(() => expect(toastMock).toHaveBeenCalled());
-      expect(linhasInseridas().map((l) => l.sala_numero)).toEqual([200]);
+      await waitFor(() =>
+        expect(toastMock).toHaveBeenCalledWith(
+          expect.objectContaining({
+            title: "Erro ao criar salas",
+            description: expect.stringContaining("andar 1"),
+          }),
+        ),
+      );
+      // Nenhuma linha escrita: a recusa acontece antes do insert.
+      expect(() => builderQueChamou("sala_prova", "insert")).toThrow();
     });
 
-    it("avisa no singular ou no plural, conforme quantas criou", async () => {
+    it("o aviso de sucesso traz os números criados", async () => {
+      // "3 salas criadas" não diz onde elas foram parar quando a faixa tem vários andares.
       const { result } = await carregarEDepois([
         { data: [], error: null },
-        { data: [sala(101), sala(102), sala(103)], error: null },
+        { data: [sala(101), sala(102), sala(201), sala(202)], error: null },
         { data: [], error: null },
       ]);
 
       result.current.createMultiple({
         sala_fk_unidade: UNIDADE,
-        quantidade: 3,
+        quantidade: 2,
         sala_capacidade: 30,
-        sala_andar: 1,
+        andar_de: 1,
+        andar_ate: 2,
       });
 
       await waitFor(() =>
         expect(toastMock).toHaveBeenCalledWith(
           expect.objectContaining({
             title: "Salas criadas",
-            description: "3 salas foram criadas com sucesso.",
+            description: "4 salas criadas: 101–102, 201–202.",
           }),
         ),
       );
@@ -237,7 +293,8 @@ describe("useSalasProva", () => {
         sala_fk_unidade: UNIDADE,
         quantidade: 1,
         sala_capacidade: 30,
-        sala_andar: 1,
+        andar_de: 1,
+        andar_ate: 1,
       });
 
       await waitFor(() =>
@@ -302,5 +359,105 @@ describe("useSalasProva", () => {
         ),
       );
     });
+  });
+});
+
+/**
+ * Capacidade do CADASTRO das unidades (2026-08-03), usada no seletor de
+ * `/gerenciar-prova`.
+ *
+ * 🔴 O que estes casos guardam é a **fonte**: `sala_prova` (o template do catálogo), não
+ * `salas_prova_distribuidas` (o snapshot de uma prova). A unidade que o seletor lista
+ * ainda não está vinculada a prova nenhuma — pelo snapshot ela seria sempre zero, um
+ * número plausível e sempre errado.
+ */
+describe("useCapacidadeTemplateUnidades", () => {
+  beforeEach(() => {
+    resetSupabaseMock();
+    toastMock.mockClear();
+  });
+
+  it("soma a capacidade das salas por unidade", async () => {
+    setTableResult("sala_prova", {
+      data: [
+        { sala_fk_unidade: "u-1", sala_capacidade: 30 },
+        { sala_fk_unidade: "u-1", sala_capacidade: 35 },
+        { sala_fk_unidade: "u-2", sala_capacidade: 350 },
+      ],
+      error: null,
+    });
+
+    const { result } = renderHookWithProviders(() => useCapacidadeTemplateUnidades());
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    // As duas somas precisam ser DIFERENTES: com valores iguais, trocar a chave passaria.
+    expect(result.current.capacidades).toEqual({ "u-1": 65, "u-2": 350 });
+  });
+
+  it("🔴 pergunta a `sala_prova` — o template —, não ao snapshot da prova", async () => {
+    // Sabotar a tabela consultada é o que derruba este caso: o mock devolve por NOME de
+    // tabela, então ler `salas_prova_distribuidas` traria o default vazio.
+    setTableResult("sala_prova", {
+      data: [{ sala_fk_unidade: "u-1", sala_capacidade: 30 }],
+      error: null,
+    });
+    setTableResult("salas_prova_distribuidas", {
+      data: [{ sala_fk_unidade: "u-1", sala_capacidade: 9999 }],
+      error: null,
+    });
+
+    const { result } = renderHookWithProviders(() => useCapacidadeTemplateUnidades());
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.capacidades).toEqual({ "u-1": 30 });
+    expect(supabaseMock.from).toHaveBeenCalledWith("sala_prova");
+  });
+
+  it("unidade sem sala simplesmente não aparece no mapa (quem lê decide o que é zero)", async () => {
+    setTableResult("sala_prova", { data: [], error: null });
+
+    const { result } = renderHookWithProviders(() => useCapacidadeTemplateUnidades());
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.capacidades).toEqual({});
+  });
+
+  it("⚠️ o objeto vazio é a MESMA referência entre renders", () => {
+    // Não é preciosismo: `?? {}` devolveria objeto novo a cada render e armaria o laço
+    // infinito que o `?? []` de `useSalasDistribuidas` armou em 03/08 para quem o pusesse
+    // em deps de efeito. Aqui se mede a referência, que é o que o React compara.
+    const { result, rerender } = renderHookWithProviders(() => useCapacidadeTemplateUnidades());
+
+    const primeira = result.current.capacidades;
+    rerender();
+    expect(result.current.capacidades).toBe(primeira);
+  });
+
+  it("🔴 consulta que FALHOU é distinguível de 'nenhuma sala cadastrada'", async () => {
+    // As duas chegam como `{}` — é o `error` que separa "não tem sala" de "não deu para
+    // perguntar". Sem ele exposto, a tela diria "sem salas cadastradas" em TODAS as
+    // unidades diante de um 42501, com a mesma cara de informação correta.
+    setTableResult("sala_prova", {
+      data: null,
+      error: erroPostgrest("42501", "permission denied for table sala_prova"),
+    });
+
+    const { result } = renderHookWithProviders(() => useCapacidadeTemplateUnidades());
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.capacidades).toEqual({});
+    expect(result.current.error).toBeTruthy();
+  });
+
+  it("⭐ CONTROLE POSITIVO: catálogo vazio de verdade NÃO acusa erro", async () => {
+    // O par do caso acima. Sem ele, `error` poderia estar sempre preenchido e o teste
+    // anterior passaria sem provar nada.
+    setTableResult("sala_prova", { data: [], error: null });
+
+    const { result } = renderHookWithProviders(() => useCapacidadeTemplateUnidades());
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.capacidades).toEqual({});
+    expect(result.current.error).toBeNull();
   });
 });
