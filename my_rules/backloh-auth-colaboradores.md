@@ -1,6 +1,6 @@
 Plano de Mitigação de Segurança: Módulo de Autenticação de Colaboradores
 
-Prefácio: tudo aqui precisa ser checado frente ao código que é a fonte da verdade: tanto diagnóstico, quanto solução.
+Prefácio: tudo aqui precisa ser checado frente ao código que é a fonte da verdade e frente a toda a documentação que pode guardar decisões anteriores a respeito do tema: tanto diagnóstico, quanto solução.
 
 1. Descrição do Problema Encontrado (Falha Crítica)
 Durante a análise arquitetural do módulo de autenticação e gestão de perfil de Colaboradores/Candidatos (useColaboradorAuth.tsx e migrações do Supabase associadas), identificou-se uma vulnerabilidade de segurança classificada como crítica, resultante de duas falhas conceituais sobrepostas:
