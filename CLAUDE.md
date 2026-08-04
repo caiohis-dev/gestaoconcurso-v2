@@ -180,6 +180,14 @@ Ela **mocka o Supabase**. Não exercita RLS, GRANT, CHECK, índice único, colun
 
 Os 1018 testes ficaram verdes durante **e depois** de um vazamento que deixava `anon` ler dado real sem login.
 
+### 🔴 E NINGUÉM verifica a bateria — nem a suíte, nem o `docs:conferir`
+
+Uma bateria SQL é código que **só existe quando alguém a executa**. `npm test` não a alcança (mocka o Supabase) e `npm run docs:conferir` não a lê (confere doc, e bateria não é doc). Ela pode apodrecer verde por dias.
+
+Aconteceu: em 02/08 a RPC `trocar_candidatos_do_edital` ganhou um 4º parâmetro e a migration **dropou** a assinatura antiga. As **9 chamadas** de `bateria-troca-total-candidatos.sql` seguiram na forma de 3 argumentos — o arquivo falhava na primeira linha e **nenhum dos 10 casos rodava**. Ficou assim até 04/08, quando alguém foi usá-la.
+
+⚠️ **Ao mudar a assinatura de uma função ou RPC, procure as chamadas em `docs/bateria-*.sql` no mesmo passe.** E antes de confiar numa bateria como prova de qualquer coisa, **rode-a** — "ela existe" não é "ela passa".
+
 ### ⚠️ Teste verde pode estar guardando um defeito
 
 É a **armadilha 8** de `testes.md`, e já apareceu várias vezes — inclusive numa asserção que afirmava, como correto, o identificador errado no campo de inscrição. **Ao mudar uma regra de negócio, os testes que caem não são obstáculo: são a pergunta.**
