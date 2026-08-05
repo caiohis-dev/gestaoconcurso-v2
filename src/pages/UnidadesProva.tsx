@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { useUnidadesProva, UnidadeProva } from "@/hooks/useUnidadesProva";
+import { useUnidadesProva, UnidadeProva, UnidadeProvaInsert } from "@/hooks/useUnidadesProva";
+import { useCapacidadeTemplateUnidades } from "@/hooks/useSalasProva";
+import { textoVagasDaUnidade, resumoDeVagas } from "@/lib/unidades";
 import Layout from "@/components/Layout";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { UnidadeProvaDialog } from "@/components/UnidadeProvaDialog";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -31,6 +34,15 @@ export default function UnidadesProva() {
     isUpdating,
     isDeleting,
   } = useUnidadesProva();
+
+  // ⚠️ Fica AQUI no topo, junto dos outros: logo abaixo há `return` condicional por
+  // `authLoading`, e chamar hook depois dele quebra a ordem de hooks do React. Foi
+  // exatamente o que a suíte pegou quando o painel de alocação nasceu em `GerenciarProva`.
+  const {
+    capacidades,
+    isLoading: capacidadesLoading,
+    error: capacidadesError,
+  } = useCapacidadeTemplateUnidades();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUnidade, setEditingUnidade] = useState<UnidadeProva | null>(null);
@@ -73,13 +85,28 @@ export default function UnidadesProva() {
     }
   };
 
-  const handleSubmit = (data: any) => {
+  // `UnidadeProvaInsert` (os dois campos preenchidos) e não a união
+  // `Insert | Update` que a prop do diálogo declara: quem chama isto é o
+  // `form.handleSubmit` dele, sobre um `formSchema` do Zod em que **nome e sigla são
+  // obrigatórios** — nunca chega um objeto parcial. O tipo mais largo obrigaria a
+  // estreitar aqui uma incerteza que não existe, e `update` aceita o Insert do mesmo
+  // jeito (campos obrigatórios satisfazem os opcionais do Update).
+  const handleSubmit = (data: UnidadeProvaInsert) => {
     if (editingUnidade) {
       update({ id: editingUnidade.id, data }, { onSuccess: () => setDialogOpen(false) });
     } else {
       create(data, { onSuccess: () => setDialogOpen(false) });
     }
   };
+
+  // 🔴 As capacidades só entram na conta quando CHEGARAM. Enquanto a consulta corre — ou
+  // se ela falhou — o mapa é `{}`, e `resumoDeVagas` devolveria um zero legítimo em forma
+  // e mentiroso em conteúdo ("nenhuma vaga cadastrada" no lugar de "não deu para contar").
+  const capacidadesProntas = !capacidadesLoading && capacidadesError == null;
+  const resumo = resumoDeVagas(
+    unidades.map((u) => u.id),
+    capacidades,
+  );
 
   return (
     <Layout>
@@ -95,6 +122,40 @@ export default function UnidadesProva() {
           </Button>
         </div>
 
+        {unidades.length > 0 && capacidadesError != null && (
+          <Alert variant="destructive">
+            <AlertDescription>
+              Não foi possível contar as vagas das unidades. Os números da coluna "Vagas"
+              estão indisponíveis — recarregue a página.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {unidades.length > 0 && capacidadesError == null && (
+          <div className="rounded-md border bg-muted/40 px-4 py-3">
+            {capacidadesLoading ? (
+              <p className="text-sm text-muted-foreground flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Contando as vagas cadastradas…
+              </p>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">Total de vagas cadastradas</p>
+                <p className="text-2xl font-bold text-foreground">
+                  {resumo.total.toLocaleString("pt-BR")}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {`em ${resumo.comSalas} de ${resumo.unidades} ${resumo.unidades === 1 ? "unidade" : "unidades"}`}
+                  {/* Quantas ainda não têm sala é a informação acionável: medido em
+                      03/08, 7 das 11 unidades estavam assim, e o caminho é /salas-prova. */}
+                  {resumo.comSalas < resumo.unidades &&
+                    ` · ${resumo.unidades - resumo.comSalas} sem salas cadastradas`}
+                </p>
+              </>
+            )}
+          </div>
+        )}
+
         {unidades.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <Building2 className="h-12 w-12 text-muted-foreground mb-4" />
@@ -108,6 +169,7 @@ export default function UnidadesProva() {
                 <TableRow>
                   <TableHead>Nome</TableHead>
                   <TableHead>Sigla</TableHead>
+                  <TableHead className="text-right">Vagas</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -116,6 +178,17 @@ export default function UnidadesProva() {
                   <TableRow key={unidade.id}>
                     <TableCell className="font-medium">{unidade.unid_nome}</TableCell>
                     <TableCell>{unidade.unid_sigla.trim()}</TableCell>
+                    <TableCell
+                      className={`text-right ${
+                        capacidadesProntas && capacidades[unidade.id] > 0
+                          ? "tabular-nums"
+                          : "text-sm text-muted-foreground"
+                      }`}
+                    >
+                      {textoVagasDaUnidade(
+                        capacidadesProntas ? (capacidades[unidade.id] ?? 0) : null,
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Button variant="ghost" size="icon" asChild title="Gerenciar salas">

@@ -6,7 +6,7 @@
  * entre um número transitório mentiroso e uma informação útil.
  */
 import { describe, it, expect } from "vitest";
-import { rotuloUnidadeDisponivel } from "./unidades";
+import { rotuloUnidadeDisponivel, textoVagasDaUnidade, resumoDeVagas } from "./unidades";
 
 describe("rotuloUnidadeDisponivel", () => {
   it("mostra a capacidade no formato pedido", () => {
@@ -54,5 +54,57 @@ describe("rotuloUnidadeDisponivel", () => {
     expect(rotuloUnidadeDisponivel("X", "Unidade", -30)).toBe(
       "X - Unidade (sem salas cadastradas)",
     );
+  });
+});
+
+describe("textoVagasDaUnidade", () => {
+  it("mostra o número com separador de milhar", () => {
+    expect(textoVagasDaUnidade(1260)).toBe("1.260");
+  });
+
+  it("⭐ CONTROLE POSITIVO: 'ainda contando' e 'sem salas' são textos DIFERENTES", () => {
+    // O mesmo par que `rotuloUnidadeDisponivel` guarda, agora na tabela: com o mapa vazio
+    // (carregando OU consulta falhada) a célula não pode dizer 0 — seria afirmar que a
+    // unidade está vazia quando não deu para perguntar. Medido em 03/08, 7 das 11
+    // unidades não têm sala nenhuma: o zero é o caso comum, não a borda.
+    expect(textoVagasDaUnidade(null)).toBe("—");
+    expect(textoVagasDaUnidade(0)).toBe("sem salas cadastradas");
+    expect(textoVagasDaUnidade(null)).not.toBe(textoVagasDaUnidade(0));
+  });
+
+  it("capacidade negativa cai no texto do zero, nunca em '-30'", () => {
+    expect(textoVagasDaUnidade(-30)).toBe("sem salas cadastradas");
+  });
+});
+
+describe("resumoDeVagas", () => {
+  const CAPACIDADES = { "u-1": 350, "u-2": 480, "u-3": 0 };
+
+  it("soma as vagas e conta quantas unidades têm sala cadastrada", () => {
+    expect(resumoDeVagas(["u-1", "u-2", "u-3"], CAPACIDADES)).toEqual({
+      total: 830,
+      comSalas: 2,
+      unidades: 3,
+    });
+  });
+
+  it("unidade ausente do mapa conta como zero, não quebra a soma", () => {
+    // É o caso real: uma unidade sem nenhuma linha em `sala_prova` nem aparece no mapa.
+    expect(resumoDeVagas(["u-1", "u-nova"], CAPACIDADES)).toEqual({
+      total: 350,
+      comSalas: 1,
+      unidades: 2,
+    });
+  });
+
+  it("🔴 soma só as unidades EXIBIDAS, ignorando o resto do mapa", () => {
+    // O totalizador do topo tem de bater com a coluna abaixo dele. Somar o mapa inteiro
+    // daria o mesmo número hoje e passaria a divergir no dia em que a lista ganhar
+    // filtro — é o defeito do "limpar edital" (contador filtrado, ação total).
+    expect(resumoDeVagas(["u-1"], CAPACIDADES).total).toBe(350);
+  });
+
+  it("lista vazia devolve zeros — e é um zero legítimo", () => {
+    expect(resumoDeVagas([], CAPACIDADES)).toEqual({ total: 0, comSalas: 0, unidades: 0 });
   });
 });

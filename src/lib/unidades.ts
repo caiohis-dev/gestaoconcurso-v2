@@ -36,3 +36,59 @@ export function rotuloUnidadeDisponivel(
 
   return `${identificacao} (capacidade: ${capacidade})`;
 }
+
+/**
+ * A célula "Vagas" de uma linha da tabela de `/unidades-prova`.
+ *
+ * Mesma fonte e mesmos três estados de `rotuloUnidadeDisponivel` — muda só a forma, que
+ * ali é rótulo de um seletor e aqui é célula de tabela. O estado do meio continua sendo o
+ * que exige cuidado: `null` (contando, ou a consulta falhou) **não pode** sair como `0`,
+ * senão a tabela afirma que a unidade está vazia quando não deu para perguntar.
+ *
+ * ⚠️ "Vagas" aqui é a capacidade do CADASTRO, não vaga livre: `/unidades-prova` é o
+ * catálogo e não tem prova no contexto — ocupação só existe dentro de uma prova, no
+ * snapshot `salas_prova_distribuidas`.
+ */
+export function textoVagasDaUnidade(capacidade: number | null): string {
+  if (capacidade === null) return "—";
+  if (capacidade <= 0) return "sem salas cadastradas";
+
+  return capacidade.toLocaleString("pt-BR");
+}
+
+/** O que o totalizador do topo de `/unidades-prova` precisa saber. */
+export interface ResumoDeVagas {
+  /** Soma das capacidades cadastradas das unidades listadas. */
+  total: number;
+  /** Quantas daquelas unidades têm ao menos uma sala cadastrada. */
+  comSalas: number;
+  /** Quantas unidades entraram na conta. */
+  unidades: number;
+}
+
+/**
+ * Soma as vagas das unidades EXIBIDAS, não da tabela `sala_prova` inteira — é o que faz o
+ * totalizador do topo bater com a coluna abaixo dele. Somar o mapa inteiro daria o mesmo
+ * número hoje (toda sala pertence a uma unidade do catálogo), mas passaria a divergir no
+ * dia em que a lista ganhar filtro: é o defeito do "limpar edital", que exibia contagem
+ * filtrada ao lado de uma ação sobre o conjunto inteiro.
+ *
+ * ⚠️ Chame só quando as capacidades tiverem CHEGADO. Com o mapa vazio (carregando ou
+ * falha) o resultado é um `0` legítimo em forma, e mentiroso em conteúdo — quem decide
+ * exibir é a página, olhando `isLoading`/`error` do hook.
+ */
+export function resumoDeVagas(
+  unidadeIds: string[],
+  capacidades: Record<string, number>,
+): ResumoDeVagas {
+  let total = 0;
+  let comSalas = 0;
+
+  for (const id of unidadeIds) {
+    const capacidade = capacidades[id] ?? 0;
+    total += capacidade;
+    if (capacidade > 0) comSalas += 1;
+  }
+
+  return { total, comSalas, unidades: unidadeIds.length };
+}

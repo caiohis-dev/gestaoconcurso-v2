@@ -101,6 +101,12 @@ E um contraste que vale conhecer: **`useSalasDistribuidasCapacidade` trata lista
 
 Os dois números divergem de propósito, e não pouco: medido em 03/08, a **CGV** tem **480** no cadastro e **960** somando as duas provas do dump.
 
+🔵 **Desde 2026-08-04 `/unidades-prova` é o TERCEIRO consumidor do template** — a listagem do catálogo ganhou a coluna **Vagas** por unidade e um **totalizador** no topo. Ali a escolha da fonte nem é escolha: a tela não tem prova no contexto, e o snapshot mostraria zero para toda unidade não vinculada. Os textos saem de `textoVagasDaUnidade` e `resumoDeVagas` (`src/lib/unidades.ts`, puras, com bateria), e a tela tem teste próprio (`UnidadesProva.ui.test.tsx`, 6 casos) que guarda os três estados — falsificado forçando `capacidadesProntas = true`, o que derruba exatamente os dois casos da consulta falhada.
+
+- ⚠️ **O totalizador soma as unidades EXIBIDAS**, não o mapa inteiro de `sala_prova`. Hoje dá o mesmo número; passa a divergir no dia em que a lista ganhar filtro — é o defeito do *"limpar edital"* (contador filtrado ao lado de ação sobre o conjunto todo).
+- ⚠️ **O hook fica no topo do componente**, antes do `return` condicional por `authLoading` — a mesma armadilha de ordem de hooks que `GerenciarProva` já pagou.
+- 🔵 **A coerência de cache sai de graça:** as três mutations de `useSalasProva` já invalidam `["sala_prova_capacidade"]`, então criar/editar/excluir sala em `/salas-prova` corrige o número desta tela sozinho.
+
 🔴 **`GerenciarProva.tsx` usa os dois, na mesma tela** — é onde a troca é mais fácil e mais silenciosa. A coluna **"Capacidade"** da tabela de unidades vinculadas é o snapshot; o **rótulo do seletor de "adicionar unidade"** é o cadastro. Um teste de página guarda a distinção com números diferentes no fixture (a unidade disponível tem 350 no cadastro e **nada** no snapshot), justamente para que ler a fonte errada apareça como falha.
 
 O hook novo traz o catálogo inteiro numa consulta (52 linhas em 03/08) e agrega no cliente, como o antigo. ⚠️ **Acima de 1.000 linhas o limite padrão do PostgREST trunca** e a soma fica calada a menos — nesse dia isto vira RPC de agregação. As três mutations de `useSalasProva` invalidam `["sala_prova_capacidade"]` junto com a lista da unidade, senão mexer numa sala não corrigiria o número exibido na outra tela.
