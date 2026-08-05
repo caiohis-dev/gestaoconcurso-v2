@@ -39,11 +39,17 @@ describe("modulosDoUsuario", () => {
       "aplicacao-provas",
       "editais",
       "candidatos",
+      "alocacao-candidatos",
     ]);
   });
 
   it("dá ao admin os mesmos módulos que ao superadmin", () => {
-    expect(idsDe(modulosDoUsuario(ADMIN))).toEqual(["aplicacao-provas", "editais", "candidatos"]);
+    expect(idsDe(modulosDoUsuario(ADMIN))).toEqual([
+      "aplicacao-provas",
+      "editais",
+      "candidatos",
+      "alocacao-candidatos",
+    ]);
   });
 
   it("dá ao coordenador só Aplicação de Provas — Editais é restrito a admin", () => {
@@ -58,7 +64,7 @@ describe("modulosDoUsuario", () => {
   it("não duplica módulo para quem acumula admin e coordenador", () => {
     // Os dois papéis alcançam aplicacao-provas; o filtro usa `some`, não um flatMap.
     const ids = idsDe(modulosDoUsuario(ADMIN_E_COORDENADOR));
-    expect(ids).toEqual(["aplicacao-provas", "editais", "candidatos"]);
+    expect(ids).toEqual(["aplicacao-provas", "editais", "candidatos", "alocacao-candidatos"]);
     expect(new Set(ids).size).toBe(ids.length);
   });
 

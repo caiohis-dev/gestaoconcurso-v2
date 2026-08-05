@@ -21,6 +21,8 @@ import Editais from "./pages/Editais";
 import Candidatos from "./pages/Candidatos";
 import Cargos from "./pages/Cargos";
 import CandidatosImportar from "./pages/CandidatosImportar";
+import AlocacaoCandidatos from "./pages/AlocacaoCandidatos";
+import AlocacaoCandidatosProva from "./pages/AlocacaoCandidatosProva";
 import GerenciarProva from "./pages/GerenciarProva";
 import GerenciarSalasDistribuidas from "./pages/GerenciarSalasDistribuidas";
 import GerenciarColaboradoresProva from "./pages/GerenciarColaboradoresProva";
@@ -66,6 +68,10 @@ const App = () => (
               <Route path="/candidatos" element={<RequireAcesso papeis={["admin"]}><Candidatos /></RequireAcesso>} />
               <Route path="/candidatos/importar" element={<RequireAcesso papeis={["admin"]}><CandidatosImportar /></RequireAcesso>} />
               <Route path="/candidatos/cargos" element={<RequireAcesso papeis={["admin"]}><Cargos /></RequireAcesso>} />
+              {/* Alocação de Candidatos: só admin, pela mesma razão de Candidatos — a
+                  alocação só faz sentido junto do nome do inscrito, que é PII. */}
+              <Route path="/alocacao-candidatos" element={<RequireAcesso papeis={["admin"]}><AlocacaoCandidatos /></RequireAcesso>} />
+              <Route path="/alocacao-candidatos/:provaId" element={<RequireAcesso papeis={["admin"]}><AlocacaoCandidatosProva /></RequireAcesso>} />
               <Route path="/gerenciar-prova/:provaId" element={<RequireAcesso papeis={["admin", "coordenador"]}><GerenciarProva /></RequireAcesso>} />
               <Route path="/gerenciar-salas-distribuidas/:provaId/:unidadeId" element={<RequireAcesso papeis={["admin"]}><GerenciarSalasDistribuidas /></RequireAcesso>} />
               <Route path="/gerenciar-colaboradores-prova/:provaUnidadeId" element={<RequireAcesso papeis={["admin", "coordenador"]}><GerenciarColaboradoresProva /></RequireAcesso>} />

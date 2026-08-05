@@ -77,6 +77,7 @@ Toda lógica de negócio sensível ou que exige elevação de privilégio vive e
 | `/provas`, `/gerenciar-prova/:provaId` | CRUD de provas | [`provas-e-unidades.md`](../modulos/aplicacao-provas/provas-e-unidades.md) |
 | `/editais` | CRUD de editais (só admin); a prova referencia um edital | **Módulo próprio:** [`editais/00-modulo.md`](../modulos/editais/00-modulo.md) |
 | `/candidatos`, `/candidatos/importar` | Os inscritos de cada edital e o assistente de importação de planilha (só admin) | **Módulo próprio:** [`candidatos/00-modulo.md`](../modulos/candidatos/00-modulo.md) |
+| `/alocacao-candidatos`, `/alocacao-candidatos/:provaId` | Distribuição dos inscritos nas salas de uma prova (só admin) | **Módulo próprio:** [`alocacao-candidatos/00-modulo.md`](../modulos/alocacao-candidatos/00-modulo.md) |
 | `/gerenciar-salas-distribuidas/:provaId/:unidadeId` | Distribuição de salas por prova/unidade | [`provas-e-unidades.md`](../modulos/aplicacao-provas/provas-e-unidades.md) |
 | `/gerenciar-colaboradores-prova/:provaUnidadeId` | Alocação de colaboradores por função | [`alocacao-e-funcoes.md`](../modulos/aplicacao-provas/alocacao-e-funcoes.md) |
 | `/ocorrencias-prova/:provaId` | Registro de ocorrências | [`ocorrencias.md`](../modulos/aplicacao-provas/ocorrencias.md) |
@@ -89,7 +90,7 @@ Navegação visível no header (`Layout.tsx`) é filtrada por role **e por módu
 
 ## 6. Módulos e a tela de entrada (hub)
 
-Desde 2026-07-24 a raiz `/` não abre mais uma lista, e sim um **hub** (`src/pages/Inicio.tsx`) que mostra a cada gestor os **módulos** a que ele tem acesso. Hoje existem **três** módulos: *Aplicação de Provas* (todas as rotas de gestão da tabela acima), *Editais* (`/editais`, só admin/superadmin) e *Candidatos* (`/candidatos`, idem, criado em 2026-07-27). A estrutura está pronta para os próximos: o valor está no **mecanismo**, não na lista.
+Desde 2026-07-24 a raiz `/` não abre mais uma lista, e sim um **hub** (`src/pages/Inicio.tsx`) que mostra a cada gestor os **módulos** a que ele tem acesso. Hoje existem **quatro** módulos: *Aplicação de Provas* (todas as rotas de gestão da tabela acima), *Editais* (`/editais`, só admin/superadmin), *Candidatos* (`/candidatos`, idem, criado em 2026-07-27) e *Alocação de Candidatos* (`/alocacao-candidatos`, idem, criado em 2026-08-04). A estrutura está pronta para os próximos: o valor está no **mecanismo**, não na lista.
 
 **A fonte de verdade é `src/lib/modulos.ts`.** Um módulo é uma entrada no array `MODULOS`, com: `id`, `nome`, `descricao`, `icone`, os `papeis` de gestão que o acessam, `rotaEntrada(ctx)` (para onde o card leva, por papel), `prefixosRota` (as rotas que pertencem ao módulo) e `navLinks` (os links que o header mostra dentro dele). **Módulo novo = 1 entrada aqui** — nunca duplicar a lista de rotas de um módulo em outro arquivo. Quem lê desse registro: o hub (`modulosDoUsuario`) e o header (`moduloDaRota` + `navLinks`). ⚠️ **Os guards NÃO leem daqui, e isso é decisão**: o registro conhece papel por MÓDULO, e as rotas são mais finas — `aplicacao-provas` admite coordenador, mas sete rotas dele são só admin. Ler os papéis daqui afrouxaria o acesso. Ver `RequireAcesso` em [`auth-e-permissoes.md`](./auth-e-permissoes.md).
 

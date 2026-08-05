@@ -363,6 +363,24 @@ const PAGINAS: Pagina[] = [
     permitidos: ["admin", "superadmin"],
   },
   {
+    nome: "AlocacaoCandidatos",
+    path: "/alocacao-candidatos",
+    rota: "/alocacao-candidatos",
+    mod: () => import("./AlocacaoCandidatos"),
+    exige: ["admin"],
+    // Só admin, pela mesma razão de Candidatos: a alocação só faz sentido junto do nome
+    // do inscrito, e a RLS de `candidatos_alocacao` fecha no mesmo papel.
+    permitidos: ["admin", "superadmin"],
+  },
+  {
+    nome: "AlocacaoCandidatosProva",
+    path: "/alocacao-candidatos/:provaId",
+    rota: "/alocacao-candidatos/p-1",
+    mod: () => import("./AlocacaoCandidatosProva"),
+    exige: ["admin"],
+    permitidos: ["admin", "superadmin"],
+  },
+  {
     nome: "UnidadesProva",
     path: "/unidades-prova",
     rota: "/unidades-prova",
@@ -502,8 +520,9 @@ describe("guards de página — matriz papel × rota", () => {
     // Sem esta asserção, esvaziar PAGINAS por acidente faria todo o resto passar por
     // vacuidade — o mesmo cuidado que o teste de acessibilidade dos diálogos toma.
     // 19 até 2026-07-26; 21 desde o módulo Candidatos (/candidatos e /candidatos/importar);
-    // 22 desde 2026-07-30, com a página de gestão de cargos (/candidatos/cargos).
-    expect(PAGINAS.length).toBe(22);
+    // 22 desde 2026-07-30, com a página de gestão de cargos (/candidatos/cargos);
+    // 24 desde 2026-08-04, com o módulo Alocação de Candidatos (as duas rotas).
+    expect(PAGINAS.length).toBe(24);
     expect(new Set(PAGINAS.map((p) => p.nome)).size).toBe(PAGINAS.length);
   });
 

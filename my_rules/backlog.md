@@ -41,6 +41,7 @@ errada e o que cada decisão custou. Antes de reabrir qualquer tema abaixo, proc
 | ✅ 02/08 | o edital de uma prova virou **imutável** depois de definido (`PE001`) |
 | ✅ 02/08 | o cadastro público passou a validar o CPF antes de consultar — e a EF perdeu um `padStart` que consultava outra pessoa |
 | ✅ 02/08 | o nº de inscritos passou a ter **uma** fonte: a lista real. A alocação dizia 200 onde havia 7.231 |
+| ✅ 04/08 | o candidato ganhou sala: módulo **Alocação de Candidatos** (o vínculo candidato↔prova/sala que o item 1 de Candidatos previa) |
 
 ---
 
@@ -49,9 +50,9 @@ errada e o que cada decisão custou. Antes de reabrir qualquer tema abaixo, proc
 **Status:** o módulo está pronto e verificado (2026-07-27). Estes são os fios soltos que ele **não** resolveu, e nenhum bloqueia nada hoje.
 **Área:** módulo Candidatos — ver [`estrutura/modulos/candidatos/00-modulo.md`](./estrutura/modulos/candidatos/00-modulo.md)
 
-1. **Não há vínculo entre candidato e prova, unidade ou sala.** 🔵 A tabela deixou de ser ilha em 02/08 — a alocação e `/editais` passaram a **contar** os inscritos do edital —, mas o vínculo com a prova continua não existindo. Se um dia for preciso saber *em que sala cada inscrito faz prova*, isso é **feature nova com desenho próprio** — não é para pendurar `prova_id`/`sala_id` em `candidatos` sem decidir antes o que acontece quando a mesma pessoa concorre a dois cargos.
+1. ~~**Não há vínculo entre candidato e prova, unidade ou sala.**~~ ✅ **CONCLUÍDO em 2026-08-04: virou o módulo Alocação de Candidatos** (`candidatos_alocacao` + distribuição automática por cargo + ajuste manual), exatamente como o item pedia — feature nova com desenho próprio, tabela nova, nada pendurado em `candidatos`. Contrato em [`estrutura/modulos/alocacao-candidatos/00-modulo.md`](./estrutura/modulos/alocacao-candidatos/00-modulo.md); registro em [`analises/concluidos/backlog-itens-concluidos.md`](./analises/concluidos/backlog-itens-concluidos.md).
 
-   🔴 **E é este item que destrava o outro.** A unificação do nº de inscritos vale sob a premissa afirmada pelo usuário em 02/08 de que **todo inscrito do edital faz a prova**. Prova que aplique só um recorte (dois dias, corte por cargo) não é exprimível sem este vínculo — e é por ele que o tema reabre, **nunca** por um campo digitado de volta no `ProvaDialog`.
+   ⚠️ **O que o item destravava segue como decisão separada, ainda não tomada:** com o vínculo existindo, uma prova que aplique só um recorte do edital passou a ser *exprimível* — mas a fonte única do nº de inscritos **não foi reaberta**, e a distribuição assume a mesma premissa de 02/08 (todo inscrito do edital entra). Reabrir é pelo vínculo, **nunca** por campo digitado de volta no `ProvaDialog`.
 
 2. ✅ **`editais.n_candidatos` e a contagem real não conversavam** — **CONCLUÍDO em 2026-08-02**, no mesmo dia em que virou item próprio. A contagem real de `candidatos` é a fonte única em toda tela; os dois números digitados à mão saíram dos formulários. Registro em [`analises/concluidos/backlog-itens-concluidos.md`](./analises/concluidos/backlog-itens-concluidos.md).
 
@@ -227,7 +228,7 @@ Enquanto (2) não estiver resolvido, não é possível criar o `CHECK` que amarr
 
 O projeto novo no supabase.com já foi criado, mas o repo **não é linkado a ele** — e não deve ser, até o dia de colocar a v2 no ar (regra combinada em 2026-07-12: o repo fica deslinkado por padrão, e produção só é atualizada em versões estáveis).
 
-O schema já está pronto para subir quando for a hora: as **115** migrations reproduzem o banco local do zero (validado por `db reset` em 2026-07-31). ⚠️ **Este número já envelheceu duas vezes** — foi escrito como 69, corrigido para 85, e estava em 85 quando o real era 106. Confira com `npm run docs:conferir` em vez de confiar na leitura. O roteiro completo dos **9 passos** (link → `prod:push:dry` → `prod:push` → carga do `seed.local.sql` → **`seed.pos.sql`** → auth no dashboard → edge functions + secrets SMTP → `.env` do frontend → **unlink**) está em [`banco-producao.md`](./banco-producao.md).
+O schema já está pronto para subir quando for a hora: as **116** migrations reproduzem o banco local do zero (validado por `db reset` em 2026-08-04). ⚠️ **Este número já envelheceu duas vezes** — foi escrito como 69, corrigido para 85, e estava em 85 quando o real era 106. Confira com `npm run docs:conferir` em vez de confiar na leitura. O roteiro completo dos **9 passos** (link → `prod:push:dry` → `prod:push` → carga do `seed.local.sql` → **`seed.pos.sql`** → auth no dashboard → edge functions + secrets SMTP → `.env` do frontend → **unlink**) está em [`banco-producao.md`](./banco-producao.md).
 
 Falta apenas, no dia: a **ref do projeto novo** no Supabase.
 

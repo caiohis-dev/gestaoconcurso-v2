@@ -172,6 +172,58 @@ export type Database = {
           },
         ]
       }
+      candidatos_alocacao: {
+        Row: {
+          candidato_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          origem: string
+          prova_id: string
+          sala_id: string
+        }
+        Insert: {
+          candidato_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          origem: string
+          prova_id: string
+          sala_id: string
+        }
+        Update: {
+          candidato_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          origem?: string
+          prova_id?: string
+          sala_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidatos_alocacao_candidato_id_fkey"
+            columns: ["candidato_id"]
+            isOneToOne: false
+            referencedRelation: "candidatos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "candidatos_alocacao_prova_id_fkey"
+            columns: ["prova_id"]
+            isOneToOne: false
+            referencedRelation: "provas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "candidatos_alocacao_sala_prova_fkey"
+            columns: ["sala_id", "prova_id"]
+            isOneToOne: false
+            referencedRelation: "salas_prova_distribuidas"
+            referencedColumns: ["id", "prova_id"]
+          },
+        ]
+      }
       candidatos_importacao: {
         Row: {
           created_at: string
@@ -1185,6 +1237,10 @@ export type Database = {
         }
         Returns: string
       }
+      candidato_pede_atendimento_especial: {
+        Args: { p_pcd: boolean; p_sala_especial: string }
+        Returns: boolean
+      }
       check_prova_lock: {
         Args: { p_prova_id: string }
         Returns: {
@@ -1193,6 +1249,13 @@ export type Database = {
           locked_at: string
           user_id: string
           user_name: string
+        }[]
+      }
+      contar_alocados_por_sala: {
+        Args: { p_prova_id: string }
+        Returns: {
+          sala_id: string
+          total: number
         }[]
       }
       contar_candidatos_por_edital: {
@@ -1206,9 +1269,29 @@ export type Database = {
         Args: { p_prova_unidade_id: string }
         Returns: undefined
       }
+      distribuir_candidatos_da_prova: {
+        Args: { p_prova_id: string }
+        Returns: {
+          alocados: number
+          pendentes_especiais: number
+          preservados: number
+        }[]
+      }
       encerrar_ocorrencias_unidade: {
         Args: { p_prova_unidade_id: string; p_user_id: string }
         Returns: boolean
+      }
+      especiais_da_prova: {
+        Args: { p_prova_id: string }
+        Returns: {
+          candidato_id: string
+          cargo: string
+          n_inscricao: string
+          nome: string
+          portador_deficiencia: boolean
+          sala_especial: string
+          sala_id: string
+        }[]
       }
       finalizar_prova: {
         Args: { p_prova_id: string; p_user_id: string }
@@ -1281,6 +1364,10 @@ export type Database = {
       reabrir_prova_unidade: {
         Args: { p_prova_unidade_id: string; p_user_id: string }
         Returns: boolean
+      }
+      recusa_alocacao_se_finalizada: {
+        Args: { p_prova_id: string; p_unidade_id: string }
+        Returns: undefined
       }
       recusa_sala_se_finalizada: {
         Args: { p_prova_id: string; p_unidade_id: string }

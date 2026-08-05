@@ -670,7 +670,7 @@ export default function GerenciarProva() {
             <div className="flex items-start justify-between gap-4">
               <CardTitle className="flex items-center gap-2 text-base font-bold">
                 <Building2 className="h-4 w-4" />
-                {isCoordenador ? "Sua Unidade de Prova" : "Alocação de Candidatos"}
+                {isCoordenador ? "Sua Unidade de Prova" : "Organização da Prova"}
               </CardTitle>
               {isAdmin && (
                 <Button

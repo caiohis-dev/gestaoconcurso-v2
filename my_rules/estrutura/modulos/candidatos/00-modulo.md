@@ -27,6 +27,8 @@ Duas consequências que precisam sobreviver a qualquer refatoração:
 1. 🔵 **Importar é TROCAR A LISTA INTEIRA do edital** desde 2026-07-30 — apaga todos os candidatos daquele edital e insere os da planilha, numa transação só. A planilha é a fonte de verdade, sempre completa, nunca de adição (premissa confirmada pelo usuário). ⚠️ Até 29/07 era **upsert** sobre a chave natural; a mudança está em [`../../../analises/roadmap-importacao-troca-total.yaml`](../../../analises/roadmap-importacao-troca-total.yaml).
 2. **Reimportar é o fluxo normal, não a exceção.** Toda mensagem de erro da importação deve terminar em "corrija e importe de novo" — é sempre seguro. ⚠️ **O motivo MUDOU:** antes era a idempotência do upsert; agora é que a troca só acontece inteira. Falha no meio deixa a lista **intacta**, não pela metade.
 
+   > 🔵 **Desde 2026-08-04 há UMA condição prévia:** se o edital tiver candidatos **alocados em salas** (módulo Alocação de Candidatos), a troca é recusada pela FK RESTRICT antes de apagar qualquer coisa — a lista fica intacta, mas reimportar vira **dois passos**: desfazer a alocação, reimportar. Decisão do usuário; a mensagem traduzida aponta a tela. Ver [`../alocacao-candidatos/00-modulo.md`](../alocacao-candidatos/00-modulo.md).
+
 ## Arquivos
 
 | Arquivo | Papel |
@@ -436,7 +438,7 @@ Cada bloco é uma transação sua: um bloco que falha não desfaz os anteriores,
 
 **Candidato ≠ colaborador.** O colaborador (fiscal, coordenador, apoio) é quem **aplica** a prova, tem conta de login, CPF como identidade e vive no módulo [Aplicação de Provas](../aplicacao-provas/colaboradores.md). O candidato **não tem conta**, não loga, não é alocado em sala e não recebe pagamento. Nenhuma das duas tabelas referencia a outra.
 
-**Nada em `candidatos` liga a `provas`.** O vínculo é com o **edital**. Se um dia for preciso saber em que sala cada candidato faz prova, isso é feature nova e provavelmente tabela nova — não é para pendurar `prova_id`/`sala_id` aqui sem desenho.
+~~**Nada em `candidatos` liga a `provas`.**~~ 🔵 **Desde 2026-08-04 liga — pela tabela nova `candidatos_alocacao`**, exatamente como este parágrafo previa ("feature nova e provavelmente tabela nova"): nada foi pendurado em `candidatos`; o vínculo candidato ↔ prova/sala é do módulo [Alocação de Candidatos](../alocacao-candidatos/00-modulo.md). O vínculo direto desta tabela continua sendo só com o **edital** — e a FK RESTRICT da alocação passou a barrar exclusão/troca de candidato alocado (ver acima).
 
 **O edital é do módulo [Editais](../editais/00-modulo.md).** Este módulo só o consome: lê a lista para escolher o destino da importação e para os cards da listagem.
 
@@ -454,7 +456,9 @@ Edital 001/2026 SMA    n_candidatos = 200    inscritos reais = 7.231    prova = 
 
 A alocação lia `provas.prova_n_candidatos` e calculava `naoAlocados = 200 − alocados`: dizia que a prova estava coberta **faltando 7.031 lugares**, sem erro nenhum na tela. Os dois números digitados à mão (`editais.n_candidatos` e `provas.prova_n_candidatos`) **saíram dos formulários e das interfaces TS**; as colunas continuam no banco porque o dump e o backfill do `seed.pos.sql` as usam.
 
-⚠️ **A decisão tem um limite que precisa ser lembrado:** ela vale enquanto **todo inscrito do edital faz a prova** — premissa afirmada pelo usuário em 02/08. Uma prova que aplicasse só um recorte do edital (dois dias, corte por cargo) não é exprimível hoje, porque **nada liga candidato a prova**. Quando esse vínculo existir, é o momento de reabrir — e não antes, com um campo digitado.
+⚠️ **A decisão tem um limite que precisa ser lembrado:** ela vale enquanto **todo inscrito do edital faz a prova** — premissa afirmada pelo usuário em 02/08. Uma prova que aplicasse só um recorte do edital (dois dias, corte por cargo) não é exprimível por campo digitado; o caminho seria o vínculo candidato↔prova.
+
+> 🔵 **O vínculo EXISTE desde 2026-08-04** — `candidatos_alocacao`, do módulo [Alocação de Candidatos](../alocacao-candidatos/00-modulo.md). Mas a fonte única **não foi reaberta**: a distribuição assume a mesma premissa (todo inscrito do edital entra) e o nº de inscritos continua sendo `count(candidatos)`. Se um dia uma prova aplicar só um recorte, o instrumento para exprimir isso agora existe — reabrir é decisão separada, ainda não tomada.
 
 ⚠️ **Quem consome a contagem precisa ser admin.** A RLS de `candidatos` é `has_role(admin)` e a RPC é **SECURITY INVOKER**: para um coordenador ela volta **vazia, sem erro**. Por isso o painel de alocação em `GerenciarProva` é `isAdmin &&` — soltá-lo diria "nenhum inscrito importado" a quem tem lista importada.
 

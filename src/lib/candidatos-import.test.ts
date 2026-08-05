@@ -972,6 +972,17 @@ describe("mensagemErroImportacao", () => {
     ).toMatch(/MANTIDA/);
   });
 
+  it("⭐ o RESTRICT da alocação manda desfazer a alocação — e vale para os TRÊS fluxos", () => {
+    // Troca total, excluir um candidato e "limpar edital" chegam TODOS aqui (os três
+    // usam esta função), e o 23503 nomeia a FK da tabela de alocação. A mensagem tem de
+    // dizer as duas metades: onde desfazer, e que a lista foi mantida.
+    const msg = mensagemErroImportacao(
+      'update or delete on table "candidatos" violates foreign key constraint "candidatos_alocacao_candidato_id_fkey" on table "candidatos_alocacao"',
+    );
+    expect(msg).toMatch(/Alocação de Candidatos/);
+    expect(msg).toMatch(/mantida/i);
+  });
+
   it("⭐ passa adiante INTEIRA a mensagem do trigger de reapontamento (etapa 5b)", () => {
     // A mensagem do banco já nomeia o cargo e o destino atual — é exatamente o que o
     // usuário precisa para decidir. Trocá-la por um texto genérico tiraria a informação

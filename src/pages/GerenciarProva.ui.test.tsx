@@ -291,7 +291,13 @@ describe("GerenciarProva — painel de alocação (interação)", () => {
 
       // Espera positiva: a página CARREGOU (o cabeçalho da prova aparece) e, mesmo assim,
       // o painel não está lá — sem isso o teste passaria por a página nem ter renderizado.
-      expect(await screen.findByText(/Alocação de Candidatos|Sua Unidade de Prova/)).toBeInTheDocument();
+      //
+      // ⚠️ A alternativa `Alocação de Candidatos` saiu daqui em 2026-08-04: os dois testes
+      // que usavam este casamento rodam como COORDENADOR, então o ramo do admin nunca
+      // podia casar. E o título do admin mudou para "Organização da Prova" no mesmo dia,
+      // para não colidir com o nome do módulo novo — a alternativa ficaria duplamente
+      // morta, sugerindo uma cobertura de dois papéis que nunca existiu.
+      expect(await screen.findByText(/Sua Unidade de Prova/)).toBeInTheDocument();
       expect(screen.queryByText("Alocados:")).not.toBeInTheDocument();
       expect(screen.queryByText("Nenhum inscrito importado neste edital.")).not.toBeInTheDocument();
       expect(screen.queryByText("Contando os inscritos do edital…")).not.toBeInTheDocument();
@@ -375,7 +381,7 @@ describe("GerenciarProva — painel de alocação (interação)", () => {
       abrir();
 
       expect(
-        await screen.findByText(/Alocação de Candidatos|Sua Unidade de Prova/),
+        await screen.findByText(/Sua Unidade de Prova/),
       ).toBeInTheDocument();
       await nenhumModalApareceu();
     });

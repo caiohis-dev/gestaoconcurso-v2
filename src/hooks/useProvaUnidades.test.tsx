@@ -202,6 +202,17 @@ describe("mensagemErroDesvinculoUnidade", () => {
     );
   });
 
+  it("aponta a tela de Alocação de Candidatos quando quem barra é a alocação (2026-08-04)", () => {
+    // Segundo dependente indireto: desvincular apaga as salas do snapshot, e a FK
+    // RESTRICT de `candidatos_alocacao.sala_id` barra o DELETE. Sem este ramo, o erro
+    // cairia no genérico e mandaria procurar "registros vinculados" sem dizer onde.
+    const msg =
+      'update or delete on table "salas_prova_distribuidas" violates foreign key constraint "candidatos_alocacao_sala_prova_fkey" on table "candidatos_alocacao"';
+    expect(mensagemErroDesvinculoUnidade({ code: "23503", message: msg })).toContain(
+      "Alocação de Candidatos",
+    );
+  });
+
   it("cai numa frase genérica para outra FK", () => {
     const outra =
       'update or delete on table "prova_unidades" violates foreign key constraint "tabela_nova_fkey" on table "tabela_nova"';

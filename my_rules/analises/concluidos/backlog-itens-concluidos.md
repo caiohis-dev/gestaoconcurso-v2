@@ -786,3 +786,42 @@ Isso dispensou o que o item apontava como pré-requisito. O backlog registrava q
 `npm test` **1090 passando** (baseline 1089 — 11 casos caíram na mudança e foram reescritos; os que afirmavam a herança de `n_candidatos` e o payload com o campo **eram a pergunta, não obstáculo**). `tsc` limpo, `build` OK, **lint 118** contra baseline 120 (desceu: saiu código). O único erro não tratado da suíte (`CadastroPublico`, `useAuth must be used within an AuthProvider`) foi medido com `git stash` e **é pré-existente**.
 
 ⚠️ **Não há bateria SQL aqui, e não faltou uma:** a mudança é toda de leitura no cliente. Nenhuma regra nova foi para o banco — o que mudou foi **de onde** a tela lê, e a RPC que ela passou a usar já existia e já era usada por `/candidatos`.
+
+---
+
+## ✅ 2026-08-04 — o candidato ganhou sala: módulo Alocação de Candidatos
+
+**O item era o 1 de Candidatos**: *"não há vínculo entre candidato e prova, unidade ou sala… feature nova com desenho próprio"*. Virou módulo próprio (`alocacao-candidatos`, o quarto do hub), com a tabela nova `candidatos_alocacao` — nada foi pendurado em `candidatos`, como o item mandava. Contrato em [`../../estrutura/modulos/alocacao-candidatos/00-modulo.md`](../../estrutura/modulos/alocacao-candidatos/00-modulo.md).
+
+### As cinco decisões do usuário
+
+1. Distribuição automática **por cargo** (alfabética do nome canônico; alfabética por nome dentro do cargo, inscrição desempata).
+2. **Cargo novo abre sala nova** — a sala de fronteira fica ociosa; salas não se misturam. Escolhido sobre "sala mista" vendo os dois previews.
+3. **Especiais fora do automático**: `sala_especial` preenchida ou PCD entram à mão, listados com o texto do pedido.
+4. **Reimportar com alocação de pé é RECUSADO** (FK RESTRICT) — escolhido sobre CASCADE+aviso. Reimportar vira dois passos conscientes.
+5. Ajuste manual na v1: **incluir e retirar** de sala (`origem='manual'`); redistribuir preserva o manual.
+
+### Medido antes de desenhar
+
+- Pós-reset o banco local tem **0 candidatos** (os 7.231 viviam acima do seed — playground). A distribuição foi provada com **7.150 sintéticos**: 7.000 alocados em **~0,7–1,1 s**, blocos contíguos, 0 salas mistas, 0 violações de continuidade alfabética.
+- No dado do dump, **toda distribuição real é recusada pelas guardas** (provas finalizadas; 480 vagas). As mensagens das guardas são a tela mais vista do módulo — por isso nomeiam números e dizem o que fazer.
+
+### O que foi para o banco (migration `20260804225156`)
+
+Tabela + **FK composta** `(sala_id, prova_id)` (metade da coerência de graça — exigiu `UNIQUE (id, prova_id)` nas salas) + trigger único `check_candidato_alocacao` (PF001 congelamento espelhado com mensagem própria → AL005 coerência de edital → AL006 capacidade com `FOR UPDATE`) + `check_sala_reducao_capacidade` (AL007; o nome ordena DEPOIS do de finalizada, para PF001 continuar respondendo primeiro) + RPCs `distribuir_candidatos_da_prova` (SECURITY INVOKER com guarda explícita de admin; laço por cargo; AL001..AL004), `contar_alocados_por_sala`, `especiais_da_prova` + a definição única `candidato_pede_atendimento_especial`.
+
+### Efeitos nos vizinhos, feitos no mesmo passe
+
+- `mensagemErroImportacao` ganhou o ramo `candidatos_alocacao` — **um ramo cobre os três fluxos** (troca total, excluir um, limpar edital usam a mesma função).
+- `mensagemErroDesvinculoUnidade` ganhou o segundo dependente (o RESTRICT indireto de invariantes.md).
+- Docs atualizados: fronteira de `candidatos/00-modulo.md` ("nada liga candidato a provas" caiu), o limite da fonte única de inscritos (o vínculo agora existe; **reabrir o recorte por prova segue decisão não tomada**), "três módulos" → quatro em 3 lugares, 115→116 migrations.
+
+### Verificação
+
+`db reset` limpo · `docs/bateria-alocacao-candidatos.sql` (10 casos, 13 recusas todas com o SQLSTATE e o NOME esperados, controles positivos) · as baterias vizinhas (troca total, renumeração) **rodadas** e verdes · `npm test` 1210 · `tsc` limpo · `build` OK · `docs:conferir` sem divergência · lint 118 (baseline).
+
+### O que a execução ensinou
+
+1. **A bateria provou a coisa errada duas vezes antes de provar a certa** — o caso da FK composta morreu primeiro em PF001 (unidade da OUTRA prova seguia finalizada no setup) e depois em 23505 (o candidato escolhido já estava alocado). Afirmar **o nome de quem barrou** foi o que denunciou; "houve recusa" teria passado calado.
+2. **O smoke com dado sintético pegou o trigger funcionando**: a inclusão manual do caso 4 caiu em AL006 porque o script escolheu a sala lotada — o "erro" era a barreira correta.
+3. `SET LOCAL ROLE authenticated` + JWT forjado por `set_config` é o padrão para exercitar RLS e `has_role` dentro de bateria (herdado da bateria de renumeração, agora em duas).

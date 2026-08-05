@@ -230,7 +230,7 @@ my_rules/
 
 Fora de `my_rules/`: **`docs/`** guarda as baterias de teste manual (`bateria-*.sql`) e roteiros de teste de frontend.
 
-**Módulos** são os de `src/lib/modulos.ts` — a fonte de verdade. Hoje: `aplicacao-provas`, `editais`, `candidatos`. Módulo novo lá = pasta nova em `estrutura/modulos/`.
+**Módulos** são os de `src/lib/modulos.ts` — a fonte de verdade. Hoje: `aplicacao-provas`, `editais`, `candidatos`, `alocacao-candidatos`. Módulo novo lá = pasta nova em `estrutura/modulos/`.
 
 ⚠️ **O registro de módulos é UX e NÃO alimenta os guards.** Ler papéis de lá para autorizar afrouxaria 7 rotas — proposta já rejeitada, está em `concluidos/roadmap-modulos.yaml`.
 

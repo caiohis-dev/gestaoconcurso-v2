@@ -1019,6 +1019,15 @@ export function mensagemErroImportacao(mensagem: string): string {
     return 'O envio chegou incompleto ao servidor, então a lista atual do edital foi MANTIDA — ninguém foi removido. Importe de novo.';
   }
 
+  // ── O RESTRICT da alocação em salas (2026-08-04) ───────────────────────────────────
+  // Um ramo só cobre os TRÊS fluxos que apagam candidatos — a troca total, excluir um e
+  // "limpar edital" —, porque os três chegam aqui. Casa pelo nome da tabela (o 23503
+  // nomeia a FK `candidatos_alocacao_candidato_id_fkey`); a decisão do usuário é que
+  // reimportar com alocação de pé vira ação em DOIS passos conscientes.
+  if (m.includes('candidatos_alocacao')) {
+    return 'Há inscrito(s) deste edital alocado(s) em salas de prova. Desfaça a alocação na tela Alocação de Candidatos (reabrindo a prova, se estiver finalizada) antes de excluir ou reimportar. A lista foi mantida.';
+  }
+
   // ⚠️ Os ramos de chk_candidato_cpf_formato, _cep_, _email_ e _raca_valida foram
   // REMOVIDOS em 2026-07-30: as quatro CHECKs saíram do banco na migration
   // 20260730100000 (dado inválido passou a entrar cru), então eram guardas que não

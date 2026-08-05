@@ -8,6 +8,7 @@ import {
   Users,
   Upload,
   Briefcase,
+  DoorOpen,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -23,7 +24,7 @@ import {
  */
 
 // Cresce com o sistema. Hoje só existe um módulo.
-export type ModuloId = 'aplicacao-provas' | 'editais' | 'candidatos';
+export type ModuloId = 'aplicacao-provas' | 'editais' | 'candidatos' | 'alocacao-candidatos';
 
 // Papéis de GESTÃO que podem receber um módulo. A dimensão 'colaborador' fica de fora:
 // o colaborador puro nunca vê o hub (segue direto para /perfil-colaborador), e config
@@ -142,7 +143,25 @@ const candidatos: Modulo = {
   ],
 };
 
-export const MODULOS: Modulo[] = [aplicacaoProvas, editais, candidatos];
+// A alocação distribui os INSCRITOS (candidatos) nas salas de uma prova — cruza os dois
+// módulos, mas é módulo próprio porque tem ciclo de vida seu (distribuir, ajustar à mão,
+// desfazer). Só admin, pela mesma razão de Candidatos: a alocação só faz sentido junto
+// do nome do inscrito, e a RLS de `candidatos` e de `candidatos_alocacao` fecha em admin.
+const alocacaoCandidatos: Modulo = {
+  id: 'alocacao-candidatos',
+  nome: 'Alocação de Candidatos',
+  descricao: 'A distribuição dos inscritos de um edital nas salas de cada prova.',
+  icone: DoorOpen,
+  papeis: ['superadmin', 'admin'],
+  rotaEntrada: () => '/alocacao-candidatos',
+  // Um prefixo só: `/alocacao-candidatos/:provaId` entra pela regra prefixo + '/'.
+  prefixosRota: ['/alocacao-candidatos'],
+  navLinks: [
+    { href: '/alocacao-candidatos', label: 'Alocação', icon: DoorOpen, showFor: ['admin', 'superadmin'] },
+  ],
+};
+
+export const MODULOS: Modulo[] = [aplicacaoProvas, editais, candidatos, alocacaoCandidatos];
 
 // Papéis de gestão que o usuário efetivamente tem. superadmin ⊇ admin, então um
 // módulo restrito a ['admin'] continua visível para o superadmin.

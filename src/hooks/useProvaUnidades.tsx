@@ -45,6 +45,11 @@ export function mensagemErroDesvinculoUnidade(error: { message: string; code?: s
   if (/coordenadores_prova/.test(error.message)) {
     return "Há um coordenador com acesso vinculado a esta unidade. Remova o acesso em 'Acesso dos Coordenadores' antes de desvincular a unidade.";
   }
+  // Mesmo obstáculo indireto, segundo dependente (2026-08-04): desvincular apaga as
+  // salas do snapshot, e a FK da alocação de candidatos (RESTRICT) barra o DELETE.
+  if (/candidatos_alocacao/.test(error.message)) {
+    return 'Há candidatos alocados nas salas desta unidade. Desfaça a alocação na tela Alocação de Candidatos antes de desvincular a unidade.';
+  }
   return 'Esta unidade não pode ser desvinculada porque há registros vinculados a ela.';
 }
 
