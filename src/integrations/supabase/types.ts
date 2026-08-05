@@ -1229,6 +1229,15 @@ export type Database = {
           success: boolean
         }[]
       }
+      aplicar_plano_de_alocacao: {
+        Args: { p_plano: Json; p_prova_id: string }
+        Returns: {
+          alocados: number
+          pendentes_especiais: number
+          preservados: number
+          sem_sala: number
+        }[]
+      }
       assign_coordenador_role: {
         Args: {
           p_colaborador_prova_id: string
@@ -1240,6 +1249,17 @@ export type Database = {
       candidato_pede_atendimento_especial: {
         Args: { p_pcd: boolean; p_sala_especial: string }
         Returns: boolean
+      }
+      cargos_pendentes_da_prova: {
+        Args: { p_prova_id: string }
+        Returns: {
+          a_distribuir: number
+          cargo_id: string
+          cargo_nome: string
+          especiais: number
+          ja_alocados: number
+          total: number
+        }[]
       }
       check_prova_lock: {
         Args: { p_prova_id: string }
@@ -1258,6 +1278,14 @@ export type Database = {
           total: number
         }[]
       }
+      contar_alocados_por_unidade: {
+        Args: { p_prova_id: string }
+        Returns: {
+          manuais: number
+          total: number
+          unidade_id: string
+        }[]
+      }
       contar_candidatos_por_edital: {
         Args: never
         Returns: {
@@ -1268,14 +1296,6 @@ export type Database = {
       desvincular_unidade_da_prova: {
         Args: { p_prova_unidade_id: string }
         Returns: undefined
-      }
-      distribuir_candidatos_da_prova: {
-        Args: { p_prova_id: string }
-        Returns: {
-          alocados: number
-          pendentes_especiais: number
-          preservados: number
-        }[]
       }
       encerrar_ocorrencias_unidade: {
         Args: { p_prova_unidade_id: string; p_user_id: string }

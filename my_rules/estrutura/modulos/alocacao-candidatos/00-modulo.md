@@ -31,7 +31,9 @@ Distribuir os **inscritos** (`candidatos`) de um edital nas **salas** de uma pro
 
 **As cinco decisões do usuário (2026-08-04) que governam tudo:**
 
-1. **A distribuição automática é POR CARGO**: os cargos em ordem alfabética do nome canônico (`cargos.nome`, sem cargo por último), e alfabética por nome dentro do cargo (nº de inscrição desempata homônimos). As salas são percorridas na ordem física (unidade → andar → número).
+1. **A distribuição é POR CARGO**, alfabética por nome dentro do cargo (nº de inscrição desempata homônimos), percorrendo as salas na ordem física.
+
+   ⚠️ **Mudou em 2026-08-05 (migration `20260805185155`).** Até 04/08 era **automática e global**: um botão varria TODAS as salas da prova de uma vez, na ordem `unidade → andar → número`, e o admin não escolhia nada. Agora **quem escolhe a unidade de cada cargo é o admin, arrastando** — e a RPC percorre só as salas *daquela* unidade. A regra por cargo não mudou; mudou o **pool de salas**. O botão "Distribuir automaticamente" e a RPC `distribuir_candidatos_da_prova` **não existem mais**.
 2. **Cargo novo abre sala nova.** A sala de fronteira fica com vagas **ociosas** — salas não se dividem entre cargos (decidido pensando na logística de cadernos de prova diferentes). Consequência: a capacidade total precisa **sobrar**; a guarda `AL004` nomeia o cargo em que faltou espaço.
 3. **Atendimento especial fica FORA do automático.** Quem tem `sala_especial` preenchida OU `portador_deficiencia = true` não entra na distribuição; a tela lista os pendentes **com o texto do pedido** e eles entram **à mão**. A definição de "especial" é UMA — a função SQL `candidato_pede_atendimento_especial` — usada pela RPC de distribuição E pela de pendentes.
 4. **Reimportar candidatos com alocação de pé é RECUSADO** (FK `RESTRICT`). Reimportar deixou de ser incondicionalmente seguro: com alocação existe, vira ação em dois passos conscientes (desfazer a alocação → reimportar). Ver "O que este módulo mudou nos vizinhos".
@@ -41,7 +43,12 @@ Distribuir os **inscritos** (`candidatos`) de um edital nas **salas** de uma pro
 
 | Arquivo | Papel |
 |---|---|
-| `supabase/migrations/20260804225156_alocacao_de_candidatos_em_salas.sql` | Tudo do banco: a tabela, a FK composta, os triggers, as 3 RPCs, a RLS |
+| `supabase/migrations/20260804225156_alocacao_de_candidatos_em_salas.sql` | A tabela, a FK composta, os triggers, a RLS. ⚠️ A RPC de distribuição que ela criou foi **dropada** em 05/08 |
+| `supabase/migrations/20260805185155_alocacao_por_plano_de_arrasto.sql` | O PLANO: `aplicar_plano_de_alocacao`, `cargos_pendentes_da_prova`, `contar_alocados_por_unidade`, e o `DROP` da distribuição global |
+| `src/lib/alocacao-dnd.ts` + `.test.ts` (16 testes) | O rascunho: tipos, transições puras e `montarPlano`. Sem React, sem dnd-kit |
+| `src/components/AlocacaoDragDropUI.tsx` | O quadro: `DndContext`, `pointerWithin`, o overlay e o "Aplicar plano" |
+| `src/components/CargosPendentesDropzone.tsx` | 🔴 A faixa de pendentes é componente PRÓPRIO porque `useDroppable` precisa estar **dentro** do `DndContext` — ver "Pontos frágeis" |
+| `src/components/{CargoDraggableCard,AlocacaoDraggableBadge,UnidadeDroppableCard}.tsx` | Visual puro + wrapper arrastável, separados de propósito (o clone do `DragOverlay` não pode registrar o mesmo id) |
 | `docs/bateria-alocacao-candidatos.sql` | **A verificação real** — 10 casos com controle positivo, afirmando SQLSTATE e o NOME de quem barrou. A suíte mocka o Supabase e não alcança nada disto |
 | `src/lib/alocacao-candidatos.ts` + `.test.ts` | A parte pura: `mensagemErroAlocacao` (traduz o 23505 da chave e a RLS; o resto passa intacto porque o banco já explica) |
 | `src/hooks/useAlocacaoCandidatos.tsx` | React Query: ocupação por sala, especiais, lista de uma sala, busca "onde está", e as mutations distribuir/incluir/retirar |
@@ -87,9 +94,19 @@ candidatos_alocacao
 
 | RPC | O quê | Recusas |
 |---|---|---|
-| `distribuir_candidatos_da_prova(p_prova_id)` | A distribuição, INTEIRA no banco (o payload é um uuid — a lição dos 5,40 MB). Laço por cargo com faixas cumulativas de vagas por window function; apaga só `origem='automatica'` antes | sem edital `AL001` · sem elegíveis `AL002` · sem sala com vaga `AL003` · espaço insuficiente **nomeando o cargo** `AL004` |
+| `aplicar_plano_de_alocacao(p_prova_id, p_plano jsonb)` | Aplica o rascunho montado por arrasto: lista **ordenada** de `{cargo_id, unidade_id, quantidade}`. Laço pelas entradas, faixas cumulativas por window function, **ponteiro POR UNIDADE**; apaga só `origem='automatica'` antes | sem edital `AL001` · sem elegíveis `AL002` · sem sala com vaga `AL003` · não coube **nomeando cargo E unidade** `AL004` · plano inválido/vazio `AL008` · unidade fora da prova `AL009` · plano maior que o cargo `AL010` |
+| `cargos_pendentes_da_prova(p_prova_id)` | A faixa de arrasto: por cargo, `a_distribuir` · `especiais` · `ja_alocados` · `total` | — |
+| `contar_alocados_por_unidade(p_prova_id)` | Ocupação por unidade, separando `manuais` (que o plano preserva) do `total` | — |
 | `contar_alocados_por_sala(p_prova_id)` | Ocupação por sala (PostgREST não agrega) | — |
 | `especiais_da_prova(p_prova_id)` | TODOS os especiais, com a sala se já alocados (`sala_id` nulo = pendente). Anti-join não é exprimível em PostgREST | — |
+
+🔴 **A ORDEM do plano é significativa.** Quando um cargo se divide entre unidades, a 1ª entrada leva os primeiros N alfabéticos e a 2ª os N seguintes. Dois planos com os mesmos blocos em ordens diferentes produzem salas diferentes — por isso o rascunho guarda `ordem` em cada bloco (`src/lib/alocacao-dnd.ts`) e `montarPlano` achata **antes** de ordenar.
+
+🔴 **O ponteiro de "cargo novo abre sala nova" é POR UNIDADE, não global.** Um ponteiro global (o da RPC antiga) erra assim que o plano volta a uma unidade já usada. A bateria prova isso no CASO 3.
+
+🔴 **`a_distribuir` NÃO desconta quem já está alocado pela distribuição** — só especiais e manuais. Aplicar um plano apaga `origem='automatica'` e reinsere, então quem está lá volta a estar disponível. Descontá-los abriria a tela com a faixa **vazia** numa prova já distribuída. Controle na bateria: CASO 0b.
+
+⚠️ **Dividir um cargo entre unidades é o caso PRINCIPAL, não a borda.** Medido em 05/08: `DOCENTE II` tem 3.663 inscritos e a maior unidade tem 3.200 vagas — o maior cargo não cabe em nenhuma unidade sozinho. É por isso que o plano carrega **quantidade**, e não só o par cargo→unidade.
 
 **As três são SECURITY INVOKER** — a RLS de admin vale dentro delas. A de distribuição tem **guarda explícita de admin no início**: sem ela, um não-admin veria a RLS devolver zero candidatos e a recusa mentiria o motivo ("não há candidatos a distribuir").
 
@@ -114,9 +131,20 @@ SELECT / INSERT / DELETE: `has_role(auth.uid(), 'admin')` — **sem policy de UP
 - **As salas são o snapshot** (`salas_prova_distribuidas`), do módulo Aplicação de Provas — este módulo as **lê** e conta ocupação, mas quem as cria/edita/renumera é `/gerenciar-salas-distribuidas`.
 - **Os candidatos são do módulo Candidatos** — este módulo os lê (via RLS de admin) e os referencia; nunca os escreve.
 
+## O arrasto (dnd-kit 6.3.1) — quatro armadilhas que já custaram tempo
+
+Levantadas em 05/08 ao acoplar o protótipo. Todas falham **em silêncio**, sem erro no console:
+
+1. 🔴 **`useDroppable` fora do `<DndContext>` registra no vazio.** O hook lê `InternalContext`; fora do provider ele pega o `defaultInternalContext`, cujo `dispatch` é `noop`. Chamá-lo no mesmo componente que *renderiza* o `DndContext` não funciona — contexto React só alcança **descendentes**. Sintoma: aquele alvo nunca acende e `over` nunca aponta para ele. **Nunca mova o `useDroppable` de `CargosPendentesDropzone` para o pai.**
+2. 🔴 **O clone do `DragOverlay` não pode chamar `useDraggable`.** Dois draggables com o mesmo `id` — e o `Map` de nós é por id, então o clone sobrescreve a origem. Daí a separação visual (`CargoCard`) × arrastável (`CargoDraggableCard`).
+3. ⚠️ **`closestCenter` não serve com droppable aninhado.** O bloco mora dentro do card da unidade, que disputa cada movimento por distância de centro. Use `pointerWithin` com queda para `closestCenter`. **`collisionPriority` NÃO existe no `@dnd-kit/core` 6.3.1** — é API do dnd-kit novo, e é a solução mais citada na web.
+4. ⚠️ **Com `DragOverlay`, não aplique `transform` no nó de origem** — quem se move é o clone; aplicar nos dois soma deslocamento.
+
 ## Pontos frágeis conhecidos
 
-- **A ordem física das salas** (unidade → andar → número) está duplicada entre a RPC de distribuição e a exibição do quadro. Divergirem não corrompe nada, mas faz a tela mostrar os blocos "fora de ordem" em relação ao que a distribuição fez.
+- **O rascunho vive em MEMÓRIA e some no refresh** (decisão D4). Persistir exigiria tabela nova; com 9 cargos o replanejamento custa poucos arrastos. O quadro também **remonta** (via `key`) quando os números do banco mudam — um rascunho sobre números velhos descreveria um mundo que já mudou.
+- **Mover um bloco entre unidades é no-op deliberado.** O código está pronto para receber (`handleDragEnd` já é exaustivo), mas o par `alocado → unidade` não faz nada.
+- **A ordem física das salas** (andar → número) está duplicada entre a RPC e a exibição do quadro. Divergirem não corrompe nada, mas faz a tela mostrar os blocos "fora de ordem" em relação ao que o plano fez.
 - **`useCandidatosDaSala` traz a sala inteira sem paginação** — decisão: sala física tem dezenas de lugares, o teto de 1.000 do PostgREST está longe. Se um dia existir "sala" de milhares, isso trunca calado.
 - **A busca "onde está" filtra por embed** (`candidatos!inner` + `.or(..., { referencedTable })`) e limita a 20 resultados — é localizador, não listagem.
 - **Redistribuir com pendência de capacidade não é incremental**: a RPC recusa o cargo inteiro que não coube (`AL004`) e desfaz tudo. É "ou tudo, ou nada" de propósito — distribuição parcial pareceria concluída.

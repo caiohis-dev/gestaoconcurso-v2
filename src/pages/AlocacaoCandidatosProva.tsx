@@ -6,14 +6,19 @@ import { useSalasDistribuidas, SalaDistribuida } from "@/hooks/useSalasDistribui
 import { useCandidatos, useContagemCandidatosPorEdital } from "@/hooks/useCandidatos";
 import {
   useOcupacaoPorSala,
+  useOcupacaoPorUnidade,
+  useCargosDaProva,
   useEspeciaisDaProva,
   useCandidatosDaSala,
   useOndeEsta,
-  useDistribuirCandidatos,
+  useAplicarPlano,
   useIncluirNaSala,
   useRetirarDaSala,
   EspecialDaProva,
 } from "@/hooks/useAlocacaoCandidatos";
+import { useUnidadeCapacidade } from "@/hooks/useUnidadeCapacidade";
+import { AlocacaoDragDropUI } from "@/components/AlocacaoDragDropUI";
+import type { CargoPendente, UnidadeAlocavel } from "@/lib/alocacao-dnd";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -73,8 +78,13 @@ export default function AlocacaoCandidatosProva() {
   const { salas, isLoading: salasLoading } = useSalasDistribuidas(idDaProva);
   const { contagem } = useContagemCandidatosPorEdital();
   const { ocupacao, error: ocupacaoError } = useOcupacaoPorSala(idDaProva);
+  const { porUnidade } = useOcupacaoPorUnidade(idDaProva);
+  const { cargos: cargosDaProva } = useCargosDaProva(idDaProva);
   const { especiais } = useEspeciaisDaProva(idDaProva);
-  const { distribuir, isDistribuindo } = useDistribuirCandidatos();
+  const { aplicar, isAplicando } = useAplicarPlano();
+
+  const unidadeIds = useMemo(() => provaUnidades.map((pu) => pu.unidade_id), [provaUnidades]);
+  const { data: capacidade, error: capacidadeError } = useUnidadeCapacidade(idDaProva, unidadeIds);
 
   const [busca, setBusca] = useState("");
   const { resultados } = useOndeEsta(idDaProva, busca);
@@ -109,6 +119,41 @@ export default function AlocacaoCandidatosProva() {
   const alocados = Object.values(ocupacao).reduce((s, n) => s + n, 0);
   const pendentes = especiais.filter((e) => e.salaId === null);
 
+  // O rascunho parte das alocações MANUAIS: aplicar o plano apaga as automáticas, então
+  // contá-las como ocupação faria a tela dizer "sem vaga" onde o plano vai esvaziar.
+  const cargosParaArrastar: CargoPendente[] = useMemo(
+    () =>
+      cargosDaProva
+        .filter((c) => c.aDistribuir > 0)
+        // `cargoId` nulo é "(sem cargo)" — a RPC aceita null, mas a chave do arrasto
+        // precisa de string. O sentinela volta a virar null no `montarPlano` do payload.
+        .map((c) => ({ id: c.cargoId ?? "", nome: c.nome, naoAlocados: c.aDistribuir })),
+    [cargosDaProva],
+  );
+
+  const unidadesParaArrastar: UnidadeAlocavel[] = useMemo(
+    () =>
+      provaUnidades.map((pu) => ({
+        id: pu.unidade_id,
+        nome: `${pu.unidades_prova.unid_sigla} — ${pu.unidades_prova.unid_nome}`,
+        vagasTotais: capacidade?.[pu.unidade_id] ?? 0,
+        alocados: porUnidade[pu.unidade_id]?.manuais ?? 0,
+        alocacoesPorCargo: [],
+      })),
+    [provaUnidades, capacidade, porUnidade],
+  );
+
+  // A chave remonta o quadro quando o banco muda: um rascunho montado sobre números
+  // antigos descreveria um mundo que já mudou.
+  const chaveDoQuadro = useMemo(
+    () =>
+      [
+        cargosParaArrastar.map((c) => `${c.id}:${c.naoAlocados}`).join("|"),
+        unidadesParaArrastar.map((u) => `${u.id}:${u.vagasTotais}:${u.alocados}`).join("|"),
+      ].join("#"),
+    [cargosParaArrastar, unidadesParaArrastar],
+  );
+
   if (provasLoading) {
     return (
       <Layout>
@@ -141,15 +186,22 @@ export default function AlocacaoCandidatosProva() {
               ? `${inscritos.toLocaleString("pt-BR")} inscrito(s) no edital · ${alocados.toLocaleString("pt-BR")} alocado(s) · ${pendentes.length} pedido(s) de atendimento especial pendente(s)`
               : "Este edital ainda não tem lista de inscritos importada."
           }
-          congelada={congelada}
-          isDistribuindo={isDistribuindo}
-          onDistribuir={() => distribuir(idDaProva)}
         />
 
         <AvisosAlocacao
           congelada={congelada}
           algumaUnidadeFinalizada={algumaUnidadeFinalizada}
           ocupacaoFalhou={ocupacaoError != null}
+          capacidadeFalhou={capacidadeError != null}
+        />
+
+        <AlocacaoDragDropUI
+          key={chaveDoQuadro}
+          cargos={cargosParaArrastar}
+          unidades={unidadesParaArrastar}
+          congelada={congelada}
+          isAplicando={isAplicando}
+          onAplicar={(plano) => aplicar({ provaId: idDaProva, plano })}
         />
 
         <SecaoOndeEsta
@@ -202,70 +254,30 @@ export default function AlocacaoCandidatosProva() {
   );
 }
 
-/** Título + resumo + o botão de distribuir com a confirmação que diz o que será refeito. */
-function CabecalhoAlocacao({
-  titulo,
-  resumo,
-  congelada,
-  isDistribuindo,
-  onDistribuir,
-}: {
-  titulo: string;
-  resumo: string;
-  congelada: boolean;
-  isDistribuindo: boolean;
-  onDistribuir: () => void;
-}) {
+/** Título + resumo. O que era o botão "Distribuir" virou o quadro de arrasto. */
+function CabecalhoAlocacao({ titulo, resumo }: { titulo: string; resumo: string }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-4">
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <DoorOpen className="h-6 w-6" />
-          Alocação — {titulo}
-        </h1>
-        <p className="text-muted-foreground">{resumo}</p>
-      </div>
-
-      <AlertDialog>
-        <AlertDialogTrigger asChild>
-          <Button disabled={congelada || isDistribuindo}>
-            {isDistribuindo ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Shuffle className="h-4 w-4 mr-2" />
-            )}
-            Distribuir automaticamente
-          </Button>
-        </AlertDialogTrigger>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Distribuir os candidatos nas salas?</AlertDialogTitle>
-            <AlertDialogDescription>
-              A distribuição agrupa por cargo (cada cargo começa em sala nova, em ordem
-              alfabética dentro do cargo) e REFAZ o que a distribuição automática anterior
-              criou. As alocações feitas à mão são preservadas. Quem pediu atendimento
-              especial ou é PCD fica de fora e continua entrando manualmente.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={onDistribuir}>Distribuir</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+    <div>
+      <h1 className="text-2xl font-bold flex items-center gap-2">
+        <DoorOpen className="h-6 w-6" />
+        Alocação — {titulo}
+      </h1>
+      <p className="text-muted-foreground">{resumo}</p>
     </div>
   );
 }
 
-/** Os três avisos da tela. A falha da ocupação NÃO pode virar zeros com cara de verdade. */
+/** Os avisos da tela. Consulta que FALHA não pode virar zeros com cara de verdade. */
 function AvisosAlocacao({
   congelada,
   algumaUnidadeFinalizada,
   ocupacaoFalhou,
+  capacidadeFalhou,
 }: {
   congelada: boolean;
   algumaUnidadeFinalizada: boolean;
   ocupacaoFalhou: boolean;
+  capacidadeFalhou: boolean;
 }) {
   return (
     <>
@@ -292,6 +304,14 @@ function AvisosAlocacao({
           <AlertDescription>
             Não foi possível carregar a ocupação das salas — os números abaixo podem estar
             zerados sem ser verdade. Recarregue a página.
+          </AlertDescription>
+        </Alert>
+      )}
+      {capacidadeFalhou && (
+        <Alert variant="destructive">
+          <AlertDescription>
+            Não foi possível carregar a capacidade das unidades — o quadro de planejamento
+            mostraria zero vaga onde há salas. Recarregue a página antes de montar o plano.
           </AlertDescription>
         </Alert>
       )}

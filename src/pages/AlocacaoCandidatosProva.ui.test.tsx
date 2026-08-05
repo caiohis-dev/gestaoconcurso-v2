@@ -137,6 +137,23 @@ function montarCenario({ finalizada = false } = {}) {
     error: null,
   });
   setRpcResult("especiais_da_prova", { data: [ESPECIAL_PENDENTE], error: null });
+  setRpcResult("contar_alocados_por_unidade", {
+    data: [{ unidade_id: "unid-1", total: 42, manuais: 0 }],
+    error: null,
+  });
+  setRpcResult("cargos_pendentes_da_prova", {
+    data: [
+      {
+        cargo_id: "cargo-1",
+        cargo_nome: "DOCENTE II",
+        a_distribuir: 60,
+        especiais: 1,
+        ja_alocados: 42,
+        total: 61,
+      },
+    ],
+    error: null,
+  });
 }
 
 function renderPagina() {
@@ -191,45 +208,51 @@ describe("atendimento especial", () => {
   });
 });
 
-describe("distribuir", () => {
-  it("a confirmação diz o que será REFEITO e o que é preservado, e só então chama a RPC", async () => {
+describe("planejar por arrasto e aplicar", () => {
+  it("🔴 ARRASTAR NÃO GRAVA: sem rascunho, o Aplicar fica desabilitado e a RPC não é chamada", async () => {
     montarCenario();
-    setRpcResult("distribuir_candidatos_da_prova", {
-      data: [{ alocados: 42, preservados: 1, pendentes_especiais: 1 }],
-      error: null,
-    });
-    const user = userEvent.setup();
     renderPagina();
 
-    await user.click(await screen.findByRole("button", { name: /distribuir automaticamente/i }));
+    // O quadro carrega com a faixa de arrasto cheia — e `a_distribuir` NÃO desconta os
+    // 42 já alocados pela distribuição, porque aplicar um plano os apaga e refaz.
+    // `getAllByText`: o nome do cargo aparece no card E no `title` dele — a asserção
+    // que importa é a CONTAGEM, que é única.
+    expect((await screen.findAllByText(/DOCENTE II/)).length).toBeGreaterThan(0);
+    expect(screen.getByText(/60 pendentes/)).toBeInTheDocument();
 
-    // As duas metades da promessa: refaz o automático, preserva o manual.
-    expect(await screen.findByText(/REFAZ/)).toBeInTheDocument();
-    expect(screen.getByText(/feitas à mão são preservadas/)).toBeInTheDocument();
-    // Confirmar é o que dispara — abrir o diálogo NÃO pode ter chamado a RPC.
+    // Rascunho vazio: nada a aplicar, e nada foi ao banco.
+    expect(screen.getByRole("button", { name: /aplicar plano/i })).toBeDisabled();
     expect(supabaseMock.rpc).not.toHaveBeenCalledWith(
-      "distribuir_candidatos_da_prova",
+      "aplicar_plano_de_alocacao",
       expect.anything(),
     );
+  });
 
-    await user.click(screen.getByRole("button", { name: /^distribuir$/i }));
+  it("o quadro separa o que está NO rascunho do que fica FORA dele", async () => {
+    montarCenario();
+    renderPagina();
+
+    // Os dois números do planejamento, distintos de "alocados" (que é o que o banco já
+    // tem). Com o rascunho vazio: 0 dentro, os 60 do cargo fora.
     await waitFor(() => {
-      expect(supabaseMock.rpc).toHaveBeenCalledWith("distribuir_candidatos_da_prova", {
-        p_prova_id: PROVA_ID,
-      });
+      expect(screen.getByText(/No rascunho:/)).toBeInTheDocument();
     });
+    expect(screen.getByText(/fora do\s+rascunho:/)).toBeInTheDocument();
   });
 });
 
 describe("prova finalizada — a tela explica, não deixa o clique morrer no trigger", () => {
-  it("banner de somente leitura + distribuir desabilitado + sem incluir", async () => {
+  it("banner de somente leitura + planejamento desabilitado + sem incluir", async () => {
     montarCenario({ finalizada: true });
     renderPagina();
 
     expect(
       await screen.findByText(/finalizada: a alocação é somente leitura/i),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /distribuir automaticamente/i })).toBeDisabled();
+    // O quadro não some: ele EXPLICA por que está desligado.
+    expect(
+      screen.getByText(/planejamento está desabilitado/i),
+    ).toBeInTheDocument();
     // O pendente continua LISTADO (informação) e a ação fica DESABILITADA — mesmo
     // tratamento do Distribuir: o controle não some, explica-se pelo banner acima.
     await waitFor(() => {
