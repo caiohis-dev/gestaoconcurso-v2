@@ -30,7 +30,7 @@ import { Loader2, Shuffle, RotateCcw } from "lucide-react";
 import { CargoCard } from "./CargoDraggableCard";
 import { AlocacaoBadge } from "./AlocacaoDraggableBadge";
 import { CargosPendentesDropzone } from "./CargosPendentesDropzone";
-import { UnidadeDroppableCard } from "./UnidadeDroppableCard";
+import { UnidadesDropzone } from "./UnidadesDropzone";
 import {
   alocarCargoNaUnidade,
   DadosArrastaveis,
@@ -120,11 +120,11 @@ export function AlocacaoDragDropUI({ cargos, unidades, congelada, isAplicando, o
       let houveMudanca = false;
 
       if (origem.tipo === "cargo" && destino.tipo === "unidade") {
-        const r = alocarCargoNaUnidade(estado, origem.cargoId, destino.unidadeId);
+        const r = alocarCargoNaUnidade(estado, origem.blocoId, destino.unidadeId);
         proximo = r.estado;
         houveMudanca = r.transferidos > 0;
       } else if (origem.tipo === "alocado" && destino.tipo === ID_PENDENTES) {
-        const r = devolverParaPendentes(estado, origem.cargoId, origem.unidadeId);
+        const r = devolverParaPendentes(estado, origem.blocoId, origem.unidadeId);
         proximo = r.estado;
         houveMudanca = r.devolvidos > 0;
       }
@@ -184,7 +184,9 @@ export function AlocacaoDragDropUI({ cargos, unidades, congelada, isAplicando, o
                   <AlertDialogDescription>
                     Isto REFAZ a distribuição desta prova: as alocações automáticas atuais são
                     apagadas e refeitas conforme o rascunho. As alocações feitas à mão são
-                    preservadas, e quem pediu atendimento especial ou é PCD continua fora.
+                    preservadas. Os blocos de atendimento especial ganham sala própria — mas
+                    aplicar <strong>não confere o pedido individual</strong> de cada um; isso
+                    continua sendo feito na seção Atendimento especial.
                     {foraDoPlano > 0 && (
                       <>
                         {" "}
@@ -230,12 +232,11 @@ export function AlocacaoDragDropUI({ cargos, unidades, congelada, isAplicando, o
                 rascunho: <strong>{foraDoPlano.toLocaleString("pt-BR")}</strong>
               </p>
 
-              <CargosPendentesDropzone cargos={estado.cargos} />
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                {estado.unidades.map((unidade) => (
-                  <UnidadeDroppableCard key={unidade.id} unidade={unidade} />
-                ))}
+              {/* Origem à esquerda, destino à direita: o gesto de arrastar passa a ter
+                  uma direção só. `items-start` impede que a coluna mais curta estique. */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                <CargosPendentesDropzone cargos={estado.cargos} />
+                <UnidadesDropzone unidades={estado.unidades} />
               </div>
             </div>
 
@@ -249,12 +250,19 @@ export function AlocacaoDragDropUI({ cargos, unidades, congelada, isAplicando, o
               }
             >
               {arrastando?.tipo === "cargo" && (
-                <CargoCard nome={arrastando.nome} naoAlocados={arrastando.naoAlocados} comoOverlay />
+                <CargoCard
+                  nome={arrastando.nome}
+                  naoAlocados={arrastando.naoAlocados}
+                  total={arrastando.naoAlocados}
+                  bloco={arrastando.bloco}
+                  comoOverlay
+                />
               )}
               {arrastando?.tipo === "alocado" && (
                 <AlocacaoBadge
                   nome={arrastando.nome}
                   quantidade={arrastando.quantidade}
+                  bloco={arrastando.bloco}
                   comoOverlay
                 />
               )}

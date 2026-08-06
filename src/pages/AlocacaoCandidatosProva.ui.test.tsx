@@ -118,6 +118,7 @@ const ESPECIAL_PENDENTE = {
   sala_especial: "Sala térrea e ledor",
   portador_deficiencia: false,
   sala_id: null,
+  origem: null,
 };
 
 function montarCenario({ finalizada = false } = {}) {
@@ -131,8 +132,8 @@ function montarCenario({ finalizada = false } = {}) {
   });
   setRpcResult("contar_alocados_por_sala", {
     data: [
-      { sala_id: "sala-1", total: 30 },
-      { sala_id: "sala-2", total: 12 },
+      { sala_id: "sala-1", total: 30, manuais: 0 },
+      { sala_id: "sala-2", total: 12, manuais: 0 },
     ],
     error: null,
   });
@@ -141,14 +142,65 @@ function montarCenario({ finalizada = false } = {}) {
     data: [{ unidade_id: "unid-1", total: 42, manuais: 0 }],
     error: null,
   });
+  setRpcResult("candidatos_da_prova", {
+    data: [
+      {
+        candidato_id: "cand-9",
+        n_inscricao: "375",
+        nome: "IARA ESPECIAL",
+        cargo_nome: "DOCENTE II",
+        sala_especial: "Sala térrea e ledor",
+        portador_deficiencia: false,
+        bloco: "sala_especial",
+        sala_id: null,
+        alocacao_id: null,
+        origem: null,
+        fora_do_automatico: false,
+        total: 3,
+      },
+      {
+        candidato_id: "cand-7",
+        n_inscricao: "007",
+        nome: "BENTO MANUAL",
+        cargo_nome: "DOCENTE II",
+        sala_especial: null,
+        portador_deficiencia: false,
+        bloco: "comum",
+        sala_id: "sala-2",
+        alocacao_id: "aloc-7",
+        origem: "manual",
+        fora_do_automatico: false,
+        total: 3,
+      },
+      {
+        candidato_id: "cand-1",
+        n_inscricao: "001",
+        nome: "ANA COMUM",
+        cargo_nome: "DOCENTE II",
+        sala_especial: null,
+        portador_deficiencia: false,
+        bloco: "comum",
+        sala_id: "sala-1",
+        alocacao_id: "aloc-1",
+        origem: "automatica",
+        fora_do_automatico: true,
+        total: 3,
+      },
+    ],
+    error: null,
+  });
   setRpcResult("cargos_pendentes_da_prova", {
     data: [
       {
         cargo_id: "cargo-1",
         cargo_nome: "DOCENTE II",
         a_distribuir: 60,
-        especiais: 1,
+        pcd_a_distribuir: 1,
+        sala_especial_a_distribuir: 2,
+        especiais: 3,
         ja_alocados: 42,
+        fora_do_automatico: 0,
+        fora_com_sala: 0,
         total: 61,
       },
     ],
@@ -194,21 +246,230 @@ describe("o resumo diz os três números", () => {
   });
 });
 
-describe("atendimento especial", () => {
-  it("o pendente aparece com o TEXTO do pedido e a ação de incluir", async () => {
+describe("lista de todos os candidatos", () => {
+  it("lista TODOS (não só os especiais) com o marcador de retirar por linha", async () => {
     montarCenario();
     renderPagina();
 
     await waitFor(() => {
       expect(screen.getByText("IARA ESPECIAL")).toBeInTheDocument();
     });
-    // O texto do pedido é a informação que decide a sala — sem ele a linha não serve.
+    // O comum aparece junto: a seção deixou de ser "atendimento especial".
+    expect(screen.getByText("ANA COMUM")).toBeInTheDocument();
+
+    // ⚠️ A coluna "Pedido" saiu, mas o TEXTO não pode sair da tela: ele decide a sala de
+    // quem pede atendimento. Vive no tooltip, e o `sr-only` o mantém acessível.
     expect(screen.getByText("Sala térrea e ledor")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /incluir em sala/i })).toBeInTheDocument();
+
+    // O marcador reflete o estado do banco, um switch por linha.
+    expect(
+      screen.getByRole("switch", { name: /Retirar IARA ESPECIAL da alocação automática/i }),
+    ).not.toBeChecked();
+    expect(
+      screen.getByRole("switch", { name: /Retirar ANA COMUM da alocação automática/i }),
+    ).toBeChecked();
+  });
+
+  it("o botão de incluir em sala aparece SÓ em quem não tem sala", async () => {
+    montarCenario();
+    renderPagina();
+
+    // IARA está sem sala → tem o botão. ANA já está na sala-1 → não tem.
+    // Incluir quem já tem sala é recusado pelo banco (23505); o botão ali seria uma
+    // promessa que morre no clique.
+    expect(
+      await screen.findByRole("button", { name: /Incluir IARA ESPECIAL em uma sala/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Incluir ANA COMUM em uma sala/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("🔴 quem está em sala À MÃO tem o marcador DESABILITADO e em falso", async () => {
+    // As duas coisas dizem o mesmo: "o plano não mexe nesta pessoa". Aplicar só apaga
+    // origem='automatica', então quem está em sala à mão já está fora por construção.
+    // Deixar o switch ligado seria estado redundante — e sobraria uma marcação órfã no
+    // dia em que ela saísse da sala.
+    montarCenario();
+    renderPagina();
+
+    const marcador = await screen.findByRole("switch", {
+      name: /BENTO MANUAL está numa sala escolhida à mão/i,
+    });
+    expect(marcador).toBeDisabled();
+    expect(marcador).not.toBeChecked();
+
+    // ⭐ CONTROLE: quem está em sala pelo PLANO segue podendo ser marcado.
+    expect(
+      screen.getByRole("switch", { name: /Retirar ANA COMUM da alocação automática/i }),
+    ).toBeEnabled();
+  });
+
+  it("🔴 quem TEM sala ganha o botão de retirar, e ele PROMETE conforme a origem", async () => {
+    montarCenario();
+    renderPagina();
+
+    // ANA está em sala pelo PLANO: retirar vale até o próximo Aplicar, que a recoloca.
+    // Prometer "definitivo" aqui faria metade das pessoas voltar sem ninguém entender.
+    const retirar = await screen.findByRole("button", {
+      name: /Retirar ANA COMUM da sala.*volta no próximo/i,
+    });
+    expect(retirar).toBeInTheDocument();
+
+    // E quem NÃO tem sala não ganha o de retirar — tem o de incluir.
+    expect(
+      screen.queryByRole("button", { name: /Retirar IARA ESPECIAL da sala/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("retirar chama o banco com o id da ALOCAÇÃO, não o do candidato", async () => {
+    montarCenario();
+    const user = userEvent.setup();
+    renderPagina();
+
+    await user.click(
+      await screen.findByRole("button", { name: /Retirar ANA COMUM da sala/i }),
+    );
+
+    await waitFor(() => {
+      expect(supabaseMock.from).toHaveBeenCalledWith("candidatos_alocacao");
+    });
+  });
+
+  it("🔴 o filtro 'somente sem sala' vai ao SERVIDOR, não ao cliente", async () => {
+    // Filtrar no cliente deixaria o `total` (e a paginação) falando do conjunto inteiro
+    // enquanto a tabela mostra um subconjunto — a tela prometeria páginas que não existem.
+    montarCenario();
+    const user = userEvent.setup();
+    renderPagina();
+
+    await screen.findByText("IARA ESPECIAL");
+    await user.click(screen.getByRole("combobox", { name: /Filtrar por situação/i }));
+    await user.click(await screen.findByRole("option", { name: /Somente sem sala/i }));
+
+    await waitFor(() => {
+      expect(supabaseMock.rpc).toHaveBeenCalledWith(
+        "candidatos_da_prova",
+        expect.objectContaining({ p_sem_sala: true }),
+      );
+    });
+  });
+
+  it("🔴 avisa quando há marcado que AINDA está em sala (a mentira que a D1 abriria)", async () => {
+    montarCenario();
+    setRpcResult("cargos_pendentes_da_prova", {
+      data: [
+        {
+          cargo_id: "cargo-1",
+          cargo_nome: "DOCENTE II",
+          a_distribuir: 60,
+          pcd_a_distribuir: 1,
+          sala_especial_a_distribuir: 2,
+          especiais: 3,
+          ja_alocados: 42,
+          fora_do_automatico: 3,
+          fora_com_sala: 2,
+          total: 61,
+        },
+      ],
+      error: null,
+    });
+    renderPagina();
+
+    // Entre marcar e aplicar, o total de alocados inclui gente marcada para sair. Sem
+    // este aviso o número mente por omissão — é o risco R1 do roadmap.
+    expect(
+      await screen.findByText(/ainda estão em sala/i),
+    ).toBeInTheDocument();
   });
 });
 
 describe("planejar por arrasto e aplicar", () => {
+  it("🔴 bloco ZERADO não some: vira card desabilitado dizendo 'sem inscritos'", async () => {
+    // Este teste existe por um defeito real: o card de sala especial DESAPARECEU da tela
+    // porque o dado tem 0 candidatos com pedido escrito, e o filtro `> 0` o escondia.
+    // Card ausente é indistinguível de "não olhei direito" — o número zero é a resposta.
+    montarCenario();
+    setRpcResult("candidatos_da_prova", {
+    data: [
+      {
+        candidato_id: "cand-9",
+        n_inscricao: "375",
+        nome: "IARA ESPECIAL",
+        cargo_nome: "DOCENTE II",
+        sala_especial: "Sala térrea e ledor",
+        portador_deficiencia: false,
+        bloco: "sala_especial",
+        sala_id: null,
+        alocacao_id: null,
+        origem: null,
+        fora_do_automatico: false,
+        total: 3,
+      },
+      {
+        candidato_id: "cand-7",
+        n_inscricao: "007",
+        nome: "BENTO MANUAL",
+        cargo_nome: "DOCENTE II",
+        sala_especial: null,
+        portador_deficiencia: false,
+        bloco: "comum",
+        sala_id: "sala-2",
+        alocacao_id: "aloc-7",
+        origem: "manual",
+        fora_do_automatico: false,
+        total: 3,
+      },
+      {
+        candidato_id: "cand-1",
+        n_inscricao: "001",
+        nome: "ANA COMUM",
+        cargo_nome: "DOCENTE II",
+        sala_especial: null,
+        portador_deficiencia: false,
+        bloco: "comum",
+        sala_id: "sala-1",
+        alocacao_id: "aloc-1",
+        origem: "automatica",
+        fora_do_automatico: true,
+        total: 3,
+      },
+    ],
+    error: null,
+  });
+  setRpcResult("cargos_pendentes_da_prova", {
+      data: [
+        {
+          cargo_id: "cargo-1",
+          cargo_nome: "DOCENTE II",
+          a_distribuir: 60,
+          pcd_a_distribuir: 0,
+          sala_especial_a_distribuir: 0,
+          especiais: 0,
+          ja_alocados: 42,
+          fora_do_automatico: 0,
+          fora_com_sala: 0,
+          total: 60,
+        },
+      ],
+      error: null,
+    });
+    renderPagina();
+
+    expect(await screen.findByText(/^PCD$/)).toBeInTheDocument();
+    expect(screen.getByText(/^Sala especial$/)).toBeInTheDocument();
+    expect(screen.getAllByText("sem inscritos")).toHaveLength(2);
+    // Nenhum "todos alocados" aqui: estes blocos nunca tiveram ninguém.
+    expect(screen.queryByText("todos alocados")).not.toBeInTheDocument();
+    // E não arrastam: o `useDraggable` se desabilita sozinho quando não há ninguém.
+    // ⚠️ O dnd-kit mantém `role="button"` mesmo desabilitado — quem diz a verdade é o
+    // `aria-disabled`. Asserir o role daria um teste verde afirmando o contrário do real.
+    expect(screen.getByLabelText(/DOCENTE II — PCD: sem inscritos/i)).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+
   it("🔴 ARRASTAR NÃO GRAVA: sem rascunho, o Aplicar fica desabilitado e a RPC não é chamada", async () => {
     montarCenario();
     renderPagina();
@@ -218,7 +479,15 @@ describe("planejar por arrasto e aplicar", () => {
     // `getAllByText`: o nome do cargo aparece no card E no `title` dele — a asserção
     // que importa é a CONTAGEM, que é única.
     expect((await screen.findAllByText(/DOCENTE II/)).length).toBeGreaterThan(0);
-    expect(screen.getByText(/60 pendentes/)).toBeInTheDocument();
+    // 🔴 TRÊS blocos por cargo desde 05/08: comum, PCD e sala especial. Os três são
+    // ARRASTÁVEIS e DISJUNTOS — fundi-los mandaria gente do estoque errado à sala errada.
+    // Os três blocos, cada um com sua contagem. Os `aria-label` são as âncoras estáveis:
+    // o texto "1" sozinho aparece em vários pontos da tela.
+    expect(screen.getByLabelText(/DOCENTE II — Demais, 60 a distribuir/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/DOCENTE II — PCD, 1 a distribuir/i)).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(/DOCENTE II — Sala especial, 2 a distribuir/i),
+    ).toBeInTheDocument();
 
     // Rascunho vazio: nada a aplicar, e nada foi ao banco.
     expect(screen.getByRole("button", { name: /aplicar plano/i })).toBeDisabled();
@@ -253,12 +522,14 @@ describe("prova finalizada — a tela explica, não deixa o clique morrer no tri
     expect(
       screen.getByText(/planejamento está desabilitado/i),
     ).toBeInTheDocument();
-    // O pendente continua LISTADO (informação) e a ação fica DESABILITADA — mesmo
-    // tratamento do Distribuir: o controle não some, explica-se pelo banner acima.
+    // A lista continua VISÍVEL (informação) e o marcador fica DESABILITADO — mesmo
+    // tratamento do Aplicar: o controle não some, explica-se pelo banner acima.
     await waitFor(() => {
       expect(screen.getByText("IARA ESPECIAL")).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: /incluir em sala/i })).toBeDisabled();
+    expect(
+      screen.getByRole("switch", { name: /Retirar IARA ESPECIAL da alocação automática/i }),
+    ).toBeDisabled();
   });
 });
 

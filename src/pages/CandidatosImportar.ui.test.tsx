@@ -998,6 +998,39 @@ describe("CandidatosImportar (interação)", () => {
     });
   });
 
+  describe("🔴 o aviso de perda das marcações de 'fora do automático'", () => {
+    it("conta as marcações e avisa ANTES de trocar a lista", async () => {
+      // A FK é CASCADE: a troca total leva as marcações junto, sem erro nenhum. E como os
+      // inscritos voltam com ids NOVOS, não há como preservá-las. Este aviso é a mitigação
+      // INTEIRA — sem ele a pessoa refaz trabalho manual sem saber que o perdeu.
+      setTableResult("candidatos_fora_do_automatico", {
+        data: [],
+        error: null,
+        count: 37,
+      });
+      const user = await abrir();
+      await irParaCargos(user);
+      await associarTodos(user);
+      await user.click(await screen.findByRole("button", { name: /Importar 3 candidato\(s\)/i }));
+
+      expect(await screen.findByText(/37 marcação\(ões\)/)).toBeInTheDocument();
+      // E diz POR QUE não dá para preservar — senão parece descuido, não consequência.
+      expect(screen.getByText(/identificadores novos/i)).toBeInTheDocument();
+    });
+
+    it("⭐ CONTROLE: sem marcação nenhuma, o aviso NÃO aparece", async () => {
+      // Aviso que aparece sempre vira ruído e deixa de ser lido — inclusive quando é real.
+      setTableResult("candidatos_fora_do_automatico", { data: [], error: null, count: 0 });
+      const user = await abrir();
+      await irParaCargos(user);
+      await associarTodos(user);
+      await user.click(await screen.findByRole("button", { name: /Importar 3 candidato\(s\)/i }));
+
+      expect(await screen.findByText(/serão \*?\*?apagados|serão/i)).toBeInTheDocument();
+      expect(screen.queryByText(/marcação\(ões\)/)).not.toBeInTheDocument();
+    });
+  });
+
   describe("importação e relatório", () => {
     async function importar(user: ReturnType<typeof userEvent.setup>) {
       await irParaCargos(user);

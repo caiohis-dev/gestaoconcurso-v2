@@ -1,0 +1,201 @@
+# Roadmap VIVO — a seção de baixo vira "Lista de todos os candidatos", com exclusão manual
+# Criado em 2026-08-05. Leia my_rules/analises/README.md antes de usar como guia.
+# Estado atual do módulo: my_rules/estrutura/modulos/alocacao-candidatos/00-modulo.md
+
+roadmap:
+  titulo: "Lista de todos os candidatos + marcador 'Retirar da alocação automática'"
+  criado: "2026-08-05"
+  status: >
+    🟡 EM EXECUÇÃO. ✅ ETAPA 1 CONCLUÍDA em 2026-08-05 (migration 20260805205719): a
+    tabela `candidatos_fora_do_automatico` existe, o trigger de congelamento e coerência
+    também, os três contadores de `cargos_pendentes_da_prova` descontam os marcados,
+    `aplicar_plano_de_alocacao` deixou de colocá-los (e separou `sem_sala` de
+    `fora_do_automatico` — são números diferentes), e nasceu `candidatos_da_prova`, a
+    listagem paginada de todos os inscritos. Bateria: 8 casos novos (16a–16h) + o 17,
+    verdes, com controle positivo no desmarcar e no CASCADE. Suíte 1286, tsc, lint 117,
+    build e docs:conferir limpos.
+    ✅ ETAPAS 2 e 3 CONCLUÍDAS em 2026-08-05. A seção virou `ListaDeCandidatosDaProva`
+    (busca, filtro por cargo, 25/página, switch por linha, ícone+tooltip no lugar da
+    coluna Pedido), o aviso do R1 está no bloco de avisos, e a confirmação de importação
+    passou a anunciar quantas marcações serão perdidas. Suíte 1289, tsc, lint 117, build e
+    docs:conferir limpos.
+    🔴 ACHADO da etapa 2: `Tooltip` do Radix sem `TooltipProvider` derruba a ÁRVORE
+    INTEIRA (página em branco), não só o ícone. Funcionava por causa do provider na raiz
+    do App — dependência de ancestral distante, a mesma fragilidade do `useDroppable` fora
+    do DndContext. O provider agora é LOCAL no componente.
+    ⚠️ CAPACIDADE REMOVIDA a decidir: o `IncluirEmSalaDialog` (partir da PESSOA e escolher
+    a sala com vaga) saiu junto com o botão. A inclusão manual sobrevive em "Ver sala" →
+    buscar, mas o sentido inverteu. Para 122 especiais com pedidos específicos isso é
+    pior — o usuário foi avisado e ainda não decidiu.
+    ✅ ETAPA 4 CONCLUÍDA em 2026-08-05. O 00-modulo.md ganhou a 6ª decisão, a tabela nova
+    no modelo de dados, as duas barreiras novas, as RPCs atualizadas, a seção "Duas portas
+    para incluir à mão" e o aviso de que provider ausente derruba a árvore. Verificação:
+    1291 testes, tsc, lint 117, build, docs:conferir e bateria SQL limpos.
+    🟢 TEMA COMPLETO — este arquivo pode ir para concluidos/ no merge.
+    ⚠️ EXTRA de escopo, pedido durante a etapa 3: o `IncluirEmSalaDialog` VOLTOU, agora
+    acessível por um botão na linha de quem não tem sala, e a listagem ganhou o filtro
+    "somente sem sala" — no SERVIDOR, para o `total` não mentir.
+
+  origem: >
+    Pedido do usuário em 2026-08-05, depois que o quadro de arrasto ficou pronto. A seção
+    de baixo ("Atendimento especial") ficou incoerente com o resto da tela: ela lista 122
+    especiais e oferece "Incluir em sala", enquanto o planejamento acima passou a tratar
+    TODOS os inscritos em blocos. O pedido reformula a seção inteira.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  o_que_muda_na_tela: |
+    1. Título: "Atendimento especial" → "Lista de todos os candidatos".
+    2. Somem as colunas "Pedido" e "Situação".
+    3. O botão "Incluir em sala" vira um MARCADOR BOOLEANO por linha:
+       "Retirar da alocação automática".
+    4. Marcar/desmarcar muda os números dos containers de cima na hora.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  decisoes_do_usuario: |
+    D1. A marcação GRAVA na hora e os contadores caem na hora, mas a alocação existente
+        só é desfeita no próximo "Aplicar". Mantém a regra que já vale: só o Aplicar
+        mexe em sala. Consequência aceita: por um tempo o total de alocados inclui gente
+        já marcada para sair — a tela precisa DIZER isso, não deixar o número mentir.
+        RECUSADO: apagar a alocação no ato (criaria uma segunda porta de escrita em sala,
+        um clique destrutivo numa lista de 7.231 linhas, e um desmarcar assimétrico que
+        não devolve a sala).
+
+    D2. O texto do pedido de sala especial vira ÍCONE COM TOOLTIP na linha. A coluna some,
+        mas a informação que decide a sala continua alcançável sem trocar de tela.
+        RECUSADO: sumir de vez (obrigaria consultar /candidatos antes de alocar à mão) e
+        ícone sem texto (diria que a linha exige atenção, mas não O QUÊ a pessoa pediu).
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  medido_antes: |
+    Banco local, 2026-08-05:
+
+    🔴 O EDITAL 001 TEM **DUAS** PROVAS (7.231 inscritos). Isso decide o modelo: o
+       marcador NÃO pode viver em `candidatos`. Uma coluna lá faria "retirar do
+       automático" na prova A retirar também na prova B, em silêncio. A chave é
+       **(prova_id, candidato_id)**.
+
+    · A lista passa de 122 linhas (especiais) para **7.231** (todos). Paginação deixa de
+      ser opcional. `useCandidatos` já pagina (50/página, `count: exact`, busca e filtro
+      por cargo) — é a base a reusar, não a reescrever.
+    · 122 PCD, 0 com `sala_especial` — o ícone da D2 nasce aparecendo só nos 122 PCD.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  decisoes_de_desenho_a_confirmar: |
+    ✅ AS TRÊS FORAM CONFIRMADAS pelo usuário em 2026-08-05 e estão implementadas na
+    Etapa 1. Ficam registradas porque o desenho inteiro se apoia nelas: se qualquer uma
+    deixar de valer, este roadmap tem de ser reaberto ANTES de continuar.
+
+    P1. **FK de `candidato_id`: CASCADE, não RESTRICT.** O repo usa RESTRICT por padrão
+        (CLAUDE.md §2), e aqui eu abro exceção com motivo: a marcação é uma anotação sem
+        valor próprio — sem o candidato ela não significa nada. RESTRICT bloquearia a
+        reimportação inteira, o que é PIOR que hoje (hoje só a alocação bloqueia).
+        ⚠️ O preço é perda silenciosa: a troca total apaga os candidatos e recria com ids
+        NOVOS, então as marcações somem sem aviso. Mitigação OBRIGATÓRIA na mesma etapa:
+        a confirmação de reimportação passa a dizer "N marcações de 'fora do automático'
+        serão perdidas". Sem isso, isto vira o defeito que este repo mais teme.
+
+    P2. **Prova finalizada BLOQUEIA a marcação** (trigger espelho do PF001). A alocação
+        já está congelada; deixar o marcador editável faria os números do quadro mudarem
+        numa prova que ninguém pode mais redistribuir.
+
+    P3. **`especiais_da_prova` e sua coluna `origem` FICAM.** Elas não morrem com a seção:
+        o resumo do cabeçalho ainda conta os pedides especiais pendentes, e a distinção
+        "pelo plano, a conferir" × "conferido" continua visível no diálogo de sala (que já
+        mostra a origem por candidato). ⚠️ Se um dia o resumo mudar, conferir se a coluna
+        `origem` ficou órfã antes de dropá-la.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  o_que_NAO_muda: |
+    · O planejamento por arrasto, os três blocos e a RPC do plano.
+    · A inclusão manual em sala continua existindo — no diálogo "Ver sala", que é onde
+      ela sempre esteve de fato. ⚠️ Sair o botão "Incluir em sala" DESTA seção não pode
+      ser lido como "a inclusão manual acabou".
+    · A regra dos três blocos disjuntos (`bloco_do_candidato`).
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  etapas:
+    - id: 1
+      nome: "Banco — o marcador e seu efeito nas contagens"
+      status: "✅ CONCLUÍDA em 2026-08-05 — migration 20260805205719"
+      entrega:
+        - >
+          Tabela `candidatos_fora_do_automatico (prova_id, candidato_id, created_at,
+          created_by)`, PK composta `(prova_id, candidato_id)`. FK de prova RESTRICT, de
+          candidato CASCADE (ver P1). RLS fechada em admin, como `candidatos_alocacao`.
+        - "Índice por `candidato_id` — o DELETE da troca total varre esta tabela."
+        - >
+          Trigger de congelamento (P2): prova ou unidade finalizada recusa INSERT/DELETE,
+          com SQLSTATE `PF001` e mensagem própria.
+        - >
+          `cargos_pendentes_da_prova`: os TRÊS contadores passam a excluir os marcados.
+          É isto que faz os números de cima caírem ao marcar.
+        - >
+          `aplicar_plano_de_alocacao`: os elegíveis e a checagem `AL010` passam a excluir
+          os marcados. Um plano montado antes de uma marcação tem de ser recusado com
+          mensagem clara, não alocar gente marcada.
+        - >
+          RPC nova `candidatos_da_prova(p_prova_id, p_busca, p_cargo_id, p_pagina,
+          p_por_pagina)` → linhas + total. Junta, por prova: nome, inscrição, cargo,
+          `sala_especial`, `portador_deficiencia`, o BLOCO calculado, a sala atual e o
+          marcador. É prova-específico, então não sai do `useCandidatos` atual. O `total`
+          vem por window function e se repete em cada linha — falando do conjunto
+          INTEIRO, nunca da página.
+        - >
+          EXTRA não previsto: `cargos_pendentes_da_prova` ganhou `fora_do_automatico` e
+          `fora_com_sala`, e `aplicar_plano_de_alocacao` ganhou `fora_do_automatico` no
+          retorno. Sem eles a etapa 2 não teria como cumprir o R1 (avisar que o total de
+          alocados inclui gente marcada para sair) nem separar "não coube" de "você tirou".
+      armadilha: >
+        🔴 `docs/bateria-alocacao-candidatos.sql` chama `aplicar_plano_de_alocacao` e
+        `cargos_pendentes_da_prova` em ~20 pontos. Atualizar NO MESMO PASSE — é a lição
+        de 02/08 (§5 do CLAUDE.md), que já quase se repetiu duas vezes neste tema.
+
+    - id: 2
+      nome: "UI — a seção reformulada"
+      status: "✅ CONCLUÍDA em 2026-08-05"
+      entrega:
+        - "Título 'Lista de todos os candidatos'; somem as colunas Pedido e Situação."
+        - "Paginação, busca e filtro por cargo (7.231 linhas — sem paginação a tela morre)."
+        - "Ícone com tooltip no lugar da coluna Pedido (D2), só nas linhas que têm pedido ou PCD."
+        - "Switch 'Retirar da alocação automática' por linha, desabilitado se a prova estiver finalizada."
+        - >
+          🔴 O aviso da D1: enquanto houver marcado COM sala, a tela precisa dizer que o
+          número de alocados inclui gente que sai na próxima aplicação. Um badge no
+          cabeçalho do quadro resolve. Sem ele, o número mente e ninguém percebe.
+        - "Invalidar as queries do quadro ao marcar — os contadores de cima têm de cair na hora."
+
+    - id: 3
+      nome: "O vizinho que esta mudança toca"
+      status: "✅ CONCLUÍDA em 2026-08-05"
+      entrega:
+        - >
+          A confirmação de reimportação (troca total) passa a contar e anunciar as
+          marcações que serão perdidas (mitigação obrigatória do P1).
+        - >
+          `mensagemErroImportacao`: CONFERIDO — **não precisa de ramo**, e o porquê ficou
+          escrito no código: a FK é CASCADE, então ela nunca recusa o DELETE e não há erro
+          a traduzir. Se um dia virar RESTRICT, o ramo passa a ser obrigatório.
+
+    - id: 4
+      nome: "Verificação e docs"
+      status: "✅ CONCLUÍDA em 2026-08-05"
+      entrega:
+        - >
+          Bateria: marcar tira dos três contadores · plano com marcado é recusado ·
+          prova finalizada recusa a marcação (PF001) · ⭐ CONTROLE POSITIVO: desmarcar
+          devolve o candidato ao contador certo (e ao bloco certo, não a outro).
+        - "npm test · tsc · lint (baseline 117) · build · docs:conferir"
+        - "00-modulo.md: a seção de baixo muda de nome e de propósito; a tabela de RPCs cresce."
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  riscos: |
+    R1. 🔴 **O número de alocados passa a poder mentir por omissão.** Entre marcar e
+        aplicar, alguém está em sala e marcado para sair. É o estado que a D1 aceita — e
+        só é honesto se a tela DISSER. Está na etapa 2 e não é opcional.
+
+    R2. **A marcação some na reimportação** (P1). Mitigado por aviso, não por barreira.
+
+    R3. **Duas listagens de candidatos passam a existir** (`useCandidatos` em /candidatos e
+        a RPC nova aqui). Divergirem no que consideram "o inscrito" é o tipo de coisa que
+        este repo já pagou caro. A RPC nova deve reusar as MESMAS regras de busca e
+        ordenação — e o doc precisa dizer que são duas.

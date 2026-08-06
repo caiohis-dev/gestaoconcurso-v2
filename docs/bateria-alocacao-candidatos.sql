@@ -1,6 +1,7 @@
 -- ─────────────────────────────────────────────────────────────────────────────────────
 -- Bateria — Alocação de Candidatos em salas
--- migrations 20260804225156 (a tabela e as barreiras) + 20260805185155 (o PLANO)
+-- migrations 20260804225156 (tabela e barreiras) + 20260805185155 (o PLANO)
+--             + 20260805193931 (os TRÊS blocos) + 20260805205719 (fora do automático)
 -- ─────────────────────────────────────────────────────────────────────────────────────
 --
 -- Prova as barreiras do vínculo candidato ↔ sala e o comportamento da APLICAÇÃO DE PLANO:
@@ -98,8 +99,9 @@ SELECT id AS sala_q FROM salas_prova_distribuidas WHERE prova_id = :'q_id'
 SELECT id AS u_fora FROM unidades_prova
  WHERE id NOT IN (SELECT unidade_id FROM prova_unidades WHERE prova_id = :'p_id') LIMIT 1 \gset
 
--- Cargos e candidatos sintéticos. Cargo A: 5 elegíveis (2 salas de 3, a 2ª com vaga
--- ociosa); cargo B: 3 (fecha uma sala exata); + 2 especiais (1 PCD, 1 sala_especial).
+-- Cargos e candidatos sintéticos. Cargo A: 5 comuns (2 salas de 3, a 2ª com vaga ociosa);
+-- cargo B: 3 (fecha uma sala exata); + 3 especiais no cargo A: IARA (só PCD), JOAO (só
+-- pedido escrito) e LUCIA (OS DOIS — o caso do desempate).
 INSERT INTO cargos (id, nome) VALUES
   ('ba7e01a0-0000-0000-0000-00000000000a', 'BATERIA CARGO A'),
   ('ba7e01a0-0000-0000-0000-00000000000b', 'BATERIA CARGO B');
@@ -116,6 +118,9 @@ INSERT INTO candidatos (id, edital_id, n_inscricao, nome, cargo, cargo_id,
   ('ca000000-0000-0000-0000-000000000008', :'ed_a', 'T008', 'HUGO SILVA',   'cru', 'ba7e01a0-0000-0000-0000-00000000000b', false, NULL),
   ('ca000000-0000-0000-0000-000000000009', :'ed_a', 'T009', 'IARA ESPECIAL','cru', 'ba7e01a0-0000-0000-0000-00000000000a', true,  NULL),
   ('ca000000-0000-0000-0000-000000000010', :'ed_a', 'T010', 'JOAO ESPECIAL','cru', 'ba7e01a0-0000-0000-0000-00000000000a', false, 'Sala térrea e ledor'),
+  -- 🔴 LUCIA é PCD **E** escreveu um pedido. É o caso que a regra de desempate existe
+  -- para resolver: ela tem de cair em UM bloco só (sala_especial), nunca nos dois.
+  ('ca000000-0000-0000-0000-000000000012', :'ed_a', 'T012', 'LUCIA AMBOS',  'cru', 'ba7e01a0-0000-0000-0000-00000000000a', true,  'Mesa adaptada'),
   -- E um inscrito do OUTRO edital, para a coerência (CASO 10).
   ('ca000000-0000-0000-0000-000000000011', :'ed_b', 'T011', 'KELI DE FORA', 'cru', 'ba7e01a0-0000-0000-0000-00000000000a', false, NULL);
 
@@ -134,10 +139,12 @@ SELECT ur.user_id AS naoadmin_id,
 -- ═════════════════════════════════════════════════════════════════════════════════════
 \echo ''
 \echo '── CASO 0 — cargos_pendentes_da_prova alimenta a faixa de arrasto ──'
-\echo '-- Esperado: CARGO A a_distribuir=5 especiais=2 ja_alocados=0 total=7;'
-\echo '--           CARGO B a_distribuir=3 total=3.'
+\echo '-- 🔴 TRÊS blocos DISJUNTOS por cargo. IARA é PCD sem texto; JOAO escreveu pedido.'
+\echo '-- Esperado: CARGO A a_distribuir=5, pcd=1 (IARA), sala_especial=2 (JOAO e LUCIA),'
+\echo '--           especiais=3, total=8; CARGO B a_distribuir=3, pcd=0, sala_especial=0.'
+\echo '-- 🔴 LUCIA é PCD E tem pedido: aparece SÓ em sala_especial. 5+1+2 = 8 = total.'
 -- ═════════════════════════════════════════════════════════════════════════════════════
-SELECT cargo_nome, a_distribuir, especiais, ja_alocados, total
+SELECT cargo_nome, a_distribuir, pcd_a_distribuir, sala_especial_a_distribuir, fora_do_automatico, total
   FROM cargos_pendentes_da_prova(:'p_id')
  WHERE cargo_nome LIKE 'BATERIA%';
 
@@ -151,11 +158,11 @@ SAVEPOINT c0b;
 SET LOCAL ROLE authenticated;
 SET LOCAL request.jwt.claims TO :'jwt_admin';
 SELECT alocados FROM aplicar_plano_de_alocacao(:'p_id', jsonb_build_array(
-  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',5),
-  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000b','unidade_id',:'u_id','quantidade',3)
+  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',5,'bloco','comum'),
+  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000b','unidade_id',:'u_id','quantidade',3,'bloco','comum')
 ));
 RESET ROLE;
-SELECT cargo_nome, a_distribuir, ja_alocados FROM cargos_pendentes_da_prova(:'p_id')
+SELECT cargo_nome, a_distribuir, pcd_a_distribuir, sala_especial_a_distribuir, ja_alocados FROM cargos_pendentes_da_prova(:'p_id')
  WHERE cargo_nome LIKE 'BATERIA%';
 
 \echo '-- E a ocupação por unidade separa o que o plano PRESERVA do que ele refaz'
@@ -177,8 +184,8 @@ SAVEPOINT c1;
 SET LOCAL ROLE authenticated;
 SET LOCAL request.jwt.claims TO :'jwt_admin';
 SELECT * FROM aplicar_plano_de_alocacao(:'p_id', jsonb_build_array(
-  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',5),
-  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000b','unidade_id',:'u_id','quantidade',3)
+  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',5,'bloco','comum'),
+  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000b','unidade_id',:'u_id','quantidade',3,'bloco','comum')
 ));
 RESET ROLE;
 
@@ -192,7 +199,70 @@ SELECT c.nome, u.unid_sigla, s.sala_numero, a.origem
 
 \echo '-- E a concordância: nenhum alocado automático aparece em especiais_da_prova, e os'
 \echo '-- 2 especiais aparecem PENDENTES (sala_id nulo). Esperado: 2 linhas, sala vazia.'
-SELECT nome, sala_especial, portador_deficiencia, sala_id FROM especiais_da_prova(:'p_id');
+SELECT nome, sala_especial, portador_deficiencia, sala_id, origem FROM especiais_da_prova(:'p_id');
+
+-- ═════════════════════════════════════════════════════════════════════════════════════
+\echo ''
+\echo '── CASO 1b — 🔴 PCD e SALA ESPECIAL entram no plano, cada um em SALA PRÓPRIA ──'
+\echo '-- Desde 05/08 cada cargo tem TRÊS blocos. Plano: A comum (5), A pcd (1), A sala'
+\echo '-- especial (1), todos na unidade A. Esperado: alocados=7 em QUATRO salas — os'
+\echo '-- comuns em 101+102 (com vaga ociosa), IARA sozinha na 103 e JOAO sozinho na 104.'
+\echo '-- Nenhum dos dois blocos especiais se mistura com o outro nem com os comuns.'
+\echo '-- LUCIA fica de fora (o plano pediu 1 dos 2 de sala especial): pendentes=1, sem_sala=4.'
+-- ═════════════════════════════════════════════════════════════════════════════════════
+SAVEPOINT c1b;
+DELETE FROM candidatos_alocacao WHERE prova_id = :'p_id';
+SET LOCAL ROLE authenticated;
+SET LOCAL request.jwt.claims TO :'jwt_admin';
+SELECT * FROM aplicar_plano_de_alocacao(:'p_id', jsonb_build_array(
+  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',5,'bloco','comum'),
+  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',1,'bloco','pcd'),
+  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',1,'bloco','sala_especial')
+));
+RESET ROLE;
+
+SELECT s.sala_numero, count(*) AS ocupada, string_agg(c.nome, ', ' ORDER BY c.nome) AS quem
+  FROM candidatos_alocacao a
+  JOIN candidatos c ON c.id = a.candidato_id
+  JOIN salas_prova_distribuidas s ON s.id = a.sala_id
+ WHERE a.prova_id = :'p_id'
+ GROUP BY s.sala_andar, s.sala_numero ORDER BY 1;
+
+\echo '-- 🔴 E a distinção que decide se alguém ainda vai olhar o pedido: em sala PELO'
+\echo '-- PLANO não é "atendido". Esperado: os 2 com origem=automatica, NÃO manual.'
+SELECT nome, sala_especial, origem FROM especiais_da_prova(:'p_id');
+
+\echo '-- ⭐ CONTROLE: os três estoques não se contaminam. a_distribuir=5, pcd=1 e'
+\echo '-- sala_especial=2 (LUCIA continua lá — só JOAO entrou no plano).'
+SELECT cargo_nome, a_distribuir, pcd_a_distribuir, sala_especial_a_distribuir FROM cargos_pendentes_da_prova(:'p_id')
+ WHERE cargo_nome = 'BATERIA CARGO A';
+ROLLBACK TO SAVEPOINT c1b;
+
+-- ═════════════════════════════════════════════════════════════════════════════════════
+\echo ''
+\echo '── CASO 1c — AL010 por BLOCO: os TRÊS estoques do cargo não se somam ──'
+\echo '-- O cargo A tem 5 comuns, 1 PCD e 1 de sala especial. Pedir 7 COMUNS tem de ser'
+\echo '-- recusado, mesmo havendo 7 pessoas no cargo. Somar os blocos deixaria passar — e o'
+\echo '-- plano acabaria alocando 5 onde prometeu 7, em silêncio.'
+-- ═════════════════════════════════════════════════════════════════════════════════════
+SAVEPOINT c1c;
+DELETE FROM candidatos_alocacao WHERE prova_id = :'p_id';
+SET LOCAL ROLE authenticated;
+SET LOCAL request.jwt.claims TO :'jwt_admin';
+SELECT * FROM aplicar_plano_de_alocacao(:'p_id', jsonb_build_array(
+  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',7,'bloco','comum')
+));
+ROLLBACK TO SAVEPOINT c1c;
+
+\echo '-- 1d. E omitir `bloco` é AL008, não "comum por omissão": alocar do bloco errado por'
+\echo '-- causa de um campo ausente seria perda silenciosa. Idem para bloco desconhecido.'
+SAVEPOINT c1d;
+SET LOCAL ROLE authenticated;
+SET LOCAL request.jwt.claims TO :'jwt_admin';
+SELECT * FROM aplicar_plano_de_alocacao(:'p_id', jsonb_build_array(
+  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',5)
+));
+ROLLBACK TO SAVEPOINT c1d;
 
 -- ═════════════════════════════════════════════════════════════════════════════════════
 \echo ''
@@ -207,8 +277,8 @@ DELETE FROM candidatos_alocacao WHERE prova_id = :'p_id';
 SET LOCAL ROLE authenticated;
 SET LOCAL request.jwt.claims TO :'jwt_admin';
 SELECT * FROM aplicar_plano_de_alocacao(:'p_id', jsonb_build_array(
-  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',3),
-  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id2','quantidade',2)
+  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',3,'bloco','comum'),
+  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id2','quantidade',2,'bloco','comum')
 ));
 RESET ROLE;
 
@@ -237,9 +307,9 @@ DELETE FROM candidatos_alocacao WHERE prova_id = :'p_id';
 SET LOCAL ROLE authenticated;
 SET LOCAL request.jwt.claims TO :'jwt_admin';
 SELECT * FROM aplicar_plano_de_alocacao(:'p_id', jsonb_build_array(
-  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',3),
-  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000b','unidade_id',:'u_id2','quantidade',3),
-  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',2)
+  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',3,'bloco','comum'),
+  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000b','unidade_id',:'u_id2','quantidade',3,'bloco','comum'),
+  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',2,'bloco','comum')
 ));
 RESET ROLE;
 
@@ -265,14 +335,14 @@ VALUES ('ca000000-0000-0000-0000-000000000009', :'sala_z', :'p_id', 'manual');
 SET LOCAL ROLE authenticated;
 SET LOCAL request.jwt.claims TO :'jwt_admin';
 SELECT * FROM aplicar_plano_de_alocacao(:'p_id', jsonb_build_array(
-  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',5),
-  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000b','unidade_id',:'u_id','quantidade',3)
+  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',5,'bloco','comum'),
+  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000b','unidade_id',:'u_id','quantidade',3,'bloco','comum')
 ));
 RESET ROLE;
 
 SELECT origem, count(*) FROM candidatos_alocacao WHERE prova_id = :'p_id' GROUP BY origem ORDER BY origem;
 \echo '-- E especiais_da_prova mostra IARA ATENDIDA (sala preenchida), JOAO pendente:'
-SELECT nome, sala_id IS NOT NULL AS atendido FROM especiais_da_prova(:'p_id');
+SELECT nome, sala_id IS NOT NULL AS em_sala, origem FROM especiais_da_prova(:'p_id');
 ROLLBACK TO SAVEPOINT c4;
 
 -- ═════════════════════════════════════════════════════════════════════════════════════
@@ -286,7 +356,7 @@ DELETE FROM candidatos_alocacao WHERE prova_id = :'p_id';
 SET LOCAL ROLE authenticated;
 SET LOCAL request.jwt.claims TO :'jwt_admin';
 SELECT * FROM aplicar_plano_de_alocacao(:'p_id', jsonb_build_array(
-  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',5)
+  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',5,'bloco','comum')
 ));
 RESET ROLE;
 ROLLBACK TO SAVEPOINT c5;
@@ -307,7 +377,7 @@ SELECT :'ed_a', 'C' || lpad(g::text, 3, '0'), 'ZE NUMERO ' || lpad(g::text, 3, '
 SET LOCAL ROLE authenticated;
 SET LOCAL request.jwt.claims TO :'jwt_admin';
 SELECT * FROM aplicar_plano_de_alocacao(:'p_id', jsonb_build_array(
-  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000c','unidade_id',:'u_id','quantidade',40)
+  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000c','unidade_id',:'u_id','quantidade',40,'bloco','comum')
 ));
 ROLLBACK TO SAVEPOINT c6;
 \echo '-- Controle: a alocação do CASO 1 segue de pé (esperado 8):'
@@ -324,7 +394,7 @@ DELETE FROM candidatos_alocacao WHERE prova_id = :'p_id';
 SET LOCAL ROLE authenticated;
 SET LOCAL request.jwt.claims TO :'jwt_admin';
 SELECT * FROM aplicar_plano_de_alocacao(:'p_id', jsonb_build_array(
-  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000b','unidade_id',:'u_id','quantidade',99)
+  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000b','unidade_id',:'u_id','quantidade',99,'bloco','comum')
 ));
 ROLLBACK TO SAVEPOINT c7;
 
@@ -337,7 +407,7 @@ SAVEPOINT c8;
 SET LOCAL ROLE authenticated;
 SET LOCAL request.jwt.claims TO :'jwt_admin';
 SELECT * FROM aplicar_plano_de_alocacao(:'p_id', jsonb_build_array(
-  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_fora','quantidade',1)
+  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_fora','quantidade',1,'bloco','comum')
 ));
 ROLLBACK TO SAVEPOINT c8;
 
@@ -353,7 +423,7 @@ SAVEPOINT c8c;
 SET LOCAL ROLE authenticated;
 SET LOCAL request.jwt.claims TO :'jwt_admin';
 SELECT * FROM aplicar_plano_de_alocacao(:'p_id', jsonb_build_array(
-  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',0)
+  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',0,'bloco','comum')
 ));
 ROLLBACK TO SAVEPOINT c8c;
 
@@ -364,7 +434,7 @@ UPDATE provas SET prova_finalizada = true WHERE id = :'p_id';
 SET LOCAL ROLE authenticated;
 SET LOCAL request.jwt.claims TO :'jwt_admin';
 SELECT * FROM aplicar_plano_de_alocacao(:'p_id', jsonb_build_array(
-  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',5)
+  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',5,'bloco','comum')
 ));
 ROLLBACK TO SAVEPOINT c8d;
 
@@ -514,7 +584,7 @@ SET LOCAL request.jwt.claims TO :'jwt_naoadmin';
 SELECT count(*) AS linhas_para_nao_admin FROM candidatos_alocacao WHERE prova_id = :'p_id';
 SELECT count(*) AS cargos_para_nao_admin FROM cargos_pendentes_da_prova(:'p_id');
 SELECT * FROM aplicar_plano_de_alocacao(:'p_id', jsonb_build_array(
-  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',5)
+  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',5,'bloco','comum')
 ));
 ROLLBACK TO SAVEPOINT c15;
 
@@ -534,9 +604,187 @@ INSERT INTO user_roles (user_id, role) VALUES (:'naoadmin_id'::uuid, 'superadmin
 SET LOCAL ROLE authenticated;
 SET LOCAL request.jwt.claims TO :'jwt_naoadmin';
 SELECT alocados FROM aplicar_plano_de_alocacao(:'p_id', jsonb_build_array(
-  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',5)
+  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',5,'bloco','comum')
 ));
 ROLLBACK TO SAVEPOINT c15c;
+
+-- ═════════════════════════════════════════════════════════════════════════════════════
+\echo ''
+\echo '── CASO 16 — 🔴 RETIRAR DA ALOCAÇÃO AUTOMÁTICA (migration 20260805205719) ──'
+\echo '-- 16a. Marcar tira dos contadores NA HORA. Esperado: a_distribuir cai de 5 p/ 4,'
+\echo '--      e fora_do_automatico sobe para 1.'
+-- ═════════════════════════════════════════════════════════════════════════════════════
+SAVEPOINT c16;
+DELETE FROM candidatos_alocacao WHERE prova_id = :'p_id';
+INSERT INTO candidatos_fora_do_automatico (prova_id, candidato_id)
+VALUES (:'p_id', 'ca000000-0000-0000-0000-000000000001');
+
+SELECT cargo_nome, a_distribuir, fora_do_automatico, fora_com_sala
+  FROM cargos_pendentes_da_prova(:'p_id') WHERE cargo_nome = 'BATERIA CARGO A';
+
+\echo '-- 16b. E o plano NÃO o coloca: pedir 5 comuns agora é AL010 (só há 4).'
+SET LOCAL ROLE authenticated;
+SET LOCAL request.jwt.claims TO :'jwt_admin';
+SELECT * FROM aplicar_plano_de_alocacao(:'p_id', jsonb_build_array(
+  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',5,'bloco','comum')
+));
+-- Sem `RESET ROLE` aqui: a recusa acima aborta a transação, e qualquer comando entre ela
+-- e o ROLLBACK morre com 25P02 — ruído que esconde erro de verdade na leitura da saída.
+-- O ROLLBACK TO SAVEPOINT desfaz o `SET LOCAL ROLE` junto, como nos outros casos.
+ROLLBACK TO SAVEPOINT c16;
+
+\echo '-- 16c. ⭐ CONTROLE POSITIVO: pedindo 4, passa — e ANA (a marcada) fica de fora.'
+\echo '--      Esperado: alocados=4, fora_do_automatico=1, e ANA SILVA sem sala.'
+SAVEPOINT c16c;
+DELETE FROM candidatos_alocacao WHERE prova_id = :'p_id';
+INSERT INTO candidatos_fora_do_automatico (prova_id, candidato_id)
+VALUES (:'p_id', 'ca000000-0000-0000-0000-000000000001');
+SET LOCAL ROLE authenticated;
+SET LOCAL request.jwt.claims TO :'jwt_admin';
+SELECT * FROM aplicar_plano_de_alocacao(:'p_id', jsonb_build_array(
+  jsonb_build_object('cargo_id','ba7e01a0-0000-0000-0000-00000000000a','unidade_id',:'u_id','quantidade',4,'bloco','comum')
+));
+RESET ROLE;
+SELECT c.nome, a.sala_id IS NOT NULL AS tem_sala
+  FROM candidatos c LEFT JOIN candidatos_alocacao a
+       ON a.candidato_id = c.id AND a.prova_id = :'p_id'
+ WHERE c.id = 'ca000000-0000-0000-0000-000000000001';
+ROLLBACK TO SAVEPOINT c16c;
+
+\echo '-- 16d. ⭐ CONTROLE POSITIVO: DESMARCAR devolve ao contador CERTO (o comum, não outro).'
+SAVEPOINT c16d;
+INSERT INTO candidatos_fora_do_automatico (prova_id, candidato_id)
+VALUES (:'p_id', 'ca000000-0000-0000-0000-000000000009');  -- IARA, que é PCD
+SELECT cargo_nome, a_distribuir, pcd_a_distribuir, sala_especial_a_distribuir
+  FROM cargos_pendentes_da_prova(:'p_id') WHERE cargo_nome = 'BATERIA CARGO A';
+DELETE FROM candidatos_fora_do_automatico
+ WHERE prova_id = :'p_id' AND candidato_id = 'ca000000-0000-0000-0000-000000000009';
+\echo '-- depois de desmarcar, o PCD tem de voltar a 1 (e não virar comum):'
+SELECT cargo_nome, a_distribuir, pcd_a_distribuir, sala_especial_a_distribuir
+  FROM cargos_pendentes_da_prova(:'p_id') WHERE cargo_nome = 'BATERIA CARGO A';
+ROLLBACK TO SAVEPOINT c16d;
+
+\echo '-- 16e. `fora_com_sala` avisa o estado transitório: marcado E ainda em sala.'
+\echo '--      Esperado: fora_com_sala=1 (a alocação do CASO 1 segue de pé).'
+SAVEPOINT c16e;
+INSERT INTO candidatos_fora_do_automatico (prova_id, candidato_id)
+VALUES (:'p_id', 'ca000000-0000-0000-0000-000000000001');
+SELECT cargo_nome, fora_do_automatico, fora_com_sala
+  FROM cargos_pendentes_da_prova(:'p_id') WHERE cargo_nome = 'BATERIA CARGO A';
+ROLLBACK TO SAVEPOINT c16e;
+
+\echo '-- 16f. PF001: prova finalizada recusa MARCAR e DESMARCAR (decisão P2).'
+SAVEPOINT c16f;
+UPDATE provas SET prova_finalizada = true WHERE id = :'p_id';
+INSERT INTO candidatos_fora_do_automatico (prova_id, candidato_id)
+VALUES (:'p_id', 'ca000000-0000-0000-0000-000000000002');
+ROLLBACK TO SAVEPOINT c16f;
+
+\echo '-- 16g. AL005: marcar candidato de OUTRO edital é recusado.'
+SAVEPOINT c16g;
+INSERT INTO candidatos_fora_do_automatico (prova_id, candidato_id)
+VALUES (:'p_id', 'ca000000-0000-0000-0000-000000000011');
+ROLLBACK TO SAVEPOINT c16g;
+
+\echo '-- 16h. 🔴 CASCADE: apagar o candidato leva a marcação junto (P1). É o preço da'
+\echo '--      exceção ao RESTRICT — a etapa 3 do roadmap avisa o usuário antes.'
+SAVEPOINT c16h;
+DELETE FROM candidatos_alocacao WHERE prova_id = :'p_id';
+INSERT INTO candidatos_fora_do_automatico (prova_id, candidato_id)
+VALUES (:'p_id', 'ca000000-0000-0000-0000-000000000002');
+DELETE FROM candidatos WHERE id = 'ca000000-0000-0000-0000-000000000002';
+SELECT count(*) AS marcacoes_restantes FROM candidatos_fora_do_automatico WHERE prova_id = :'p_id';
+ROLLBACK TO SAVEPOINT c16h;
+
+-- ═════════════════════════════════════════════════════════════════════════════════════
+\echo ''
+\echo '── CASO 16i — 🔴 ALOCAÇÃO MANUAL e MARCAÇÃO são mutuamente exclusivas ──'
+\echo '-- As duas dizem a MESMA coisa ("o plano não mexe nesta pessoa"): aplicar um plano'
+\echo '-- só apaga origem=automatica, então quem está em sala à mão já está fora.'
+\echo '-- 16i.1 — colocar à mão APAGA a marcação que existia. Esperado: 1 → 0.'
+-- ═════════════════════════════════════════════════════════════════════════════════════
+SAVEPOINT c16i;
+DELETE FROM candidatos_alocacao WHERE prova_id = :'p_id';
+INSERT INTO candidatos_fora_do_automatico (prova_id, candidato_id)
+VALUES (:'p_id', 'ca000000-0000-0000-0000-000000000009');
+SELECT count(*) AS marcacoes_antes FROM candidatos_fora_do_automatico WHERE prova_id = :'p_id';
+
+INSERT INTO candidatos_alocacao (candidato_id, sala_id, prova_id, origem)
+VALUES ('ca000000-0000-0000-0000-000000000009', :'sala_z', :'p_id', 'manual');
+SELECT count(*) AS marcacoes_depois FROM candidatos_fora_do_automatico WHERE prova_id = :'p_id';
+
+\echo '-- 16i.2 — AL011: e marcar quem JÁ está em sala à mão é recusado (o caminho inverso).'
+INSERT INTO candidatos_fora_do_automatico (prova_id, candidato_id)
+VALUES (:'p_id', 'ca000000-0000-0000-0000-000000000009');
+ROLLBACK TO SAVEPOINT c16i;
+
+\echo '-- ⭐ 16i.3 CONTROLE POSITIVO: alocação AUTOMÁTICA não limpa marcação nenhuma.'
+\echo '-- O plano insere milhares de linhas de uma vez, e quem está marcado nem entra nele —'
+\echo '-- limpar ali apagaria marcação que ninguém pediu para tirar. Esperado: segue 1.'
+SAVEPOINT c16i3;
+DELETE FROM candidatos_alocacao WHERE prova_id = :'p_id';
+INSERT INTO candidatos_fora_do_automatico (prova_id, candidato_id)
+VALUES (:'p_id', 'ca000000-0000-0000-0000-000000000009');
+INSERT INTO candidatos_alocacao (candidato_id, sala_id, prova_id, origem)
+VALUES ('ca000000-0000-0000-0000-000000000010', :'sala_z', :'p_id', 'automatica');
+SELECT count(*) AS marcacoes_apos_automatica
+  FROM candidatos_fora_do_automatico WHERE prova_id = :'p_id';
+ROLLBACK TO SAVEPOINT c16i3;
+
+\echo '-- ⭐ 16i.4 CONTROLE: retirado da sala, ele VOLTA a poder ser marcado — a regra é'
+\echo '-- "enquanto houver alocação manual", não "para sempre".'
+SAVEPOINT c16i4;
+DELETE FROM candidatos_alocacao WHERE prova_id = :'p_id';
+INSERT INTO candidatos_alocacao (candidato_id, sala_id, prova_id, origem)
+VALUES ('ca000000-0000-0000-0000-000000000009', :'sala_z', :'p_id', 'manual');
+DELETE FROM candidatos_alocacao
+ WHERE prova_id = :'p_id' AND candidato_id = 'ca000000-0000-0000-0000-000000000009';
+INSERT INTO candidatos_fora_do_automatico (prova_id, candidato_id)
+VALUES (:'p_id', 'ca000000-0000-0000-0000-000000000009');
+SELECT count(*) AS marcou_depois_de_retirar
+  FROM candidatos_fora_do_automatico WHERE prova_id = :'p_id';
+ROLLBACK TO SAVEPOINT c16i4;
+
+
+-- ═════════════════════════════════════════════════════════════════════════════════════
+\echo ''
+\echo '── CASO 17 — candidatos_da_prova: a listagem de TODOS os inscritos ──'
+\echo '-- Esperado: total=11 (os sintéticos do edital A; KELI é do B), página de 5 traz 5'
+\echo '-- linhas, e o `total` fala do conjunto INTEIRO, não da página.'
+-- ═════════════════════════════════════════════════════════════════════════════════════
+SELECT count(*) AS linhas_na_pagina, max(total) AS total_do_conjunto
+  FROM candidatos_da_prova(:'p_id', NULL, NULL, 0, 5);
+
+\echo '-- A busca casa nome, inscrição e CPF — as MESMAS regras de useCandidatos:'
+SELECT nome, bloco, fora_do_automatico FROM candidatos_da_prova(:'p_id', 'IARA', NULL, 0, 50);
+
+\echo '-- E o bloco vem calculado (LUCIA é PCD + pedido: tem de sair sala_especial):'
+SELECT nome, bloco FROM candidatos_da_prova(:'p_id', 'LUCIA', NULL, 0, 50);
+
+\echo ''
+\echo '-- 🔴 17b. O filtro "somente sem sala" vale NO SERVIDOR, e o `total` acompanha.'
+\echo '-- Com a alocação do CASO 1 de pé (8 em sala), sobram 3 dos 11 sem sala.'
+\echo '-- Se o total NÃO caísse junto, a paginação prometeria páginas que não existem.'
+SELECT count(*) AS linhas, max(total) AS total_do_conjunto
+  FROM candidatos_da_prova(:'p_id', NULL, NULL, 0, 50, true);
+
+\echo '-- ⭐ CONTROLE: sem o filtro, os 11 voltam.'
+SELECT count(*) AS linhas, max(total) AS total_do_conjunto
+  FROM candidatos_da_prova(:'p_id', NULL, NULL, 0, 50, false);
+
+\echo ''
+\echo '-- 17c. A listagem traz `alocacao_id` e `origem` — sem eles a tela não teria como'
+\echo '-- retirar (precisa do id da ALOCAÇÃO) nem dizer se a retirada é definitiva.'
+\echo '-- Quem ESTÁ em sala (esperado: alocacao_id preenchido, origem=automatica):'
+SELECT nome, alocacao_id IS NOT NULL AS tem_alocacao, origem
+  FROM candidatos_da_prova(:'p_id', 'SILVA', NULL, 0, 3)
+ ORDER BY nome;
+
+\echo '-- ⭐ CONTROLE: quem NÃO está em sala tem os dois NULOS — é assim que a tela sabe'
+\echo '-- que a linha leva o botão de INCLUIR, e não o de retirar.'
+SELECT nome, alocacao_id IS NULL AS sem_alocacao, origem
+  FROM candidatos_da_prova(:'p_id', NULL, NULL, 0, 50, true)
+ ORDER BY nome;
 
 \echo ''
 \echo '── FIM — ROLLBACK geral: o banco fica como estava ──'

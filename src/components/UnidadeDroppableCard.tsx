@@ -2,7 +2,13 @@ import { useDroppable } from "@dnd-kit/core";
 import { Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AlocacaoDraggableBadge } from "./AlocacaoDraggableBadge";
-import { DadosSoltaveis, UnidadeAlocavel, vagasRestantes } from "@/lib/alocacao-dnd";
+import {
+  DadosSoltaveis,
+  simularEmpacotamento,
+  totalAlocado,
+  UnidadeAlocavel,
+  vagasTotais,
+} from "@/lib/alocacao-dnd";
 
 /** Reexportado porque os componentes irmãos já importavam o tipo daqui. */
 export type { AlocacaoUnidade } from "@/lib/alocacao-dnd";
@@ -13,13 +19,13 @@ export function UnidadeDroppableCard({ unidade }: { unidade: UnidadeAlocavel }) 
 
   const { isOver, setNodeRef } = useDroppable({ id: `unid-${unidade.id}`, data: dados });
 
-  const cheio = vagasRestantes(unidade) === 0;
+  const capacidade = vagasTotais(unidade);
+  const alocados = totalAlocado(unidade);
+  const { vagasUteis, ociosas } = simularEmpacotamento(unidade);
+  const cheio = vagasUteis === 0;
   // `vagasTotais` zerada existe no mock e existiria no real: sem a guarda, 0/0 vira NaN
   // e a barra some sem explicação.
-  const percentual =
-    unidade.vagasTotais > 0
-      ? Math.min(100, (unidade.alocados / unidade.vagasTotais) * 100)
-      : 0;
+  const percentual = capacidade > 0 ? Math.min(100, (alocados / capacidade) * 100) : 0;
 
   return (
     <div
@@ -43,9 +49,17 @@ export function UnidadeDroppableCard({ unidade }: { unidade: UnidadeAlocavel }) 
         <div className="flex justify-between text-sm text-muted-foreground">
           <span>Ocupação</span>
           <span>
-            {unidade.alocados} / {unidade.vagasTotais}
+            {alocados} / {capacidade}
           </span>
         </div>
+        {/* 🔴 A ociosidade fica À VISTA. "Cada bloco abre sala nova" gasta capacidade que
+            não aparece em `alocados / capacidade` — e foi essa diferença invisível que
+            deixou montar um plano recusado com AL004 depois de tudo pronto. */}
+        {ociosas > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {vagasUteis} vaga(s) úteis · {ociosas} ociosa(s) em salas de fronteira
+          </p>
+        )}
         <div className="w-full bg-secondary h-2 rounded-full overflow-hidden">
           <div
             className={cn("h-full transition-all duration-300", cheio ? "bg-red-500" : "bg-primary")}
@@ -58,10 +72,11 @@ export function UnidadeDroppableCard({ unidade }: { unidade: UnidadeAlocavel }) 
         <div className="flex flex-col gap-2 mt-2 pt-3 border-t border-border">
           {unidade.alocacoesPorCargo.map((aloc) => (
             <AlocacaoDraggableBadge
-              key={aloc.cargoId}
+              key={aloc.blocoId}
               unidadeId={unidade.id}
-              cargoId={aloc.cargoId}
+              blocoId={aloc.blocoId}
               nome={aloc.nome}
+              bloco={aloc.bloco}
               quantidade={aloc.quantidade}
             />
           ))}

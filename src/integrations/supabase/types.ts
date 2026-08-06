@@ -224,6 +224,42 @@ export type Database = {
           },
         ]
       }
+      candidatos_fora_do_automatico: {
+        Row: {
+          candidato_id: string
+          created_at: string
+          created_by: string | null
+          prova_id: string
+        }
+        Insert: {
+          candidato_id: string
+          created_at?: string
+          created_by?: string | null
+          prova_id: string
+        }
+        Update: {
+          candidato_id?: string
+          created_at?: string
+          created_by?: string | null
+          prova_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidatos_fora_do_automatico_candidato_id_fkey"
+            columns: ["candidato_id"]
+            isOneToOne: false
+            referencedRelation: "candidatos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "candidatos_fora_do_automatico_prova_id_fkey"
+            columns: ["prova_id"]
+            isOneToOne: false
+            referencedRelation: "provas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       candidatos_importacao: {
         Row: {
           created_at: string
@@ -1233,6 +1269,7 @@ export type Database = {
         Args: { p_plano: Json; p_prova_id: string }
         Returns: {
           alocados: number
+          fora_do_automatico: number
           pendentes_especiais: number
           preservados: number
           sem_sala: number
@@ -1246,9 +1283,37 @@ export type Database = {
         }
         Returns: string
       }
+      bloco_do_candidato: {
+        Args: { p_pcd: boolean; p_sala_especial: string }
+        Returns: string
+      }
       candidato_pede_atendimento_especial: {
         Args: { p_pcd: boolean; p_sala_especial: string }
         Returns: boolean
+      }
+      candidatos_da_prova: {
+        Args: {
+          p_busca?: string
+          p_cargo_id?: string
+          p_pagina?: number
+          p_por_pagina?: number
+          p_prova_id: string
+          p_sem_sala?: boolean
+        }
+        Returns: {
+          alocacao_id: string
+          bloco: string
+          candidato_id: string
+          cargo_nome: string
+          fora_do_automatico: boolean
+          n_inscricao: string
+          nome: string
+          origem: string
+          portador_deficiencia: boolean
+          sala_especial: string
+          sala_id: string
+          total: number
+        }[]
       }
       cargos_pendentes_da_prova: {
         Args: { p_prova_id: string }
@@ -1257,7 +1322,11 @@ export type Database = {
           cargo_id: string
           cargo_nome: string
           especiais: number
+          fora_com_sala: number
+          fora_do_automatico: number
           ja_alocados: number
+          pcd_a_distribuir: number
+          sala_especial_a_distribuir: number
           total: number
         }[]
       }
@@ -1274,6 +1343,7 @@ export type Database = {
       contar_alocados_por_sala: {
         Args: { p_prova_id: string }
         Returns: {
+          manuais: number
           sala_id: string
           total: number
         }[]
@@ -1308,6 +1378,7 @@ export type Database = {
           cargo: string
           n_inscricao: string
           nome: string
+          origem: string
           portador_deficiencia: boolean
           sala_especial: string
           sala_id: string
@@ -1398,6 +1469,7 @@ export type Database = {
         Returns: boolean
       }
       revogar_coordenador: { Args: { p_user_id: string }; Returns: undefined }
+      rotulo_do_bloco: { Args: { p_bloco: string }; Returns: string }
       salvar_salas_distribuidas: { Args: { p_salas: Json }; Returns: number }
       trocar_candidatos_do_edital: {
         Args: {

@@ -8,6 +8,7 @@ import {
   type SalaEspecialNoRelatorio,
 } from "@/lib/relatorio-importacao-export";
 import { useEditais } from "@/hooks/useEditais";
+import { useMarcacoesDoEdital } from "@/hooks/useAlocacaoCandidatos";
 import {
   useImportarCandidatos,
   useContagemCandidatosPorEdital,
@@ -177,6 +178,16 @@ export default function CandidatosImportar() {
    */
   const { contagem } = useContagemCandidatosPorEdital();
   const inscritosHoje = editalId ? (contagem[editalId] ?? 0) : 0;
+
+  /**
+   * Quantas marcações de "fora da alocação automática" a troca total vai levar junto.
+   *
+   * 🔴 A FK é CASCADE: apagar os candidatos apaga as marcações, em silêncio. E a
+   * reimportação recria todo mundo com ids NOVOS, então não há como preservá-las. Avisar
+   * antes é a mitigação combinada — sem ela, a pessoa refaz um trabalho manual sem nunca
+   * saber que o perdeu.
+   */
+  const { marcacoes: marcacoesQueSeraoPerdidas } = useMarcacoesDoEdital(editalId || null);
 
 
   // ── Leitura do arquivo ──────────────────────────────────────────────────────────
@@ -1474,6 +1485,22 @@ export default function CandidatosImportar() {
                     <strong>{candidatos.length.toLocaleString("pt-BR")}</strong> desta importação.
                     A operação é feita de uma vez só: ou a lista inteira é trocada, ou nada muda.
                   </p>
+
+                  {/* 🔴 A perda que nenhuma barreira impede. A alocação BLOQUEIA a troca
+                      (FK RESTRICT), mas a marcação de "fora do automático" é CASCADE e
+                      simplesmente some — e como os inscritos voltam com ids novos, ela não
+                      teria como sobreviver. Este parágrafo é a mitigação inteira. */}
+                  {marcacoesQueSeraoPerdidas > 0 && (
+                    <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-900">
+                      <strong>
+                        {marcacoesQueSeraoPerdidas.toLocaleString("pt-BR")} marcação(ões) de
+                        “retirar da alocação automática”
+                      </strong>{" "}
+                      serão <strong>perdidas</strong> — em todas as provas deste edital. Os
+                      inscritos voltam com identificadores novos, então não há como
+                      preservá-las: será preciso marcar de novo depois de importar.
+                    </p>
+                  )}
 
                   {/* O filtro é lembrado AQUI de novo, e não é redundância: entre o aviso
                       do passo 2 e este diálogo a pessoa atravessou o passo de cargos, que

@@ -795,10 +795,14 @@ Isso dispensou o que o item apontava como pré-requisito. O backlog registrava q
 
 ### As cinco decisões do usuário
 
+> ⚠️ **O QUE MUDOU DEPOIS — 2026-08-05.** Três destas cinco continuam valendo (1, 2 e 5). As decisões **3 e 4 mudaram**, e a forma de acionar a distribuição mudou por inteiro: ela deixou de ser um botão automático e virou um **plano montado por arrasto**. Não reescrevi este registro — ele descreve o que se decidiu em 04/08, com a informação de 04/08. O estado atual está em [`../../estrutura/modulos/alocacao-candidatos/00-modulo.md`](../../estrutura/modulos/alocacao-candidatos/00-modulo.md); as anotações abaixo marcam só o que um leitor tomaria por regra vigente.
+
 1. Distribuição automática **por cargo** (alfabética do nome canônico; alfabética por nome dentro do cargo, inscrição desempata).
 2. **Cargo novo abre sala nova** — a sala de fronteira fica ociosa; salas não se misturam. Escolhido sobre "sala mista" vendo os dois previews.
 3. **Especiais fora do automático**: `sala_especial` preenchida ou PCD entram à mão, listados com o texto do pedido.
+   > ⚠️ **REVERTIDO em 05/08.** Cada cargo passou a ter **três blocos arrastáveis** — comuns, PCD e sala especial —, e o plano coloca os três. O que sobreviveu é que *colocar não é conferir*: o pedido individual continua sendo trabalho de gente, e `especiais_da_prova` ganhou a coluna `origem` para a tela distinguir "posto pelo plano" de "conferido à mão".
 4. **Reimportar com alocação de pé é RECUSADO** (FK RESTRICT) — escolhido sobre CASCADE+aviso. Reimportar vira dois passos conscientes.
+   > ⚠️ **Segue valendo para a ALOCAÇÃO.** Mas em 05/08 nasceu uma tabela vizinha, `candidatos_fora_do_automatico`, e nela a escolha foi a **oposta** — CASCADE + aviso —, porque a marcação é anotação sem valor próprio e RESTRICT bloquearia a reimportação inteira. As duas decisões convivem de propósito; não são incoerência.
 5. Ajuste manual na v1: **incluir e retirar** de sala (`origem='manual'`); redistribuir preserva o manual.
 
 ### Medido antes de desenhar
@@ -809,6 +813,8 @@ Isso dispensou o que o item apontava como pré-requisito. O backlog registrava q
 ### O que foi para o banco (migration `20260804225156`)
 
 Tabela + **FK composta** `(sala_id, prova_id)` (metade da coerência de graça — exigiu `UNIQUE (id, prova_id)` nas salas) + trigger único `check_candidato_alocacao` (PF001 congelamento espelhado com mensagem própria → AL005 coerência de edital → AL006 capacidade com `FOR UPDATE`) + `check_sala_reducao_capacidade` (AL007; o nome ordena DEPOIS do de finalizada, para PF001 continuar respondendo primeiro) + RPCs `distribuir_candidatos_da_prova` (SECURITY INVOKER com guarda explícita de admin; laço por cargo; AL001..AL004), `contar_alocados_por_sala`, `especiais_da_prova` + a definição única `candidato_pede_atendimento_especial`.
+
+> ⚠️ **`distribuir_candidatos_da_prova` NÃO EXISTE MAIS** (dropada em 05/08, migration `20260805185155`). Foi substituída por `aplicar_plano_de_alocacao(prova, plano jsonb)`, que recebe o rascunho montado por arrasto. `contar_alocados_por_sala` e `especiais_da_prova` seguem, mas **com colunas a mais** (`manuais` e `origem`). A tabela e os triggers desta migration continuam como descritos.
 
 ### Efeitos nos vizinhos, feitos no mesmo passe
 

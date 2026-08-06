@@ -1028,6 +1028,12 @@ export function mensagemErroImportacao(mensagem: string): string {
     return 'Há inscrito(s) deste edital alocado(s) em salas de prova. Desfaça a alocação na tela Alocação de Candidatos (reabrindo a prova, se estiver finalizada) antes de excluir ou reimportar. A lista foi mantida.';
   }
 
+  // ⚠️ `candidatos_fora_do_automatico` NÃO tem ramo aqui, e é de propósito (conferido em
+  // 2026-08-05): a FK dela é ON DELETE **CASCADE**, então ela nunca recusa o DELETE — não
+  // há erro a traduzir. O preço é a perda silenciosa, e a mitigação NÃO é uma mensagem de
+  // erro: é o aviso ANTES, na confirmação da importação, que conta quantas marcações serão
+  // perdidas. Se algum dia a FK virar RESTRICT, um ramo passa a ser obrigatório aqui.
+
   // ⚠️ Os ramos de chk_candidato_cpf_formato, _cep_, _email_ e _raca_valida foram
   // REMOVIDOS em 2026-07-30: as quatro CHECKs saíram do banco na migration
   // 20260730100000 (dado inválido passou a entrar cru), então eram guardas que não
