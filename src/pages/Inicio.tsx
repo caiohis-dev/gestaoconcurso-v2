@@ -68,10 +68,13 @@ export default function Inicio() {
           </Card>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {modulos.map((modulo) => {
+            {modulos.map((modulo, index) => {
               const Icone = modulo.icone;
               return (
-                <Card key={modulo.id} className="flex flex-col">
+                <Card key={modulo.id} className="flex flex-col relative">
+                  <div className="absolute top-4 right-4 flex h-6 w-6 items-center justify-center rounded-full bg-blue-900 text-xs font-bold text-white">
+                    {index + 1}
+                  </div>
                   <CardHeader>
                     <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
                       <Icone className="h-6 w-6" />
