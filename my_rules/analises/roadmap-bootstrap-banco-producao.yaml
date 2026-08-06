@@ -1,0 +1,277 @@
+# Roadmap VIVO — bootstrap do banco de produção da v2 no supabase.com
+# Criado em 2026-08-06. Leia my_rules/analises/README.md antes de usar como guia.
+# O roteiro estável (as regras que valem sempre) mora em my_rules/banco-producao.md.
+# Este arquivo é a EXECUÇÃO de uma vez só: o que foi medido em 06/08 e as decisões do dia.
+
+roadmap:
+  titulo: "Subir a base para um projeto novo no supabase.com (só o banco)"
+  criado: "2026-08-06"
+  status: >
+    ⏳ NÃO INICIADO. Desenho aprovado pelo usuário em 2026-08-06, com as duas decisões de
+    escopo já tomadas (D1 e D2). Nenhum passo executado: o repo segue DESLINKADO e o CLI
+    sem login (`supabase projects list` responde `Access token not provided`).
+    Pendências para começar: a **ref do projeto novo** e a **senha do Postgres** dele.
+
+  origem: >
+    Pedido do usuário em 2026-08-06: "subir a base do supabase para uma base nova em
+    supabase.com". O alvo final é ter o código local desenvolvendo contra o banco local e
+    a v2 em produção apontando para o banco na nuvem — mas ele pediu para **cuidar
+    primeiro do banco**, deixando frontend e domínio para um segundo momento.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  decisoes_do_usuario: |
+    D1. ESCOPO = SÓ O BANCO HOJE. Entra: criar o projeto, subir as migrations, carregar os
+        dados, configurar o auth no dashboard, publicar as edge functions com os secrets.
+        Fica para depois: host, domínio, `site_url` definitivo, merge `dev`→`main` e tag.
+        `main` continua CONGELADA em v1.0.0.
+        ⚠️ Consequência aceita: sem domínio, o `site_url` e o `SITE_URL` das functions ficam
+        provisórios — e **fluxo de e-mail não deve ser disparado em produção** até o
+        frontend subir, porque o link iria para o lugar errado.
+
+    D2. DADOS = DUMP COMPLETO. Carrega `public.*` + `auth.users` + `auth.identities` do
+        `supabase/seed.local.sql`. É a opção de continuidade: os hashes de senha viajam e
+        os logins de produção continuam valendo.
+
+        🔵 **CORRIGIDO em 2026-08-06, no mesmo dia:** ao perguntar sobre os dados, eu
+        afirmei que os 2 editais do banco local eram **playground criado à mão** e não
+        subiriam. **Está errado, e o `db reset` provou:** eles sobrevivem ao reset porque
+        `seed.pos.sql` — que é VERSIONADO e é passo do bootstrap (etapa 3) — os **deriva
+        das 2 provas do dump** (`INSERT INTO editais ... SELECT DISTINCT ON
+        (lower(btrim(p.prova_edital)))`). O dump realmente não tem `INSERT INTO
+        public.editais`, e foi por isso que a medição por grep me enganou: o dado não é
+        copiado, é **calculado**. Consequência prática: **a base nova nasce COM os 2
+        editais**, sem nenhum passo extra — e não havia decisão a tomar aqui.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  medido_antes: |
+    Medido em 2026-08-06, contra o disco e o banco local (não estimado):
+
+    · **121 migrations** em `supabase/migrations/`. ⚠️ Este número já envelheceu 3 vezes no
+      backlog (69 → 85 → 106 → 121). **Confira com `ls supabase/migrations/*.sql | wc -l`
+      no dia**, nunca com o número escrito aqui.
+    · **8 edge functions** (`check-cpf-colaborador`, `corrigir-email-acesso`,
+      `create-admin`, `create-coordenador`, `public-create-colaborador`, `recuperar-senha`,
+      `reivindicar-acesso`, `send-email`). O 9º diretório é `_shared` e não é function.
+      ⚠️ `banco-producao.md` e a memória diziam **6**.
+    · **Repo deslinkado** — `supabase/.temp/` só tem `cli-latest`. **CLI sem login.**
+    · Dump `supabase/seed.local.sql`: 1,3 MB, de 03/08, **já sem** `colab_codigo_acesso`,
+      `sala_arcondicionado` e `unid_andares` (as três colunas dropadas) — 0 ocorrências.
+    · `config.toml`: `major_version = 17`.
+    · Nenhuma URL de projeto antiga hardcoded nas functions nem em
+      `src/integrations/supabase/client.ts` (que lê `import.meta.env`).
+    · Nenhum arquivo de ambiente versionado: `.gitignore` cobre `.env` e `.env.*`.
+
+    NÚMEROS-ALVO (banco local hoje; são o CONTROLE POSITIVO do bootstrap — a nuvem tem de
+    chegar nos mesmos depois da carga):
+
+      colaboradores 771 · auth.users 15 · user_roles 41 · funcoes_colaboradores 18
+      provas 2 · unidades_prova 11 · sala_prova 42 · salas_prova_distribuidas 58
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  achados_que_mudam_o_roteiro: |
+    🔴 A1. **`SITE_URL` é secret obrigatório e NÃO está no roteiro.**
+        `supabase/functions/_shared/enviar-link-acesso.ts:91` faz
+        `Deno.env.get('SITE_URL') ?? 'http://127.0.0.1:8080'` e usa isso em
+        `redirectTo: ${siteUrl}/redefinir-senha`. O passo 7 do `banco-producao.md` só manda
+        cadastrar os quatro `SMTP_*`. Sem `SITE_URL` em produção, **todo convite e toda
+        recuperação de senha nascem apontando para localhost** — e o `??` engole o erro.
+        É perda silenciosa (§8 do CLAUDE.md). Corrigir o doc na etapa 8.
+        (`JWT_SECRET` aparece só em `_shared/test-utils.ts` — não é secret de produção.
+        `SUPABASE_URL`, `SUPABASE_ANON_KEY` e `SUPABASE_SERVICE_ROLE_KEY` são injetados
+        pela plataforma e NÃO devem ser cadastrados.)
+
+    🔴 A2. **O `.env` da raiz mente.** Ele se chama "produção" e contém
+        `VITE_SUPABASE_URL="http://127.0.0.1:54321"` com a publishable key LOCAL. Como o
+        Vite embute `VITE_*` em tempo de BUILD, `npm run build` nesta máquina hoje gera um
+        bundle de produção apontando para localhost — **sem erro no build**, quebrando só
+        no navegador do usuário. É a armadilha nº 1 do §8: o nome mente antes do código.
+
+    ⚠️ A3. **Ordem de precedência do Vite, verificada no código** (5.4.19,
+        `getEnvFilesForMode`): `.env` → `.env.local` → `.env.[mode]` → `.env.[mode].local`,
+        **o último vence**. Por isso `.env.production.local` é o arquivo certo para um
+        build manual apontado à nuvem: ele vence o `.env.local` que aponta ao Docker.
+
+    ⚠️ A4. **`SET session_replication_role = replica` pode ser recusado na nuvem.** O dump
+        se envelopa nisso para desligar os triggers durante a carga. No Supabase hospedado
+        o role `postgres` NÃO é superusuário. Não foi possível verificar sem o projeto —
+        virou o checkpoint da etapa 3, ANTES da carga.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  o_que_NAO_muda: |
+    · O dia a dia: repo deslinkado, banco local via Docker, `.env.local` em 127.0.0.1.
+      O repo só conhece a nuvem entre as etapas 2 e 7.
+    · `main` congelada em v1.0.0. Nenhum merge, nenhuma tag hoje (D1).
+    · ⚠️ **Nunca** `supabase db reset --linked` (apaga o banco remoto) nem
+      `supabase config push` (jogaria o auth de DEV em produção: signup aberto, sem
+      confirmação de e-mail, `site_url` em 127.0.0.1).
+    · `config.toml` continua com `project_id = "dqslqfzqukcahogkieet"`. É herança do
+      Lovable e nomeia só os containers locais — quem escolhe o projeto remoto é o `link`.
+      **Não mexer.**
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  etapas:
+    - id: 0
+      nome: "Pré-voo local — nada toca a nuvem"
+      status: "⏳ não iniciada"
+      entrega:
+        - "Backup do dump, que NÃO é versionado: `cp supabase/seed.local.sql ~/backup-seed-$(date +%F).sql`."
+        - >
+          `sg docker -c 'npx supabase db reset'` — é a única verificação que exercita a
+          ORDEM REAL de carga (121 migrations → seed.sql → dump → seed.pos.sql), a mesma
+          que a nuvem verá. Falhar aqui é falhar lá.
+        - >
+          Reanotar os números-alvo pós-reset (os 8 acima). São eles que, comparados depois,
+          provam que a carga na nuvem foi completa.
+      armadilha: >
+        ⚠️ O reset apaga os 2 editais locais. É esperado e foi acordado (D2) — dado acima
+        do seed é playground.
+
+    - id: 1
+      nome: "O projeto na nuvem (dashboard + login do CLI)"
+      status: "⏳ não iniciada"
+      entrega:
+        - "Criar o projeto (ou confirmar o criado em 2026-07-12). Guardar a senha do Postgres."
+        - >
+          ⚠️ Conferir a versão do Postgres = **17**, que é o `major_version` do
+          `config.toml`. Divergência muda comportamento de constraint e função, e só
+          aparece tarde.
+        - "`npx supabase login` — interativo, roda o usuário."
+        - >
+          Anotar a **ref** e a connection string **direta** (5432 / session pooler). A
+          transaction pooler não serve: o dump é script com `SET` de sessão.
+
+    - id: 2
+      nome: "Schema — as migrations"
+      status: "⏳ não iniciada"
+      entrega:
+        - "`npx supabase link --project-ref <REF>` — daqui até a etapa 7 o repo está ARMADO."
+        - >
+          `npm run prod:push:dry` → tem de listar TODAS as migrations (121 em 06/08),
+          conferidas com `ls supabase/migrations/*.sql | wc -l` na hora.
+          🔴 **Listou menos? PARE** — o banco não é o que pensamos.
+        - "`npm run prod:push`."
+      armadilha: >
+        É este passo que cria os GRANTs da `20260712010000_grant_api_roles_table_privileges.sql`.
+        Sem eles o login autentica e a UI nunca avança — e o sintoma não parece de permissão.
+
+    - id: 3
+      nome: "Dados — o único local→prod que este projeto aceita"
+      status: "⏳ não iniciada"
+      entrega:
+        - >
+          CHECKPOINT do A4, antes de qualquer carga:
+          `psql "<conn>" -c 'BEGIN; SET session_replication_role = replica;
+          SHOW session_replication_role; ROLLBACK;'`. Se recusar, desligar
+          `on_auth_user_created` durante a carga — senão o trigger duplica
+          `profiles`/`user_roles` ao inserir `auth.users`.
+        - "`psql \"<conn>\" -f supabase/seed.local.sql` — todos os INSERTs têm ON CONFLICT."
+        - >
+          🔴 `psql "<conn>" -f supabase/seed.pos.sql` — DEPOIS do dump, nunca antes. É o
+          backfill dos 12 colaboradores da cúpula (2 admins + 10 coordenadores).
+          **Pular é falha silenciosa:** eles continuam entrando como admin/coordenador, mas
+          sem `user_id` e sem o papel `colaborador`, e nada acusa. É idempotente.
+        - >
+          ⭐ CONTROLE POSITIVO: rodar as 8 contagens da etapa 0 contra a nuvem e comparar
+          linha a linha. Bater é a prova; divergir é parar.
+      armadilha: >
+        A partir daqui **produção passa a ser dona dos dados** e o caminho local→prod se
+        fecha para sempre (regra do `banco-producao.md`). O arquivo carrega PII real.
+
+    - id: 4
+      nome: "Auth no dashboard — o que não vem do config.toml"
+      status: "⏳ não iniciada"
+      entrega:
+        - "Confirmação de e-mail LIGADA; signup fechado se o cadastro for só por convite."
+        - "Rate limits do Auth conferidos contra as cotas do plano (e-mail transacional e token)."
+        - >
+          `site_url` + redirect URLs com `https://SEU_DOMINIO/**` — incluindo as rotas
+          internas, senão o link de recuperação e o invite da reivindicação caem no
+          `site_url` em vez de `/redefinir-senha`.
+        - >
+          ⚠️ PROVISÓRIO por causa da D1 (frontend fica para depois). Enquanto não houver
+          domínio, **não disparar fluxo de e-mail em produção**. Fecha junto com o frontend.
+
+    - id: 5
+      nome: "As 8 edge functions + secrets"
+      status: "⏳ não iniciada"
+      entrega:
+        - "`npx supabase functions deploy` — `db push` não leva function nenhuma."
+        - >
+          `npx supabase secrets set SMTP_HOST=smtp.hostinger.com SMTP_PORT=465
+          SMTP_USER=… SMTP_PASS=… SITE_URL=…` (o `SITE_URL` é o achado A1).
+          ⚠️ `SMTP_HOST` já esteve como `mtp.` — o sintoma é "failed to lookup address
+          information", que parece SMTP e é DNS. A porta 465 exige TLS implícito; 587 NÃO
+          funciona com o código atual.
+        - "Conferir que `create-coordenador` subiu com `verify_jwt = false` (o único assim no config.toml)."
+      armadilha: >
+        🔴 Sem a `recuperar-senha` no ar, o "esqueci minha senha" simplesmente não funciona
+        — e **a tela não denuncia**, porque a resposta é genérica por desenho
+        (anti-enumeração). ⚠️ `verify_jwt` NÃO é autorização: a anon key é JWT válido.
+
+    - id: 6
+      nome: "Validar de ponta a ponta antes de desarmar"
+      status: "⏳ não iniciada"
+      entrega:
+        - >
+          `.env.production.local` com a URL e a publishable key da NUVEM (vence o
+          `.env.local` — ver A3), depois `npm run build && npm run preview`.
+        - >
+          ⭐ O TESTE QUE IMPORTA: logar com uma conta real de produção (o hash veio no
+          dump) e ver a tela **avançar**. Autenticar e não avançar é o sintoma clássico de
+          GRANT ausente — é assim que se prova que a migration de GRANTs pegou.
+        - "Abrir /colaboradores e /candidatos e conferir que os números batem com os alvos."
+        - "🔴 APAGAR o `.env.production.local` — é a única cópia de credencial da nuvem na máquina."
+
+    - id: 7
+      nome: "Desarmar"
+      status: "⏳ não iniciada"
+      entrega:
+        - "`npm run prod:unlink` e conferir que `supabase/.temp/` voltou a não ter project-ref."
+        - >
+          Corrigir o `.env` da raiz (achado A2), que hoje se chama produção e aponta para
+          o Docker local. Nome que mente é o que faz um `npm run build` distraído gerar
+          bundle apontando para localhost.
+
+    - id: 8
+      nome: "Docs no mesmo passe"
+      status: "⏳ não iniciada"
+      entrega:
+        - >
+          `banco-producao.md`: acrescentar `SITE_URL` ao passo 7 (A1), corrigir "6 edge
+          functions" → 8, atualizar/remover o total de migrations (85 → medir na hora) e
+          registrar o resultado do checkpoint do `session_replication_role`.
+        - >
+          🔵 `banco-producao.md` passo 5 diz que `seed.pos.sql` "contém uma coisa só: o
+          backfill dos 12 colaboradores". **São DOIS blocos** desde o tema Editais: o
+          backfill da cúpula e a derivação dos editais a partir de `provas.prova_edital`.
+          A frase envelheceu e é ela que me fez errar sobre os 2 editais (ver D2).
+        - "`backlog.md`: o item 'Bootstrap do banco de produção da v2' sai de pendente."
+        - "`npm run docs:conferir` sem divergência; este arquivo vai para `concluidos/`."
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  riscos: |
+    R1. 🔴 **O `site_url` provisório é dívida com prazo.** É o preço da D1. Enquanto ele
+        apontar para lugar nenhum, qualquer e-mail transacional disparado em produção leva
+        o usuário a um link quebrado — e o fluxo de reivindicação/recuperação não denuncia.
+        Fecha na subida do frontend, e até lá **não se dispara e-mail em prod**.
+
+    R2. **O dump é de 03/08 e não envelhece** — o banco antigo está congelado desde 12/07,
+        ninguém escreve nele. Mas ⚠️ **um dump NOVO nasce sem as três correções manuais**
+        (e-mails duplicados zerados, `colab_codigo_acesso` removida, `colab_email` saneado
+        para caber na CHECK). Se por qualquer motivo alguém gerar outro, duas dessas
+        quebram a carga. Ver `estrutura/transversais/desenvolvimento-local.md`.
+
+    R3. **Entre as etapas 2 e 7 o repo está armado.** É o único intervalo em que
+        `db reset --linked` e `config push` têm alvo. Não deixar o link aberto de um dia
+        para o outro; a etapa 7 não é cerimônia.
+
+    R4. **O schema de prod passa a existir sem o código de prod no ar.** É o corolário do
+        `banco-producao.md`: código novo e migration nova sobem juntos. Como aqui o banco
+        vai na frente por decisão (D1), o risco é o inverso do usual — nada quebra, mas
+        entre hoje e a subida do frontend a produção acumula migrations novas de `dev` que
+        ELA não terá. **Na subida do frontend, rodar `prod:push:dry` de novo** e tratar o
+        delta como parte da release.
+
+    R5. **Nenhum passo aqui é coberto por teste.** A suíte mocka o Supabase; o
+        `docs:conferir` não executa nada. A verificação é o controle positivo da etapa 3 e
+        o login real da etapa 6 — se algum for pulado, o bootstrap fica "verde" sem prova.
