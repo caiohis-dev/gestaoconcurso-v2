@@ -237,9 +237,12 @@ roadmap:
       status: "⏳ não iniciada"
       entrega:
         - >
-          `banco-producao.md`: acrescentar `SITE_URL` ao passo 7 (A1), corrigir "6 edge
-          functions" → 8, atualizar/remover o total de migrations (85 → medir na hora) e
-          registrar o resultado do checkpoint do `session_replication_role`.
+          🔵 **FEITO em 2026-08-06, antes da execução:** `banco-producao.md` passo 7 já
+          traz `SITE_URL` (A1), o "8 edge functions" e o aviso de não cadastrar os secrets
+          que a plataforma injeta; `desenvolvimento-local.md` já corrige o "seed.pos.sql
+          contém uma coisa só" (são dois blocos). **Continua nesta etapa:** atualizar o
+          total de migrations do passo 2 (85 → medir na hora) e registrar o resultado do
+          checkpoint do `session_replication_role`.
         - >
           🔵 `banco-producao.md` passo 5 diz que `seed.pos.sql` "contém uma coisa só: o
           backfill dos 12 colaboradores". **São DOIS blocos** desde o tema Editais: o

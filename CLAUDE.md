@@ -155,7 +155,7 @@ sg docker -c 'npx supabase db reset'    # aplica migrations + os 3 seeds
 **Não há CI.** Nada roda a suíte sozinho; cada tema fechado depende de alguém lembrar. É o item de maior alavancagem do backlog, adiado por decisão do usuário.
 
 ```bash
-npm test                                  # 1305 testes em 66 arquivos
+npm test                                  # 1307 testes em 66 arquivos
 npx tsc --noEmit -p tsconfig.app.json     # tem de sair limpo
 npm run build
 npm run lint                              # baseline 117 (63 erros, 54 avisos)
@@ -166,7 +166,7 @@ npm run docs:conferir                     # docs × código/banco — tem de sai
 
 ### `npm run docs:conferir` — o que ele pega, e o que não pega
 
-Extrai a verdade estrutural (528 fatos do banco + o `App.tsx`) e confere as docs vivas contra ela: **arquivo citado existe · tabela existe · identificador de banco existe · contagem bate · a matriz de rota × papéis do doc bate com o `RequireAcesso` do `App.tsx`**.
+Extrai a verdade estrutural (580 fatos do banco + o `App.tsx`) e confere as docs vivas contra ela: **arquivo citado existe · tabela existe · identificador de banco existe · contagem bate · a matriz de rota × papéis do doc bate com o `RequireAcesso` do `App.tsx`**.
 
 🔴 **A checagem de guards é a mais importante, e pega os DOIS sentidos** — doc que envelheceu *e* **guard removido do código**. Foi falsificada nas duas direções antes de ser aceita. Ela existe porque em 31/07 um doc afirmava que *"guard é escrito à mão, um por arquivo"* e mandava copiar o par bounce-por-login + bounce-por-papel — o padrão que já falhou **3 vezes** e que a centralização de 26/07 eliminou. **Doc errada sobre guard ensina a reabrir buraco de autorização.**
 

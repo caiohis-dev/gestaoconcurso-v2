@@ -101,6 +101,7 @@ Desde 2026-07-24 a raiz `/` não abre mais uma lista, e sim um **hub** (`src/pag
 - **`moduloDaRota` casa por igualdade-ou-prefixo-com-`/`**, nunca `startsWith` cru — senão `/cadastro` capturaria `/cadastro-publico` (rota pública, fora de qualquer módulo). Rotas públicas e de config geral (`/perfil`, `/perfil-colaborador`, `/gerenciar-usuarios`) **não** entram em `prefixosRota`.
 - **Config geral não é módulo** (decisão de desenho): "Usuários" e "Meu Cadastro" ficam no header sempre, fora dos cards; o dropdown do avatar leva a "Alterar Cadastro".
 - **Colaborador puro nunca vê o hub** — cai direto em `/perfil-colaborador` (o guard do `Inicio.tsx` e o pós-login do `Auth.tsx` cuidam disso). Ver a matriz papel × módulo em [`auth-e-permissoes.md`](./auth-e-permissoes.md).
+- 🔵 **Os cards são numerados** desde 2026-08-06 (marcador redondo no canto). ⚠️ **O número é a posição na lista JÁ FILTRADA por papel**, e não identificador do módulo: dois usuários de papéis diferentes veem números diferentes para o mesmo card. Serve como ordem visual — **não** como referência compartilhada ("abra o módulo 3"), e não vale citá-lo em documento nem em instrução ao usuário.
 
 O desenho fechado e as 5 decisões (D1–D5) estão em [`roadmap-modulos.yaml`](../../analises/concluidos/roadmap-modulos.yaml).
 

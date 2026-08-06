@@ -101,7 +101,14 @@ Tudo no `seed.pos.sql` precisa ser **idempotente** (roda a cada `db reset`, e ro
 
 **Em produção ele não roda sozinho:** `db push` não executa seed nenhum. Lá ele é um **passo manual do bootstrap**, logo depois da carga do dump — ver [`../banco-producao.md`](../../banco-producao.md).
 
-Hoje ele contém uma coisa só: o **backfill dos 12 colaboradores que já eram usuários** do Auth (2 admins + 10 coordenadores), que preenche `colaboradores.user_id` e concede o papel `colaborador`. O porquê está em [`../analises/roadmap-auth-colaborador.md`](../../analises/concluidos/roadmap-auth-colaborador.md).
+Hoje ele contém **dois blocos**:
+
+1. o **backfill dos 12 colaboradores que já eram usuários** do Auth (2 admins + 10 coordenadores), que preenche `colaboradores.user_id` e concede o papel `colaborador`;
+2. 🔵 o **backfill dos editais** (tema *Editais como entidade*): para cada `provas.prova_edital` distinto ele cria um edital e liga as provas por `edital_id`.
+
+> 🔵 **Corrigido em 2026-08-06.** Esta frase dizia *"contém uma coisa só"* e estava desatualizada desde o tema Editais. **Ela induziu erro real:** ao planejar o bootstrap eu afirmei que os 2 editais do banco local eram playground criado à mão, porque `grep "INSERT INTO public.editais" seed.local.sql` dá **0** — o dump de fato não os traz, eles são **derivados** aqui. Quem desfez foi o `db reset`: os editais continuavam lá depois dele. **Generalize: grep num arquivo de carga responde "este texto está escrito aqui?", não "este dado existe depois da carga?".**
+
+O porquê do primeiro bloco está em [`../analises/roadmap-auth-colaborador.md`](../../analises/concluidos/roadmap-auth-colaborador.md).
 
 ## Gotcha importante: GRANTs não vinham das migrations (corrigido em 2026-07-12)
 
