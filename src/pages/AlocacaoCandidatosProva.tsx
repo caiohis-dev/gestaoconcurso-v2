@@ -6,14 +6,19 @@ import { useSalasDistribuidas, SalaDistribuida } from "@/hooks/useSalasDistribui
 import { useCandidatos, useContagemCandidatosPorEdital } from "@/hooks/useCandidatos";
 import {
   useOcupacaoPorSala,
+  useOcupacaoPorUnidade,
+  useCargosDaProva,
   useEspeciaisDaProva,
   useCandidatosDaSala,
   useOndeEsta,
-  useDistribuirCandidatos,
+  useAplicarPlano,
   useIncluirNaSala,
   useRetirarDaSala,
-  EspecialDaProva,
 } from "@/hooks/useAlocacaoCandidatos";
+import { useUnidadeCapacidade } from "@/hooks/useUnidadeCapacidade";
+import { AlocacaoDragDropUI } from "@/components/AlocacaoDragDropUI";
+import { ListaDeCandidatosDaProva } from "@/components/ListaDeCandidatosDaProva";
+import { idDoBloco, type CargoPendente, type UnidadeAlocavel } from "@/lib/alocacao-dnd";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,31 +34,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Loader2, DoorOpen, Search, Shuffle, UserMinus, UserPlus, Lock } from "lucide-react";
+import { Loader2, DoorOpen, Search, UserMinus, UserPlus, Lock } from "lucide-react";
 
 /**
  * O quadro da alocação de UMA prova: distribuir, ver cada sala, incluir e retirar.
@@ -72,14 +59,18 @@ export default function AlocacaoCandidatosProva() {
   const { provaUnidades } = useProvaUnidades(idDaProva);
   const { salas, isLoading: salasLoading } = useSalasDistribuidas(idDaProva);
   const { contagem } = useContagemCandidatosPorEdital();
-  const { ocupacao, error: ocupacaoError } = useOcupacaoPorSala(idDaProva);
+  const { ocupacao, manuaisPorSala, error: ocupacaoError } = useOcupacaoPorSala(idDaProva);
+  const { porUnidade } = useOcupacaoPorUnidade(idDaProva);
+  const { cargos: cargosDaProva } = useCargosDaProva(idDaProva);
   const { especiais } = useEspeciaisDaProva(idDaProva);
-  const { distribuir, isDistribuindo } = useDistribuirCandidatos();
+  const { aplicar, isAplicando } = useAplicarPlano();
+
+  const unidadeIds = useMemo(() => provaUnidades.map((pu) => pu.unidade_id), [provaUnidades]);
+  const { data: capacidade, error: capacidadeError } = useUnidadeCapacidade(idDaProva, unidadeIds);
 
   const [busca, setBusca] = useState("");
   const { resultados } = useOndeEsta(idDaProva, busca);
   const [salaAberta, setSalaAberta] = useState<SalaDistribuida | null>(null);
-  const [especialParaIncluir, setEspecialParaIncluir] = useState<EspecialDaProva | null>(null);
 
   // Prova finalizada OU unidade finalizada congelam no banco (PF001); aqui é o aviso.
   const algumaUnidadeFinalizada = provaUnidades.some((pu) => pu.unidade_finalizada);
@@ -105,9 +96,84 @@ export default function AlocacaoCandidatosProva() {
     return `sala ${sala.sala_numero} (${siglaPorUnidade[sala.sala_fk_unidade] ?? "?"})`;
   };
 
+  // 🔴 O aviso da decisão D1: entre marcar alguém e aplicar o plano, essa pessoa está EM
+  // SALA e marcada para sair. O total de alocados a inclui, e sem dizer isso o número
+  // mente por omissão.
+  const foraComSala = cargosDaProva.reduce((s, c) => s + c.foraComSala, 0);
+
   const inscritos = prova?.edital_id ? contagem[prova.edital_id] : undefined;
   const alocados = Object.values(ocupacao).reduce((s, n) => s + n, 0);
   const pendentes = especiais.filter((e) => e.salaId === null);
+
+  // O rascunho parte das alocações MANUAIS: aplicar o plano apaga as automáticas, então
+  // contá-las como ocupação faria a tela dizer "sem vaga" onde o plano vai esvaziar.
+  // 🔴 TRÊS blocos por cargo: comuns, PCD e sala especial. São estoques DISJUNTOS no
+  // banco (`bloco_do_candidato` devolve um valor só, e a RPC valida cada um por si com
+  // AL010), e o card de cada um tem cor própria — fundi-los mandaria gente do estoque
+  // errado para a sala errada.
+  const cargosParaArrastar: CargoPendente[] = useMemo(
+    () =>
+      cargosDaProva.flatMap((c) =>
+        ([
+          { bloco: "comum", quantos: c.aDistribuir },
+          { bloco: "pcd", quantos: c.pcdADistribuir },
+          { bloco: "sala_especial", quantos: c.salaEspecialADistribuir },
+        ] as const)
+          // ⚠️ Sem filtro de zero: bloco vazio vira card "sem inscritos" no container do
+          // cargo. Escondê-lo fez o card de sala especial sumir da tela — ele tem 0 no
+          // dado real, e a pessoa precisava justamente ver esse 0.
+          .map((b) => ({
+            id: idDoBloco(c.cargoId, b.bloco),
+            cargoId: c.cargoId,
+            nome: c.nome,
+            bloco: b.bloco,
+            naoAlocados: b.quantos,
+            // O total nasce igual ao disponível: o rascunho começa vazio, e é o arrasto
+            // que faz `naoAlocados` descer enquanto `total` fica parado.
+            total: b.quantos,
+          })),
+      ),
+    [cargosDaProva],
+  );
+
+  // 🔴 As salas UMA A UMA, em ordem física — não a capacidade somada. O quadro simula o
+  // empacotamento do banco ("cada bloco abre sala nova"), e com um total só ele oferecia
+  // vagas que a ociosidade das salas de fronteira já tinha gasto.
+  const unidadesParaArrastar: UnidadeAlocavel[] = useMemo(
+    () =>
+      provaUnidades.map((pu) => ({
+        id: pu.unidade_id,
+        nome: `${pu.unidades_prova.unid_sigla} — ${pu.unidades_prova.unid_nome}`,
+        salas: salas
+          .filter((s) => s.sala_fk_unidade === pu.unidade_id)
+          .sort(
+            (a, b) =>
+              (a.sala_andar ?? Number.MAX_SAFE_INTEGER) -
+                (b.sala_andar ?? Number.MAX_SAFE_INTEGER) || a.sala_numero - b.sala_numero,
+          )
+          .map((s) => ({
+            id: s.id,
+            capacidade: s.sala_capacidade,
+            // Só as MANUAIS: aplicar o plano apaga as automáticas.
+            ocupadasManuais: manuaisPorSala[s.id] ?? 0,
+          })),
+        alocacoesPorCargo: [],
+      })),
+    [provaUnidades, salas, manuaisPorSala],
+  );
+
+  // A chave remonta o quadro quando o banco muda: um rascunho montado sobre números
+  // antigos descreveria um mundo que já mudou.
+  const chaveDoQuadro = useMemo(
+    () =>
+      [
+        cargosParaArrastar.map((c) => `${c.id}:${c.naoAlocados}`).join("|"),
+        unidadesParaArrastar
+          .map((u) => `${u.id}:${u.salas.map((s) => `${s.id}/${s.capacidade}/${s.ocupadasManuais}`).join(",")}`)
+          .join("|"),
+      ].join("#"),
+    [cargosParaArrastar, unidadesParaArrastar],
+  );
 
   if (provasLoading) {
     return (
@@ -141,15 +207,23 @@ export default function AlocacaoCandidatosProva() {
               ? `${inscritos.toLocaleString("pt-BR")} inscrito(s) no edital · ${alocados.toLocaleString("pt-BR")} alocado(s) · ${pendentes.length} pedido(s) de atendimento especial pendente(s)`
               : "Este edital ainda não tem lista de inscritos importada."
           }
-          congelada={congelada}
-          isDistribuindo={isDistribuindo}
-          onDistribuir={() => distribuir(idDaProva)}
         />
 
         <AvisosAlocacao
           congelada={congelada}
           algumaUnidadeFinalizada={algumaUnidadeFinalizada}
           ocupacaoFalhou={ocupacaoError != null}
+          capacidadeFalhou={capacidadeError != null}
+          foraComSala={foraComSala}
+        />
+
+        <AlocacaoDragDropUI
+          key={chaveDoQuadro}
+          cargos={cargosParaArrastar}
+          unidades={unidadesParaArrastar}
+          congelada={congelada}
+          isAplicando={isAplicando}
+          onAplicar={(plano) => aplicar({ provaId: idDaProva, plano })}
         />
 
         <SecaoOndeEsta
@@ -159,11 +233,10 @@ export default function AlocacaoCandidatosProva() {
           salaDoResultado={salaDoResultado}
         />
 
-        <SecaoEspeciais
-          especiais={especiais}
+        <ListaDeCandidatosDaProva
+          provaId={idDaProva}
+          cargos={cargosDaProva}
           congelada={congelada}
-          salaDoResultado={salaDoResultado}
-          onIncluir={setEspecialParaIncluir}
         />
 
         <SecaoSalas
@@ -188,84 +261,36 @@ export default function AlocacaoCandidatosProva() {
         />
       )}
 
-      {especialParaIncluir && (
-        <IncluirEmSalaDialog
-          especial={especialParaIncluir}
-          provaId={idDaProva}
-          salas={salas}
-          siglaPorUnidade={siglaPorUnidade}
-          ocupacao={ocupacao}
-          onClose={() => setEspecialParaIncluir(null)}
-        />
-      )}
     </Layout>
   );
 }
 
-/** Título + resumo + o botão de distribuir com a confirmação que diz o que será refeito. */
-function CabecalhoAlocacao({
-  titulo,
-  resumo,
-  congelada,
-  isDistribuindo,
-  onDistribuir,
-}: {
-  titulo: string;
-  resumo: string;
-  congelada: boolean;
-  isDistribuindo: boolean;
-  onDistribuir: () => void;
-}) {
+/** Título + resumo. O que era o botão "Distribuir" virou o quadro de arrasto. */
+function CabecalhoAlocacao({ titulo, resumo }: { titulo: string; resumo: string }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-4">
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <DoorOpen className="h-6 w-6" />
-          Alocação — {titulo}
-        </h1>
-        <p className="text-muted-foreground">{resumo}</p>
-      </div>
-
-      <AlertDialog>
-        <AlertDialogTrigger asChild>
-          <Button disabled={congelada || isDistribuindo}>
-            {isDistribuindo ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Shuffle className="h-4 w-4 mr-2" />
-            )}
-            Distribuir automaticamente
-          </Button>
-        </AlertDialogTrigger>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Distribuir os candidatos nas salas?</AlertDialogTitle>
-            <AlertDialogDescription>
-              A distribuição agrupa por cargo (cada cargo começa em sala nova, em ordem
-              alfabética dentro do cargo) e REFAZ o que a distribuição automática anterior
-              criou. As alocações feitas à mão são preservadas. Quem pediu atendimento
-              especial ou é PCD fica de fora e continua entrando manualmente.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={onDistribuir}>Distribuir</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+    <div>
+      <h1 className="text-2xl font-bold flex items-center gap-2">
+        <DoorOpen className="h-6 w-6" />
+        Alocação — {titulo}
+      </h1>
+      <p className="text-muted-foreground">{resumo}</p>
     </div>
   );
 }
 
-/** Os três avisos da tela. A falha da ocupação NÃO pode virar zeros com cara de verdade. */
+/** Os avisos da tela. Consulta que FALHA não pode virar zeros com cara de verdade. */
 function AvisosAlocacao({
   congelada,
   algumaUnidadeFinalizada,
   ocupacaoFalhou,
+  capacidadeFalhou,
+  foraComSala,
 }: {
   congelada: boolean;
   algumaUnidadeFinalizada: boolean;
   ocupacaoFalhou: boolean;
+  capacidadeFalhou: boolean;
+  foraComSala: number;
 }) {
   return (
     <>
@@ -292,6 +317,23 @@ function AvisosAlocacao({
           <AlertDescription>
             Não foi possível carregar a ocupação das salas — os números abaixo podem estar
             zerados sem ser verdade. Recarregue a página.
+          </AlertDescription>
+        </Alert>
+      )}
+      {foraComSala > 0 && (
+        <Alert>
+          <AlertDescription>
+            <strong>{foraComSala.toLocaleString("pt-BR")} inscrito(s)</strong> foram
+            retirados da alocação automática mas <strong>ainda estão em sala</strong> — o
+            total de alocados acima os inclui. Eles saem no próximo “Aplicar plano”.
+          </AlertDescription>
+        </Alert>
+      )}
+      {capacidadeFalhou && (
+        <Alert variant="destructive">
+          <AlertDescription>
+            Não foi possível carregar a capacidade das unidades — o quadro de planejamento
+            mostraria zero vaga onde há salas. Recarregue a página antes de montar o plano.
           </AlertDescription>
         </Alert>
       )}
@@ -347,83 +389,6 @@ function SecaoOndeEsta({
   );
 }
 
-/** Os especiais da prova: o texto do pedido é a informação que decide a sala. */
-function SecaoEspeciais({
-  especiais,
-  congelada,
-  salaDoResultado,
-  onIncluir,
-}: {
-  especiais: EspecialDaProva[];
-  congelada: boolean;
-  salaDoResultado: (salaId: string) => string;
-  onIncluir: (e: EspecialDaProva) => void;
-}) {
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base">Atendimento especial ({especiais.length})</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {especiais.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Nenhum inscrito deste edital pediu sala especial nem é PCD.
-          </p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Inscrição</TableHead>
-                <TableHead>Nome</TableHead>
-                <TableHead>Cargo</TableHead>
-                <TableHead>Pedido</TableHead>
-                <TableHead>Situação</TableHead>
-                <TableHead className="text-right">Ação</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {especiais.map((e) => (
-                <TableRow key={e.candidatoId}>
-                  <TableCell>{e.nInscricao}</TableCell>
-                  <TableCell>{e.nome}</TableCell>
-                  <TableCell>{e.cargo ?? "—"}</TableCell>
-                  <TableCell className="max-w-[24rem]">
-                    {[
-                      e.portadorDeficiencia ? "PCD" : null,
-                      e.salaEspecial?.trim() ? e.salaEspecial : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </TableCell>
-                  <TableCell>
-                    {e.salaId ? (
-                      <Badge variant="secondary">{salaDoResultado(e.salaId)}</Badge>
-                    ) : (
-                      <Badge variant="outline">pendente</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {e.salaId === null && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={congelada}
-                        onClick={() => onIncluir(e)}
-                      >
-                        <UserPlus className="h-4 w-4 mr-1" aria-hidden="true" />
-                        Incluir em sala
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
 
 /** As salas por unidade, com ocupação/capacidade. Os vazios são mensagens diferentes. */
 function SecaoSalas({
@@ -652,82 +617,3 @@ function SalaDialog({
   );
 }
 
-/** Incluir um pendente de atendimento especial: escolher a sala com vaga e confirmar. */
-function IncluirEmSalaDialog({
-  especial,
-  provaId,
-  salas,
-  siglaPorUnidade,
-  ocupacao,
-  onClose,
-}: {
-  especial: EspecialDaProva;
-  provaId: string;
-  salas: SalaDistribuida[];
-  siglaPorUnidade: Record<string, string>;
-  ocupacao: Record<string, number>;
-  onClose: () => void;
-}) {
-  const { incluir, isIncluindo } = useIncluirNaSala();
-  const [salaId, setSalaId] = useState<string>("");
-
-  const comVaga = salas.filter((s) => (ocupacao[s.id] ?? 0) < s.sala_capacidade);
-
-  return (
-    <Dialog open onOpenChange={(aberto) => !aberto && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Incluir {especial.nome} em uma sala</DialogTitle>
-          <DialogDescription>
-            O pedido do inscrito:{" "}
-            {[
-              especial.portadorDeficiencia ? "PCD" : null,
-              especial.salaEspecial?.trim() ? especial.salaEspecial : null,
-            ]
-              .filter(Boolean)
-              .join(" · ") || "(sem texto)"}
-            . A lista abaixo traz só salas com vaga nesta prova; quem decide se a sala
-            atende ao pedido é você.
-          </DialogDescription>
-        </DialogHeader>
-
-        {comVaga.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Nenhuma sala com vaga nesta prova. Aumente capacidades ou vincule mais unidades.
-          </p>
-        ) : (
-          <Select value={salaId} onValueChange={setSalaId}>
-            <SelectTrigger aria-label="Sala de destino">
-              <SelectValue placeholder="Escolha a sala" />
-            </SelectTrigger>
-            <SelectContent>
-              {comVaga.map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  Sala {s.sala_numero} ({siglaPorUnidade[s.sala_fk_unidade] ?? "?"}
-                  {s.sala_andar != null ? `, andar ${s.sala_andar}` : ""}) —{" "}
-                  {(ocupacao[s.id] ?? 0)} / {s.sala_capacidade}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button
-            disabled={!salaId || isIncluindo}
-            onClick={async () => {
-              await incluir({ candidatoId: especial.candidatoId, salaId, provaId });
-              onClose();
-            }}
-          >
-            {isIncluindo && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Incluir
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}

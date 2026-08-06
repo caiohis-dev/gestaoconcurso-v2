@@ -42,6 +42,30 @@ errada e o que cada decisão custou. Antes de reabrir qualquer tema abaixo, proc
 | ✅ 02/08 | o cadastro público passou a validar o CPF antes de consultar — e a EF perdeu um `padStart` que consultava outra pessoa |
 | ✅ 02/08 | o nº de inscritos passou a ter **uma** fonte: a lista real. A alocação dizia 200 onde havia 7.231 |
 | ✅ 04/08 | o candidato ganhou sala: módulo **Alocação de Candidatos** (o vínculo candidato↔prova/sala que o item 1 de Candidatos previa) |
+| ✅ 05/08 | a distribuição virou **plano montado por arrasto**: o admin escolhe a unidade de cada bloco, os cargos ganharam 3 blocos (comuns/PCD/sala especial) e nasceu o marcador "fora da alocação automática" |
+
+---
+
+## ⏭️ PRÓXIMA — dois tipos de distribuição automática: máxima e homogênea
+
+**Status:** ⏳ **não iniciado, e o desenho NÃO está fechado.** O usuário anunciou o tema em 2026-08-05 e disse que **dará mais detalhes na hora de implementar**. Esta entrada existe só para o tema não se perder — não é especificação.
+**Área:** módulo Alocação de Candidatos — ver [`estrutura/modulos/alocacao-candidatos/00-modulo.md`](./estrutura/modulos/alocacao-candidatos/00-modulo.md)
+
+Hoje existe **uma** forma de o plano encher as salas: sequencial, do ponteiro em diante, cada bloco começando em sala nova e enchendo cada sala até a capacidade antes de passar para a seguinte. O tema acrescenta a escolha entre **duas** políticas:
+
+| | O que se espera dela (a confirmar) |
+|---|---|
+| **Alocação máxima** | o comportamento de hoje: encher cada sala até o teto antes de abrir a próxima |
+| **Alocação homogênea** | espalhar o bloco pelas salas disponíveis, equilibrando a ocupação em vez de lotar as primeiras |
+
+🔴 **Não implemente a partir desta tabela.** Ela é a leitura do que os nomes sugerem, não a regra do usuário. Perguntar antes, no mínimo: a política é escolhida **por prova, por plano ou por bloco**? A homogênea equilibra dentro da **unidade** ou da **prova inteira**? Ela ainda respeita "cada bloco abre sala nova"? E o que acontece com a sala de fronteira?
+
+### O que já está pronto e vai ser tocado
+
+- **`aplicar_plano_de_alocacao`** (migration `20260805205719`) — o laço por entrada do plano é onde a política entra. Hoje o miolo é `pos ∈ (ini, fim]` sobre faixas cumulativas de vagas; homogênea provavelmente não é uma faixa cumulativa.
+- 🔴 **`simularEmpacotamento`** (`src/lib/alocacao-dnd.ts`) — a tela **espelha** o laço do banco para dizer o que cabe. **Uma política nova no banco sem a mesma política na simulação faz a tela voltar a oferecer vaga que o banco recusa** — foi exatamente o defeito de 05/08 (ofereceu 152 onde havia 120). As duas mudam no mesmo passe, ou nenhuma muda. Ver §8 do `CLAUDE.md`.
+- **`docs/bateria-alocacao-candidatos.sql`** — os casos 1, 1b, 2 e 3 afirmam a distribuição sala a sala **pelo nome de quem ficou onde**. Com política nova, eles precisam dizer QUAL política estão exercitando, senão passam a afirmar uma coisa e testar outra.
+- **A ociosidade muda de tamanho.** "Cada bloco abre sala nova" já cria vaga ociosa; espalhar pode multiplicá-la. O card da unidade já mostra `vagas úteis / ociosas` — conferir se o número continua verdadeiro.
 
 ---
 
@@ -50,7 +74,7 @@ errada e o que cada decisão custou. Antes de reabrir qualquer tema abaixo, proc
 **Status:** o módulo está pronto e verificado (2026-07-27). Estes são os fios soltos que ele **não** resolveu, e nenhum bloqueia nada hoje.
 **Área:** módulo Candidatos — ver [`estrutura/modulos/candidatos/00-modulo.md`](./estrutura/modulos/candidatos/00-modulo.md)
 
-1. ~~**Não há vínculo entre candidato e prova, unidade ou sala.**~~ ✅ **CONCLUÍDO em 2026-08-04: virou o módulo Alocação de Candidatos** (`candidatos_alocacao` + distribuição automática por cargo + ajuste manual), exatamente como o item pedia — feature nova com desenho próprio, tabela nova, nada pendurado em `candidatos`. Contrato em [`estrutura/modulos/alocacao-candidatos/00-modulo.md`](./estrutura/modulos/alocacao-candidatos/00-modulo.md); registro em [`analises/concluidos/backlog-itens-concluidos.md`](./analises/concluidos/backlog-itens-concluidos.md).
+1. ~~**Não há vínculo entre candidato e prova, unidade ou sala.**~~ ✅ **CONCLUÍDO em 2026-08-04: virou o módulo Alocação de Candidatos** (`candidatos_alocacao` + distribuição por cargo + ajuste manual), exatamente como o item pedia — feature nova com desenho próprio, tabela nova, nada pendurado em `candidatos`. Contrato em [`estrutura/modulos/alocacao-candidatos/00-modulo.md`](./estrutura/modulos/alocacao-candidatos/00-modulo.md); registro em [`analises/concluidos/backlog-itens-concluidos.md`](./analises/concluidos/backlog-itens-concluidos.md).
 
    ⚠️ **O que o item destravava segue como decisão separada, ainda não tomada:** com o vínculo existindo, uma prova que aplique só um recorte do edital passou a ser *exprimível* — mas a fonte única do nº de inscritos **não foi reaberta**, e a distribuição assume a mesma premissa de 02/08 (todo inscrito do edital entra). Reabrir é pelo vínculo, **nunca** por campo digitado de volta no `ProvaDialog`.
 
@@ -228,7 +252,7 @@ Enquanto (2) não estiver resolvido, não é possível criar o `CHECK` que amarr
 
 O projeto novo no supabase.com já foi criado, mas o repo **não é linkado a ele** — e não deve ser, até o dia de colocar a v2 no ar (regra combinada em 2026-07-12: o repo fica deslinkado por padrão, e produção só é atualizada em versões estáveis).
 
-O schema já está pronto para subir quando for a hora: as **116** migrations reproduzem o banco local do zero (validado por `db reset` em 2026-08-04). ⚠️ **Este número já envelheceu duas vezes** — foi escrito como 69, corrigido para 85, e estava em 85 quando o real era 106. Confira com `npm run docs:conferir` em vez de confiar na leitura. O roteiro completo dos **9 passos** (link → `prod:push:dry` → `prod:push` → carga do `seed.local.sql` → **`seed.pos.sql`** → auth no dashboard → edge functions + secrets SMTP → `.env` do frontend → **unlink**) está em [`banco-producao.md`](./banco-producao.md).
+O schema já está pronto para subir quando for a hora: as **121** migrations reproduzem o banco local do zero (validado por `db reset` em 2026-08-04). ⚠️ **Este número já envelheceu duas vezes** — foi escrito como 69, corrigido para 85, e estava em 85 quando o real era 106. Confira com `npm run docs:conferir` em vez de confiar na leitura. O roteiro completo dos **9 passos** (link → `prod:push:dry` → `prod:push` → carga do `seed.local.sql` → **`seed.pos.sql`** → auth no dashboard → edge functions + secrets SMTP → `.env` do frontend → **unlink**) está em [`banco-producao.md`](./banco-producao.md).
 
 Falta apenas, no dia: a **ref do projeto novo** no Supabase.
 

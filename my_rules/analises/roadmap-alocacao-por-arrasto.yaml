@@ -1,0 +1,153 @@
+# Roadmap VIVO — a distribuição passa a ser um PLANO montado por arrasto
+# Criado em 2026-08-05. Leia my_rules/analises/README.md antes de usar como guia.
+# Estado atual do módulo: my_rules/estrutura/modulos/alocacao-candidatos/00-modulo.md
+
+roadmap:
+  titulo: "Alocação por arrasto — o admin escolhe QUAL unidade recebe cada cargo"
+  criado: "2026-08-05"
+  status: >
+    🟡 EM EXECUÇÃO. ✅ FASE 1 CONCLUÍDA em 2026-08-05 (migration 20260805185155): as duas
+    RPCs novas existem, `distribuir_candidatos_da_prova` foi dropada, os tipos do Supabase
+    foram regerados e a bateria foi REESCRITA e roda VERDE nos 15 casos + os controles
+    positivos. Dois defeitos foram pegos pela própria bateria, não por leitura: a
+    subconsulta correlacionada dentro do agregado (42803, morria na 1ª chamada) e a
+    sigla char(n) com espaços na mensagem AL004.
+    ✅ FASES 2, 3 e 4 CONCLUÍDAS em 2026-08-05. O quadro de arrasto substituiu o botão em
+    /alocacao-candidatos/:provaId, o protótipo /teste-dnd saiu, os docs foram atualizados.
+    Verificado: 1277 testes em 66 arquivos, tsc limpo, lint 117 (= baseline), build,
+    docs:conferir sem divergência, bateria verde nos 16 casos.
+    🔴 DOIS ACHADOS que só apareceram com o dado real, e ambos mudaram a migration:
+      · `cargos_pendentes_da_prova` descontava os alocados AUTOMÁTICOS. Com 7.109 no
+        banco, a faixa de arrasto abriria VAZIA — mas aplicar um plano apaga justamente
+        esses. Passou a descontar só especiais e manuais (controle: CASO 0b da bateria).
+      · O quadro precisava de "alocados À MÃO por unidade", que não existia: nasceu
+        `contar_alocados_por_unidade`. Somar o total diria "sem vaga" onde o plano esvazia.
+    TEMA COMPLETO — este arquivo pode ir para concluidos/ quando o merge acontecer.
+
+  origem: >
+    O usuário trouxe um protótipo de arrasto (@dnd-kit) em /teste-dnd, fora do fluxo. Ele
+    não expõe uma capacidade existente: a distribuição de hoje varre TODAS as salas da
+    prova de uma vez, na ordem física, e não tem noção de "este cargo vai para aquela
+    unidade". O protótipo pede uma capacidade NOVA.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  decisoes_do_usuario: |
+    D1. RASCUNHO, aplica no fim. Arrastar só monta um plano na tela; um botão "Aplicar"
+        manda o mapa inteiro para uma RPC, em transação. Combina com o tudo-ou-nada que
+        já existe, e mantém AL004 com sentido: ou o plano todo cabe, ou nada muda.
+        RECUSADO: gravar a cada solta (cria estado parcial e exige rollback por gesto).
+
+    D2. O ARRASTO SUBSTITUI o "Distribuir automaticamente". A tela nova é a única porta
+        de distribuição; `distribuir_candidatos_da_prova` é DROPADA.
+        RECUSADO: convivência das duas (custo de manter duas RPCs) e "automático
+        pré-preenche o rascunho" (exigiria o automático saber escrever rascunho).
+
+    D3. (assumido, confirmado pelo usuário) Aplicar plano INCOMPLETO é permitido — o
+        resultado informa quantos ficaram sem sala. Recusar obrigaria a alocar 7.231
+        pessoas num gesto só.
+
+    D4. (assumido, confirmado) O rascunho vive em MEMÓRIA e some no refresh. Persistir
+        exigiria tabela nova; com 9 cargos o replanejamento custa poucos arrastos.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  medido_antes: |
+    Banco local, 2026-08-05 — e a medição MUDOU o desenho.
+
+    Prova viva: 1 de 3 (as outras 2 estão finalizadas, com edital sem inscritos).
+      7 unidades vinculadas · 231 salas · 7.955 vagas
+      7.231 inscritos · 122 especiais
+      7.109 alocações JÁ GRAVADAS, todas origem='automatica', 0 manual
+
+    9 cargos, de 182 a 3.663 inscritos:
+      DOCENTE II 3663 | ED. FÍSICA 718 | MATEMÁTICA 636 | L. PORTUGUESA 624
+      HISTÓRIA 471 | CIÊNCIAS 367 | GEOGRAFIA 325 | L. INGLESA 245 | ARTE 182
+
+    Vagas por unidade: UGB-III 3200 · UGB-II 1575 · ICT 1200 · IEMM 720 ·
+                       CJXXIII 480 · CGV 480 · CPDHD 300
+
+    🔴 O ACHADO QUE DECIDIU O DESENHO: DOCENTE II (3.663) NÃO CABE na maior unidade
+       (UGB-III, 3.200). Dividir um cargo entre unidades não é caso de borda — é o caso
+       principal. Por isso o plano carrega QUANTIDADE, não só o par cargo→unidade.
+
+    🔴 NÃO É GREENFIELD: 7.109 linhas já existem. O primeiro "Aplicar" vai apagá-las e
+       reinseri-las. A migration original dizia "a tabela nasce vazia" — não é mais
+       verdade, e essa frase precisa de anotação no doc do módulo.
+
+    A forma do mock (4 cargos / 3 unidades) é representativa da real (9 / 7): os cards
+    servem, o layout não precisa ser repensado.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  o_que_NAO_muda: |
+    As regras estabelecidas do módulo seguem inteiras. O que muda é só o POOL DE SALAS:
+    deixa de ser "a prova inteira" e passa a ser "a unidade que você escolheu".
+
+      · distribuição POR CARGO, alfabética dentro do cargo (n_inscricao desempata)
+      · CARGO NOVO ABRE SALA NOVA (agora dentro de cada unidade) — vaga ociosa é de propósito
+      · especiais (sala_especial ou PCD) FORA do automático, entram à mão
+      · apaga só origem='automatica' e PRESERVA o manual
+      · todas as barreiras de banco: PF001, AL005, AL006, AL007, FK composta, UNIQUE
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  fases:
+    - id: 1
+      nome: "Banco — a RPC do plano"
+      status: "🟡 em andamento"
+      entrega:
+        - >
+          RPC `aplicar_plano_de_alocacao(p_prova_id uuid, p_plano jsonb)`. O plano é uma
+          lista ORDENADA de {cargo_id, unidade_id, quantidade}; a ordem é a de arrasto, e
+          é ela que decide quem cai onde quando um cargo se divide.
+        - >
+          Ponteiro POR UNIDADE (não global): é o que preserva "cargo novo abre sala nova"
+          quando dois cargos caem na mesma unidade.
+        - >
+          RPC `cargos_pendentes_da_prova(p_prova_id)` — elegíveis por cargo menos os já
+          alocados. O anti-join não sai em PostgREST.
+        - "DROP de `distribuir_candidatos_da_prova(uuid)`."
+      codigos_de_erro:
+        AL001: "prova sem edital (reaproveitado)"
+        AL002: "sem elegíveis (reaproveitado)"
+        AL003: "sem sala com vaga (reaproveitado)"
+        AL004: "não coube — agora nomeia o par CARGO + UNIDADE"
+        AL008: "plano vazio ou com quantidade não positiva"
+        AL009: "plano aponta unidade que não é da prova"
+        AL010: "plano pede mais gente do que o cargo tem elegível"
+      armadilha: >
+        🔴 `docs/bateria-alocacao-candidatos.sql` chama a RPC dropada em 5 pontos
+        (linhas 113, 139, 163, 312, 329). Atualizar NO MESMO PASSE. É literalmente o
+        incidente de 02/08 do §5 do CLAUDE.md: assinatura mudou, 9 chamadas ficaram na
+        forma antiga, e a bateria falhou na primeira linha por 2 dias sem ninguém ver.
+
+    - id: 2
+      nome: "UI — do mock para o real"
+      status: "⏳ pendente"
+      entrega:
+        - "O quadro de arrasto entra em /alocacao-candidatos/:provaId no lugar do botão."
+        - "Vagas por unidade: `useUnidadeCapacidade` (já lê o SNAPSHOT — fonte certa)."
+        - "Ocupação por unidade: `contar_alocados_por_sala` somada por unidade."
+        - "Cargos pendentes: a RPC nova da Fase 1."
+        - "Modo somente-leitura quando prova ou unidade está finalizada (PF001)."
+        - "Botão 'Aplicar plano' com confirmação dizendo o que será refeito."
+      armadilha: >
+        ⚠️ `useUnidadeCapacidade` devolve `{}` quando a consulta FALHA — o "vazio enquanto
+        carrega" em cima do número que decide onde cabem 7 mil pessoas. Tem de expor
+        `error`, como `useOcupacaoPorSala` já faz.
+
+    - id: 3
+      nome: "O que sai"
+      status: "⏳ pendente"
+      entrega:
+        - "Botão 'Distribuir automaticamente', sua confirmação e `useDistribuirCandidatos`."
+        - "/teste-dnd, TesteDnD.tsx e a rota — quando a tela real estiver de pé."
+      nota: >
+        2 dos 7 testes de AlocacaoCandidatosProva.ui.test.tsx caem (linhas 195 e 225).
+        São a PERGUNTA, não obstáculo — armadilha 8 de testes.md.
+
+    - id: 4
+      nome: "Verificação e docs"
+      status: "⏳ pendente"
+      entrega:
+        - "Bateria SQL reescrita, com CONTROLE POSITIVO (provar que segue alocando o caso legítimo)."
+        - "npm test · tsc · lint (baseline 117) · build · docs:conferir"
+        - "00-modulo.md: a decisão 1 muda de redação e a tabela de RPCs também."
+        - "backlog.md e este roadmap para concluidos/."

@@ -6,6 +6,14 @@ export interface UnidadeCapacidade {
   capacidade_total: number;
 }
 
+/**
+ * Capacidade (soma das salas do SNAPSHOT) por unidade, dentro de uma prova.
+ *
+ * ⚠️ Quem consome PRECISA olhar o `error`. Falha de consulta e "nenhuma sala" devolvem o
+ * mesmo `{}`, e este número decide onde cabem milhares de inscritos: tratado como zero
+ * silencioso, ele diz "sem vaga" numa unidade cheia de salas. É o "vazio enquanto
+ * carrega" — o padrão de defeito que mais se repetiu neste repositório.
+ */
 export function useUnidadeCapacidade(provaId: string, unidadeIds: string[]) {
   return useQuery({
     queryKey: ["unidade_capacidade", provaId, unidadeIds],

@@ -28,6 +28,8 @@ Duas consequências que precisam sobreviver a qualquer refatoração:
 2. **Reimportar é o fluxo normal, não a exceção.** Toda mensagem de erro da importação deve terminar em "corrija e importe de novo" — é sempre seguro. ⚠️ **O motivo MUDOU:** antes era a idempotência do upsert; agora é que a troca só acontece inteira. Falha no meio deixa a lista **intacta**, não pela metade.
 
    > 🔵 **Desde 2026-08-04 há UMA condição prévia:** se o edital tiver candidatos **alocados em salas** (módulo Alocação de Candidatos), a troca é recusada pela FK RESTRICT antes de apagar qualquer coisa — a lista fica intacta, mas reimportar vira **dois passos**: desfazer a alocação, reimportar. Decisão do usuário; a mensagem traduzida aponta a tela. Ver [`../alocacao-candidatos/00-modulo.md`](../alocacao-candidatos/00-modulo.md).
+   >
+   > 🔴 **E desde 2026-08-05 a troca PERDE dado sem recusar nada:** as marcações de *"retirar da alocação automática"* (`candidatos_fora_do_automatico`) têm FK **CASCADE** — somem com os candidatos, e como a reimportação recria todo mundo com ids **novos**, não teriam como ser preservadas. **Não há erro a traduzir**, e por isso a mitigação é outra: a confirmação da importação **conta e anuncia** quantas serão perdidas (`useMarcacoesDoEdital`), somando **todas as provas do edital**. Se algum dia essa FK virar RESTRICT, `mensagemErroImportacao` passa a precisar de um ramo.
 
 ## Arquivos
 

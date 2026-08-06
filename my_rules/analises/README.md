@@ -9,7 +9,7 @@
 | **`analises/*.md`** (raiz) | **Vivo.** Desenho ainda não executado, ou dívida ainda em aberto. | Pode guiar implementação. Confira contra o código mesmo assim. |
 | **`analises/concluidos/*`** | **Histórico.** Registro do desenho e das decisões de um tema já entregue. | **Não é plano.** Serve para entender *por que* algo é como é — não *o que fazer*. |
 
-Hoje, vivos: [`dividas-auth-colaborador.md`](./dividas-auth-colaborador.md) e [`roadmap-edicao-email-colaborador.md`](./roadmap-edicao-email-colaborador.md).
+Hoje, vivos: [`dividas-auth-colaborador.md`](./dividas-auth-colaborador.md), [`roadmap-edicao-email-colaborador.md`](./roadmap-edicao-email-colaborador.md), [`roadmap-alocacao-por-arrasto.yaml`](./roadmap-alocacao-por-arrasto.yaml) (🟢 executado em 2026-08-05, aguardando merge para ir a `concluidos/`) e [`roadmap-lista-de-candidatos-e-exclusao.yaml`](./roadmap-lista-de-candidatos-e-exclusao.yaml) (⏳ **não iniciado** — desenho aprovado, 3 decisões de modelo ainda a confirmar).
 
 ⚠️ **`roadmap-importacao-troca-total.yaml` saiu daqui em 2026-07-30** e está em [`concluidos/`](./concluidos/roadmap-importacao-troca-total.yaml): as quatro etapas foram executadas no mesmo dia em que ele nasceu. Duas coisas nele merecem cuidado ao ser lido depois:
 

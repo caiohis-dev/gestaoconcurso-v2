@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mensagemErroAlocacao } from "./alocacao-candidatos";
+import { mensagemErroAlocacao, agruparSalasComVagaPorUnidade } from "./alocacao-candidatos";
 
 describe("mensagemErroAlocacao", () => {
   it("traduz o 23505 da chave (prova, candidato): já alocado", () => {
@@ -39,5 +39,80 @@ describe("mensagemErroAlocacao", () => {
 
   it("erro vazio ganha um fallback em vez de toast em branco", () => {
     expect(mensagemErroAlocacao({ message: "  " })).toBe("Erro ao alterar a alocação");
+  });
+});
+
+describe("agruparSalasComVagaPorUnidade", () => {
+  // Os nomes e siglas são os REAIS do banco local, escolhidos porque expõem o conflito:
+  // por sigla a ordem seria CGV → ICT → UGB; por nome é UGB → CGV → ICT.
+  const unidades = [
+    { unidade_id: "u-ugb", sigla: "UGB     ", nome: "CENTRO UNIV. GERALDO DI BIASE" },
+    { unidade_id: "u-cgv", sigla: "CGV", nome: "COLÉGIO GETÚLIO VARGAS" },
+    { unidade_id: "u-ict", sigla: "ICT", nome: "INSTITUTO DE CULTURA TÉCNICA" },
+  ];
+
+  const sala = (
+    id: string,
+    unidade: string,
+    numero: number,
+    andar: number | null,
+    capacidade = 30,
+  ) => ({
+    id,
+    sala_fk_unidade: unidade,
+    sala_numero: numero,
+    sala_andar: andar,
+    sala_capacidade: capacidade,
+  });
+
+  it("🔴 ordena as unidades por NOME, não por sigla", () => {
+    const grupos = agruparSalasComVagaPorUnidade(
+      [sala("a", "u-ict", 1, 1), sala("b", "u-cgv", 1, 1), sala("c", "u-ugb", 1, 1)],
+      unidades,
+      {},
+    );
+
+    // Por sigla seria CGV, ICT, UGB. Por nome — a chave que o banco usa — é esta:
+    expect(grupos.map((g) => g.sigla)).toEqual(["UGB", "CGV", "ICT"]);
+  });
+
+  it("dentro da unidade: andar e depois número, com andar nulo POR ÚLTIMO", () => {
+    const grupos = agruparSalasComVagaPorUnidade(
+      [
+        sala("s205", "u-cgv", 205, 2),
+        sala("sNull", "u-cgv", 5, null),
+        sala("s102", "u-cgv", 102, 1),
+        sala("s101", "u-cgv", 101, 1),
+      ],
+      unidades,
+      {},
+    );
+
+    expect(grupos[0].salas.map((s) => s.id)).toEqual(["s101", "s102", "s205", "sNull"]);
+  });
+
+  it("⭐ CONTROLE: sala CHEIA não entra, e unidade que ficou sem vaga some do seletor", () => {
+    // Oferecer sala cheia é oferecer um AL006 — a recusa do banco no clique.
+    const grupos = agruparSalasComVagaPorUnidade(
+      [sala("cheia", "u-cgv", 101, 1, 30), sala("livre", "u-ict", 1, 1, 30)],
+      unidades,
+      { cheia: 30, livre: 29 },
+    );
+
+    expect(grupos.map((g) => g.unidadeId)).toEqual(["u-ict"]);
+    expect(grupos[0].salas.map((s) => s.id)).toEqual(["livre"]);
+  });
+
+  it("unidade sem dado carregado NÃO some: sumir esconderia salas com vaga", () => {
+    const grupos = agruparSalasComVagaPorUnidade([sala("x", "u-desconhecida", 1, 1)], [], {});
+
+    expect(grupos).toHaveLength(1);
+    expect(grupos[0].nome).toBe("(unidade não carregada)");
+    expect(grupos[0].sigla).toBe("?");
+  });
+
+  it("a sigla chega com espaços do char(n) e sai limpa", () => {
+    const grupos = agruparSalasComVagaPorUnidade([sala("x", "u-ugb", 1, 1)], unidades, {});
+    expect(grupos[0].sigla).toBe("UGB");
   });
 });

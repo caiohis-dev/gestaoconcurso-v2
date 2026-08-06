@@ -31,6 +31,13 @@ export interface PostgrestErrorLike {
 export interface QueryResult<T = unknown> {
   data: T | null;
   error: PostgrestErrorLike | null;
+  /**
+   * O total do `select(..., { count: "exact" })`. O mock já o repassava em runtime, mas
+   * o tipo não o declarava — então um teste de paginação compilava errado ou obrigava a
+   * um cast. Quem consome `count` costuma ser justamente a tela que precisa dizer
+   * "existem mais além desta página", e é onde um número faltando mente calado.
+   */
+  count?: number | null;
 }
 
 /**

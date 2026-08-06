@@ -48,7 +48,7 @@ Dentro de uma doc viva, um `⚠️` marcando que *aquela frase específica* mudo
 | Mexer em / entender um **módulo** | `my_rules/estrutura/modulos/<id>/00-modulo.md` — o contrato | Não comece por `arquitetura-geral.md`, nem por grep |
 | **Autorização**, papéis, login, RLS, guard de rota | `estrutura/transversais/auth-e-permissoes.md` **+** `src/pages/guards.test.tsx` (a matriz executável) | Não deduza papel lendo página por página |
 | Implementar/mexer numa **regra de negócio**, constraint, exclusão | `estrutura/transversais/invariantes.md` — o mapa + a lista de 6 perguntas | ⚠️ Não implemente regra num `if` do hook: ela não vale para PostgREST, EF nem script |
-| Escrever **teste** | `estrutura/transversais/testes.md` — as **9 armadilhas** | Não escreva antes de lê-las; várias já custaram retrabalho |
+| Escrever **teste** | `estrutura/transversais/testes.md` — as **11 armadilhas** | Não escreva antes de lê-las; várias já custaram retrabalho |
 | **E-mail**, Edge Functions | `estrutura/transversais/integracoes-externas.md` | — |
 | **Banco local**, migrations, seed, dump | `estrutura/transversais/desenvolvimento-local.md` | Não presuma a ordem de carga: migration ≠ `seed.pos.sql` ≠ dump |
 | **Constraint** / regra no banco | `analises/concluidos/roadmap-db-constraints.yaml` + o módulo dono da tabela | Não crie CHECK sem **medir o dado existente** antes |
@@ -155,7 +155,7 @@ sg docker -c 'npx supabase db reset'    # aplica migrations + os 3 seeds
 **Não há CI.** Nada roda a suíte sozinho; cada tema fechado depende de alguém lembrar. É o item de maior alavancagem do backlog, adiado por decisão do usuário.
 
 ```bash
-npm test                                  # 1260 testes em 65 arquivos
+npm test                                  # 1305 testes em 66 arquivos
 npx tsc --noEmit -p tsconfig.app.json     # tem de sair limpo
 npm run build
 npm run lint                              # baseline 117 (63 erros, 54 avisos)
@@ -248,6 +248,7 @@ Fora de `my_rules/`: **`docs/`** guarda as baterias de teste manual (`bateria-*.
 - ⚠️ **Perda silenciosa** é o formato de erro que este repo mais teme: não dá erro, some dado — *parece* ter funcionado. Ao mexer numa regra de "não perder calado", **varra os campos irmãos**.
 - ⚠️ **Ao acrescentar filtro a uma tela, revise toda ação que age sobre o conjunto inteiro.** Uma confirmação de "limpar edital" já prometeu remover 12 inscritos e removia 7.416.
 - ⚠️ **CHECK nova pode OFUSCAR CHECK antiga.** Em 03/08 uma CHECK de coerência passou a barrar `sala_numero = -1` antes da CHECK de sinal: a linha seguia recusada, mas por outra regra, e a cobertura da antiga virou fantasma. Quem pegou foi a bateria — porque ela afirma **o NOME de quem barrou**, não só que houve recusa. Vale o padrão: ao apertar uma regra, veja quais casos existentes deixaram de exercitar o que diziam exercitar.
+- 🔴 **Se a TELA precisa antecipar uma recusa do banco, ela tem de reimplementar a regra FIELMENTE — ou não reimplementar.** É o outro lado do §2. Em 05/08 a regra "cada bloco abre sala nova" deixa vagas ociosas nas salas de fronteira; a tela calculava `capacidade − alocados` e ofereceu **152** onde o banco tinha **120**, deixando montar um plano inteiro que morreu no `AL004`. Conta simplificada de regra do banco é promessa que o banco não honra. **Ao escrever a versão da tela, traduza o laço, não o resultado** — e teste com os números do caso real.
 - ⚠️ **`verify_jwt` NÃO é autorização** — a anon key é um JWT válido e público. A mesma falha já apareceu 2× (`send-email`, `create-admin`).
 
 ---

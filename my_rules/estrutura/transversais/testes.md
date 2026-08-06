@@ -97,7 +97,7 @@ telas de Candidatos foram as primeiras. O que se aprendeu ali:
   no caso de candidatos, as duas colunas de mesmo nome que são a origem da armadilha.
   Redefina `arrayBuffer` no `File` se o jsdom não o trouxer.
 
-## ⚠️ As nove armadilhas que já custaram tempo aqui
+## ⚠️ As onze armadilhas que já custaram tempo aqui
 
 **1. A sequência é consumida pela listagem antes de chegar à mutation.** A query de listagem também chama `from(<tabela>)`, então ela come a primeira entrada e o hook recebe um objeto onde espera array (`coordenadores.map is not a function`). Espere a carga inicial e **só então** instale a sequência — `setTableResultSequence` zera o contador. E a **última entrada precisa ser um array**, porque o refetch disparado pela invalidação cai nela.
 
@@ -150,9 +150,17 @@ A primeira custou **4 PDFs commitáveis na raiz** antes de alguém notar, em 01/
 
 ⚠️ **Vale para qualquer teste novo que exporte.** Rode `git status` depois de escrever um: arquivo gerado aparecendo como não rastreado é o sintoma.
 
+**10. Provider ausente derruba a ÁRVORE, não o componente — e o sintoma engana** (05/08). Um `Tooltip` do Radix sem `TooltipProvider` lança e a página inteira renderiza **vazia**; o erro que aparece é *"Unable to find element with the text X"*, apontando para o texto que você procurava, não para a causa. Perdi duas hipóteses erradas antes de olhar o DOM.
+
+⚠️ **Quando um `findByText` falhar, dê uma olhada no `<body>` ANTES de teorizar sobre o seletor.** `<body><div /></body>` significa que nada renderizou — o problema não é a query. E o teste expõe uma fragilidade real: o app funcionava por causa de um provider na raiz do `App.tsx`, e depender de ancestral distante é a mesma família do `useDroppable` fora do `DndContext`. A correção é o provider **local**.
+
+**11. `role="button"` não prova que o controle está ativo** (05/08). O dnd-kit mantém `role="button"` em draggable desabilitado; asserir o role daria um teste **verde afirmando o contrário do real**. Quem diz a verdade é `aria-disabled`. É a armadilha 8 com outra roupa — e o mesmo remédio: afirme o atributo que a biblioteca realmente muda, não o que parece razoável.
+
+⚠️ **Texto curto é âncora ruim.** `getByText("1")` casou em vários pontos da tela. Prefira `aria-label` — ele é único, é legível e documenta a intenção: `"DOCENTE II — PCD, 1 a distribuir"`.
+
 ## O que está coberto (2026-07-27)
 
-**1.260 testes em 65 arquivos** (medido em 2026-08-04, ao fim do módulo **Alocação de Candidatos** — que trouxe 4 arquivos novos: a tradução de erro do módulo, a tela do quadro, a coluna de vagas de `/unidades-prova` e os testes puros dela; eram 1.188 em 61 arquivos em 03/08, ao fim do tema "a unidade não declara mais andares" — que **removeu** ~11 casos de teto e acrescentou os controles positivos do oposto; eram 1.194 em 03/08, ao fim dos temas "capacidade no seletor de unidades" e "criação de salas em faixa de andares"; eram 1.149 em 60 arquivos no fim de 02/08, ao fim dos temas "fonte única do nº de inscritos", "CPF pela regra oficial" e das duas baterias de página que fecharam o dia; eram 974 em 51 arquivos em 30/07, e 965 em 29/07).
+**1.305 testes em 66 arquivos** (medido em 2026-08-05, ao fim do tema **alocação por arrasto** — o quadro de planejamento, os três blocos por cargo, o marcador "fora do automático" e a lista de todos os candidatos; o arquivo novo é `src/lib/alocacao-dnd.test.ts`, as transições puras do rascunho. Eram **1.260 em 65** em 2026-08-04, ao fim do módulo **Alocação de Candidatos** — que trouxe 4 arquivos novos: a tradução de erro do módulo, a tela do quadro, a coluna de vagas de `/unidades-prova` e os testes puros dela; eram 1.188 em 61 arquivos em 03/08, ao fim do tema "a unidade não declara mais andares" — que **removeu** ~11 casos de teto e acrescentou os controles positivos do oposto; eram 1.194 em 03/08, ao fim dos temas "capacidade no seletor de unidades" e "criação de salas em faixa de andares"; eram 1.149 em 60 arquivos no fim de 02/08, ao fim dos temas "fonte única do nº de inscritos", "CPF pela regra oficial" e das duas baterias de página que fecharam o dia; eram 974 em 51 arquivos em 30/07, e 965 em 29/07).
 
 🔵 **Os dois temas de 02/08 renderam mais casos REESCRITOS do que novos**, e é o padrão a esperar quando uma regra muda: 11 casos caíram ao unificar o nº de inscritos (afirmavam a herança de `n_candidatos` e o payload com o campo) e 2 ao trocar a rotulagem do CPF inválido (afirmavam `"tamanho"` para um valor cuja causa é um caractere intruso). **Nenhum deles estava errado no veredito** — estavam certos sobre o código de ontem. Ver a armadilha 8 e a regra em destaque acima.
 
