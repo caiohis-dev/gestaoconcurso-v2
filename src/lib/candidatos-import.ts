@@ -33,6 +33,18 @@ export interface CampoCandidato {
 }
 
 /**
+ * Teto de caracteres do nº de inscrição.
+ *
+ * 🔴 Espelha a CHECK `chk_candidato_n_inscricao_tamanho` do banco (migration
+ * `20260806162539`). **Mudar um lado sem o outro não produz linha acusada: produz troca
+ * de edital derrubada** — a CHECK dispara dentro da transação de
+ * `trocar_candidatos_do_edital`.
+ *
+ * É teto, não formato: a coluna é `text`, aceita valor mais curto e **não** exige dígitos.
+ */
+export const LIMITE_N_INSCRICAO = 12;
+
+/**
  * Os campos oferecidos no pareamento, na ordem em que aparecem na tela.
  *
  * Três colunas do arquivo de origem NÃO estão aqui, de propósito: `REGISTRO_ORGAO`,
@@ -429,8 +441,17 @@ export function converterLinha(
 
   // ── O que identifica: falta → a linha não entra ────────────────────────────────
   if (nInscricao === null) return falha('Nº de inscrição vazio');
-  if (nInscricao.length > 8) {
-    return falha(`Nº de inscrição "${nInscricao}" tem ${nInscricao.length} caracteres (o limite é 8)`);
+  // 🔴 ESPELHO FIEL da CHECK `chk_candidato_n_inscricao_tamanho` (migration 20260806162539).
+  // O teto era 8 até 2026-08-06, quando a coluna virou `text` com teto de 12.
+  // Isto é ERRO de linha, e não aviso, porque a diferença é de tamanho do estrago: um
+  // valor de 13 chegando ao banco viola a CHECK DENTRO da transação de
+  // `trocar_candidatos_do_edital` e derruba a troca do edital INTEIRO. Acusado aqui, custa
+  // uma linha no relatório. ⚠️ Se este número e o da CHECK divergirem, o defeito não
+  // aparece como linha acusada — aparece como importação inteira recusada.
+  if (nInscricao.length > LIMITE_N_INSCRICAO) {
+    return falha(
+      `Nº de inscrição "${nInscricao}" tem ${nInscricao.length} caracteres (o limite é ${LIMITE_N_INSCRICAO})`,
+    );
   }
 
   const nome = val('nome');
@@ -1041,8 +1062,18 @@ export function mensagemErroImportacao(mensagem: string): string {
   // acreditar que a regra ainda existe.
   if (m.includes('chk_candidato_nome_preenchido')) return 'Nome em branco.';
   if (m.includes('chk_candidato_n_inscricao_preenchido')) return 'Nº de inscrição em branco.';
+  // 2026-08-06: o teto do nº de inscrição virou CHECK nomeada (12 caracteres). O ramo casa
+  // pelo NOME, e não pelo texto do erro, justamente porque o texto carrega o número dentro
+  // — era assim que este arquivo dizia "até 8 caracteres" enquanto a coluna mudava.
+  if (m.includes('chk_candidato_n_inscricao_tamanho')) {
+    return `Nº de inscrição com mais de ${LIMITE_N_INSCRICAO} caracteres.`;
+  }
+  // ⚠️ Este ramo NÃO fala mais do nº de inscrição: a coluna virou `text` em 2026-08-06 e o
+  // teto dela é a CHECK acima. Quem ainda pode estourar aqui são `identidade_uf` e `uf`,
+  // os únicos varchar(n) restantes em `candidatos` — e a tela já recorta os dois em 2, o
+  // que torna este ramo um resto de segurança, não um caminho esperado.
   if (m.includes('value too long')) {
-    return 'Algum valor excede o tamanho da coluna (o nº de inscrição aceita até 8 caracteres).';
+    return 'Algum valor excede o tamanho da coluna.';
   }
   if (m.includes('violates check constraint')) return 'Algum valor viola uma regra do banco.';
   if (m.includes('row-level security') || m.includes('permission denied')) {

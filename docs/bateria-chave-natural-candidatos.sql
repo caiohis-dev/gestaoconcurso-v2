@@ -101,8 +101,59 @@ SELECT id, '904256', 'BATERIA JOSIANE', NULL FROM editais ORDER BY id LIMIT 1;
 RELEASE s5;
 
 \echo ''
-\echo '-- Esperado: 6 linhas BATERIA (900001, 900002, 900003, 900375, 904256 no edital A'
-\echo '--           + 900001 no edital B).'
+\echo '╔════════════════════════════════════════════════════════════════════════╗'
+\echo '║ 3. O TETO DE 12 CARACTERES (migration 20260806162539)                  ║'
+\echo '╚════════════════════════════════════════════════════════════════════════╝'
+\echo '-- Decisão do usuário 2026-08-06: n_inscricao cabe ATÉ 12. É capacidade, não'
+\echo '-- formato — valor mais curto vale, e NÃO há regra de "só dígitos" (47 literais'
+\echo '-- não-numéricos vivem nestas baterias: N001, A001, S002…).'
+\echo ''
+\echo '-- Esperado: n_inscricao = text; chk_candidato_n_inscricao_tamanho (<= 12) E'
+\echo '--           chk_candidato_n_inscricao_preenchido presentes, as DUAS.'
+SELECT data_type, character_maximum_length
+  FROM information_schema.columns
+ WHERE table_name = 'candidatos' AND column_name = 'n_inscricao';
+
+SELECT conname, pg_get_constraintdef(oid) AS definicao
+  FROM pg_constraint
+ WHERE conrelid = 'public.candidatos'::regclass
+   AND conname LIKE 'chk_candidato_n_inscricao%'
+ ORDER BY conname;
+
+\echo ''
+\echo '── CASO 6 — 13 caracteres -> DEVE FALHAR por chk_candidato_n_inscricao_tamanho ──'
+\echo '-- 🔴 O NOME importa, não só a recusa: é ele que prova qual regra barrou. A tela'
+\echo '-- (LIMITE_N_INSCRICAO em candidatos-import.ts) espelha ESTA constraint, e'
+\echo '-- mensagemErroImportacao a traduz casando o nome.'
+SAVEPOINT s6;
+INSERT INTO candidatos (edital_id, n_inscricao, nome, cpf)
+SELECT id, '1234567890123', 'BATERIA TRECO LONGO', NULL FROM editais ORDER BY id LIMIT 1;
+ROLLBACK TO s6;
+
+\echo ''
+\echo '── CASO 7 (CONTROLE +) exatamente 12 caracteres -> DEVE PASSAR ──'
+\echo '-- A outra metade da prova. Sem este caso, um <= virado em < passaria despercebido.'
+\echo '-- O zero à esquerda também está aqui de propósito: é o motivo de a coluna ser texto.'
+SAVEPOINT s7;
+INSERT INTO candidatos (edital_id, n_inscricao, nome, cpf)
+SELECT id, '000000900012', 'BATERIA DOZE EXATOS', NULL FROM editais ORDER BY id LIMIT 1;
+RELEASE s7;
+
+\echo ''
+\echo '── CASO 8 — branco -> DEVE FALHAR por chk_candidato_n_inscricao_PREENCHIDO ──'
+\echo '-- 🔴 Este caso NÃO é sobre o branco: é sobre a CHECK nova não ter OFUSCADO a'
+\echo '-- antiga. O teto foi escrito só com o limite superior (char_length <= 12) para que'
+\echo '-- o piso continuasse sendo trabalho da _preenchido. Se um dia a recusa aqui passar'
+\echo '-- a citar _tamanho, a cobertura da _preenchido virou fantasma — é o caso de 03/08'
+\echo '-- com sala_numero = -1 (§8 do CLAUDE.md).'
+SAVEPOINT s8;
+INSERT INTO candidatos (edital_id, n_inscricao, nome, cpf)
+SELECT id, '   ', 'BATERIA BRANCO', NULL FROM editais ORDER BY id LIMIT 1;
+ROLLBACK TO s8;
+
+\echo ''
+\echo '-- Esperado: 7 linhas BATERIA (900001, 900002, 900003, 900375, 904256 e'
+\echo '--           000000900012 no edital A + 900001 no edital B).'
 SELECT count(*) AS total_bateria FROM candidatos WHERE nome LIKE 'BATERIA %';
 
 ROLLBACK;

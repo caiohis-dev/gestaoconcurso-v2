@@ -1,0 +1,230 @@
+# Roadmap VIVO — o nº de inscrição passa a caber 12 caracteres
+# Criado em 2026-08-06. Leia my_rules/analises/README.md antes de usar como guia.
+# Contrato do módulo: my_rules/estrutura/modulos/candidatos/00-modulo.md
+
+roadmap:
+  titulo: "n_inscricao: de varchar(8) para 12 caracteres, com a barreira no banco"
+  criado: "2026-08-06"
+  status: >
+    🟢 TEMA COMPLETO em 2026-08-06 — as 4 etapas executadas no mesmo dia.
+    ✅ P1 CONFIRMADO pelo usuário ("Até 12"): é TETO, não formato exato.
+    ✅ ETAPA 1 — migration `20260806162539_n_inscricao_ate_12_caracteres.sql`: a coluna
+    virou `text` e nasceu `chk_candidato_n_inscricao_tamanho (char_length <= 12)`.
+    ✅ ETAPA 2 — `LIMITE_N_INSCRICAO = 12` exportado de `candidatos-import.ts`, a guarda
+    passou a usá-lo, `mensagemErroImportacao` ganhou ramo pelo NOME da CHECK, e o ramo
+    `value too long` deixou de citar o nº de inscrição (a coluna não é mais varchar).
+    ✅ ETAPA 3 — 3 testes novos/ajustados + 3 casos de bateria (6, 7 e 8), todos verdes.
+    ✅ ETAPA 4 — `00-modulo.md` com a terceira CHECK e os três porquês.
+    VERIFICAÇÃO: 1307 testes (66 arquivos) · tsc limpo · build limpo · lint 117 (baseline)
+    · `db reset` com as 122 migrations · `docs:conferir` sem divergência · bateria SQL
+    rodada de ponta a ponta, com as 3 recusas nomeadas e 5 controles positivos.
+    🔵 ACHADO fora do tema: os 2 editais do banco local NÃO são playground — `seed.pos.sql`
+    os deriva das 2 provas do dump. Corrigido no roadmap do bootstrap.
+    🟢 Este arquivo pode ir para `concluidos/` no merge.
+
+  origem: >
+    Pedido do usuário em 2026-08-06: "a coluna n_inscricao deve ter 12 dígitos — isso
+    implica em front e backend". Hoje a coluna é `varchar(8)` e a importação espelha esse
+    limite descartando a linha maior que 8.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  decisoes_do_usuario: |
+    D1. É CAPACIDADE, não formato exato: a coluna passa a caber **até 12** caracteres.
+        Número de 1 a 4 dígitos continua válido — o arquivo real de hoje segue importando
+        igual, sem uma linha nova acusada.
+        RECUSADO: "exatos 12 com zero à esquerda" (mudaria o número impresso em lista de
+        presença e obrigaria a busca a normalizar) e "exatos 12 sem preencher" (descartaria
+        as 7.416 linhas do arquivo atual).
+
+    D2. A BARREIRA MORA NO BANCO, com espelho fiel na tela. Não basta o `if` da importação:
+        a regra tem de valer para psql, PostgREST e script (§2 do CLAUDE.md). A tela
+        reimplementa a MESMA regra para acusar a linha antes de mandar (§8).
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  medido_antes: |
+    Arquivo real (`docs/temp/todos inscritos concurso 002-2026-SMA cabeçalho.xls`),
+    coluna A `N_INSCRICAO`, medido em 2026-08-06:
+
+    · 7.416 preenchidos, **7.416 distintos**, de `1` a `7416`.
+    · Comprimentos: 1 dígito **9** · 2 **90** · 3 **900** · 4 **6.417**.
+    · **0 não-numéricos · 0 com zero à esquerda.** Nenhuma linha chega perto de 12.
+
+    Banco local, 2026-08-06:
+    · `candidatos` = **0 linhas**; o dump de produção traz **0** candidatos.
+      🔵 **Não há saneamento de dado nesta mudança**, nem local nem na base nova.
+
+    Onde o "8" vive hoje (o mapa completo):
+    | `supabase/migrations/20260727000000_create_candidatos.sql:27` | `n_inscricao varchar(8) NOT NULL` |
+    | `src/lib/candidatos-import.ts:432` | guarda de ERRO: `nInscricao.length > 8` |
+    | `src/lib/candidatos-import.ts:1045` | tradução de `value too long`, citando "até 8 caracteres" |
+    | `src/lib/candidatos-import.test.ts:341` e `:958` | os dois testes que fixam o 8 |
+    | `my_rules/estrutura/modulos/candidatos/00-modulo.md:82` | o contrato |
+
+    O que NÃO impõe tamanho (verificado, para ninguém "consertar" à toa):
+    · As 3 RPCs de alocação declaram `n_inscricao varchar` **sem limite**
+      (`20260804225156:512`, `20260805193931:157`, `20260805205719:250`).
+    · `candidatos_relatorio_importacao.n_inscricao` já é **`text`** (`20260802145848:69`).
+    · A tabela de preparo guarda a linha como **`jsonb`** — não espelha colunas tipadas.
+    · `bruto()` (`candidatos-import.ts:221`) já apara o valor: a guarda da tela mede
+      exatamente a mesma string que a CHECK veria.
+    · Só existem 3 colunas `varchar(n)` em `candidatos`: `n_inscricao(8)`,
+      `identidade_uf(2)` e `uf(2)`.
+
+    🔴 **47 literais NÃO-NUMÉRICOS de `n_inscricao` vivem nas baterias SQL** — `N001`,
+       `N002`, `A001`, `S001`, `S002` etc.: 22 em `bateria-troca-total-candidatos.sql`,
+       11 em `bateria-cargos.sql`, 7 em `bateria-chave-natural-candidatos.sql`, 4 em
+       `bateria-alocacao-candidatos.sql`, 3 em `bateria-relatorio-importacao.sql`.
+       É este número que decide o P1.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  decisoes_de_desenho: |
+    DA. **A coluna vira `text` + CHECK NOMEADA de teto**, e não `varchar(12)`.
+        `chk_candidato_n_inscricao_tamanho CHECK (char_length(n_inscricao) <= 12)`.
+        Por quê: `varchar(n)` recusa com `value too long for type character varying(12)`
+        — mensagem **sem nome**, que só se traduz casando texto com o número dentro. É
+        exatamente o que já apodreceu: a tradução de hoje diz "aceita até 8 caracteres" e
+        casa `value too long`. Uma CHECK nomeada é traduzível por NOME, que é a convenção
+        do módulo (`mensagemErroImportacao` casa o índice único pelo nome dele).
+        Alternativa preterida: `varchar(12)`, mais autodocumentado no schema, mas mantém a
+        regra em dois lugares (tipo + tradução por string) e reintroduz o número na string.
+
+    DB. **A CHECK nova cuida SÓ DO TETO.** O piso (branco) continua com a
+        `chk_candidato_n_inscricao_preenchido`, que já existe.
+        🔴 Por quê: escrever `char_length(btrim(...)) BETWEEN 1 AND 12` faria a CHECK nova
+        barrar também o branco — e a cobertura da antiga viraria **fantasma**, recusando
+        pela regra errada. É o caso de 03/08 (`sala_numero = -1`), §8 do CLAUDE.md. Cada
+        CHECK com um trabalho só, e a bateria afirma **o NOME de quem barrou**.
+
+    DC. **NÃO entra regra de "só dígitos".** O usuário pediu capacidade (D1), e uma CHECK
+        de dígitos quebraria os **47 literais** das 5 baterias medidos acima — que ninguém
+        executa automaticamente (§5: `npm test` mocka o Supabase e `docs:conferir` não lê
+        bateria). Se um dia "só dígitos" for desejado, é tema PRÓPRIO, com os 47 no mesmo
+        passe. ⚠️ Consequência aceita: `n_inscricao` continua aceitando `N001` — como
+        aceita hoje.
+
+  decisao_a_confirmar: |
+    ✅ **P1 CONFIRMADO pelo usuário em 2026-08-06: "Até 12".** Fica registrado porque o
+    desenho inteiro se apoia nisto — se um dia a regra virar "exatamente 12 dígitos", este
+    roadmap tem de ser reaberto ANTES de mexer, pelo motivo abaixo.
+
+    P1. **Confirmar que 12 é TETO e não FORMATO** antes de escrever a migration.
+        Se a intenção for "todo número tem exatamente 12 dígitos", este roadmap muda de
+        forma: a CHECK vira `~ '^[0-9]{12}$'`, os 47 literais das baterias têm de ser
+        reescritos no mesmo passe, e a importação passa a recusar (ou preencher com zeros)
+        as 7.416 linhas do arquivo atual — o que exige uma terceira decisão do usuário.
+        **Nada abaixo é executável enquanto isto não estiver confirmado.**
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  o_que_NAO_muda: |
+    · A chave natural `(edital_id, n_inscricao)` e o índice `candidatos_edital_inscricao_key`.
+    · `chaveNatural()` e o `deduplicar()` — a chave continua sendo o número como veio.
+    · A busca (`n_inscricao.ilike.%…%`) e a ordenação. ⚠️ A ordenação por `n_inscricao` é
+      **lexicográfica** hoje (1, 10, 100…) e **continua sendo** — sem zero à esquerda não
+      há ganho aqui, e corrigir isso é outro tema.
+    · O número impresso em lista de presença e recibo: nada é reescrito.
+    · As 3 RPCs de alocação (declaram `varchar` sem limite; `text` cabe nelas).
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  etapas:
+    - id: 1
+      nome: "Banco — a coluna e a CHECK"
+      status: "⏳ não iniciada"
+      entrega:
+        - >
+          Migration nova (`npx supabase migration new n_inscricao_ate_12`):
+          `ALTER TABLE candidatos ALTER COLUMN n_inscricao TYPE text;` +
+          `ADD CONSTRAINT chk_candidato_n_inscricao_tamanho CHECK (char_length(n_inscricao) <= 12)`.
+        - >
+          `COMMENT ON COLUMN` explicando as três coisas que o próximo leitor vai perguntar:
+          por que `text` e não `varchar(12)` (DA), por que a CHECK só olha o teto (DB), e
+          por que não há regra de dígitos (DC).
+        - >
+          Medir antes de apertar (regra 5 de `invariantes.md`): `char_length` máximo em
+          `candidatos`. Hoje a tabela está vazia — registrar isso na própria migration,
+          para o próximo leitor não achar que a medição foi pulada.
+      armadilha: >
+        ⚠️ Alargar `varchar(8)` → `text` NÃO reescreve a tabela (os tipos são binariamente
+        coercíveis), mas a operação continua pedindo `ACCESS EXCLUSIVE`. Irrelevante hoje
+        (0 linhas), relevante quando houver 7.231.
+
+    - id: 2
+      nome: "Front — o espelho fiel"
+      status: "⏳ não iniciada"
+      entrega:
+        - >
+          `candidatos-import.ts:432`: a guarda passa a `> 12` e a mensagem deixa de dizer
+          "o limite é 8". Continua sendo **ERRO** (descarta a linha) — e isto não é estilo:
+          um valor de 13 chegando ao banco viola a CHECK **dentro da transação** de
+          `trocar_candidatos_do_edital` e derruba a troca do edital inteiro. É a mesma
+          razão do teto do `sala_especial`.
+        - >
+          `mensagemErroImportacao`: ramo novo casando **pelo nome**
+          `chk_candidato_n_inscricao_tamanho` → "Nº de inscrição com mais de 12 caracteres."
+        - >
+          🔴 O ramo `value too long` **para de poder falar do nº de inscrição** (a coluna
+          não é mais `varchar`). Sobram `identidade_uf` e `uf`, que a tela já recorta em 2
+          — então o ramo vira genérico, com comentário dizendo por quê. Deixá-lo citando
+          "até 8 caracteres" seria guarda que não dispara mentindo sobre a regra: o próprio
+          arquivo já tem o aviso disso, escrito quando as 4 CHECKs saíram em 30/07.
+      armadilha: >
+        ⚠️ A guarda mede `nInscricao` já aparado por `bruto()`. A CHECK mede o valor
+        gravado, que é o mesmo. Se algum dia `bruto` deixar de aparar, os dois lados
+        divergem e a diferença aparece só como troca derrubada — não como linha acusada.
+
+    - id: 3
+      nome: "Testes e bateria"
+      status: "⏳ não iniciada"
+      entrega:
+        - >
+          `candidatos-import.test.ts:341` (o caso "recusa maior que 8") vira o caso de 12,
+          e `:958` (que afirma `character varying(8)`) passa a afirmar a tradução pelo NOME
+          da CHECK. ⚠️ São testes verdes hoje afirmando o limite antigo — quando caírem, é
+          a pergunta, não o obstáculo (armadilha 8 de `testes.md`).
+        - >
+          Casos novos na suíte: 12 caracteres **passa** (⭐ controle positivo), 13 é erro
+          de linha com a mensagem nova, e 4 caracteres continua passando (o arquivo real).
+        - >
+          Bateria SQL em `docs/bateria-chave-natural-candidatos.sql`, em transação com
+          `ROLLBACK`: 12 aceito · 13 recusado **nomeando `chk_candidato_n_inscricao_tamanho`**
+          · branco ainda recusado por `chk_candidato_n_inscricao_preenchido` — este último é
+          a prova de que a CHECK nova NÃO ofuscou a antiga (DB).
+        - >
+          ⭐ CONTROLE POSITIVO obrigatório: um número de 4 dígitos continua entrando e a
+          chave natural segue funcionando. Provar que passou a recusar é metade.
+      armadilha: >
+        🔴 Rodar a bateria. "Ela existe" não é "ela passa" — a de troca total ficou
+        quebrada 2 dias em 02/08 e nenhum dos 10 casos rodava (§5).
+
+    - id: 4
+      nome: "Docs no mesmo passe"
+      status: "⏳ não iniciada"
+      entrega:
+        - >
+          `00-modulo.md`: a linha 82 do modelo de dados (`varchar(8)` → `text`, com o
+          porquê), e a tabela "As constraints, e por que estas e não outras" ganha a
+          terceira CHECK — hoje ela diz "Sobraram DUAS, e a diferença importa".
+        - >
+          Registrar em `00-modulo.md` que a nova é de **identidade** (como as outras duas),
+          e que ela não contradiz a política de 30/07: o banco segue sem opinião sobre
+          FORMATO, e passou a ter opinião sobre TAMANHO do que identifica.
+        - "`npm test` · `tsc` · `build` · `lint` (baseline 117) · `db reset` · `docs:conferir`."
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  riscos: |
+    R1. 🔴 **Se a tela deixar de espelhar o banco, o erro muda de tamanho.** Hoje uma
+        inscrição longa é uma linha acusada no relatório; se a guarda da tela e a CHECK
+        divergirem, vira a **troca do edital inteiro derrubada** dentro da RPC. Os dois
+        números têm de mudar juntos, e a etapa 3 tem caso para os dois lados.
+
+    R2. **A tradução por texto envelhece; por nome, não.** A de hoje prova isso: ela casa
+        `value too long` e cita "8". Trocar por nome de CHECK é o conserto — mas cria
+        dependência do NOME, que passa a não poder ser renomeado sem tocar a tradução.
+
+    R3. ⚠️ **Esta migration entra na fila do bootstrap de produção.** Ela será a 122ª e
+        sobe no mesmo `prod:push` do
+        [`roadmap-bootstrap-banco-producao.yaml`](./roadmap-bootstrap-banco-producao.yaml).
+        Como a base nova nasce sem candidatos, não há ordem a respeitar entre os dois temas.
+
+    R4. **`n_inscricao` continua aceitando não-dígito** (DC). Se alguém auditar esperando
+        "12 dígitos" e encontrar `N001`, vai achar que a regra falhou. Por isso o motivo
+        está no `COMMENT ON COLUMN` e no `00-modulo.md`, não só aqui.

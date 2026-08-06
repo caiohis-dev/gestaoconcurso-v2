@@ -79,7 +79,7 @@ Não há Edge Function neste módulo. A única RPC é `contar_candidatos_por_edi
 candidatos
   id                    uuid PK
   edital_id             uuid NOT NULL → editais(id) ON DELETE RESTRICT
-  n_inscricao           varchar(8) NOT NULL     -- string(8): pedido explícito do usuário; chave
+  n_inscricao           text NOT NULL           -- 🔵 TEXT com teto de 12 (06/08); chave. Era varchar(8)
   cargo                 text                     -- texto CRU da planilha; PROCEDÊNCIA (D2), fora da chave
   cargo_id              uuid → cargos(id) ON DELETE RESTRICT   -- ⭐ COMPÕE A CHAVE NATURAL
   nome                  text NOT NULL
@@ -177,12 +177,23 @@ Todas foram **contadas contra as 7.416 linhas antes de existir** (regra 5 de [`.
 | CHECK | O que barra |
 |---|---|
 | `chk_candidato_n_inscricao_preenchido` / `chk_candidato_nome_preenchido` | branco no que identifica |
+| 🔵 `chk_candidato_n_inscricao_tamanho` | nº de inscrição com **mais de 12 caracteres** (06/08) |
 | ~~`chk_candidato_cpf_formato`~~ | ❌ **REMOVIDA em 30/07** — CPF que não fosse 11 dígitos |
 | ~~`chk_candidato_cep_formato`~~ | ❌ **REMOVIDA em 30/07** — CEP que não fosse 8 dígitos |
 | ~~`chk_candidato_email_formato`~~ | ❌ **REMOVIDA em 30/07** — e-mail sem `@`/domínio |
 | ~~`chk_candidato_raca_valida`~~ | ❌ **REMOVIDA em 30/07** — código fora de `RACA_MAP` |
 
-🔴 **Sobraram DUAS, e a diferença importa.** Desde a migration `20260730100000` (decisão do usuário: dado inválido entra cru), `candidatos` **não tem opinião sobre o formato** de CPF, e-mail, CEP e raça — para nenhum caminho de escrita, não só para o importador. Quem precisar de CPF válido **valida na leitura**; não dá mais para presumir, como dava até 29/07, que o que está na coluna passou por uma CHECK. As duas que restaram são as de **identidade**, e essas seguem barrando.
+> 🔵 **A terceira nasceu em 2026-08-06** (migration `20260806162539`), e ela não contradiz a política abaixo: o banco continua **sem opinião sobre FORMATO** e passou a ter opinião sobre **TAMANHO do que identifica**. Decisão do usuário: `n_inscricao` cabe **até 12** — é capacidade, não formato exato.
+>
+> Três coisas dela que quem for mexer precisa saber, e nenhuma se adivinha:
+>
+> 1. **A coluna virou `text`, não `varchar(12)`.** `varchar(n)` recusa com `value too long for type character varying(12)` — mensagem **sem nome**, traduzível só casando texto com o número dentro. Foi assim que `mensagemErroImportacao` ficou dizendo *"aceita até 8 caracteres"*. A CHECK nomeada se traduz pelo **nome**, que é a convenção do módulo.
+> 2. **Ela cuida SÓ DO TETO.** O branco continua com a `_preenchido`. Um `BETWEEN 1 AND 12` faria a nova barrar também o branco e a cobertura da antiga viraria **fantasma** — o caso de 03/08 com `sala_numero = -1` (§8 do CLAUDE.md). O **CASO 8** da bateria existe só para provar que a recusa do branco ainda cita a `_preenchido`.
+> 3. 🔴 **NÃO há regra de "só dígitos", e foi medido por quê:** **47 literais não-numéricos** de `n_inscricao` vivem nas baterias SQL (`N001`, `A001`, `S002`…) — 22 em `bateria-troca-total-candidatos.sql`, 11 em `bateria-cargos.sql`, 7 em `chave-natural`, 4 em `alocacao`, 3 em `relatorio`. Uma CHECK de dígitos quebraria as cinco, e **nada as executa automaticamente**. Quem quiser dígitos abre tema próprio, com os 47 no mesmo passe.
+>
+> **O espelho na tela é `LIMITE_N_INSCRICAO`** (`src/lib/candidatos-import.ts`), e a fidelidade dele não é zelo: um valor de 13 chegando ao banco viola a CHECK **dentro da transação** de `trocar_candidatos_do_edital` e derruba a troca do edital inteiro. Acusado na tela, custa **uma linha** no relatório.
+
+🔴 **Sobraram DUAS de formato, e a diferença importa.** Desde a migration `20260730100000` (decisão do usuário: dado inválido entra cru), `candidatos` **não tem opinião sobre o formato** de CPF, e-mail, CEP e raça — para nenhum caminho de escrita, não só para o importador. Quem precisar de CPF válido **valida na leitura**; não dá mais para presumir, como dava até 29/07, que o que está na coluna passou por uma CHECK. As duas que restaram são as de **identidade**, e essas seguem barrando.
 
 ⚠️ **O que foi deixado de fora, e é decisão, não esquecimento:**
 

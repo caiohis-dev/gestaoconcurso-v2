@@ -338,12 +338,34 @@ describe("converterLinha — erro descarta a linha", () => {
     expect(r.erro).toMatch(/nome vazio/i);
   });
 
-  it("recusa inscrição maior que os 8 caracteres da coluna", () => {
-    // Sem isto o banco devolveria 'value too long' e derrubaria o BLOCO INTEIRO de 500,
-    // em vez de uma linha. É a diferença entre perder 1 e perder 500.
-    const r = converterLinha(["123456789", "FULANO"], m, EDITAL, 5);
+  it("recusa inscrição maior que os 12 caracteres da coluna", () => {
+    // Sem isto a CHECK `chk_candidato_n_inscricao_tamanho` dispararia DENTRO da transação
+    // de trocar_candidatos_do_edital e derrubaria a troca do edital INTEIRO, em vez de
+    // acusar uma linha. É a diferença entre perder 1 e perder 7.416.
+    // ⚠️ O teto era 8 até 2026-08-06; se este número divergir do da CHECK, o defeito não
+    // aparece aqui — aparece como importação recusada.
+    const r = converterLinha(["1234567890123", "FULANO"], m, EDITAL, 5);
     expect(r.candidato).toBeNull();
-    expect(r.erro).toMatch(/8/);
+    expect(r.erro).toMatch(/12/);
+  });
+
+  // Os dois controles positivos precisam do cargo no mapeamento: desde a D9 a célula de
+  // cargo vazia descarta a linha, e sem ela a prova morreria por outro motivo.
+  const comCargo = mapa({ n_inscricao: 0, nome: 1, cargo: 2 });
+
+  it("⭐ CONTROLE POSITIVO: 12 caracteres exatos ENTRAM", () => {
+    // A metade que falta na prova acima. Sem este caso, trocar o `>` por `>=` passaria.
+    const r = converterLinha(["000000000012", "FULANO", "DOCENTE II"], comCargo, EDITAL, 5);
+    expect(r.erro).toBeNull();
+    expect(r.candidato?.n_inscricao).toBe("000000000012");
+  });
+
+  it("⭐ CONTROLE POSITIVO: o arquivo real (1 a 4 dígitos) continua entrando", () => {
+    // Medido em 2026-08-06: as 7.416 linhas têm de 1 a 4 caracteres. O teto é CAPACIDADE,
+    // não formato — número curto é válido e não vira queixa nenhuma.
+    const r = converterLinha(["7416", "FULANO", "DOCENTE II"], comCargo, EDITAL, 5);
+    expect(r.erro).toBeNull();
+    expect(r.candidato?.n_inscricao).toBe("7416");
   });
 });
 
@@ -955,7 +977,14 @@ describe("mensagemErroImportacao", () => {
         'duplicate key value violates unique constraint "candidatos_edital_inscricao_key"',
       ),
     ).toMatch(/mesmo nº de inscrição/i);
-    expect(mensagemErroImportacao("value too long for type character varying(8)")).toMatch(/8/);
+    // ⚠️ Até 2026-08-06 esta linha afirmava `value too long for type character varying(8)`
+    // → /8/. A coluna virou `text` com CHECK NOMEADA, e o ramo passou a casar pelo NOME
+    // justamente porque o texto do erro carregava o número dentro.
+    expect(
+      mensagemErroImportacao(
+        'new row for relation "candidatos" violates check constraint "chk_candidato_n_inscricao_tamanho"',
+      ),
+    ).toMatch(/12 caracteres/i);
   });
 
   it("⭐ as três recusas da TROCA TOTAL dizem que a lista foi MANTIDA", () => {
