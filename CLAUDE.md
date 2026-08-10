@@ -204,11 +204,16 @@ Aconteceu: em 02/08 a RPC `trocar_candidatos_do_edital` ganhou um 4º parâmetro
 
 ### Banco de produção
 
+🔴 **Desde 2026-08-10 produção EXISTE e é dona dos dados** — `zugigdpuxbpogoepdawm` (us-west-2, plano free), com schema, dados, edge functions, Auth e **login real aprovado**. Isso muda o peso das regras abaixo: elas deixaram de ser precaução sobre um banco vazio.
+
 - 🔴 **O repo fica DESLINKADO por padrão** — é o estado correto, não um descuido. Sem link, `db push` e `db reset --linked` não têm alvo: o link é o que arma a arma.
 - `supabase link` só no momento de um deploy consciente, com `prod:unlink` logo depois.
 - **Prod só é atualizada em release estável tagueada** — nunca por migration, nunca por merge. Migrations **acumulam em `dev`**.
 - Não ofereça linkar "só para conferir", nem rodar `prod:diff` por curiosidade.
-- ⚠️ **Produção foi construída pelo dashboard do Lovable**, então as migrations não a reproduzem fielmente. Suspeite de drift quando prod funciona e um reset local não.
+- 🔴 **Não há BACKUP nenhum** (o free não tem diário nem PITR), num banco onde `DELETE` em massa é operação normal — importar candidatos é troca total. **Não existe de onde restaurar.** Isto é risco aceito e documentado, não pendência a resolver por conta própria.
+- ⚠️ **Não dispare fluxo de e-mail em produção** (convite, recuperação de senha) enquanto o site não responder em `https://fevre.online`: o link nasce com o domínio certo e não abre nada.
+
+🔵 **Corrigido em 2026-08-10.** Esta seção dizia *"Produção foi construída pelo dashboard do Lovable, então as migrations não a reproduzem fielmente; suspeite de drift"*. **Deixou de valer para a produção da v2**, que nasceu de `db push` das 122 migrations e teve o dado conferido por controle positivo de 12 contagens — não há drift a suspeitar nela. O aviso descrevia o projeto da era Lovable (`dqslqfzqukcahogkieet`), que está congelado e fora do caminho. ⚠️ O que **continua** verdade é a origem do *schema* (§2): ele veio do dashboard, e é daí que vêm os CASCADE por omissão.
 
 ---
 
