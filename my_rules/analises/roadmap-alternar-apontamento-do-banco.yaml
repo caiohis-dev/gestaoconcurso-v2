@@ -1,0 +1,336 @@
+# Roadmap VIVO — script para alternar o apontamento do banco (local ⇄ supabase.com)
+# Criado em 2026-08-10. Leia my_rules/analises/README.md antes de usar como guia.
+# ⏳ NÃO INICIADO — desenho aprovado nas duas decisões que mudavam o escopo (D1, D2).
+#
+# Contexto que este roadmap NÃO repete: o banco de produção existe e é dono dos dados
+# desde 2026-08-10 (my_rules/banco-producao.md), e a hospedagem corre em paralelo
+# (my_rules/hospedagem-e-deploy.md).
+
+roadmap:
+  titulo: "Alternar o apontamento do código local entre o Supabase local e o supabase.com"
+  criado: "2026-08-10"
+  status: >
+    ⏳ **NÃO INICIADO.** Desenho fechado, nada escrito. As duas decisões que mudavam o
+    escopo foram tomadas pelo usuário na abertura (D1 e D2); as demais são recomendação
+    minha, marcadas como tal e baratas de reverter.
+
+  origem: >
+    Pedido do usuário em 2026-08-10: "criar um script (deve estar no .gitignore) para
+    trocar o apontamento de banco do código local: supabase local para supabase.com e
+    vice e versa".
+    O pedido chega no dia em que o banco de produção passou a existir de verdade — o que
+    torna a capacidade útil (diagnosticar um problema que só acontece em produção,
+    conferir um deploy, cadastrar dado real pela UI) e, pelo mesmo motivo, perigosa.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  decisoes_do_usuario: |
+    D1. GUARDA = FAIXA VISÍVEL NA TELA, além do aviso no terminal. Escolhida entre três
+        opções, sabendo que custa uma mudança **versionada** em `src/` — o script sozinho
+        não alcança a UI. O motivo de não bastar o terminal está no R3: o modo de falha
+        provável não é o desastre dramático, é **voltar no dia seguinte, rodar
+        `npm run dev` e estar em produção sem saber**. Aviso de terminal morre quando o
+        terminal fecha; a faixa não.
+
+    D2. SANEAR O `.env` DA RAIZ JUNTO. O achado A2 do bootstrap (hoje item aberto do
+        `backlog.md`) entra neste roadmap em vez de virar tema próprio, porque **ele é a
+        causa de o mecanismo documentado de alternância não funcionar** (ver A1). Fechar o
+        item do backlog faz parte da entrega.
+
+    D3. O SCRIPT É GITIGNORED — pedido explícito do usuário.
+        🔵 Nota factual, não objeção: no desenho abaixo o script **não guarda segredo
+        nenhum** (lê os valores dos arquivos `.env*` que já existem). Então, se um dia
+        houver interesse em versioná-lo para que ele exista num clone novo, nada bloqueia
+        — a decisão é só do usuário.
+
+    D4. ⚠️ **RECOMENDAÇÃO MINHA, a confirmar:** o script mexe **só no frontend**. Ele NÃO
+        roda `supabase link`, NÃO toca em `supabase/.temp/` e NÃO altera secrets de Edge
+        Function. Motivo: linkar é o que "arma a arma" (§6 do CLAUDE.md) — `db push` e
+        `db reset --linked` passam a ter alvo. Misturar as duas coisas num comando de
+        conveniência é exatamente o que a regra do repo existe para impedir.
+        **Apontar o frontend e linkar o repo são operações de risco diferente e devem
+        continuar exigindo gestos diferentes.**
+
+    D5. ⚠️ **RECOMENDAÇÃO MINHA, a confirmar:** **sem atalho no `package.json`**. A invocação
+        é direta (`./scripts/apontar-banco.sh nuvem`). Motivo: `package.json` é versionado,
+        e um `npm run` que aponta para arquivo gitignored promete um comando que **um clone
+        novo não consegue cumprir**. O precedente `test:ef` é diferente — lá o script existe
+        no repo e só a dependência (deno) pode faltar, e ele falha com instrução.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  medido_antes: |
+    Medido em 2026-08-10 contra o disco (não estimado).
+
+    OS TRÊS ARQUIVOS DE AMBIENTE QUE EXISTEM HOJE:
+
+      .env              124 B, de 15/07  → `http://127.0.0.1:54321` + chave `sb_publishable_AC…`
+      .env.local        917 B, de 14/07  → `http://127.0.0.1:54321` + chave legada `eyJhbGciOiJIUzI1Ni…`
+      .env.production   140 B, de 08/08  → `https://zugigdpux…` + chave `sb_publishable_mN…`
+
+    ⚠️ **`.env` e `.env.local` apontam para o MESMO banco local com chaves DIFERENTES** —
+    uma no formato novo (`sb_publishable_`), outra no formato legado (JWT `eyJ…`). Uma das
+    duas está velha. Isso não quebra nada hoje (o `.env.local` vence no dev), mas é ruído a
+    resolver na etapa 1.
+
+    🔴 **`.env.local` guarda `SMTP_PASS` em texto claro**, junto de `SMTP_USER`, `SMTP_HOST`
+    e `SMTP_PORT` — as mesmas credenciais que vivem em `supabase/functions/.env`. Elas **não**
+    são `VITE_*`, então o Vite não as embute no bundle e não há vazamento pelo artefato. Mas
+    é um segredo em dois lugares, e um deles não tem motivo para existir: nada no frontend lê
+    essas variáveis.
+
+    PRECEDÊNCIA DO VITE (conferida na fonte `getEnvFilesForMode`, não deduzida):
+      `.env` → `.env.local` → `.env.[mode]` → `.env.[mode].local`     (o ÚLTIMO vence)
+
+      · `npm run dev` (mode=development) carrega `.env`, `.env.local` e — se existissem —
+        `.env.development` e `.env.development.local`. **Vencedor hoje: `.env.local` = LOCAL.**
+      · `npm run build` / `npm run preview` (mode=production) carrega `.env`, `.env.local`
+        e `.env.production`. **Vencedor hoje: `.env.production` = NUVEM.**
+
+    OUTROS FATOS:
+    · `src/integrations/supabase/client.ts` lê **só** `import.meta.env.VITE_SUPABASE_URL` e
+      `VITE_SUPABASE_PUBLISHABLE_KEY`. Nenhuma URL hardcoded — o apontamento é 100% ambiente.
+    · `vite.config.ts` não define `envDir` nem bloco `preview`: dev na **8080**, preview no
+      padrão do Vite (**4173**).
+    · `.gitignore` já cobre `.env`, `.env.*` (com exceção de `.env.example`) e `*.local`.
+      ⚠️ `*.local` **não** casa com `apontar-banco.local.sh` — o padrão exige que o nome
+      TERMINE em `.local`. Uma entrada explícita é necessária.
+    · `scripts/` tem 3 arquivos, todos versionados. `test-ef.sh` é o precedente de script que
+      localiza uma dependência e falha com instrução em vez de quebrar feio.
+    · 🔴 **`src/components/Layout.tsx` é importado por 23 páginas — e 5 NÃO o usam:**
+      `Auth.tsx`, `RedefinirSenha.tsx`, `CadastroPublico.tsx`, `PerfilColaborador.tsx` e
+      `NotFound.tsx`. **Isto muda o desenho da faixa** — ver A5.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  achados_que_mudam_o_roteiro: |
+    🔴 A1. **O MECANISMO DE ALTERNÂNCIA QUE A DOC DESCREVE NÃO FUNCIONA — e não funciona
+        há quase um mês.** Dois lugares afirmam a mesma coisa falsa:
+          · o comentário dentro do próprio `.env.local`: *"não precisa trocar nada
+            manualmente para alternar entre local e produção, só comentar/descomentar este
+            arquivo (ou apagá-lo) para voltar a usar o `.env` de produção"*;
+          · `estrutura/transversais/desenvolvimento-local.md:30`: *"nenhuma outra mudança de
+            config é necessária para alternar entre local e produção; basta esse arquivo
+            existir ou não"*.
+        **É falso: apagar o `.env.local` cai no `.env`, que também aponta para o Docker
+        local.** Os dois descrevem um mundo em que o `.env` era de produção — que é
+        exatamente o que o achado A2 do bootstrap registra que deixou de ser verdade.
+        ⭐ **Consequência para o escopo:** este script não é conveniência sobre um caminho
+        manual que já existe. **Hoje não existe caminho nenhum**, nem manual, para apontar o
+        `npm run dev` para a nuvem. O script é a primeira implementação real do que a doc
+        promete. E é o caso do §1 do CLAUDE.md: *aviso envelhecido tem autoridade*.
+
+    🔴 A2. **A alavanca certa é CRIAR/APAGAR `.env.development.local`, não editar arquivo
+        existente.** Em `mode=development` ele é o último da cadeia, então vence o
+        `.env.local` **sem tocá-lo**. Ligar = criar o arquivo; desligar = apagar.
+        ⭐ Por que isto importa mais do que parece: o `.env.local` continua sendo o padrão
+        local intocado, com a chave certa. **Nenhum caminho do script edita ou sobrescreve
+        um arquivo que o usuário mantém à mão** — não há como o script comer a chave anon
+        local numa troca malfeita, e "voltar para o local" é um `rm`, a operação mais
+        difícil de errar que existe.
+        ⚠️ Ele afeta **só o `dev`**. `build` e `preview` seguem em `mode=production` e
+        continuam mandando para a nuvem via `.env.production` — que é o certo, e é o que o
+        `deploy.sh` confere no bundle. **Não unifique os dois.**
+
+    ⚠️ A3. **O Vite lê o ambiente só no BOOT.** Trocar com o dev server rodando não muda
+        nada, e o sintoma é "o script não funcionou" — quando funcionou. Já está no §4 do
+        CLAUDE.md e ainda assim é o primeiro tropeço esperado. O script tem de dizer isso na
+        saída, em destaque.
+
+    🔴 A4. **A sessão velha fica no `localStorage` e o sintoma engana.** O cliente usa
+        `storage: localStorage` com `persistSession: true`, e a origem é a mesma
+        (`localhost:8080`) nos dois alvos. Ao trocar de projeto, o token do projeto anterior
+        continua lá: a aplicação **parece logada** e toda requisição falha.
+        ⭐ **É a TERCEIRA causa diferente com sintoma idêntico neste projeto** — as outras
+        duas são o bundle apontado para o lugar errado e o projeto pausado por inatividade
+        do plano free (R6 do bootstrap). Um diagnóstico que não distingue as três faz perder
+        horas. O script deve avisar; a faixa da D1 é o que efetivamente desempata, porque
+        mostra o alvo real em vez de deixar adivinhar.
+
+    🔴 A5. **A faixa NÃO pode morar no `Layout.tsx`.** Ele cobre 23 páginas, mas ficam de
+        fora `Auth.tsx`, `RedefinirSenha.tsx`, `CadastroPublico.tsx`, `PerfilColaborador.tsx`
+        e `NotFound.tsx`. **`Auth.tsx` é a tela de login** — precisamente onde se digita uma
+        senha de produção achando que se está no local. Faixa que falta ali é faixa que falta
+        no único momento em que ela decidiria alguma coisa.
+        ⭐ **O ponto de inserção correto é o `App.tsx`, acima do `<BrowserRouter>`** — um
+        único lugar cobre as 29 rotas, sem tocar em página nenhuma.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  etapas:
+    - id: 0
+      nome: "Backup dos três arquivos de ambiente"
+      status: "⏳ não iniciada"
+      entrega:
+        - >
+          Copiar `.env`, `.env.local` e `.env.production` para fora do repo antes de
+          qualquer edição. **Nenhum dos três é versionado** — não há `git checkout` que
+          os traga de volta, e o `.env.local` carrega a chave anon local e as credenciais
+          SMTP. É o mesmo cuidado que o dump exige.
+
+    - id: 1
+      nome: "Sanear os três arquivos de ambiente (D2 — o achado A2 do bootstrap)"
+      status: "⏳ não iniciada"
+      entrega:
+        - >
+          **O `.env` da raiz deixa de mentir.** Ele é local e se chama produção. Duas saídas,
+          a escolher na hora: **apagá-lo** (o `.env.local` já cobre o dev) ou **esvaziá-lo
+          deixando só um comentário** que diga em voz alta quem manda em cada modo.
+          ⚠️ Antes de apagar, conferir qual das duas chaves locais está viva — a
+          `sb_publishable_AC…` do `.env` ou a legada `eyJ…` do `.env.local` — com
+          `npm run supabase:status`. **Não presuma que a do `.env.local` é a boa só porque
+          é a que vence hoje.**
+        - >
+          **Cai o comentário falso de dentro do `.env.local`** (o do A1) e entra a descrição
+          verdadeira: `.env.local` = local e é o padrão; `.env.production` = nuvem e vale no
+          build; `.env.development.local` = o interruptor do script, e se existir, MANDA.
+        - >
+          **Tirar `SMTP_*` do `.env.local`.** Nada no frontend lê essas variáveis; elas já
+          vivem em `supabase/functions/.env`, que é quem o `supabase:functions:serve`
+          consome. É segredo duplicado sem função.
+        - >
+          **Corrigir `estrutura/transversais/desenvolvimento-local.md:30`**, que carrega a
+          mesma afirmação falsa do A1, e o passo 7 da lista onde ela aparece.
+        - "**Fechar o item do `.env` da raiz no `backlog.md`** — era o A2 do bootstrap."
+
+    - id: 2
+      nome: "O script — `scripts/apontar-banco.sh`, gitignored"
+      status: "⏳ não iniciada"
+      entrega:
+        - "Entrada explícita no `.gitignore` (⚠️ `*.local` NÃO o cobre — ver `medido_antes`)."
+        - >
+          **Três comandos, e nada além disso:**
+            · `local`  → apaga `.env.development.local`. É o caminho de volta, e é um `rm`.
+            · `nuvem`  → cria `.env.development.local` com os valores lidos de
+              `.env.production`. **Lê, não hardcoda** — assim o script não guarda segredo e
+              não envelhece quando a chave rodar.
+            · `status` (padrão, sem argumento) → diz para onde o `dev` aponta agora, para
+              onde o `build` aponta, e se o interruptor está ligado. **Não altera nada.**
+        - >
+          🔴 **Ir para a nuvem exige confirmação DIGITADA** (a palavra `PRODUCAO`), não um
+          `y`. Voltar para o local não pergunta nada: a assimetria é proposital — o caminho
+          seguro tem de ser o mais fácil.
+        - >
+          O script **recusa** ir para a nuvem se `.env.production` não existir ou não tiver
+          as duas variáveis, com mensagem que diz o que fazer. Falhar aqui é melhor que
+          criar um `.env.development.local` pela metade — que apontaria para `undefined` e
+          daria erro obscuro no browser.
+        - >
+          ⚠️ **Toda saída de sucesso termina lembrando das duas coisas do A3 e do A4:**
+          reiniciar o dev server, e que a sessão do projeto anterior segue no `localStorage`
+          (parece logado, tudo falha). Dizer como limpar.
+        - >
+          🔵 Cabeçalho do arquivo explicando que ele é local e gitignored, no espírito do
+          `supabase/functions/.env` — quem abrir daqui a três meses não deve precisar deste
+          roadmap.
+
+    - id: 3
+      nome: "A faixa visível (D1) — no `App.tsx`, não no `Layout`"
+      status: "⏳ não iniciada"
+      entrega:
+        - >
+          Componente novo, montado **acima do `<BrowserRouter>` no `App.tsx`** — ponto único
+          que cobre as 29 rotas, inclusive a de login (achado A5). ⚠️ **Não** no `Layout.tsx`.
+        - >
+          A regra de exibição é uma comparação, não uma flag: aparece quando
+          `import.meta.env.VITE_SUPABASE_URL` **não** é `127.0.0.1`/`localhost`. Assim ela
+          vale para qualquer alvo remoto e não depende de o script ter rodado — inclusive
+          pega o caso em que alguém editou o `.env` à mão.
+        - >
+          🔴 **Ela tem de sumir no build de produção**, senão o site publicado nasce com uma
+          faixa vermelha permanente. O recorte é `import.meta.env.DEV` **junto** da checagem
+          de URL: faixa só quando *é dev server* **e** *o alvo é remoto*.
+          ⚠️ Este é o ponto onde este item vira defeito de produção se for feito rápido
+          demais — o gate do `deploy.sh` confere URL e chave no bundle, **não** confere isto.
+        - "Texto: o alvo, a ref do projeto e a frase de que as escritas são reais."
+        - "Mudança **versionada** — é a única deste roadmap que entra no repo público."
+
+    - id: 4
+      nome: "Verificação"
+      status: "⏳ não iniciada"
+      entrega:
+        - >
+          ⭐ **Controle positivo obrigatório nos DOIS sentidos** (§2 do CLAUDE.md): provar
+          que aponta para a nuvem é metade; a outra metade é provar que **volta** para o
+          local e que o local continua funcionando igual depois da ida e volta.
+        - >
+          O roteiro mínimo: `status` com tudo desligado → `nuvem` → **reiniciar o dev
+          server** → conferir a faixa e uma tela com número conhecido (`/colaboradores` = 771
+          nos dois alvos; ⚠️ **`/candidatos` é o discriminador de verdade — 7.591 no local,
+          VAZIA na nuvem**) → `local` → reiniciar → conferir que a faixa sumiu e os 7.591
+          voltaram.
+        - >
+          🔴 **Provar que o build NÃO é afetado:** com o interruptor ligado, `npm run build`
+          e conferir o bundle. `.env.development.local` não vale em `mode=production` — mas
+          isso é afirmação minha sobre a precedência do Vite, e afirmação se mede.
+          O mesmo grep do bootstrap serve: 0 ocorrências da URL local no artefato.
+        - "`npm test` · `npx tsc --noEmit -p tsconfig.app.json` · `npm run build` · `npm run lint` (baseline **117**) · `npm run docs:conferir`."
+
+    - id: 5
+      nome: "Docs — no mesmo passe, não depois"
+      status: "⏳ não iniciada"
+      entrega:
+        - >
+          `estrutura/transversais/desenvolvimento-local.md`: o mecanismo real de alternância,
+          substituindo a afirmação falsa do A1, e o script como o caminho oficial.
+        - >
+          **§4 do CLAUDE.md** (Ambiente local): a existência do script e a regra de que
+          apontar o dev para a nuvem é gesto consciente. ⚠️ O §4 hoje diz *"o dado local não
+          é precioso: o SCHEMA é sério, os DADOS são playground"* e *"`db reset` é
+          verificação normal, não perda"* — **as duas frases ficam perigosas quando o alvo é
+          a nuvem**. Elas precisam de um recorte explícito dizendo que valem para o Docker
+          local e **não** valem com o interruptor ligado.
+          🔴 É o padrão do §1: *ao consertar algo que um aviso descreve, procure o aviso no
+          mesmo passe.*
+        - "`banco-producao.md`: o script não substitui `supabase link` e não o dispensa (D4)."
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  riscos: |
+    R1. 🔴 **É a capacidade mais perigosa que já se adicionou a este repo, e vale dizer em
+        voz alta.** Com o interruptor ligado, **todo clique escreve em produção** — um banco
+        **sem backup nenhum** (R7 do bootstrap: o free não tem diário nem PITR), onde
+        `DELETE` em massa é operação **normal** de negócio: importar candidatos é troca
+        total, apaga a lista do edital inteira e reinsere. Uma importação de teste na tela
+        errada não tem de onde ser restaurada.
+        **Por isso o roadmap gasta uma etapa inteira em faixa e confirmação digitada.** A
+        conveniência é o pedido; a guarda é o que torna o pedido seguro de atender.
+
+    R2. ⚠️ **E-mail sai de verdade, e o link nasce apontando para o domínio real.** Com o
+        alvo na nuvem, as Edge Functions invocadas são as **da nuvem**, com o SMTP da
+        Hostinger e `SITE_URL=https://fevre.online`. Enquanto o site não responder no
+        domínio, vale a proibição já registrada: **não disparar fluxo de e-mail em
+        produção** — o link nasce certo e não abre nada.
+        🔵 Contra-intuitivo mas verdadeiro: **o banco local também manda e-mail de verdade**
+        (ele carrega o dump com endereços reais). A diferença aqui não é "passa a enviar", é
+        que passa a enviar **com o link de produção**.
+
+    R3. 🔴 **O esquecimento é o modo de falha provável — não o desastre.** Ninguém vai
+        importar 7.591 candidatos em produção por acidente no mesmo minuto em que ligou o
+        interruptor. O que acontece é ligar hoje para conferir uma coisa, fechar o terminal,
+        e **amanhã rodar `npm run dev` já apontado para produção**, com toda a confiança de
+        estar no playground. Foi este risco que decidiu a D1.
+
+    R4. ⚠️ **O script é gitignored: ninguém o revisa e ele não vem no clone.** Não passa por
+        diff, não aparece em code review, e uma máquina nova não o tem. É consequência aceita
+        da D3 — e o motivo da D5 (nada no `package.json` prometendo um comando que o clone
+        não cumpre).
+
+    R5. ⚠️ **A faixa é a única mudança versionada, e é a que pode vazar para produção.** Uma
+        faixa vermelha permanente no site publicado seria um defeito visível para o usuário
+        final. O recorte `import.meta.env.DEV` é o que impede, e **o `deploy.sh` não confere
+        isso** — ele olha URL e chave no bundle, não componentes. A verificação da etapa 4
+        é a única rede.
+
+    R6. ⚠️ **Sessão velha no `localStorage`** — o A4. É o risco de diagnóstico, não de dado:
+        faz perder tempo e leva a conclusões erradas sobre o banco ("os GRANTs quebraram"),
+        quando é só um token do outro projeto.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  fora_de_escopo: |
+    · **`supabase link` e qualquer coisa que arme `db push`** — D4. Continua sendo gesto
+      separado e consciente, com `prod:unlink` logo depois.
+    · **Secrets de Edge Function e `supabase/functions/.env`** — o script não os toca. Rodar
+      função local contra banco na nuvem é combinação que ninguém pediu e que confunde mais
+      do que ajuda.
+    · **Um terceiro alvo (staging)** — não existe projeto de staging, e o free admite 2
+      projetos por organização.
+    · **Ponto de restauração antes de escrever em produção.** Seria a mitigação de verdade
+      do R1, mas esbarra no plano free e na regra do R2 do bootstrap: um dump novo nasce
+      **sem as três correções manuais** do dump atual. Rotina de backup precisa ser
+      desenhada, não improvisada dentro deste script.

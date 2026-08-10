@@ -246,9 +246,26 @@ Enquanto (2) não estiver resolvido, não é possível criar o `CHECK` que amarr
 
 ---
 
+## Script para alternar o apontamento do banco (local ⇄ supabase.com)
+
+**Status:** ⏳ **não iniciado** — desenho fechado em 2026-08-10
+**Área:** Infraestrutura / ambiente local
+
+Um script **gitignored** para apontar o `npm run dev` ao Supabase local ou ao projeto na nuvem, e voltar. Pedido do usuário em 2026-08-10, no dia em que o banco de produção passou a existir de verdade.
+
+📋 O desenho completo — 6 etapas, 5 achados medidos e 6 riscos — está em [`analises/roadmap-alternar-apontamento-do-banco.yaml`](./analises/roadmap-alternar-apontamento-do-banco.yaml).
+
+🔴 **Leia o R1 antes de executar.** Com o interruptor ligado, **todo clique escreve em produção** — um banco sem backup nenhum, onde importar candidatos é troca total (apaga a lista do edital inteira). Por isso o roadmap tem uma etapa só de guarda: faixa visível na tela e confirmação digitada.
+
+🔵 **O achado que mais muda a leitura:** o mecanismo de alternância que a doc descreve **não funciona, e não funciona há quase um mês**. Tanto o comentário dentro do `.env.local` quanto `desenvolvimento-local.md:30` dizem que basta esse arquivo existir ou não — mas apagá-lo cai no `.env`, que **também aponta para o Docker local**. Hoje não há caminho nenhum, nem manual, para apontar o `dev` para a nuvem.
+
+⚠️ **Este item absorveu o do `.env` da raiz** (achado A2 do bootstrap), que era item próprio aqui — ele é a causa do problema acima e fecha na etapa 1.
+
+---
+
 ## O `.env` da raiz se chama produção e aponta para o Docker local
 
-**Status:** pendente
+**Status:** ⏳ absorvido pelo item acima (etapa 1 do roadmap de alternância)
 **Área:** Infraestrutura / build (ver [`hospedagem-e-deploy.md`](./hospedagem-e-deploy.md))
 
 O arquivo `.env` da raiz contém `VITE_SUPABASE_URL="http://127.0.0.1:54321"` com a publishable key **local** — e se apresenta como o arquivo de produção. É a **armadilha nº 1 do §8 do CLAUDE.md**: o nome mente antes do código.
