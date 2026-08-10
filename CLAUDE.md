@@ -56,7 +56,8 @@ Dentro de uma doc viva, um `⚠️` marcando que *aquela frase específica* mudo
 | **O que falta fazer** | `my_rules/backlog.md` | — |
 | **O que já foi feito** e por quê | `my_rules/analises/concluidos/backlog-itens-concluidos.md` | ⚠️ **Nunca como plano** — é histórico |
 | **Por que é assim** / alternativa rejeitada | `my_rules/analises/` — leia o `README.md` dela antes | ⚠️ **Nunca como plano:** `concluidos/` é histórico |
-| **Deploy / produção** | `my_rules/banco-producao.md` | Não confie em número escrito ali; confira na hora |
+| **Deploy do BANCO** / produção | `my_rules/banco-producao.md` | Não confie em número escrito ali; confira na hora |
+| **Publicar o SITE**, servidor, domínio, TLS | `my_rules/hospedagem-e-deploy.md` | ⚠️ Não edite o `.env` achando que resolve: o `.env.local` vence, e o build sai apontando para o Docker local |
 
 Mapa completo e a seção "Como manter": `my_rules/estrutura/00-indice.md`.
 

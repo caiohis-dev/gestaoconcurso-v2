@@ -831,3 +831,34 @@ Tabela + **FK composta** `(sala_id, prova_id)` (metade da coerência de graça �
 1. **A bateria provou a coisa errada duas vezes antes de provar a certa** — o caso da FK composta morreu primeiro em PF001 (unidade da OUTRA prova seguia finalizada no setup) e depois em 23505 (o candidato escolhido já estava alocado). Afirmar **o nome de quem barrou** foi o que denunciou; "houve recusa" teria passado calado.
 2. **O smoke com dado sintético pegou o trigger funcionando**: a inclusão manual do caso 4 caiu em AL006 porque o script escolheu a sala lotada — o "erro" era a barreira correta.
 3. `SET LOCAL ROLE authenticated` + JWT forjado por `set_config` é o padrão para exercitar RLS e `has_role` dentro de bateria (herdado da bateria de renumeração, agora em duas).
+
+---
+
+## ✅ CONCLUÍDO 2026-08-10 — o banco de produção da v2 existe, carregado e PROVADO POR LOGIN
+
+**Área:** Infraestrutura / Banco. O registro completo — 9 etapas, as 5 decisões do usuário, o que foi medido antes e os 8 riscos — está em [`roadmap-bootstrap-banco-producao.yaml`](./roadmap-bootstrap-banco-producao.yaml). Este bloco é o resumo que vivia no `backlog.md`.
+
+**O que está de pé:** projeto `zugigdpuxbpogoepdawm`, região **us-west-2**, PG 17.6.1.155, **plano gratuito**. As 122 migrations aplicadas, o dump + `seed.pos.sql` carregados com **controle positivo de 12 contagens batendo com o local**, as 8 edge functions publicadas com os 5 secrets (inclusive o `SITE_URL`), o Auth parametrizado no dashboard e o **login real aprovado**. O repo terminou **desarmado** — `supabase/.temp/` não existe.
+
+**A linha do tempo, porque ela explica o formato do registro:** desenhado em 06/08, revisado em 08/08 (plano gratuito + projeto novo) e **executado no mesmo 08/08**, quando o usuário mandou a ref e a senha no meio da conversa. A sessão encerrou com o lado técnico pronto e **nada parametrizado no dashboard** — as duas últimas pendências eram dele, não minhas. Fecharam em 10/08.
+
+### O que a execução ensinou
+
+1. ⭐ **A prova de que a nuvem aceita `SET session_replication_role = replica` não foi o `SHOW`** — foi `profiles` terminar com **15 linhas e não 30**. Sem o `SET`, o trigger `on_auth_user_created` teria duplicado tudo ao inserir os 15 `auth.users`. Dúvida aberta desde 06/08, fechada por consequência observada em vez de por consulta de configuração.
+2. ⚠️ **Previ ~5 MB para a base de produção; medi 13 MB depois da carga.** Estimei por linhas do dump e ignorei o custo fixo de 26 tabelas com índices e catálogos, que existe **com tabela vazia**. Não mudou decisão (2,6% dos 500 MB do free), mas a folga real é ~38×, não ~100×. É o §9 do CLAUDE.md: contagem de linhas não prediz tamanho de banco.
+3. ⭐ **O gate do bundle confirmou a medição do doc de um jeito bonito:** 0 ocorrências da URL local e exatamente **7** da URL da nuvem e **11** da chave — os **mesmos** 7 e 11 que `hospedagem-e-deploy.md` mediu quando o build apontava para localhost. São os mesmos slots. `.env.production` vence o `.env.local`, comprovado no artefato e não na doc.
+4. **Os GRANTs foram conferidos por caminho indireto antes do login existir:** `authenticated` 25 tabelas/100 grants e `service_role` 26/182, idênticos ao local, com `anon` **ausente nos dois** — confirmando que a migration que fechou o vazamento de leitura anônima pegou. Mas indireto não é prova: o login real de 10/08 é que fechou o risco R5.
+5. 🔵 **Duas medições em 10/08 removeram o risco do passo de Auth antes de mandar executá-lo:** os 15 `auth.users` do dump estão **todos com `email_confirmed_at`**, então ligar a confirmação de e-mail não barra ninguém; e **nenhuma página chama `signUp`** (ele só existe em `useAuth.tsx` e nos mocks), então fechar o cadastro não quebra fluxo. Sem essas duas, o passo tinha dois jeitos plausíveis de derrubar o login de todo mundo.
+6. ⚠️ **A região saiu us-west-2, não São Paulo.** Levantei o custo (~180 ms contra ~15 ms, empilhados nas telas que consultam em sequência) no momento em que reverter era barato — banco vazio — e o usuário optou por seguir. **Região não se muda:** hoje reverter custa o bootstrap inteiro de novo.
+
+### Duas divergências de doc consertadas no mesmo passe
+
+- O backlog dizia que **"os 2 editais locais não sobem"**. É o oposto: o `seed.pos.sql` — versionado e passo do bootstrap — **deriva** os editais das 2 provas do dump. A execução confirmou (`INSERT 0 2`). O dump de fato não tem `INSERT INTO public.editais`, e foi essa medição por grep que enganou: o dado não é copiado, é **calculado**.
+- O roadmap mandava criar `.env.production.local` e **apagá-lo**; `hospedagem-e-deploy.md` manda manter `.env.production`. Conferido na fonte do Vite (`getEnvFilesForMode`): `.env.production` já vence o `.env.local`, o sufixo é desnecessário — e apagar faria o build seguinte sair apontando para localhost.
+
+### O que NÃO fechou junto
+
+- 🔴 **O achado A2** — o `.env` da raiz se chama produção e aponta para o Docker local — **segue aberto e voltou para o [`../../backlog.md`](../../backlog.md)**.
+- ⚠️ **Os 7.591 candidatos do banco local não estão no dump** e não subiram. São playground importado por planilha. **Produção nasceu sem candidato nenhum**, e `/candidatos` vazia é o resultado **correto**.
+- ⚠️ **Segue proibido disparar e-mail em produção** até o site responder no domínio: o link nasce certo e não abre nada.
+- **Os dois riscos aceitos do free**, que não viraram passo por decisão: **pausa após 1 semana de inatividade** (sintoma idêntico ao do bundle errado — a página carrega, o login aparece, tudo falha) e **zero backup**, num banco onde `DELETE` em massa é operação normal de negócio.

@@ -43,6 +43,7 @@ errada e o que cada decisão custou. Antes de reabrir qualquer tema abaixo, proc
 | ✅ 02/08 | o nº de inscritos passou a ter **uma** fonte: a lista real. A alocação dizia 200 onde havia 7.231 |
 | ✅ 04/08 | o candidato ganhou sala: módulo **Alocação de Candidatos** (o vínculo candidato↔prova/sala que o item 1 de Candidatos previa) |
 | ✅ 05/08 | a distribuição virou **plano montado por arrasto**: o admin escolhe a unidade de cada bloco, os cargos ganharam 3 blocos (comuns/PCD/sala especial) e nasceu o marcador "fora da alocação automática" |
+| ✅ 10/08 | o **banco de produção da v2** existe, carregado e **provado por login real** (`zugigdpuxbpogoepdawm`, us-west-2, plano free) |
 
 ---
 
@@ -245,18 +246,20 @@ Enquanto (2) não estiver resolvido, não é possível criar o `CHECK` que amarr
 
 ---
 
-## Bootstrap do banco de produção da v2
+## O `.env` da raiz se chama produção e aponta para o Docker local
 
-**Status:** pendente — **deliberadamente adiado até a primeira subida da v2 a produção**
-**Área:** Infraestrutura / Banco (ver [`banco-producao.md`](./banco-producao.md))
+**Status:** pendente
+**Área:** Infraestrutura / build (ver [`hospedagem-e-deploy.md`](./hospedagem-e-deploy.md))
 
-O projeto novo no supabase.com já foi criado, mas o repo **não é linkado a ele** — e não deve ser, até o dia de colocar a v2 no ar (regra combinada em 2026-07-12: o repo fica deslinkado por padrão, e produção só é atualizada em versões estáveis).
+O arquivo `.env` da raiz contém `VITE_SUPABASE_URL="http://127.0.0.1:54321"` com a publishable key **local** — e se apresenta como o arquivo de produção. É a **armadilha nº 1 do §8 do CLAUDE.md**: o nome mente antes do código.
 
-O schema já está pronto para subir quando for a hora: as **122** migrations reproduzem o banco local do zero (validado por `db reset` em 2026-08-04). ⚠️ **Este número já envelheceu duas vezes** — foi escrito como 69, corrigido para 85, e estava em 85 quando o real era 106. Confira com `npm run docs:conferir` em vez de confiar na leitura. O roteiro completo dos **9 passos** (link → `prod:push:dry` → `prod:push` → carga do `seed.local.sql` → **`seed.pos.sql`** → auth no dashboard → edge functions + secrets SMTP → `.env` do frontend → **unlink**) está em [`banco-producao.md`](./banco-producao.md).
+🔵 **Ficou menos perigoso em 2026-08-08**, quando `.env.production` passou a existir. Conferido na fonte do Vite (`getEnvFilesForMode`): a ordem é `.env` → `.env.local` → `.env.[mode]` → `.env.[mode].local`, então **`.env.production` vence** e o `npm run build` sai apontando para a nuvem. Comprovado no artefato: 0 ocorrências da URL local no bundle.
 
-Falta apenas, no dia: a **ref do projeto novo** no Supabase e a **senha do Postgres** dele.
+🔴 **Mas o risco não é o build de hoje — é o dia em que `.env.production` sumir ou for esquecido.** O `.env` continua ali, com cara de produção, pronto para gerar um bundle que aponta para o Docker local **sem erro nenhum no build**. O sintoma aparece só em runtime, e é *idêntico* ao de projeto pausado por inatividade (a página carrega, o login aparece, tudo falha) — o que torna o diagnóstico confuso justamente no pior momento.
 
-📋 **O roadmap de execução existe desde 2026-08-06:** [`analises/roadmap-bootstrap-banco-producao.yaml`](./analises/roadmap-bootstrap-banco-producao.yaml) — 9 etapas (0 a 8), com o escopo decidido (**só o banco**; frontend, domínio, merge e tag ficam para depois), os dados decididos (**dump completo**, os 2 editais locais não sobem) e o que foi medido em 06/08. Ele registra três achados que o `banco-producao.md` ainda não tinha: o secret **`SITE_URL`** ausente do roteiro (sem ele, todo link de convite/recuperação nasce apontando para `localhost`, em silêncio), o `.env` da raiz apontando para o Docker local, e o checkpoint do `SET session_replication_role` na carga do dump.
+**Saídas possíveis** (nenhuma decidida): renomear para `.env.local`, que é o que ele de fato é; ou deixar um comentário no topo dizendo em voz alta que ele é local e que `.env.production` é quem vale.
+
+🔵 Foi o **achado A2** do roadmap de bootstrap, o único item dele que não fechou junto — ver [`analises/concluidos/roadmap-bootstrap-banco-producao.yaml`](./analises/concluidos/roadmap-bootstrap-banco-producao.yaml), seção `fechamento`, P3.
 
 ---
 
@@ -267,7 +270,17 @@ Falta apenas, no dia: a **ref do projeto novo** no Supabase e a **senha do Postg
 
 O Lovable já foi removido do **código** em 2026-07-11 (`lovable-tagger`, boilerplate, `.lovable/`), e o site do Lovable **não existe mais** — o projeto está temporariamente fora do ar (situação em 2026-07-12). Não há mais deploy ativo em lugar nenhum.
 
-Publicar a v2 em infraestrutura própria (ex.: Vercel, Netlify, ou build estático em qualquer host), incluindo o domínio. O build de produção (`npm run build`) é um Vite estático comum e não depende de nada do Lovable. Depende do bootstrap do banco acima (o frontend precisa apontar para o Supabase novo).
+🔵 **O COMO deixou de ser pergunta em 2026-08-08.** O roteiro está em [`hospedagem-e-deploy.md`](./hospedagem-e-deploy.md): **servidor Ubuntu 24.04 próprio**, nginx servindo o build estático, público em `fevre.online` com TLS do Let's Encrypt. ⚠️ Este item dizia "ex.: Vercel, Netlify" — **PaaS foi descartado**, assim como o acesso só por túnel SSH (inviável: cada fiscal precisaria de chave SSH no servidor para abrir a tela de login).
+
+O ferramental existe e foi testado, **fora deste repositório**, em `configura_server_gestaoconcurso` — quatro scripts (hardening, nginx, TLS, deploy) mais dois templates de nginx. Este repo não versiona infraestrutura, por decisão.
+
+**Falta executar:** provisionar o servidor, apontar o DNS de `fevre.online` para ele, e rodar as quatro etapas.
+
+🔵 **A dependência do banco CAIU em 2026-08-10.** Este parágrafo dizia "depende do bootstrap do banco" — o bootstrap está concluído e provado por login real, e o `.env.production` já aponta para a nuvem (o `deploy.sh` **recusa publicar** um build que ainda aponte para o Docker local, e o gate passou). **Este item é agora o último passo para a v2 ir ao ar.**
+
+⚠️ **Duas coisas ficaram esperando exatamente por ele:** enquanto o site não responder no domínio, **não se dispara e-mail em produção** (o link nasce certo e não abre nada); e **na subida, rodar `prod:push:dry` de novo** — produção pode ter acumulado atraso de migrations novas de `dev` desde 08/08, e esse delta é parte da release (era o risco R4 do roadmap de bootstrap).
+
+🔴 **Antes do primeiro deploy:** tirar `public/auth_users_export.csv` de `public/`. Ele tem uma linha de dado real (UUID de conta, e-mail, nome, último login) e `public/` inteiro vira URL pública.
 
 ---
 

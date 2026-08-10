@@ -23,6 +23,7 @@ DOCS_VIVAS = [
     RAIZ / "my_rules/analises/README.md",
     RAIZ / "my_rules/versionamento.md",
     RAIZ / "my_rules/banco-producao.md",
+    RAIZ / "my_rules/hospedagem-e-deploy.md",
 ]
 
 # --- verdade do banco -------------------------------------------------------

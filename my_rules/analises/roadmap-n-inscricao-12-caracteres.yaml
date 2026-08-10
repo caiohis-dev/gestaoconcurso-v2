@@ -222,7 +222,7 @@ roadmap:
 
     R3. ⚠️ **Esta migration entra na fila do bootstrap de produção.** Ela será a 122ª e
         sobe no mesmo `prod:push` do
-        [`roadmap-bootstrap-banco-producao.yaml`](./roadmap-bootstrap-banco-producao.yaml).
+        [`roadmap-bootstrap-banco-producao.yaml`](./concluidos/roadmap-bootstrap-banco-producao.yaml).
         Como a base nova nasce sem candidatos, não há ordem a respeitar entre os dois temas.
 
     R4. **`n_inscricao` continua aceitando não-dígito** (DC). Se alguém auditar esperando

@@ -51,6 +51,7 @@ O que atravessa módulos, ou é anterior a eles. Um doc de módulo **referencia*
 - [`../backlog.md`](../backlog.md) — trabalho planejado e ainda não iniciado.
 - [`../versionamento.md`](../versionamento.md) — regras de git (branches, commits, tags, o que nunca versionar).
 - [`../banco-producao.md`](../banco-producao.md) — regras do banco de produção e o roteiro de bootstrap da v2.
+- [`../hospedagem-e-deploy.md`](../hospedagem-e-deploy.md) — como o **frontend** vai ao ar: servidor próprio, nginx, TLS, `fevre.online`, e o gate que impede publicar um build apontando para o Supabase local. Par do anterior — uma release sobe os dois.
 - [`../historico/`](../historico/) — código aposentado cujo raciocínio vale preservar (hoje, a Edge Function `export-seed`).
 - `docs/` (raiz do repo) — **só baterias de verificação** (`bateria-*.sql`, roteiros de teste manual de frontend). São **ferramentas que se executam**, não documentação que se lê para entender o sistema.
 

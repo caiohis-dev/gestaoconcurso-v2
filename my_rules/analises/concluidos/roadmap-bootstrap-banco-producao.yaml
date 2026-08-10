@@ -1,0 +1,600 @@
+# 📁 HISTÓRICO — não leia por padrão. Registra um tema já entregue.
+# Abra só quando o pedido for sobre o passado (por que ficou assim? o que se tentou?
+# que alternativa foi rejeitada?). NÃO É PLANO — nada aqui é lista de tarefas.
+# Para o que o sistema É: my_rules/estrutura/ | para o que FALTA: my_rules/backlog.md
+
+# Roadmap — bootstrap do banco de produção da v2 no supabase.com
+# Criado em 2026-08-06, executado em 2026-08-08, CONCLUÍDO em 2026-08-10 e arquivado
+# em concluidos/ no mesmo dia. Este arquivo é o registro do desenho, das medições e das
+# decisões — não um plano vivo.
+# O roteiro estável (as regras que valem SEMPRE) mora em my_rules/banco-producao.md.
+#
+# ⚠️ O QUE NÃO SE FECHOU JUNTO, e segue no backlog.md: o achado A2 (o `.env` da raiz se
+#    chama produção e aponta para o Docker local) e a subida do frontend, que tem roteiro
+#    próprio em my_rules/hospedagem-e-deploy.md.
+
+roadmap:
+  titulo: "Subir a base para um projeto novo no supabase.com (só o banco)"
+  criado: "2026-08-06"
+  status: >
+    🟢 **CONCLUÍDO em 2026-08-10.** O banco de produção da v2 está de pé e **provado por
+    login real** em `zugigdpuxbpogoepdawm`: schema (122 migrations), dados (controle
+    positivo 12/12), 8 edge functions com secrets, auth parametrizado no dashboard.
+    As 9 etapas (0 a 8) fecharam.
+    ✅ **O repo está DESARMADO** — `prod:unlink` rodou ao fim da execução de 08/08 e
+    `supabase/.temp/` não existe. Relinkar, quando for o caso, é
+    `npx supabase link --project-ref zugigdpuxbpogoepdawm`.
+    Linha do tempo: desenho aprovado em 2026-08-06 (D1, D2); revisado em 2026-08-08 com o
+    PLANO GRATUITO e o projeto novo (D3, D4), quando também foi reconciliada a divergência
+    do `.env` contra `hospedagem-e-deploy.md`, e **executado tecnicamente no mesmo dia**;
+    fechado em 2026-08-10 quando o usuário parametrizou o Auth e o login real passou.
+    ⭐ O bootstrap NÃO ficou "verde sem prova" — que era o risco R5.
+
+  origem: >
+    Pedido do usuário em 2026-08-06: "subir a base do supabase para uma base nova em
+    supabase.com". O alvo final é ter o código local desenvolvendo contra o banco local e
+    a v2 em produção apontando para o banco na nuvem — mas ele pediu para **cuidar
+    primeiro do banco**, deixando frontend e domínio para um segundo momento.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  decisoes_do_usuario: |
+    D1. ESCOPO = SÓ O BANCO HOJE. Entra: criar o projeto, subir as migrations, carregar os
+        dados, configurar o auth no dashboard, publicar as edge functions com os secrets.
+        Fica para depois: host, domínio, `site_url` definitivo, merge `dev`→`main` e tag.
+        `main` continua CONGELADA em v1.0.0.
+        ⚠️ Consequência aceita: sem domínio, o `site_url` e o `SITE_URL` das functions ficam
+        provisórios — e **fluxo de e-mail não deve ser disparado em produção** até o
+        frontend subir, porque o link iria para o lugar errado.
+
+    D2. DADOS = DUMP COMPLETO. Carrega `public.*` + `auth.users` + `auth.identities` do
+        `supabase/seed.local.sql`. É a opção de continuidade: os hashes de senha viajam e
+        os logins de produção continuam valendo.
+
+        🔵 **CORRIGIDO em 2026-08-06, no mesmo dia:** ao perguntar sobre os dados, eu
+        afirmei que os 2 editais do banco local eram **playground criado à mão** e não
+        subiriam. **Está errado, e o `db reset` provou:** eles sobrevivem ao reset porque
+        `seed.pos.sql` — que é VERSIONADO e é passo do bootstrap (etapa 3) — os **deriva
+        das 2 provas do dump** (`INSERT INTO editais ... SELECT DISTINCT ON
+        (lower(btrim(p.prova_edital)))`). O dump realmente não tem `INSERT INTO
+        public.editais`, e foi por isso que a medição por grep me enganou: o dado não é
+        copiado, é **calculado**. Consequência prática: **a base nova nasce COM os 2
+        editais**, sem nenhum passo extra — e não havia decisão a tomar aqui.
+
+    D3. PLANO = GRATUITO (2026-08-08). O projeto de produção nasce no free tier. As cotas
+        foram medidas contra o banco local e cabem com folga grande — ver a seção
+        `plano_gratuito`. As duas lacunas do free (pausa por inatividade e ausência de
+        backup) o usuário decidiu **documentar, não mitigar**: não viram passo de roteiro,
+        viram os riscos R6 e R7.
+
+    D5. REGIÃO = us-west-2 (Oregon), decidida na execução de 2026-08-08. O projeto foi
+        criado nessa região, e não em `sa-east-1` como este roadmap pedia. Apresentei o
+        custo — usuários no Brasil pagam ~180 ms de ida e volta contra ~15 ms de São Paulo,
+        empilhados nas telas que fazem consultas em sequência (importação de candidatos,
+        alocação por arrasto) — e o usuário optou por **seguir em us-west-2**.
+        ⚠️ **Região não se muda:** reverter exige apagar o projeto e refazer o bootstrap.
+        Era barato no momento da decisão (banco vazio) e deixou de ser depois da carga.
+        Se a latência incomodar em uso real, o custo da migração é este roadmap inteiro
+        de novo — mais o que produção já tiver acumulado de dado próprio.
+
+    D4. PROJETO NOVO, não o de 12/07 (2026-08-08). O projeto criado em 2026-07-12 é
+        descartado — nunca recebeu schema nem dado, e recriar permite escolher a região na
+        hora. ⚠️ Isto muda a etapa 1: ela deixa de ser "criar ou confirmar" e passa a ter o
+        passo de **apagar os projetos velhos**, porque o free admite só 2 ativos por
+        organização e há dois candidatos a ocupar as vagas (o do Lovable,
+        `dqslqfzqukcahogkieet`, e o de 12/07). Ver R8.
+        ⚠️ Consequência no `backlog.md`: a frase "O projeto novo no supabase.com já foi
+        criado" deixou de valer.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  medido_antes: |
+    Medido em 2026-08-06, contra o disco e o banco local (não estimado);
+    🔵 **remedido em 2026-08-08** onde marcado.
+
+    · 🔵 **122 migrations** em `supabase/migrations/` (eram 121 em 06/08). ⚠️ Este número já
+      envelheceu 4 vezes no backlog (69 → 85 → 106 → 121 → 122). **Confira com
+      `ls supabase/migrations/*.sql | wc -l` no dia**, nunca com o número escrito aqui.
+    · **8 edge functions** (`check-cpf-colaborador`, `corrigir-email-acesso`,
+      `create-admin`, `create-coordenador`, `public-create-colaborador`, `recuperar-senha`,
+      `reivindicar-acesso`, `send-email`). O 9º diretório é `_shared` e não é function.
+      ⚠️ `banco-producao.md` e a memória diziam **6**.
+    · **Repo deslinkado** — `supabase/.temp/` só tem `cli-latest`. **CLI sem login.**
+    · Dump `supabase/seed.local.sql`: 1,3 MB, de 03/08, **já sem** `colab_codigo_acesso`,
+      `sala_arcondicionado` e `unid_andares` (as três colunas dropadas) — 0 ocorrências.
+    · `config.toml`: `major_version = 17`.
+    · Nenhuma URL de projeto antiga hardcoded nas functions nem em
+      `src/integrations/supabase/client.ts` (que lê `import.meta.env`).
+    · Nenhum arquivo de ambiente versionado: `.gitignore` cobre `.env` e `.env.*`.
+
+    NÚMEROS-ALVO (banco local hoje; são o CONTROLE POSITIVO do bootstrap — a nuvem tem de
+    chegar nos mesmos depois da carga):
+
+      colaboradores 771 · auth.users 15 · user_roles 41 · funcoes_colaboradores 18
+      provas 2 · unidades_prova 11 · sala_prova 42 · salas_prova_distribuidas 58
+
+    🔵 O QUE O DUMP REALMENTE LEVA (medido em 2026-08-08, contando os `INSERT INTO`):
+    **2.079 linhas no total.** As maiores: `colaboradores` 771 · `colaboradores_prova` 554
+    · `email_atualizacao_log` 232 · `meta_colaboradores_unidade` 186 ·
+    `salas_prova_distribuidas` 58 · `sala_prova` 42 · `user_roles` 29 · `auth.users` 15 ·
+    `auth.identities` 15.
+
+    🔴 **Os 7.591 `candidatos` do banco local NÃO estão no dump** — não há nenhum
+    `INSERT INTO public.candidatos` nele. São playground, importados por planilha depois que
+    o dump foi tirado (a feature de importação é posterior). **Produção nasce sem candidato
+    nenhum**, e eles entram pela importação, já com o sistema no ar. Isso é o esperado, não
+    uma perda — mas muda o dimensionamento (ver `plano_gratuito`) e muda o que se espera ver
+    na etapa 6: `/candidatos` legitimamente vazia.
+
+    🔵 TAMANHO (medido em 2026-08-08 com `pg_database_size` contra o banco local):
+    **26 MB** o banco INTEIRO, dos quais `public` 13 MB (`candidatos` sozinha = 10 MB),
+    `auth` 1.192 kB e `storage` 272 kB. Como os candidatos não viajam, **a base de produção
+    nasce com ~5 MB**.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  achados_que_mudam_o_roteiro: |
+    🔴 A1. **`SITE_URL` é secret obrigatório e NÃO está no roteiro.**
+        `supabase/functions/_shared/enviar-link-acesso.ts:91` faz
+        `Deno.env.get('SITE_URL') ?? 'http://127.0.0.1:8080'` e usa isso em
+        `redirectTo: ${siteUrl}/redefinir-senha`. O passo 7 do `banco-producao.md` só manda
+        cadastrar os quatro `SMTP_*`. Sem `SITE_URL` em produção, **todo convite e toda
+        recuperação de senha nascem apontando para localhost** — e o `??` engole o erro.
+        É perda silenciosa (§8 do CLAUDE.md). Corrigir o doc na etapa 8.
+        (`JWT_SECRET` aparece só em `_shared/test-utils.ts` — não é secret de produção.
+        `SUPABASE_URL`, `SUPABASE_ANON_KEY` e `SUPABASE_SERVICE_ROLE_KEY` são injetados
+        pela plataforma e NÃO devem ser cadastrados.)
+
+    🔴 A2. **O `.env` da raiz mente.** Ele se chama "produção" e contém
+        `VITE_SUPABASE_URL="http://127.0.0.1:54321"` com a publishable key LOCAL. Como o
+        Vite embute `VITE_*` em tempo de BUILD, `npm run build` nesta máquina hoje gera um
+        bundle de produção apontando para localhost — **sem erro no build**, quebrando só
+        no navegador do usuário. É a armadilha nº 1 do §8: o nome mente antes do código.
+
+    ⚠️ A3. **Ordem de precedência do Vite, verificada no código** (5.4.19,
+        `getEnvFilesForMode`): `.env` → `.env.local` → `.env.[mode]` → `.env.[mode].local`,
+        **o último vence**. Reconferido na fonte em 2026-08-08
+        (`node_modules/vite/dist/node/chunks/dep-C6uTJdX2.js:34884`) — a ordem está certa.
+
+        🔵 **CORRIGIDA em 2026-08-08 a CONCLUSÃO, não a medição.** Este achado dizia que
+        `.env.production.local` "é o arquivo certo", e a etapa 6 mandava criá-lo e
+        **apagá-lo** depois. Da própria ordem acima decorre que **`.env.production` já vence
+        o `.env.local`** — o sufixo `.local` é desnecessário. E o arquivo **não** deve ser
+        apagado: [`../../hospedagem-e-deploy.md`](../../hospedagem-e-deploy.md), escrito em 08/08,
+        o define como o arquivo PERMANENTE de todo deploy (`.gitignore` cobre `.env.*`), e o
+        gate do `deploy.sh` conta com ele. Apagá-lo faria o próximo build voltar a sair
+        apontando para o Docker local — exatamente o defeito que o A2 descreve.
+        **Vale o `.env.production`.** Duas docs vivas recomendando arquivos diferentes é o
+        tipo de divergência que só aparece no dia do deploy.
+
+    ✅ A4. **RESOLVIDO em 2026-08-08 — a nuvem ACEITA.** A dúvida era se
+        `SET session_replication_role = replica` (que o dump usa para desligar os triggers
+        durante a carga) seria recusado, já que o role `postgres` do Supabase hospedado não
+        é superusuário. O checkpoint em transação passou: `SET` → `SHOW` devolveu `replica`.
+        A carga rodou sem nenhum tratamento especial.
+        ⭐ **A prova real veio depois, no controle positivo:** `profiles` terminou com **15**
+        linhas, não 30. Se o `SET` não tivesse pegado, o trigger `on_auth_user_created`
+        teria criado um `profiles`/`user_roles` a mais para cada um dos 15 `auth.users`
+        inseridos. É a contagem que separa "carregou" de "carregou certo".
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  plano_gratuito: |
+    Seção criada em 2026-08-08 com a D3. Cotas lidas em supabase.com/pricing e nas docs de
+    auth no mesmo dia; os nossos números são medidos contra o banco local, não estimados.
+
+    O QUE CABE FOLGADO — nenhum destes é preocupação, e a folga é grande o bastante para
+    não voltar a ser pergunta:
+
+    | Cota do free            | Limite   | Nosso número (medido 08/08)          | Folga   |
+    |-------------------------|----------|--------------------------------------|---------|
+    | Tamanho do banco        | 500 MB   | 26 MB o local; prod nasce com ~5 MB  | ~19×    |
+    | Usuários ativos por mês | 50.000   | 15 em `auth.users`                   | ~3.300× |
+    | Storage de arquivos     | 1 GB     | 0 — nenhum bucket, o app não usa     | —       |
+    | Egress                  | 5 GB/mês | ~800 colaboradores + planilhas       | folgado |
+
+    ⚠️ O crescimento também cabe: `candidatos` ocupa 10 MB para 7.591 linhas (~1,4 KB por
+    linha). Mesmo com dez editais cheios do tamanho do atual, o teto de 500 MB não é
+    alcançado. Se algum dia for, o sinal virá antes pela cota de egress.
+
+    🔵 O LIMITE DE E-MAIL DO FREE **NÃO NOS ATINGE** — e isso não era óbvio.
+    O SMTP embutido do Supabase é **2 mensagens por hora** e **só entrega para endereços de
+    membros do time** do projeto. Para um sistema que convida centenas de fiscais por
+    e-mail, isso seria fatal — e silencioso. Foi verificado no código que **nenhum fluxo
+    depende dele**:
+
+      · `_shared/enviar-link-acesso.ts:93` chama `auth.admin.generateLink`, que apenas GERA
+        o link e **não envia nada**; o envio segue por `fetch` para a EF `send-email`, que
+        fala com o SMTP da Hostinger. É o caminho de todo convite e de toda recuperação.
+      · `create-admin` e `create-coordenador` usam `admin.createUser` com
+        `email_confirm: true` — conta já confirmada, nenhum e-mail disparado.
+      · `supabase.auth.signUp` (`src/hooks/useAuth.tsx:142`) é o único caminho nativo, e
+        **nunca é chamado**: existe na interface do contexto e nos mocks de teste, e mais
+        nada em `src/` o invoca.
+
+    ⚠️ Mesmo assim, **cadastre o SMTP da Hostinger no dashboard** (etapa 4). É gratuito no
+    free, usa as credenciais que já existem, e cobre os caminhos nativos que não passam pelo
+    nosso código: convite disparado do próprio dashboard, e um `signUp` que volte a ser
+    ligado. Sem isso, o limite volta a ser 2/hora só para endereços do time — e o erro
+    aparece como e-mail que "não chega", sem nada no app denunciando.
+
+    AS DUAS LACUNAS REAIS. O free **pausa o projeto após 1 semana de inatividade** e **não
+    tem backup nenhum**. Decisão do usuário em 2026-08-08: **documentar, não mitigar** — não
+    há passo de roteiro para elas. Estão em R6 e R7, e é lá que se lê o custo.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  o_que_NAO_muda: |
+    · O dia a dia: repo deslinkado, banco local via Docker, `.env.local` em 127.0.0.1.
+      O repo só conhece a nuvem entre as etapas 2 e 7.
+    · `main` congelada em v1.0.0. Nenhum merge, nenhuma tag hoje (D1).
+    · ⚠️ **Nunca** `supabase db reset --linked` (apaga o banco remoto) nem
+      `supabase config push` (jogaria o auth de DEV em produção: signup aberto, sem
+      confirmação de e-mail, `site_url` em 127.0.0.1).
+    · `config.toml` continua com `project_id = "dqslqfzqukcahogkieet"`. É herança do
+      Lovable e nomeia só os containers locais — quem escolhe o projeto remoto é o `link`.
+      **Não mexer.**
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  etapas:
+    - id: 0
+      nome: "Pré-voo local — nada toca a nuvem"
+      status: "🟢 EXECUTADA 2026-08-08 — reset limpo, os 8 números-alvo confirmados"
+      entrega:
+        - "Backup do dump, que NÃO é versionado: `cp supabase/seed.local.sql ~/backup-seed-$(date +%F).sql`."
+        - >
+          `sg docker -c 'npx supabase db reset'` — é a única verificação que exercita a
+          ORDEM REAL de carga (121 migrations → seed.sql → dump → seed.pos.sql), a mesma
+          que a nuvem verá. Falhar aqui é falhar lá.
+        - >
+          Reanotar os números-alvo pós-reset (os 8 acima). São eles que, comparados depois,
+          provam que a carga na nuvem foi completa.
+      armadilha: >
+        ⚠️ O reset apaga os 2 editais locais. É esperado e foi acordado (D2) — dado acima
+        do seed é playground.
+
+    - id: 1
+      nome: "O projeto na nuvem (dashboard + login do CLI)"
+      status: "🟢 EXECUTADA 2026-08-08 — projeto zugigdpuxbpogoepdawm, PG 17.6.1.155, us-west-2 (D5)"
+      entrega:
+        - >
+          🔵 **ANTES de criar: liberar vaga.** O free admite **2 projetos ativos por
+          organização**, e há dois candidatos a ocupá-las — o do Lovable
+          (`dqslqfzqukcahogkieet`) e o criado em 2026-07-12. Nenhum dos dois é necessário
+          (D4): o do Lovable está congelado desde 12/07 e já foi dumpado; o de 12/07 nunca
+          recebeu schema nem dado. Conferir o que existe no dashboard e apagar. Ver R8.
+          ⚠️ **Não apague o do Lovable antes de confirmar que `supabase/seed.local.sql`
+          abre e tem as 2.079 linhas** — depois de apagado, ele é a única cópia.
+        - >
+          Criar o projeto **novo** (D4), no plano **Free**. Guardar a senha do Postgres —
+          ela só aparece uma vez. **Região: São Paulo (sa-east-1)**, que é onde estão os
+          usuários; a região não se muda depois sem recriar o projeto.
+        - >
+          ⚠️ Conferir a versão do Postgres = **17**, que é o `major_version` do
+          `config.toml`. Divergência muda comportamento de constraint e função, e só
+          aparece tarde.
+        - "`npx supabase login` — interativo, roda o usuário."
+        - >
+          Anotar a **ref** e a connection string **direta** (5432 / session pooler). A
+          transaction pooler não serve: o dump é script com `SET` de sessão.
+
+    - id: 2
+      nome: "Schema — as migrations"
+      status: "🟢 EXECUTADA 2026-08-08 — 122 no dry-run contra 122 no repo; push sem erro"
+      entrega:
+        - "`npx supabase link --project-ref <REF>` — daqui até a etapa 7 o repo está ARMADO."
+        - >
+          `npm run prod:push:dry` → tem de listar TODAS as migrations (**122 em 08/08**),
+          conferidas com `ls supabase/migrations/*.sql | wc -l` na hora.
+          🔴 **Listou menos? PARE** — o banco não é o que pensamos.
+        - "`npm run prod:push`."
+      armadilha: >
+        É este passo que cria os GRANTs da `20260712010000_grant_api_roles_table_privileges.sql`.
+        Sem eles o login autentica e a UI nunca avança — e o sintoma não parece de permissão.
+
+    - id: 3
+      nome: "Dados — o único local→prod que este projeto aceita"
+      status: "🟢 EXECUTADA 2026-08-08 — controle positivo bateu 12 de 12"
+      entrega:
+        - >
+          CHECKPOINT do A4, antes de qualquer carga:
+          `psql "<conn>" -c 'BEGIN; SET session_replication_role = replica;
+          SHOW session_replication_role; ROLLBACK;'`. Se recusar, desligar
+          `on_auth_user_created` durante a carga — senão o trigger duplica
+          `profiles`/`user_roles` ao inserir `auth.users`.
+        - "`psql \"<conn>\" -f supabase/seed.local.sql` — todos os INSERTs têm ON CONFLICT."
+        - >
+          🔴 `psql "<conn>" -f supabase/seed.pos.sql` — DEPOIS do dump, nunca antes. É o
+          backfill dos 12 colaboradores da cúpula (2 admins + 10 coordenadores).
+          **Pular é falha silenciosa:** eles continuam entrando como admin/coordenador, mas
+          sem `user_id` e sem o papel `colaborador`, e nada acusa. É idempotente.
+        - >
+          ⭐ CONTROLE POSITIVO: rodar as 8 contagens da etapa 0 contra a nuvem e comparar
+          linha a linha. Bater é a prova; divergir é parar.
+      armadilha: >
+        A partir daqui **produção passa a ser dona dos dados** e o caminho local→prod se
+        fecha para sempre (regra do `banco-producao.md`). O arquivo carrega PII real.
+
+    - id: 4
+      nome: "Auth no dashboard — o que não vem do config.toml"
+      status: "🟢 EXECUTADA 2026-08-10 pelo usuário, no dashboard — os 4 itens abaixo"
+      entrega:
+        - "Confirmação de e-mail LIGADA; signup fechado se o cadastro for só por convite."
+        - >
+          🔵 **Cadastrar o SMTP da Hostinger como Custom SMTP** (`smtp.hostinger.com`:465,
+          as mesmas credenciais dos secrets da etapa 5). Não é o caminho que o app usa — ele
+          manda por conta própria — mas sem isso o SMTP embutido do free entrega **2
+          mensagens/hora e só para endereços do time**, e qualquer caminho nativo (convite
+          pelo dashboard, um `signUp` religado) falha em silêncio. Ver `plano_gratuito`.
+        - >
+          Rate limits do Auth conferidos. 🔵 Com custom SMTP cadastrado o padrão sobe de 2
+          para **30 e-mails/hora**, ajustável na página de Rate Limits — e vale conferir se
+          30 basta para a maior convocação prevista, caso o dashboard venha a ser usado
+          para convidar. Os limites de token (`/token` 1800/h, `/verify` 360/h, por IP) não
+          são customizáveis e não incomodam nesta escala.
+        - >
+          🔵 `site_url` = **`https://fevre.online`**, e redirect URLs incluindo
+          `https://fevre.online/**` — as rotas internas, senão o link de recuperação e o
+          invite da reivindicação caem na raiz em vez de `/redefinir-senha`.
+          O domínio deixou de ser incógnita em 2026-08-08 (ver
+          [`../../hospedagem-e-deploy.md`](../../hospedagem-e-deploy.md)), então **este passo não
+          é mais provisório** — configure o valor definitivo agora, mesmo com o site ainda
+          fora do ar.
+        - >
+          ⚠️ Continua valendo a cautela da D1: enquanto o site não responder no domínio,
+          **não disparar fluxo de e-mail em produção**. Agora o motivo é outro — o link
+          nasce certo, mas ainda não abre nada.
+
+    - id: 5
+      nome: "As 8 edge functions + secrets"
+      status: "🟢 EXECUTADA 2026-08-08 — 8 publicadas, 5 secrets cadastrados"
+      entrega:
+        - "`npx supabase functions deploy` — `db push` não leva function nenhuma."
+        - >
+          `npx supabase secrets set SMTP_HOST=smtp.hostinger.com SMTP_PORT=465
+          SMTP_USER=… SMTP_PASS=… SITE_URL=…` (o `SITE_URL` é o achado A1).
+          ⚠️ `SMTP_HOST` já esteve como `mtp.` — o sintoma é "failed to lookup address
+          information", que parece SMTP e é DNS. A porta 465 exige TLS implícito; 587 NÃO
+          funciona com o código atual.
+        - "Conferir que `create-coordenador` subiu com `verify_jwt = false` (o único assim no config.toml)."
+      armadilha: >
+        🔴 Sem a `recuperar-senha` no ar, o "esqueci minha senha" simplesmente não funciona
+        — e **a tela não denuncia**, porque a resposta é genérica por desenho
+        (anti-enumeração). ⚠️ `verify_jwt` NÃO é autorização: a anon key é JWT válido.
+
+    - id: 6
+      nome: "Validar de ponta a ponta antes de desarmar"
+      status: "🟢 EXECUTADA — gate do bundle em 08/08; LOGIN REAL passou em 2026-08-10"
+      entrega:
+        - >
+          🔵 **`.env.production`** (não `.env.production.local` — ver a correção do A3) na
+          raiz, com a `VITE_SUPABASE_URL` e a `VITE_SUPABASE_PUBLISHABLE_KEY` da NUVEM.
+          Ele vence o `.env.local`, que aponta para o Docker. Depois:
+          `npm run build && npm run preview`.
+        - >
+          ⭐ O TESTE QUE IMPORTA: logar com uma conta real de produção (o hash veio no
+          dump) e ver a tela **avançar**. Autenticar e não avançar é o sintoma clássico de
+          GRANT ausente — é assim que se prova que a migration de GRANTs pegou.
+        - >
+          Abrir `/colaboradores` e conferir 771 contra os números-alvo.
+          🔵 **`/candidatos` estará VAZIA, e isso está certo** — o dump não traz candidato
+          nenhum (ver `medido_antes`). Tratar a lista vazia como falha de carga seria erro:
+          o controle positivo dos candidatos não existe nesta etapa.
+        - >
+          🔴 **NÃO apagar o `.env.production`.** A versão anterior deste roadmap mandava
+          apagá-lo; está errado e foi corrigido em 08/08. Ele é o arquivo permanente de todo
+          deploy do frontend, é coberto pelo `.gitignore` (`.env.*`), e o gate do
+          `deploy.sh` depende do bundle que ele produz. Apagá-lo faz o próximo build sair
+          apontando para localhost — o defeito do A2.
+
+    - id: 7
+      nome: "Desarmar"
+      status: "🟢 EXECUTADA 2026-08-08 — prod:unlink rodou, supabase/.temp/ não existe mais"
+      entrega:
+        - "`npm run prod:unlink` e conferir que `supabase/.temp/` voltou a não ter project-ref."
+        - >
+          Corrigir o `.env` da raiz (achado A2), que hoje se chama produção e aponta para
+          o Docker local. Nome que mente é o que faz um `npm run build` distraído gerar
+          bundle apontando para localhost.
+
+    - id: 8
+      nome: "Docs no mesmo passe"
+      status: "🟢 EXECUTADA — docs atualizadas em 06/08 e 08/08; ARQUIVADA em 2026-08-10, depois do login real"
+      entrega:
+        - >
+          🔵 **FEITO em 2026-08-06, antes da execução:** `banco-producao.md` passo 7 já
+          traz `SITE_URL` (A1), o "8 edge functions" e o aviso de não cadastrar os secrets
+          que a plataforma injeta; `desenvolvimento-local.md` já corrige o "seed.pos.sql
+          contém uma coisa só" (são dois blocos). **Continua nesta etapa:** atualizar o
+          total de migrations do passo 2 (85 → medir na hora) e registrar o resultado do
+          checkpoint do `session_replication_role`.
+        - >
+          🔵 `banco-producao.md` passo 5 diz que `seed.pos.sql` "contém uma coisa só: o
+          backfill dos 12 colaboradores". **São DOIS blocos** desde o tema Editais: o
+          backfill da cúpula e a derivação dos editais a partir de `provas.prova_edital`.
+          A frase envelheceu e é ela que me fez errar sobre os 2 editais (ver D2).
+        - >
+          🔵 **FEITO em 2026-08-08, também antes da execução:** `banco-producao.md` ganhou a
+          seção do plano gratuito (cotas medidas, as duas lacunas, o limite de 2 projetos) e
+          teve o total de migrations do passo 2 atualizado (85 → 122, com o aviso de medir
+          na hora); `backlog.md` deixou de afirmar que o projeto de produção "já foi criado"
+          (D4). A divergência do `.env` entre este roadmap e `hospedagem-e-deploy.md` foi
+          reconciliada em favor do `.env.production` (A3).
+        - "`backlog.md`: o item 'Bootstrap do banco de produção da v2' sai de pendente."
+        - >
+          Registrar aqui o **resultado real** das cotas depois da carga: tamanho do banco na
+          nuvem (dashboard) contra os ~5 MB previstos. Se divergir muito, a previsão de
+          crescimento do `plano_gratuito` foi feita com a premissa errada.
+        - "`npm run docs:conferir` sem divergência; este arquivo vai para `concluidos/`."
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  fechamento: |
+    🟢 **FECHADO em 2026-08-10.** As duas pendências que restavam eram do usuário e ele as
+    executou: parametrizou o Auth no dashboard (P1) e o teste de login real passou (P2).
+    Esta seção chamava-se `pendencias_da_proxima_sessao` e era o ponto de retomada; ficou
+    como registro, com os itens marcados pelo que aconteceu.
+
+    DADOS DO PROJETO (seguem válidos — é a referência de acesso a produção):
+      · ref do projeto: `zugigdpuxbpogoepdawm`  ·  região us-west-2  ·  PG 17.6.1.155
+      · pooler (sessão, 5432):
+        `postgresql://postgres.zugigdpuxbpogoepdawm@aws-1-us-west-2.pooler.supabase.com:5432/postgres`
+      · a senha do Postgres está com o usuário. ⚠️ Ela passou pelo chat na sessão de 08/08 —
+        **recomendei trocá-la** no dashboard (Settings → Database → Reset database password).
+        Se ele trocou, o `.env.production` NÃO muda (é chave publishable, não senha), mas
+        qualquer `psql` novo precisa da senha nova.
+      · `psql` NÃO está instalado no host. Use o do container local, que é o mesmo PG 17:
+        `sg docker -c "docker exec -e PGPASSWORD='…' supabase_db_dqslqfzqukcahogkieet psql -h <host> -p 5432 -U postgres.zugigdpuxbpogoepdawm -d postgres …"`
+
+    P1. ✅ **ETAPA 4 — auth no dashboard. FEITA em 2026-08-10 pelo usuário.** Era a única
+        coisa que separava o banco de estar utilizável de verdade, e nada no sistema
+        denunciava que faltava. O que foi parametrizado:
+          · `site_url` = `https://fevre.online`
+          · redirect URLs incluindo `https://fevre.online/**` — **as rotas internas**. Sem
+            isso o link de recuperação e o invite da reivindicação caem na raiz em vez de
+            `/redefinir-senha`, e o fluxo trava.
+          · confirmação de e-mail LIGADA; signup fechado (cadastro é por convite)
+          · Custom SMTP: `smtp.hostinger.com`:465, usuário `naoresponda@fevre.online`
+            (a senha está em `supabase/functions/.env`, que NÃO é versionado)
+        ⚠️ Os dois lados precisavam casar: o secret `SITE_URL` das functions já estava como
+        `https://fevre.online` desde 08/08, então o link já nascia apontando para o domínio
+        certo — o que faltava era o Auth aceitá-lo como redirect autorizado.
+        🔵 **Duas medições feitas em 2026-08-10 antes de mandar executar**, e as duas
+        removeram risco do passo:
+          · **15 de 15 `auth.users` com `email_confirmed_at` preenchido** e nenhum banido —
+            então ligar a confirmação de e-mail **não barra ninguém que veio do dump**.
+            Era o jeito de este passo quebrar o login das contas existentes.
+          · **Nenhuma página chama `signUp`** — ele existe só em `src/hooks/useAuth.tsx:139`
+            e nos mocks de teste. Fechar o cadastro no dashboard não quebra fluxo nenhum.
+        🔵 E a medição que justificou o curinga do redirect: o **único** `redirectTo` real do
+        sistema é `supabase/functions/_shared/enviar-link-acesso.ts:96` →
+        `${SITE_URL}/redefinir-senha`. `https://fevre.online/**` o cobre.
+
+    P2. ✅ **TESTE DE LOGIN REAL — PASSOU em 2026-08-10.** É o controle positivo que prova a
+        migration de GRANTs de ponta a ponta, e o usuário relatou **"passou OK 100%"**.
+        Feito com `npm run build` + `npm run preview` (porta 4173, bundle de produção contra
+        a nuvem) e conta real de produção.
+        ⭐ **O que importava não era autenticar — era a tela AVANÇAR.** Autenticar e travar
+        seria o sintoma clássico de GRANT ausente; não aconteceu.
+        🔵 A verificação INDIRETA já havia passado em 08/08 (grants idênticos ao local, ver
+        `resultado_da_execucao`) e o login real confirmou — mas o valor do passo era
+        justamente que indireto **não** substitui login. É o R5 fechado com prova.
+
+    P3. ⚠️ **Achado A2 (o `.env` da raiz) CONTINUA ABERTO** — é o único item deste roadmap
+        que não fechou. Ele se chama produção e aponta para o Docker local. Ficou menos
+        perigoso agora que `.env.production` existe e vence, mas o nome segue mentindo, que
+        é a armadilha nº 1 do §8 do CLAUDE.md.
+        🔴 **Por isso ele foi transplantado para o `backlog.md` no arquivamento** — item que
+        segue aberto não pode morar em `concluidos/`, que ninguém lê por padrão.
+
+    P4. ✅ **Docs fechadas em 2026-08-10:** este arquivo foi para `concluidos/` e o item
+        "Bootstrap do banco de produção da v2" saiu de pendente no `backlog.md`.
+        A condição era não arquivar antes do login real — foi respeitada.
+
+    P5. As mudanças de doc de 08/08 ficaram na árvore de trabalho até 2026-08-10, quando
+        foram commitadas junto com este arquivamento. Push segue sendo decisão do usuário.
+
+  resultado_da_execucao: |
+    Execução de 2026-08-08, contra `zugigdpuxbpogoepdawm` (us-west-2, PG 17.6.1.155).
+
+    ✅ **Etapa 0** — `db reset` limpo com as 122 migrations + os 3 seeds. Os 8 números-alvo
+       reconfirmados, mais dois que estavam em disputa: `editais` = **2** (derivados pelo
+       `seed.pos.sql`, provando a correção da D2) e `candidatos` = **0**.
+    ✅ **Etapa 2** — `prod:push:dry` listou **122**, contra 122 no repo, começando na
+       primeira migration da era Lovable. Bateu; push aplicado sem erro.
+    ✅ **Etapa 3** — checkpoint do A4 passou (ver o achado). Dump carregado com
+       `ON_ERROR_STOP=1`, `COMMIT` e exit 0. `seed.pos.sql` devolveu exatamente o previsto
+       nos DOIS blocos: `UPDATE 12` + `INSERT 12` (a cúpula com `user_id` e papel
+       `colaborador`) e `INSERT 2` + `UPDATE 2` (os editais derivados).
+       ⭐ Controle positivo: **12 de 12 contagens iguais ao local**.
+    ✅ **GRANTs** — `authenticated` 25 tabelas/100 grants e `service_role` 26/182,
+       **idênticos ao local**; `anon` **ausente nos dois**, o que confirma que a migration
+       `enxugar_grants_anon_e_fechar_policies_to_public` pegou. Era a verificação indireta
+       do GRANT, já que o login real depende de senha que ninguém tem.
+    ✅ **Etapa 5** — as 8 functions publicadas (`_shared` corretamente fora), 5 secrets
+       cadastrados com `SITE_URL=https://fevre.online`. `SUPABASE_URL`, `ANON_KEY` e
+       `SERVICE_ROLE_KEY` já estavam lá, **injetados pela plataforma** — confirma o aviso
+       de não cadastrá-los à mão.
+    🟡 **Etapa 6** — `.env.production` criado (coberto pelo `.gitignore`), build OK.
+       ⭐ **O gate do bundle passou de um jeito que confirma a medição do doc:** 0
+       ocorrências do local, e exatamente **7** da URL da nuvem e **11** da chave — os
+       MESMOS 7 e 11 que `hospedagem-e-deploy.md` mediu apontando para localhost. São os
+       mesmos slots, agora com produção. `.env.production` vence o `.env.local`,
+       comprovado no artefato, não na doc.
+
+    ─── 2026-08-10, executado pelo USUÁRIO no dashboard ───
+
+    ✅ **Etapa 4** — auth parametrizado: `site_url`, redirect URLs, confirmação de e-mail
+       ligada, signup fechado e Custom SMTP da Hostinger. Ver P1 no `fechamento`, inclusive
+       as duas medições que mostraram que ligar a confirmação e fechar o signup **não
+       quebravam nada** (15/15 usuários já confirmados; `signUp` sem nenhum chamador).
+    ✅ **Etapa 6 — LOGIN REAL: "passou OK 100%"**, palavras do usuário. É o controle
+       positivo de ponta a ponta: a autenticação funcionou **e as telas avançaram**, que é
+       o que o passo realmente media. Com ele, os 9 passos do roadmap estão fechados e o
+       R5 ("bootstrap verde sem prova") deixa de valer.
+
+    ⚠️ **UMA PREVISÃO MINHA ERRADA, e vale registrar:** a seção `plano_gratuito` dizia que
+    produção nasceria com **~5 MB**. Medido depois da carga: **13 MB**. Errei porque
+    estimei pelo volume de linhas do dump e ignorei o custo fixo de 26 tabelas com seus
+    índices, constraints e catálogos — que existe mesmo com tabela vazia. Não muda decisão
+    nenhuma (13 MB são 2,6% dos 500 MB do free), mas **a folga real é ~38×, não ~100×**, e
+    a lição é a do §9 do CLAUDE.md: contagem de linhas não prediz tamanho de banco.
+
+  riscos: |
+    R1. ⚠️ **MUDOU DE NATUREZA, e continua valendo.** Escrito como "o `site_url` provisório
+        é dívida com prazo". Desde 08/08 o domínio deixou de ser incógnita e em 10/08 os
+        dois lados foram configurados com o valor definitivo — então o link **não** nasce
+        mais quebrado. O que resta é o outro motivo: enquanto o site não responder em
+        `https://fevre.online`, o link nasce certo e **não abre nada**.
+        🔴 **Logo: segue proibido disparar fluxo de e-mail em produção** (convite,
+        recuperação de senha) até o frontend subir. Fecha com
+        [`../../hospedagem-e-deploy.md`](../../hospedagem-e-deploy.md), não com este roadmap.
+
+    R2. **O dump é de 03/08 e não envelhece** — o banco antigo está congelado desde 12/07,
+        ninguém escreve nele. Mas ⚠️ **um dump NOVO nasce sem as três correções manuais**
+        (e-mails duplicados zerados, `colab_codigo_acesso` removida, `colab_email` saneado
+        para caber na CHECK). Se por qualquer motivo alguém gerar outro, duas dessas
+        quebram a carga. Ver `estrutura/transversais/desenvolvimento-local.md`.
+
+    R3. **Entre as etapas 2 e 7 o repo está armado.** É o único intervalo em que
+        `db reset --linked` e `config push` têm alvo. Não deixar o link aberto de um dia
+        para o outro; a etapa 7 não é cerimônia.
+
+    R4. **O schema de prod passa a existir sem o código de prod no ar.** É o corolário do
+        `banco-producao.md`: código novo e migration nova sobem juntos. Como aqui o banco
+        vai na frente por decisão (D1), o risco é o inverso do usual — nada quebra, mas
+        entre hoje e a subida do frontend a produção acumula migrations novas de `dev` que
+        ELA não terá. **Na subida do frontend, rodar `prod:push:dry` de novo** e tratar o
+        delta como parte da release.
+
+    R5. **Nenhum passo aqui é coberto por teste.** A suíte mocka o Supabase; o
+        `docs:conferir` não executa nada. A verificação é o controle positivo da etapa 3 e
+        o login real da etapa 6 — se algum for pulado, o bootstrap fica "verde" sem prova.
+
+    ─── Riscos do PLANO GRATUITO (D3, 2026-08-08). Decisão: documentar, não mitigar. ───
+
+    R6. 🔴 **O free PAUSA o projeto após 1 semana de inatividade.** É a lacuna mais provável
+        de doer, porque o perfil de uso deste sistema é exatamente o que a dispara: rajada
+        intensa perto da prova, meses de silêncio depois. Projeto pausado = o site carrega,
+        mostra o login e **falha em tudo** — o mesmo sintoma do bundle apontado para o
+        lugar errado, o que torna o diagnóstico confuso.
+        O despausar é manual, pelo dashboard, e leva alguns minutos.
+        ⚠️ Duas consequências que não são óbvias: **acesso de leitura ao dashboard não conta
+        como atividade** — o que conta é requisição ao projeto; e o intervalo entre a
+        publicação do site e o primeiro uso real é justamente uma janela de silêncio.
+        Se um dia virar problema, as saídas são um ping periódico ou o Pro (US$ 25/mês, que
+        também remove a pausa). **Nenhuma das duas está no roteiro por decisão.**
+
+    R7. 🔴 **O free NÃO tem backup.** Nem diário, nem PITR, nem download pelo dashboard —
+        são do Pro. Isso inverte um princípio deste projeto: a etapa 3 declara que
+        "produção passa a ser dona dos dados e o caminho local→prod se fecha para sempre",
+        mas sem backup **não há nada de onde restaurar** se algo apagar dado em produção.
+        O `seed.local.sql` cobre só o estado de 03/08: tudo que for cadastrado depois — os
+        candidatos importados, as alocações, as salas — existe em um lugar só.
+        ⚠️ E este é um banco onde `DELETE` em massa é operação normal de negócio: a
+        importação de candidatos é **troca total** (apaga a lista do edital e reinsere).
+        A saída, se um dia entrar no escopo, é `pg_dump` periódico contra a connection
+        string — mas ⚠️ **um dump novo nasce sem as três correções manuais** do R2, então a
+        rotina teria de ser desenhada, não improvisada no dia.
+
+    R8. ⚠️ **O free admite 2 projetos ativos por organização.** Se o do Lovable e o de 12/07
+        estiverem ambos de pé, a criação do projeto novo (etapa 1) é **recusada** — e o erro
+        chega no meio do roteiro, não antes. Por isso a limpeza virou o primeiro item da
+        etapa 1, e não uma nota.
+        🔴 Antes de apagar o projeto do Lovable, confirmar que `supabase/seed.local.sql`
+        abre e tem as 2.079 linhas: ele **não é versionado**, e depois de apagado o projeto
+        é a única cópia dos dados de 771 colaboradores com PII real.
