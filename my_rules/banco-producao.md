@@ -14,7 +14,7 @@ Leia junto com [`versionamento.md`](./versionamento.md) (a regra de nunca editar
 
 Três fatos, e cada regra abaixo decorre deles:
 
-1. **O banco antigo está congelado.** O site do Lovable não existe mais e o projeto está temporariamente fora do ar. Ninguém escreve no banco antigo — logo, o dump que temos **não envelhece**, e não há corrida contra dados novos.
+1. **O banco antigo está congelado.** O site do Lovable não existe mais e **nada do sistema antigo responde** — ninguém escreve no banco antigo, logo o dump que temos **não envelhece** e não há corrida contra dados novos. ⚠️ **Esta frase dizia "e o projeto está temporariamente fora do ar", o que deixou de valer em 2026-08-13:** a **v2 está no ar** em `https://fevre.online`, falando com o banco novo. O congelamento é do **antigo**, e a partir daqui quem acumula dado novo é a produção da v2 — que **não tem backup nenhum**.
 2. **O banco novo é continuidade do antigo**, não um recomeço. Mesmo schema, mesmos dados, mesmos usuários (inclusive os hashes de senha — os logins de produção continuam valendo).
 3. **A fonte da verdade é o banco local.** Não o banco antigo, não o dashboard. O banco local é reproduzível: `supabase db reset` aplica todas as migrations + os seeds e chega exatamente no estado que queremos em produção. É essa reprodutibilidade que torna o `db push` seguro.
 
@@ -83,10 +83,45 @@ Decidido em 2026-08-08: o projeto de produção da v2 nasce no **plano Free** do
 
 Ficam **documentadas, não mitigadas** (decisão do usuário em 2026-08-08). Não há procedimento para elas; há o custo, que precisa estar consciente:
 
-- **O projeto pausa após 1 semana de inatividade.** O perfil de uso deste sistema é exatamente o que dispara isso: rajada perto da prova, meses de silêncio depois. Projeto pausado dá o **mesmo sintoma** do bundle apontado para o Supabase errado — a página carrega, o login aparece, tudo falha —, o que torna o diagnóstico confuso. Despausar é manual, pelo dashboard. ⚠️ Abrir o dashboard **não** conta como atividade; o que conta é requisição ao projeto.
+- **O projeto pausa após 1 semana de inatividade.** O perfil de uso deste sistema é exatamente o que dispara isso: rajada perto da prova, meses de silêncio depois. Despausar é manual, pelo dashboard. ⚠️ Abrir o dashboard **não** conta como atividade; o que conta é requisição ao projeto.
+
+  🔴 **ACONTECEU em 2026-09-08** — deixou de ser hipótese. O sistema saiu do ar e o projeto foi despausado à mão. Ver a seção [O keep-alive](#o-keep-alive--como-a-pausa-passou-a-ser-mitigada) logo abaixo, que é a mitigação que nasceu daí.
+
+  🔵 **E o sintoma descrito aqui estava ERRADO.** Esta linha dizia que projeto pausado dá *"o **mesmo sintoma** do bundle apontado para o Supabase errado — a página carrega, o login aparece, tudo falha —, o que torna o diagnóstico confuso"*. **É o contrário: o sintoma é distinto e diagnostica na hora.** O hostname do projeto some do DNS e passa a dar **NXDOMAIN autoritativo** (medido contra `1.1.1.1` e `8.8.8.8`, com SOA do próprio `supabase.co`), então o navegador **nem chega a fazer requisição** — o erro é *"Network error when attempting to fetch resource"*. Bundle apontado para o Supabase errado é o oposto: o nome **resolve** e a falha vem depois. Um `dig` separa os dois casos em segundos.
+
+  ⚠️ **Restore não é instantâneo, e a ordem importa.** Medido em 08/09: o **DNS voltou em ~4min15**; o Auth só respondeu 200 aos **90s** seguintes (antes, 502) e o PostgREST aos **150s** (521 → 404 com o schema cache carregando → 401). Ou seja: ver o DNS voltar **não** é ver o sistema voltar. Espere os serviços.
+
+  🔴 **A armadilha que sobra depois do restore: cache negativo de DNS.** O SOA de `supabase.co` publica TTL negativo de **30s**, então resolvedores que respeitam o padrão se curam sozinhos em meio minuto — mas **roteadores domésticos frequentemente ignoram o TTL**. Em 08/09 o roteador do usuário segurou o NXDOMAIN muito além disso, e o site seguiu quebrado **só para ele** enquanto já funcionava para o resto. Diagnóstico: comparar `dig @1.1.1.1 <ref>.supabase.co` com `dig @<ip-do-roteador> …`. Conserto: trocar o DNS da máquina, ou reiniciar o roteador.
 - **Não há backup nenhum** — nem diário, nem PITR, nem download. Isso tensiona a regra "produção passa a ser a dona dos dados": o `seed.local.sql` cobre só o estado de 03/08, e tudo cadastrado depois existe em um lugar só. ⚠️ E este é um banco onde `DELETE` em massa é operação **normal** de negócio (a importação de candidatos é troca total). Se um dia entrar no escopo, a saída é `pg_dump` periódico — mas um dump novo nasce sem as três correções manuais, então a rotina precisa ser desenhada, não improvisada.
 
 ⚠️ **O Free admite 2 projetos ativos por organização.** Antes de criar o projeto da v2, confira o que ocupa as vagas (o projeto do Lovable e o criado em 2026-07-12) e apague o que não serve — senão a criação é recusada no meio do roteiro. 🔴 **Não apague o projeto do Lovable antes de confirmar que o dump abre**: ele não é versionado e passa a ser a única cópia dos dados de 771 colaboradores com PII real.
+
+## O keep-alive — como a pausa passou a ser mitigada
+
+Criado em **2026-09-08**, depois da pausa que tirou o sistema do ar. Três peças, e a terceira **não mora neste repositório**:
+
+| Peça | Onde | O quê |
+|---|---|---|
+| Tabela `public.saude_banco` | `supabase/migrations/20260908225513_criar_saude_banco.sql` | uma linha **por dia** (upsert, com contador `batidas`), RLS de leitura fechada em admin |
+| Função `registrar_batida_saude()` | mesma migration | faz o upsert numa operação atômica. `EXECUTE` **revogado** de `PUBLIC`/`anon`/`authenticated`, concedido só à `service_role` |
+| Edge Function `keep-alive` | `supabase/functions/keep-alive/index.ts` | chama a RPC com a `service_role` **injetada pela plataforma** |
+| **O cron diário** | 🔴 **fora daqui** — servidor Ubuntu / `configura_server_gestaoconcurso` | é o gatilho; sem ele nada disso bate |
+
+**Por que o gatilho é externo:** um agendador dentro do banco (`pg_cron`) morreria junto com o que deveria prevenir — projeto pausado não roda cron nenhum. (E `pg_cron` nem está habilitado: nenhuma migration cria extensão.) O servidor que já serve o `fevre.online` está sempre ligado e é independente do Supabase.
+
+**Por que Edge Function e não RPC chamado direto pelo cron:** um RPC alcançável de fora exigiria `GRANT EXECUTE … TO anon`, reabrindo a superfície do `anon` — a mesma família do vazamento de 31/07. A EF escreve com `service_role` sem conceder nada ao `anon` **e sem guardar a chave poderosa no servidor**.
+
+```
+17 4 * * *  curl -fsS -X POST https://<ref>.supabase.co/functions/v1/keep-alive \
+  -H "apikey: $PUBLISHABLE_KEY" -H "Authorization: Bearer $PUBLISHABLE_KEY" \
+  -H "x-keep-alive-token: $KEEP_ALIVE_TOKEN" >> /var/log/keep-alive.log 2>&1
+```
+
+Diário, não semanal: o limite é 7 dias, então uma batida por dia dá margem de **7×** — várias podem falhar sem consequência. O `-f` faz o curl sair com erro em status não-2xx, para a falha **aparecer no log** em vez de passar batida.
+
+🔴 **O secret `KEEP_ALIVE_TOKEN` precisa ser cadastrado** (`supabase secrets set`). Sem ele a função responde **503 e recusa** — deliberadamente o **inverso** do defeito do `SITE_URL`, que caía num default silencioso e respondia sucesso. Aqui a ausência do secret é barulhenta.
+
+⚠️ **O que isto NÃO prova:** que a pausa foi evitada. Uma escrita real disparada de fora é o mais próximo que dá para construir do critério *"requisição ao projeto"*, mas a confirmação é **empírica** — passar mais de 7 dias sem uso e o projeto seguir ativo. **O detector é a própria tabela: se a linha mais recente tiver mais de 2 dias, o keep-alive está quebrado** — e nada mais avisa, porque o cron vive fora daqui.
 
 ## Bootstrap do banco novo (na primeira subida a produção)
 

@@ -1159,6 +1159,27 @@ export type Database = {
           },
         ]
       }
+      saude_banco: {
+        Row: {
+          batidas: number
+          dia: string
+          primeira_batida: string
+          ultima_batida: string
+        }
+        Insert: {
+          batidas?: number
+          dia?: string
+          primeira_batida?: string
+          ultima_batida?: string
+        }
+        Update: {
+          batidas?: number
+          dia?: string
+          primeira_batida?: string
+          ultima_batida?: string
+        }
+        Relationships: []
+      }
       unidades_prova: {
         Row: {
           created_at: string | null
@@ -1464,6 +1485,7 @@ export type Database = {
         Args: { p_prova_id: string; p_unidade_id: string }
         Returns: undefined
       }
+      registrar_batida_saude: { Args: never; Returns: string }
       release_prova_lock: {
         Args: { p_prova_id: string; p_user_id: string }
         Returns: boolean
@@ -1520,10 +1542,6 @@ export type Database = {
       }
       update_prova_lock_activity: {
         Args: { p_prova_id: string; p_user_id: string }
-        Returns: boolean
-      }
-      verify_user_password: {
-        Args: { p_email: string; p_password: string }
         Returns: boolean
       }
       vincular_unidade_a_prova: {

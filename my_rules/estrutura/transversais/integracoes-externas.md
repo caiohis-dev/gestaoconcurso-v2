@@ -30,10 +30,11 @@ Todas em `supabase/functions/`, CORS liberado (`Access-Control-Allow-Origin: *`)
 | `public-create-colaborador` | Cadastro público (reescrito na 2C): insere a linha e dispara o link de acesso. Não pede mais código de 4 dígitos; e-mail obrigatório |
 | `corrigir-email-acesso` | Correção do e-mail de acesso em linha vinculada-pendente (estado B): **renomeia** a conta, não apaga. Modos `consultar`/`corrigir`; só `admin`/`coordenador` |
 | `recuperar-senha` | Caminho do **e-mail** na porta única (2026-07-20), no lugar do `resetPasswordForEmail` nativo. Pública. Manda `recovery` se a conta existe e **`invite` se o e-mail bate com cadastro em estado A**. Repõe à mão o que o nativo dava de graça: **anti-enumeração** (resposta genérica sempre, inclusive no cooldown) e **cooldown de 2 min por conta** — sem tabela nova, lido dos **três** carimbos do Auth (`recovery_sent_at`, `confirmation_sent_at`, `invited_at`; o invite deixa o primeiro NULL) — mais o **teto por IP compartilhado** com a `reivindicar-acesso` |
+| `keep-alive` | **Sinal de vida do banco** (2026-09-08). Não manda e-mail nem toca em PII: chama a RPC `registrar_batida_saude()`, que faz upsert do dia em `public.saude_banco`. Existe para impedir a **pausa por inatividade** do plano Free — ver [`banco-producao.md`](../../banco-producao.md). Exige o header `x-keep-alive-token` conferido contra o secret `KEEP_ALIVE_TOKEN`, e 🔴 **falha FECHADA se o secret não existir** (503), o inverso deliberado do `SITE_URL`. Quem chama é um **cron diário no servidor**, não o frontend |
 | `_shared/enviar-link-acesso.ts` | Helper (não é function): generateLink + HTML da FEVRE + `send-email`. Usado por `reivindicar-acesso`, `public-create-colaborador`, `corrigir-email-acesso` e `recuperar-senha`. O parâmetro `contexto` (`primeiro-acesso`/`redefinir`) muda o texto e **não** coincide com o `tipo` do link: a correção de e-mail usa link `recovery` por razão técnica, mas para a pessoa é primeiro acesso |
 | `send-email` | Ver seção acima — **só `service_role`** |
 
-**`reset-codigo-acesso` não existe mais.** Servia ao "esqueci meu código", morto desde a 2A; foi **removida do repo** na 2D (2026-07-15), junto com o DROP da coluna `colab_codigo_acesso`. As 8 acima são as que existem hoje em `supabase/functions/`.
+**`reset-codigo-acesso` não existe mais.** Servia ao "esqueci meu código", morto desde a 2A; foi **removida do repo** na 2D (2026-07-15), junto com o DROP da coluna `colab_codigo_acesso`. As 9 acima são as que existem hoje em `supabase/functions/` (eram 8 até 2026-09-08, quando entrou a `keep-alive`).
 
 `supabase/config.toml` só configura explicitamente `verify_jwt = false` para `create-coordenador` — as demais seguem o padrão default do Supabase. **Atenção:** esse default (`verify_jwt = true`) aceita a **anon key**, que é pública. Ele impede chamada anônima crua, mas **não** é controle de acesso; onde importa quem chama, a checagem é no corpo da function (como na `send-email`).
 
@@ -55,6 +56,10 @@ Por que **superadmin** e não admin: a única porta é a página `/gerenciar-usu
 **A lição que generaliza:** `verify_jwt` não é autorização. Toda EF que usa `service_role` para algo privilegiado precisa decidir explicitamente quem pode chamá-la — ou exigindo `service_role` (se só o servidor chama, como a `send-email`), ou validando o usuário (se o frontend chama, como a `corrigir-email-acesso` e agora a `create-admin`). Não há terceira opção segura.
 
 ⚠️ **Continua pendente:** verificar se o **projeto Supabase v1** ainda tem a versão vulnerável publicada — uma EF é chamável pela URL do projeto mesmo com o frontend fora do ar. Mesmo raciocínio do item da `send-email` no [`backlog.md`](../../backlog.md).
+
+> 🔵 **Indício forte de 2026-08-13, que não fecha o item mas encurta muito:** `npx supabase projects list` devolveu **dois** projetos na organização — `zugigdpuxbpogoepdawm` (a produção da v2) e `rockjfrubizaxqpamygv` (*log.fevre.online*, criado em 12/07, **ACTIVE_HEALTHY**). O projeto da era Lovable (`dqslqfzqukcahogkieet`) **não aparece**: se foi apagado, não há EF vulnerável a chamar e o item morre. ⚠️ É leitura de listagem, não prova — pode estar em outra organização.
+>
+> ⚠️ **E apareceu uma superfície que ninguém estava olhando:** o projeto de **12/07** está **ativo**, apesar de ter sido descartado em favor do de 08/08. Ele ocupa uma das 2 vagas de projeto ativo do plano Free e, **se alguma Edge Function chegou a ser publicada nele naquela tentativa, é exatamente a mesma classe de risco deste item.** Conferir o que está publicado lá antes de decidir apagá-lo.
 
 ### `export-seed` — removida em 2026-07-12
 

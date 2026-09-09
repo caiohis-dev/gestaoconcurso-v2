@@ -44,6 +44,7 @@ errada e o que cada decisão custou. Antes de reabrir qualquer tema abaixo, proc
 | ✅ 04/08 | o candidato ganhou sala: módulo **Alocação de Candidatos** (o vínculo candidato↔prova/sala que o item 1 de Candidatos previa) |
 | ✅ 05/08 | a distribuição virou **plano montado por arrasto**: o admin escolhe a unidade de cada bloco, os cargos ganharam 3 blocos (comuns/PCD/sala especial) e nasceu o marcador "fora da alocação automática" |
 | ✅ 10/08 | o **banco de produção da v2** existe, carregado e **provado por login real** (`zugigdpuxbpogoepdawm`, us-west-2, plano free) |
+| ✅ 13/08 | **a v2 FOI AO AR**: `https://fevre.online` responde por nginx com TLS, e o bundle publicado aponta para o Supabase de produção |
 
 ---
 
@@ -201,6 +202,40 @@ Junto com a refatoração, **corrigir a funcionalidade de "Faltou"**: quando uma
 
 ---
 
+## 🔴 `finalizar_prova` / `reabrir_prova` confiam no `p_user_id` do chamador
+
+**Status:** aberto em 2026-09-08, medido e **deliberadamente adiado** (decisão do usuário no mesmo dia). O acesso **anônimo** foi fechado; isto é o que sobra, e vale para usuário **logado**.
+**Área:** Auth e Permissões (ver [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md))
+
+As quatro funções de finalização (`finalizar_prova`, `reabrir_prova`, e as `_unidade`) **não consultam `auth.uid()`**. Elas comparam o `created_by` da prova com **`p_user_id`, que é parâmetro fornecido pelo próprio chamador**:
+
+```sql
+IF v_created_by != p_user_id THEN RAISE EXCEPTION 'Apenas o usuário que criou a prova...'
+```
+
+Isso não é autorização — é uma conferência que o atacante controla dos dois lados. **Qualquer usuário autenticado** que saiba o `prova_id` e o `created_by` finaliza (ou reabre) prova alheia.
+
+**O conserto é trocar o parâmetro por `auth.uid()`**, mas ⚠️ isso muda a assinatura e a semântica: `GerenciarProva.tsx:196` e `GerenciarColaboradoresProva.tsx:402` passam o `p_user_id`, e os testes que exercitam essas RPCs vão cair — **e os que caem são a pergunta, não o obstáculo** (armadilha 8 de `testes.md`).
+
+⚠️ Ao mexer, veja se a regra pretendida é mesmo "só o criador": hoje **nem admin** finaliza prova de outro, o que pode ser deliberado ou acidental. Decidir antes de codificar.
+
+---
+
+## ✅ `anon` alcançava 24 funções por RPC — FECHADO em 2026-09-08
+
+**Status:** ✅ resolvido — migration `20260908231620_revogar_execute_de_anon_em_funcoes.sql`. Fica aqui só como registro; o detalhe está no cabeçalho da própria migration.
+
+Achado de raspão ao desenhar o keep-alive, e **a premissa estava certa** (ao contrário das 4 vezes citadas no CLAUDE.md §1) — mas o **tamanho** só apareceu ao medir: das 53 funções de `public`, **38** eram executáveis por `anon`; tirando as de trigger, **24 chamáveis por RPC** com a chave publishable, que é pública.
+
+**O que a medição corrigiu na hipótese original:**
+- As `SECURITY INVOKER` **já estavam protegidas** pelos grants de tabela de 31/07. O buraco eram as **20 `SECURITY DEFINER`**, que rodam como dono e ignoram esse revoke.
+- 🔴 **`verify_user_password` era um oráculo de enumeração de contas** e **nunca conferiu senha** (`p_password` não era lido). O bug: `v_user_id != auth.uid()` com `auth.uid()` nulo dá **`NULL`**, o `IF` não dispara e cai em `RETURN TRUE`. Era **órfã** — foi dropada.
+- ⚠️ **Dois alarmes meus caíram ao medir:** `assign_coordenador_role` **não** era escalada de privilégio (a guarda funciona porque `has_role` usa `SELECT EXISTS`, que devolve `false` e nunca `NULL`), e `salvar_salas_distribuidas` tem guarda real de admin. `get_coordenador_colaboradores` vazava **UUIDs**, não PII.
+
+Verificado com controle positivo nas duas metades: `anon` foi de 38 para **0**, `authenticated` manteve 51 de 52 (a exceção é o keep-alive, de propósito), e por HTTP o `anon` passou a levar `42501 permission denied for function`.
+
+---
+
 ## Sanear as contas do Auth (3 dívidas abertas pelo backfill)
 
 **Status:** pendente — aberto em 2026-07-14, ao vincular os colaboradores que já eram usuários
@@ -280,12 +315,16 @@ O arquivo `.env` da raiz contém `VITE_SUPABASE_URL="http://127.0.0.1:54321"` co
 
 ---
 
-## Migrar hospedagem/deploy para fora do Lovable
+## ✅ Migrar hospedagem/deploy para fora do Lovable — EXECUTADO em 2026-08-13
 
-**Status:** pendente
+**Status:** ✅ **o site está no ar**; sobraram duas conferências (abaixo)
 **Área:** Infraestrutura (ver [`estrutura/transversais/arquitetura-geral.md`](./estrutura/transversais/arquitetura-geral.md))
 
-O Lovable já foi removido do **código** em 2026-07-11 (`lovable-tagger`, boilerplate, `.lovable/`), e o site do Lovable **não existe mais** — o projeto está temporariamente fora do ar (situação em 2026-07-12). Não há mais deploy ativo em lugar nenhum.
+🔵 **Medido em 2026-08-13, não presumido:** `https://fevre.online` responde **200** por nginx sobre HTTP/2 com TLS válido, servindo o build, e **o bundle publicado aponta para `https://zugigdpuxbpogoepdawm.supabase.co`** com a publishable key de `.env.production`. Site de produção falando com o banco de produção — a armadilha do `.env` da raiz não mordeu.
+
+O deploy foi executado **em outra sessão**, e o ferramental vive fora deste repo (`configura_server_gestaoconcurso`), então este item não guarda o registro do que foi feito lá.
+
+*(O texto abaixo é o do item enquanto ele estava aberto, preservado porque explica as decisões — PaaS descartado, túnel SSH descartado. Ele dizia: "o projeto está temporariamente fora do ar… não há mais deploy ativo em lugar nenhum".)*
 
 🔵 **O COMO deixou de ser pergunta em 2026-08-08.** O roteiro está em [`hospedagem-e-deploy.md`](./hospedagem-e-deploy.md): **servidor Ubuntu 24.04 próprio**, nginx servindo o build estático, público em `fevre.online` com TLS do Let's Encrypt. ⚠️ Este item dizia "ex.: Vercel, Netlify" — **PaaS foi descartado**, assim como o acesso só por túnel SSH (inviável: cada fiscal precisaria de chave SSH no servidor para abrir a tela de login).
 
@@ -293,11 +332,14 @@ O ferramental existe e foi testado, **fora deste repositório**, em `configura_s
 
 **Falta executar:** provisionar o servidor, apontar o DNS de `fevre.online` para ele, e rodar as quatro etapas.
 
-🔵 **A dependência do banco CAIU em 2026-08-10.** Este parágrafo dizia "depende do bootstrap do banco" — o bootstrap está concluído e provado por login real, e o `.env.production` já aponta para a nuvem (o `deploy.sh` **recusa publicar** um build que ainda aponte para o Docker local, e o gate passou). **Este item é agora o último passo para a v2 ir ao ar.**
+🔵 **A dependência do banco CAIU em 2026-08-10** e a publicação aconteceu em **13/08**. O `deploy.sh` **recusa publicar** um build que aponte para o Docker local, e o gate passou — o bundle no ar prova isso.
 
-⚠️ **Duas coisas ficaram esperando exatamente por ele:** enquanto o site não responder no domínio, **não se dispara e-mail em produção** (o link nasce certo e não abre nada); e **na subida, rodar `prod:push:dry` de novo** — produção pode ter acumulado atraso de migrations novas de `dev` desde 08/08, e esse delta é parte da release (era o risco R4 do roadmap de bootstrap).
+### ⚠️ O que sobrou deste item (é o que fazer, o resto é histórico)
 
-🔴 **Antes do primeiro deploy:** tirar `public/auth_users_export.csv` de `public/`. Ele tem uma linha de dado real (UUID de conta, e-mail, nome, último login) e `public/` inteiro vira URL pública.
+1. 🔴 **Conferir o secret `SITE_URL` das Edge Functions e as redirect URLs do dashboard.** Este era o motivo real da proibição de disparar e-mail, e **ele não caiu junto com o site**: `_shared/enviar-link-acesso.ts` faz `Deno.env.get('SITE_URL') ?? 'http://127.0.0.1:8080'`, então **sem o secret todo convite e toda recuperação de senha nascem apontando para `localhost`** — a função responde sucesso, o e-mail chega, e só o destinatário descobre. Ver o passo 7 de [`banco-producao.md`](./banco-producao.md).
+2. ⚠️ **Rodar `prod:push:dry`**: produção pode ter acumulado atraso de migrations novas de `dev` desde 08/08, e esse delta é parte da próxima release (era o risco R4 do roadmap de bootstrap).
+
+✅ **`public/auth_users_export.csv` foi removido** — `public/` inteiro vira URL pública e ele tinha uma linha de dado real (UUID de conta, e-mail, nome, último login). A remoção está na árvore, **ainda não commitada**.
 
 ---
 
@@ -411,7 +453,7 @@ A única função de fiscal cadastrada chama-se **"Fiscal"**, sem "de sala" — 
 
 **Status:** anotados, sem desenho e sem ordem definida. Nenhum tem dono nem medição ainda.
 
-- Rate Limiting
+- ~~Rate Limiting~~ → **saiu daqui em 2026-08-13**: virou desenho medido, com roadmap próprio em [`analises/roadmap-rate-limit-fluxos-de-acesso.yaml`](./analises/roadmap-rate-limit-fluxos-de-acesso.yaml) (o porquê está em [`analises/analise-rate-limit-login.md`](./analises/analise-rate-limit-login.md)). 🔴 **Deixou de ser "futuro distante":** o teto que já existe nos fluxos de acesso **falha aberto** e não é atômico, e duas Edge Functions públicas não têm teto nenhum — uma delas escreve PII e dispara e-mail com o domínio da FEVRE a cada chamada. Não há bloqueador: as três medições que decidiam o desenho foram feitas contra produção em 13/08.
 - Caching & CDN
 - Load Balancing & Scaling
 - Error Tracking & Logs

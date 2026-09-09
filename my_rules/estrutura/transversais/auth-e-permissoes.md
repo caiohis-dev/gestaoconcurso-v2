@@ -32,6 +32,12 @@ Uniformizar "para ficar consistente" quebra um dos dois lados: revelando, reabre
 
 **Rate limit compartilhado.** As duas portas gravam na **mesma** tabela `reivindicacao_rate_limit` (5/15 min por IP). Separadas, o atacante somaria 5 pelo CPF **mais** 5 pelo e-mail.
 
+> 🔴 **A MECÂNICA desse teto tem defeitos conhecidos desde 2026-08-13 — o desenho está certo, a engrenagem não.** Ele **falha ABERTO** (o `error` da consulta é descartado, então `count` vem `undefined` e a requisição passa), **não é atômico** (checa e insere em duas idas ao banco: 50 chamadas em paralelo furam o teto de 5) e a tabela **não tem retenção**. Além disso, `public-create-colaborador` e `check-cpf-colaborador` são públicas e **não têm teto nenhum**. Conserto desenhado em [`../../analises/roadmap-rate-limit-fluxos-de-acesso.yaml`](../../analises/roadmap-rate-limit-fluxos-de-acesso.yaml); o porquê, em [`../../analises/analise-rate-limit-login.md`](../../analises/analise-rate-limit-login.md). **Não confie neste teto como barreira enquanto isso não for feito.**
+>
+> 🔵 **Medido contra produção em 2026-08-13**, e serve para não remedir: o IP que a Edge Function lê é o do **cliente real** e **não é forjável** por `X-Forwarded-For` (o edge sobrescreve, apesar da Cloudflare na frente); o endpoint é **IPv4-only** (sem `AAAA`); e a tabela de produção tinha **2 linhas no total**, ambas de teste — **nenhum colaborador real usou esses fluxos** desde que o site subiu.
+
+**O login em si tem teto da plataforma, não nosso** (medido no dashboard em 2026-08-13): **30 requisições de sign-in/sign-up por 5 min por IP**, mais 150/5 min de token refresh e 30/5 min de verificação. ⚠️ **É por IP, não por conta** — não há bloqueio de conta, backoff nem aviso de tentativa falha, e `minimum_password_length` é **6**. Signup está **desligado** e *Confirm email* **ligado** no dashboard: ⚠️ isso **não** vem do `config.toml` (onde os valores são de dev, abertos), e é o que impede que uma conta criada por signup se vincule sozinha a um cadastro de colaborador pelo `handle_new_user`.
+
 **O que a porta única ainda não resolve:** os **254 sem e-mail** seguem dependendo do coordenador (decisão explícita), e o CPF de quem **já tem conta** informa em vez de mandar o link — a pessoa precisa reinformar o e-mail. Fechar esse segundo caso esbarra no estado B, onde `colab_email` e o e-mail da conta divergem e mandar para a conta não ajudaria.
 
 ### Recuperação de senha — EF própria, não o fluxo nativo (2026-07-20)
@@ -261,6 +267,29 @@ Seguro para carga de dados: `postgres` e `service_role` têm **BYPASSRLS** (conf
 ⚠️ **A suíte Vitest não cobre nada disto** — ela mocka o Supabase, então não exercita GRANT, RLS nem policy. Os 1017 testes ficaram verdes o tempo todo, durante e depois do vazamento.
 
 **É a quarta vez que um item do backlog carrega premissa errada** (as outras: guards lendo papéis de `modulos.ts`, `coordenador` sem vínculo ser inofensivo, e os "dois `useEffect`" que eram três). **Conferir a premissa antes de executar o item continua sendo obrigatório** — aqui foi a diferença entre revogar TRUNCATE e achar dado aberto na internet.
+
+#### 🔴 O que a de 31/07 NÃO cobriu: FUNÇÃO (fechado em 2026-09-08)
+
+A `20260731110000` zerou tabela e policy, e **parou aí**. Função ficou de fora — e era o caminho que sobrava, porque `anon` **tem `GRANT USAGE ON SCHEMA public`** (`20260712010000`, nunca revogado) e o Postgres concede `EXECUTE` a **`PUBLIC`** em toda função criada, por padrão.
+
+Medido em 08/09 contra o banco local: das 53 funções de `public`, **38** eram executáveis por `anon`; tirando as 14 de trigger (que o PostgREST não expõe), **24 chamáveis por `POST /rest/v1/rpc/<nome>`** com a chave publishable — que vai no bundle.
+
+**A distinção que organiza tudo:**
+
+| | Alcance do `anon` |
+|---|---|
+| `SECURITY INVOKER` | **já estava fechado** — roda como `anon` e esbarra nos grants de tabela de 31/07 (`contar_candidatos_por_edital` devolvia `permission denied for table candidatos`) |
+| **`SECURITY DEFINER`** | 🔴 **aberto** — roda como o dono e **ignora** aquele revoke. Eram **20** |
+
+**O conserto** (migration `20260908231620`): `REVOKE EXECUTE ... FROM PUBLIC` (revogar só de `anon` não faz nada — o acesso dele vem de ser membro de `PUBLIC`, e o Postgres não subtrai de `PUBLIC`), `GRANT` de volta a `authenticated`/`service_role`, `ALTER DEFAULT PRIVILEGES` para não renascer, e `DROP` da `verify_user_password`.
+
+⚠️ **O `GRANT` de volta é em bloco, e isso foi medido antes:** havia **uma única** função que `authenticated` não podia executar. Devolver em bloco preserva o estado de quem está logado sem afrouxar nada. **Estreitar `authenticated` função a função é outro tema** — misturá-lo aqui trocaria um conserto verificável por uma refatoração ampla.
+
+**`verify_user_password` era o pior achado, e não era o que o nome dizia.** Ela **nunca conferiu senha** — `p_password` não era lido. Fazia `IF v_user_id IS NULL OR v_user_id != auth.uid() THEN RETURN FALSE`; para um anônimo, `auth.uid()` é `NULL`, `v_user_id != NULL` avalia como **`NULL`**, o `IF` não dispara e cai em `RETURN TRUE`. Medido: e-mail real → `true`, inexistente → `false` — **oráculo de enumeração de contas**. Era órfã e foi **dropada**.
+
+⚠️ **Dois alarmes que a medição derrubou** — ficam aqui para ninguém "reabrir": `assign_coordenador_role` **não** era escalada de privilégio (`has_role` usa `SELECT EXISTS`, que devolve `false` e **nunca `NULL`**, então a guarda dispara mesmo com `auth.uid()` nulo), e `salvar_salas_distribuidas` tem guarda real de admin. `get_coordenador_colaboradores` vazava **UUIDs internos, não PII**.
+
+🔴 **O que continua aberto e é de usuário LOGADO:** `finalizar_prova`/`reabrir_prova` (e as `_unidade`) comparam `created_by` com **`p_user_id`, parâmetro do chamador**, sem consultar `auth.uid()`. Ver o item no [`backlog.md`](../../backlog.md).
 
 #### RLS de `cargos` e `cargo_apelidos`
 
