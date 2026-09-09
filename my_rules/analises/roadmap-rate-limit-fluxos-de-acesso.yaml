@@ -1,0 +1,247 @@
+# Roadmap VIVO — rate limit dos fluxos de acesso (login, senha, colaboradores)
+# Criado em 2026-08-13. Leia my_rules/analises/README.md antes de usar como guia.
+# ⏳ NÃO INICIADO — nenhuma linha de código escrita. O passo 0 (medição) está COMPLETO.
+#
+# O PORQUÊ mora em analise-rate-limit-login.md, no mesmo diretório. Este arquivo é só o
+# plano de execução; ele NÃO repete o raciocínio, e sim aponta para a seção que o guarda.
+
+roadmap:
+  titulo: "Rate limit dos fluxos de acesso — consertar o que existe e tapar as duas portas abertas"
+  criado: "2026-08-13"
+  analise_irma: "my_rules/analises/analise-rate-limit-login.md"
+  status: >
+    ⏳ **NÃO INICIADO.** O desenho está fechado e o passo 0 (as três medições contra
+    produção) foi executado em 13/08. Não há bloqueador técnico. Faltam três decisões de
+    NÚMERO (ver `decisoes_a_confirmar`) — e nenhuma delas impede começar pela Etapa 1,
+    que é estrutural e não escolhe teto nenhum.
+
+  origem: >
+    Pedido do usuário em 2026-08-13: "faça uma análise sobre uma possível implementação de
+    rate limits nos fluxos do módulo de login, incluindo esqueci minha senha,
+    colaboradores, etc.". A análise foi escrita, as hipóteses foram medidas contra
+    produção, e o usuário pediu que virasse roadmap para a próxima sessão.
+    ⚠️ O pedido chega DEPOIS do deploy: o site está no ar e as Edge Functions são
+    alcançáveis por qualquer um, num projeto sem backup nenhum.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # O QUE JÁ ESTÁ MEDIDO — não remedir, não estimar de novo
+  # ═══════════════════════════════════════════════════════════════════════════
+  medido_em_13_08: |
+    CONTRA O BANCO LOCAL (cópia de produção):
+      771 colaboradores · 759 em estado A (sem conta) · 504 deles COM e-mail · 15 contas em auth.users
+
+    CONTRA A PRODUÇÃO (dashboard + Management API + curl):
+      Auth → Rate Limits, valores em vigor:
+        sign-ups e sign-ins ......... 30 req / 5 min por IP   ← o teto do LOGIN
+        token refreshes ............. 150 / 5 min por IP
+        token verifications ......... 30 / 5 min por IP
+        envio de e-mail (SMTP Auth) . 30/h  (não nos afeta: e-mail sai pela Hostinger)
+        usuários anônimos ........... 30/h por IP (inócuo: enable_anonymous_sign_ins=false)
+      Auth → "Enable IP address forwarding": DESLIGADO
+      Auth → signup DESLIGADO · "Confirm email" LIGADO
+      DNS: zugigdpuxbpogoepdawm.supabase.co → 104.18.38.10 / 172.64.149.246 (Cloudflare),
+           SEM registro AAAA (IPv4-only)
+      Tabela reivindicacao_rate_limit: 2 linhas no total, AMBAS de teste meu.
+
+    ⚠️ **NÃO HÁ TRÁFEGO REAL PARA CALIBRAR.** Nenhum colaborador passou por "Estou sem
+    minha senha" desde que o site subiu. Todo número escolhido aqui é chute informado até
+    a primeira convocação — o que torna a observabilidade (Etapa 5) mais valiosa que a
+    escolha do número em si.
+
+  hipoteses_minhas_que_a_medicao_DERRUBOU: |
+    Registradas porque o repo trata premissa falsificada como registro, não como erro a
+    apagar — e porque o raciocínio volta a valer se a plataforma mudar.
+
+    1. "Signup aberto permite tomar o cadastro de 504 colaboradores."
+       → FALSO em produção: signup desligado e confirmação ligada.
+       ⚠️ O MECANISMO CONTINUA EXISTINDO: handle_new_user vincula no INSERT de auth.users.
+         Religar o signup reabre isso sem tocar em código, e projeto Supabase novo nasce
+         com signup ABERTO. Demonstrado ponta a ponta no banco local (§5 da análise).
+
+    2. "Não há teto nenhum para tentativa de senha."
+       → FALSO: eram os limites do CONTAINER LOCAL. Produção tem 30 req/5 min por IP.
+
+    3. "O IP do rate limit é forjável por X-Forwarded-For." (a mais forte das três)
+       → FALSO: medido com header forjado contra produção; a linha foi gravada no IP REAL.
+         O edge sobrescreve o header. Detalhe da medição no D3 da análise.
+       ⚠️ Ressalva: testei UMA variante (XFF simples). X-Real-IP e CF-Connecting-IP
+         forjados não foram testados.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  decisoes_a_confirmar: |
+    Nenhuma bloqueia a Etapa 1. Todas são NÚMERO ou ESCOPO, e são do usuário.
+
+    N1. OS TETOS POR PORTA. Recomendação minha, a confirmar:
+          reivindicar-acesso + recuperar-senha .. 5 / 15 min por IP  (mantém o de hoje)
+          public-create-colaborador ............. 3 / 60 min por IP  (o mais apertado:
+                                                   escreve PII e dispara e-mail da FEVRE)
+          check-cpf-colaborador ................. 30 / 15 min por IP (sem efeito colateral)
+        ⚠️ Sem tráfego real, estes números não têm base empírica — são ordem de grandeza.
+
+    N2. COOLDOWN POR ALVO na reivindicar-acesso (Etapa 4). Recomendo INCLUIR: sem ele,
+        quem rotaciona IP bombardeia UMA pessoa específica de e-mail. Custa uma consulta
+        a mais por chamada.
+
+    N3. ESCOPO DA ETAPA 5 (observabilidade). Recomendo o mínimo: contar 429 por escopo.
+        Sem isso não há como saber se o teto está apertado demais — e o usuário já adiou
+        "Error Tracking & Logs" por decisão. Pode ficar para depois sem prejuízo.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  etapas:
+
+    - id: 1
+      titulo: "A RPC de rate limit — atômica, falhando FECHADO, com retenção"
+      status: "⏳ não iniciado"
+      corrige: "D1 (falha aberta) · D2 (não atômico) · D4 (cresce para sempre)"
+      por_que_primeiro: >
+        É estrutural e não depende de nenhuma decisão de número. Hoje o teto passa TUDO se
+        a consulta ao banco falhar (o `error` é descartado e `count` vem undefined), e 50
+        chamadas em paralelo furam o teto de 5 porque a checagem e a inserção são duas
+        idas separadas ao banco.
+      arquivos:
+        - "supabase/migrations/<nova>_rate_limit_rpc.sql"
+        - "supabase/functions/reivindicar-acesso/index.ts  (linhas 50-61 hoje)"
+        - "supabase/functions/recuperar-senha/index.ts     (linhas 76-87 hoje)"
+      o_que_fazer: |
+        a) Migration: a tabela ganha `escopo text NOT NULL` (a de hoje só tem `ip`), e o
+           índice passa a (escopo, chave, created_at DESC). A coluna `ip` vira `chave`
+           — ou nasce coluna nova e a antiga é dropada em migration própria; NUNCA editar
+           a migration 20260714201650, que já está aplicada.
+           ⚠️ A tabela tem 2 linhas em produção (ambas de teste): não há dado a preservar,
+           mas o `db reset` local tem de continuar passando.
+
+        b) A RPC, em UMA instrução:
+             CREATE FUNCTION public.registrar_tentativa(
+               p_escopo text, p_chave text, p_max int, p_janela interval
+             ) RETURNS boolean   -- true = pode seguir
+           Corpo: CTE que (1) apaga o que está fora da janela, (2) INSERE a tentativa,
+           (3) devolve o count da janela — tudo na transação da função.
+           SECURITY DEFINER, `GRANT EXECUTE` só a service_role, nunca a anon/authenticated.
+
+        c) 🔴 NORMALIZAR IPv6 PARA O PREFIXO /64 ao montar a chave. Hoje o endpoint é
+           IPv4-only (sem AAAA), então isso é preventivo — mas se a Supabase publicar AAAA,
+           cada casa passa a ter ~18 quintilhões de endereços E as privacy extensions os
+           rotacionam SOZINHAS. O teto viraria pó em silêncio, por um caminho que ninguém
+           associaria a rate limit.
+
+        d) As duas EFs passam a chamar a RPC. 🔴 O `error` da chamada tem de BLOQUEAR
+           (429 ou 503), nunca liberar. É o oposto exato do código de hoje.
+
+        e) ⚠️ NÃO guardar CPF nem e-mail em claro na tabela — ela viraria um registro de
+           "quem tentou entrar", que hoje não existe. Chave por hash quando for alvo.
+      verificacao: "bateria SQL (ver `verificacao` no fim) + `db reset` completo"
+
+    - id: 2
+      titulo: "Tapar as duas portas públicas sem teto"
+      status: "⏳ não iniciado"
+      depende_de: 1
+      arquivos:
+        - "supabase/functions/public-create-colaborador/index.ts  (117 linhas, ZERO rate limit hoje)"
+        - "supabase/functions/check-cpf-colaborador/index.ts       (76 linhas, ZERO rate limit hoje)"
+      por_que: |
+        public-create-colaborador é a mais grave do sistema hoje: sem sessão e sem teto,
+        cada chamada INSERE uma linha em `colaboradores` (PII de gente real) e DISPARA um
+        e-mail pelo SMTP da Hostinger com SPF/DKIM da FEVRE, para o endereço que o corpo
+        mandar. Três danos distintos: base poluída sem backup para comparar; domínio da
+        FEVRE em blocklist (o que derruba TODOS os fluxos de acesso legítimos); e CPF/
+        e-mail de terceiro queimado, impedindo a pessoa real de se cadastrar.
+        É a mesma classe da falha da `send-email` (fechada em 20/07), reaberta um nível acima.
+      o_que_fazer: >
+        Mesma RPC da Etapa 1, escopos diferentes, tetos de N1. No cadastro público, o teto
+        vem ANTES do INSERT e ANTES do envio.
+
+    - id: 3
+      titulo: "minimum_password_length acima de 6"
+      status: "⏳ não iniciado"
+      independente: true
+      por_que: >
+        Contra força bruta rende mais que qualquer teto: o limite de produção é 30/5 min
+        POR IP, então um ataque distribuído a uma conta conhecida não encontra barreira
+        nenhuma — não há bloqueio por conta, backoff nem aviso de tentativa falha.
+      onde: "supabase/config.toml (dev) + dashboard de produção (é lá que vale)"
+      ⚠️: "Só vale para senhas NOVAS; as existentes não são reavaliadas."
+
+    - id: 4
+      titulo: "Cooldown por ALVO na reivindicar-acesso"
+      status: "⏳ não iniciado — ver decisão N2"
+      depende_de: 1
+      por_que: >
+        A recuperar-senha já tem (2 min por conta, lido dos TRÊS carimbos do Auth). A
+        reivindicar-acesso não tem nenhum: quem rotaciona IP bombardeia uma pessoa.
+      🔴: >
+        A RESPOSTA AO CLIENTE NÃO PODE MUDAR. A assimetria CPF/e-mail é deliberada e está
+        documentada em estrutura/transversais/auth-e-permissoes.md — um 429 novo num
+        caminho onde hoje não há vazaria informação sobre quem tem cadastro.
+
+    - id: 5
+      titulo: "Contar os 429 (observabilidade mínima)"
+      status: "⏳ não iniciado — ver decisão N3, pode ficar para depois"
+      por_que: >
+        Sem contagem não há como saber se o teto está apertado demais ou se nunca dispara.
+        Como não há tráfego real para calibrar, esta é a etapa que transforma os números
+        chutados em números medidos — na primeira convocação.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  fora_de_escopo_com_motivo: |
+    Alternativas consideradas e RECUSADAS. Não ressuscitar sem ler o motivo.
+
+    ❌ Trocar a fonte do IP (cf-connecting-ip / último elemento do XFF).
+       Era a Etapa 1 do desenho original. SAIU porque a medição de 13/08 mostrou que o
+       edge sobrescreve o header — não há o que consertar.
+
+    ❌ nginx `limit_req` no servidor próprio.
+       Não está no caminho: o bundle aponta para *.supabase.co, então o navegador fala
+       DIRETO com a Supabase. Nosso nginx só serve arquivo estático.
+
+    ❌ Rotear o login por uma Edge Function nossa.
+       Poria a senha em claro passando por código nosso e exigiria service_role para
+       emitir sessão. Troca um risco medido por um bem maior.
+
+    ❌ Redis/Upstash ou serviço externo de rate limit.
+       Dependência nova, custo novo e um segredo a mais, para um sistema com 771 usuários
+       e nenhum tráfego. O Postgres dá conta.
+
+    ❌ Uma tabela por Edge Function.
+       Multiplicaria o orçamento do atacante pelo número de funções. O desenho de 20/07 já
+       teve o cuidado de compartilhar a tabela entre as duas portas; manter.
+
+    ❌ CAPTCHA (Turnstile/hCaptcha) agora.
+       É a forma sancionada de proteger o endpoint de login, que não é nosso — mas só
+       depois das etapas acima e só com abuso MEDIDO. Custa uma dependência de terceiro no
+       caminho do login.
+
+    ❌ Testar o public-create-colaborador contra produção.
+       Cada chamada insere PII e dispara e-mail real. Que ele não tem teto está provado
+       por leitura: 117 linhas, nenhuma consulta de rate limit. Não se mede o que já se lê.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  verificacao: |
+    🔴 A SUÍTE NÃO ALCANÇA NADA DISTO. `npm test` mocka o Supabase — um teste ali afirmaria
+    o mock. `npm run test:ef` roda as EFs em Deno, mas não exercita CONCORRÊNCIA, que é o
+    ponto do D2. A verificação real é bateria SQL: docs/bateria-rate-limit.sql (a criar),
+    em transação com ROLLBACK.
+
+    CASOS (os ⭐ são controle positivo — provar que passou a recusar é METADE):
+      1. N+1 chamadas em série → a última recusa
+      2. 🔴 N chamadas em PARALELO → no máximo N passam   (é o caso que o código de hoje reprova)
+      3. RPC indisponível → a EF RECUSA                    (falha fechada; hoje ela libera)
+      4. ⭐ Passada a janela, a chamada legítima PASSA
+      5. ⭐ Duas chaves distintas não se atrapalham
+      6. Linhas fora da janela somem sozinhas
+      7. ⭐ IPv6 do mesmo /64 cai na MESMA chave; de /64 diferente, em chaves diferentes
+
+    ⚠️ E NINGUÉM EXECUTA BATERIA SOZINHO (CLAUDE.md §5): nem `npm test`, nem
+    `npm run docs:conferir`. A da troca total ficou quebrada 2 dias sem ninguém notar.
+    RODAR no fechamento — "ela existe" não é "ela passa".
+
+    Fechamento normal do tema: npm test · npx tsc --noEmit -p tsconfig.app.json ·
+    npm run build · npm run lint (baseline 117) · npm run docs:conferir · db reset completo.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  docs_a_atualizar_no_mesmo_passe: |
+    - estrutura/transversais/auth-e-permissoes.md → a seção do rate limit compartilhado
+    - estrutura/transversais/integracoes-externas.md → a linha das EFs que ganharem teto
+    - analise-rate-limit-login.md → marcar o que foi executado
+    - backlog.md → a linha "Rate Limiting" da seção de infraestrutura
+    ⚠️ Ao mudar a assinatura de qualquer RPC, procurar as chamadas em docs/bateria-*.sql
+      NO MESMO PASSE (CLAUDE.md §5).

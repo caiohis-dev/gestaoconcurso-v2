@@ -2,7 +2,11 @@
 
 Como o gestaoconcurso vai ao ar. Par de [`banco-producao.md`](./banco-producao.md), que cobre o **banco**; este cobre o **site**. Nenhum dos dois basta sozinho: uma release sobe os dois, no mesmo evento.
 
-> **Estado em 2026-08-08:** nada está no ar. O site do Lovable deixou de existir e o projeto está fora do ar desde 2026-07-12. O servidor **ainda não foi provisionado** e o DNS de `fevre.online` ainda não aponta para lugar nenhum. O que existe é o ferramental, testado, e este roteiro.
+> 🔵 **Estado em 2026-08-13: O SITE ESTÁ NO AR.** Medido, não presumido: `https://fevre.online` responde **200** por nginx sobre **HTTP/2 com TLS válido**, servindo o build (`<title>FEVRE - Sistema de Cadastro de Colaboradores</title>`), e o bundle publicado aponta para **`https://zugigdpuxbpogoepdawm.supabase.co`** com a publishable key `sb_publishable_mN1jgi…` — a de `.env.production`. Ou seja: **site de produção falando com o banco de produção**, e a armadilha do `.env` da raiz (que aponta para o Docker local) **não mordeu**.
+>
+> O deploy foi executado em outra sessão; o ferramental vive fora deste repo, em `configura_server_gestaoconcurso`. ⚠️ Isto **não** foi conferido aqui: o secret `SITE_URL` das Edge Functions e as redirect URLs do dashboard — ver a ressalva sobre e-mail no fim desta página.
+>
+> *(Este bloco dizia, até 2026-08-13: "nada está no ar… o servidor ainda não foi provisionado e o DNS de `fevre.online` ainda não aponta para lugar nenhum".)*
 
 ---
 
