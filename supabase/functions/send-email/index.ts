@@ -1,4 +1,20 @@
-import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
+// 🔴 O denomailer SAIU em 2026-09-09, e não foi preferência: ele quebrava o e-mail.
+//
+// Assunto com acento e mais de ~60 caracteres saía assim:
+//     Subject:  =?utf-8?Q?Redefini=c3=a7=c3=a3o de senha =e2=80=94 ... Colaborado=
+//     res FEVRE?=
+// A continuação começava na COLUNA 0, sem espaço. Isso não é folding de cabeçalho:
+// o parser lê `res FEVRE?=` como cabeçalho novo inválido, decide que o bloco de
+// cabeçalhos terminou ali, e o `Content-Type: multipart/...` vira CORPO.
+//
+// Medido reproduzindo com o assunto real de produção: `is_multipart() == False`.
+// O Gmail e outro cliente exibiram a mensagem inteira como texto, com as tags HTML
+// à mostra — e o link de recuperação de senha, copiado dali, vinha com `=3d` no
+// meio e não abria.
+//
+// `denomailer@1.6.0` é a ÚLTIMA versão publicada, então não havia upgrade a fazer.
+// Detalhes e as outras violações de RFC em `../_shared/smtp.ts`.
+import { enviarEmail } from "../_shared/smtp.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -42,24 +58,16 @@ Deno.serve(async (req) => {
     const username = Deno.env.get("SMTP_USER")!;
     const password = Deno.env.get("SMTP_PASS")!;
 
-    const client = new SMTPClient({
-      connection: {
-        hostname: host,
-        port,
-        tls: true,
-        auth: { username, password },
-      },
-    });
-
-    await client.send({
+    await enviarEmail({
+      hostname: host,
+      port,
+      username,
+      password,
       from: username,
       to,
       subject,
-      content: "Use um cliente compatível com HTML para visualizar este email.",
       html,
     });
-
-    await client.close();
 
     return new Response(
       JSON.stringify({ success: true, message: "E-mail enviado com sucesso pela Hostinger!" }),
