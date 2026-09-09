@@ -1,0 +1,41 @@
+/* Customização do scrollbar da sidebar (Windows/Linux) */
+/* O scrollbar nativo frequentemente ignora o z-index da headerbar no VitePress. */
+/* Estilizar com -webkit-scrollbar força a renderização na camada correta (respeitando z-index) 
+   e também deixa o visual muito mais premium e elegante, combinando com o tema. */
+
+.VPSidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.VPSidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.VPSidebar::-webkit-scrollbar-thumb {
+  background-color: var(--vp-c-divider);
+  border-radius: 4px;
+}
+
+.VPSidebar::-webkit-scrollbar-thumb:hover {
+  background-color: var(--vp-c-text-3);
+}
+
+/* Opcional: Garante que o header fique definitivamente por cima */
+.VPNav {
+  z-index: 30 !important;
+}
+
+.VPSidebar {
+  z-index: 20 !important;
+}
+
+/* O VitePress por padrão faz a sidebar ir até o topo da tela (top: 0) e usa padding-top.
+   Como o header é semi-transparente (glassmorphism), o scrollbar ficava visível atrás dele.
+   Forçamos a sidebar a COMEÇAR abaixo do header. */
+@media (min-width: 960px) {
+  .VPSidebar {
+    top: var(--vp-nav-height) !important;
+    padding-top: 32px !important;
+    height: calc(100dvh - var(--vp-nav-height)) !important;
+  }
+}
