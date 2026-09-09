@@ -307,7 +307,9 @@ O arquivo `.env` da raiz contém `VITE_SUPABASE_URL="http://127.0.0.1:54321"` co
 
 🔵 **Ficou menos perigoso em 2026-08-08**, quando `.env.production` passou a existir. Conferido na fonte do Vite (`getEnvFilesForMode`): a ordem é `.env` → `.env.local` → `.env.[mode]` → `.env.[mode].local`, então **`.env.production` vence** e o `npm run build` sai apontando para a nuvem. Comprovado no artefato: 0 ocorrências da URL local no bundle.
 
-🔴 **Mas o risco não é o build de hoje — é o dia em que `.env.production` sumir ou for esquecido.** O `.env` continua ali, com cara de produção, pronto para gerar um bundle que aponta para o Docker local **sem erro nenhum no build**. O sintoma aparece só em runtime, e é *idêntico* ao de projeto pausado por inatividade (a página carrega, o login aparece, tudo falha) — o que torna o diagnóstico confuso justamente no pior momento.
+🔴 **Mas o risco não é o build de hoje — é o dia em que `.env.production` sumir ou for esquecido.** O `.env` continua ali, com cara de produção, pronto para gerar um bundle que aponta para o Docker local **sem erro nenhum no build**. O sintoma aparece só em runtime: a página carrega, o login aparece, e tudo falha.
+
+🔵 **Corrigido em 2026-09-09: esta linha dizia que o sintoma é *"idêntico ao de projeto pausado por inatividade, o que torna o diagnóstico confuso"*. NÃO é idêntico, e a diferença é fácil de ver.** A pausa foi medida em 08/09: o hostname do projeto **some do DNS** (NXDOMAIN autoritativo), então o navegador nem chega a fazer requisição. Bundle apontado para o Supabase errado é o oposto — o nome **resolve** normalmente e a falha vem depois, na requisição. **Um `dig +short <ref>.supabase.co` separa os dois em segundos.** Ver `banco-producao.md`.
 
 **Saídas possíveis** (nenhuma decidida): renomear para `.env.local`, que é o que ele de fato é; ou deixar um comentário no topo dizendo em voz alta que ele é local e que `.env.production` é quem vale.
 
