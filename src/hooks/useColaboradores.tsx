@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
+import { removerAcentos } from '@/lib/texto';
 
 // Traduz a violação de índice único (CPF, matrícula, PIS, e-mail e chave PIX são
 // UNIQUE) numa frase para a pessoa. Devolve null quando o erro não é de duplicidade,
@@ -345,11 +346,14 @@ export interface FiltroColaboradores {
  * antiga baixava 707 kB (33 colunas × 771 linhas) a cada montagem E a cada volta de foco
  * da janela, já que o `QueryClient` do `App.tsx` nasce sem `staleTime`.
  *
- * ⚠️ A busca é SENSÍVEL A ACENTO, e isto é uma regressão consciente: a versão anterior
- * normalizava no cliente (`removeAccents`), então "jose" achava "José" e deixou de achar.
- * Foi aceito para não abrir mudança de schema — tirar o acento no servidor exige a
- * extensão `unaccent` mais índice funcional. Segue o mesmo comportamento da busca de
- * candidatos (`useCandidatos.tsx`), que já era assim.
+ * 🔵 A busca IGNORA ACENTO desde 2026-09-10: "jose" acha "José", e vice-versa. ⚠️ Isso
+ * depende de DOIS lados casarem — `colab_nome_busca`, a coluna computada do PostgREST
+ * (migration `20260911011204`), tira o acento do DADO; `removerAcentos` tira o do que foi
+ * DIGITADO. Mexer num só faz a busca parar de achar, sem erro. Medido: 97 dos 771 nomes
+ * têm acento, e enviar o termo cru devolve lista vazia.
+ *
+ * ⚠️ Só o NOME ignora acento. `colab_matricula` e `colab_cpf` continuam comparados como
+ * estão — não têm acento, e normalizá-los seria trabalho sem efeito.
  *
  * A paginação não é enfeite: uma busca por "a" volta a encostar no teto de 1000 linhas
  * que o PostgREST aplica em silêncio.
@@ -371,6 +375,8 @@ export function useBuscarColaboradores({
       // Mesmo escape de `useCandidatos`: `%`, `,` e parênteses são sintaxe do `or` do
       // PostgREST, e um deles digitado na busca quebraria a expressão inteira.
       const escapado = criterio.replace(/[%,()]/g, ' ');
+      // O termo sem acento só serve para o NOME, que é o lado normalizado no banco.
+      const semAcento = removerAcentos(escapado);
 
       const coluna = ordenarPor ? COLUNA_ORDEM[ordenarPor] : 'colab_nome_completo';
 
@@ -378,7 +384,7 @@ export function useBuscarColaboradores({
         .from('colaboradores')
         .select(COLUNAS_LISTAGEM, { count: 'exact' })
         .or(
-          `colab_nome_completo.ilike.%${escapado}%,colab_matricula.ilike.%${escapado}%,colab_cpf.ilike.%${escapado}%`
+          `colab_nome_busca.ilike.%${semAcento}%,colab_matricula.ilike.%${escapado}%,colab_cpf.ilike.%${escapado}%`
         )
         // `nullsFirst: false` põe quem NUNCA acessou no fim, não no topo — ordenar por
         // "último acesso" existe justamente para achar essa gente, e o padrão do Postgres

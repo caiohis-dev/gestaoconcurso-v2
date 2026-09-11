@@ -366,9 +366,46 @@ describe("useBuscarColaboradores", () => {
     const or = buildersDe("colaboradores")[0].or as ReturnType<typeof vi.fn>;
     const expressao = or.mock.calls[0][0] as string;
     expect(expressao).not.toMatch(/[%,()]ria/);
-    expect(expressao).toContain("colab_nome_completo.ilike");
+    // O NOME vai pela coluna computada (sem acento); matrícula e CPF, pela coluna crua.
+    expect(expressao).toContain("colab_nome_busca.ilike");
     expect(expressao).toContain("colab_matricula.ilike");
     expect(expressao).toContain("colab_cpf.ilike");
+  });
+
+  it("🔵 o termo digitado vai SEM ACENTO para o lado do nome", async () => {
+    // O par: a coluna computada `colab_nome_busca` tira o acento do DADO, isto tira do
+    // que foi DIGITADO. Enviar o termo cru devolve lista vazia — medido contra o banco
+    // local, com "josé ribeiro" não achando "JOSÉ RIBEIRO DOS SANTOS NETO".
+    setTableResult("colaboradores", { data: [], error: null, count: 0 });
+
+    const { result } = renderHookWithProviders(() =>
+      useBuscarColaboradores({ termo: "José Antônio" }),
+    );
+    await waitFor(() => expect(result.current.buscou).toBe(true));
+
+    const or = buildersDe("colaboradores")[0].or as ReturnType<typeof vi.fn>;
+    const expressao = or.mock.calls[0][0] as string;
+    // ⚠️ Olhar só o SEGMENTO do nome: matrícula e CPF recebem o termo CRU de propósito,
+    // então "Antônio" aparece na expressão inteira — e aparecer ali está certo.
+    const segmentoNome = expressao
+      .split(",")
+      .find((parte) => parte.startsWith("colab_nome_busca"));
+
+    expect(segmentoNome).toBe("colab_nome_busca.ilike.%jose antonio%");
+  });
+
+  it("matrícula e CPF NÃO são normalizados — não têm acento", async () => {
+    // Normalizá-los seria trabalho sem efeito, e mascararia um bug se um dia a matrícula
+    // passasse a aceitar letra acentuada.
+    setTableResult("colaboradores", { data: [], error: null, count: 0 });
+
+    const { result } = renderHookWithProviders(() => useBuscarColaboradores({ termo: "ABC123" }));
+    await waitFor(() => expect(result.current.buscou).toBe(true));
+
+    const or = buildersDe("colaboradores")[0].or as ReturnType<typeof vi.fn>;
+    const expressao = or.mock.calls[0][0] as string;
+    expect(expressao).toContain("colab_matricula.ilike.%ABC123%");
+    expect(expressao).toContain("colab_cpf.ilike.%ABC123%");
   });
 
   it("🔴 NÃO seleciona `*` — a listagem não carrega dado bancário", async () => {

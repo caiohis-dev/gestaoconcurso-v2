@@ -342,7 +342,7 @@ export default function ColaboradoresList() {
           <Search className="h-12 w-12 mx-auto mb-4 opacity-50" />
           <p>Informe nome, matrícula ou CPF e clique em Buscar.</p>
           <p className="text-sm mt-1">
-            A lista não é carregada automaticamente — são milhares de registros.
+            A lista não é carregada automaticamente.
           </p>
         </div>
       ) : colaboradores.length === 0 ? (
@@ -350,7 +350,7 @@ export default function ColaboradoresList() {
             <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
             <p>Nenhum colaborador encontrado</p>
             <p className="text-sm mt-1">
-              A busca diferencia acentos — tente "Jose" e "José".
+              A busca ignora acentos e maiúsculas. Procure por nome, matrícula ou CPF.
             </p>
           </div>
         ) : (

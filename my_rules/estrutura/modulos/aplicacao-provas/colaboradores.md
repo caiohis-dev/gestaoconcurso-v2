@@ -83,7 +83,13 @@ Existia também `colaboradores_backup_20260701` (snapshot manual pontual, criado
 
 - 🔴 **`/colaboradores` NÃO carrega nada ao abrir.** A tela exige critério (nome, matrícula ou CPF) e só consulta no clique em **Buscar** — critério vazio é recusado, e a barreira é o `enabled` do hook, não o botão desabilitado. **Medido antes de mudar:** a versão anterior baixava `select('*')` de todos os colaboradores a cada montagem *e a cada volta de foco da janela* (o `QueryClient` do `App.tsx` nasce sem `staleTime`) — **707 kB**, 33 colunas × 771 linhas, incluindo CPF, PIS, agência, conta e chave PIX de todo mundo, para exibir 7 campos. Hoje uma página de 50 custa **13 kB**.
 
-  ⚠️ **A busca é SENSÍVEL A ACENTO, e isso é regressão consciente.** A versão client-side normalizava (`removeAccents`), então "jose" achava "José"; o `ilike` do Postgres diferencia. Aceito para não abrir mudança de schema — tirar acento no servidor exige a extensão `unaccent` mais índice funcional. É o mesmo comportamento da busca de candidatos, que já era assim. A tela avisa disso no estado "nenhum encontrado".
+  🔵 **A busca IGNORA ACENTO: "jose" acha "José".** ⚠️ Esta linha já disse o contrário — a busca server-side nasceu sensível a acento, e isso foi corrigido no mesmo dia, a pedido do usuário. **Como funciona, e é um PAR:** a migration `20260911011204` cria `colab_nome_busca`, uma **coluna computada do PostgREST** (função sobre a linha) que devolve o nome em minúsculas e sem acento; `src/lib/texto.ts#removerAcentos` faz o mesmo com o termo digitado. **Mexer num lado sem o outro faz a busca parar de achar, sem erro nenhum** — medido: enviar "josé ribeiro" cru contra a coluna normalizada devolve lista vazia. Há um teste (`src/lib/texto.test.ts`) que lê a migration e compara os dois mapas, falsificado nos dois sentidos.
+
+  **Por que `translate()` e não a extensão `unaccent`:** `unaccent()` não é `IMMUTABLE` e o caminho usual é marcá-la assim à força — afirmação falsa que o planejador passa a acreditar. Aqui não foi preciso: os acentos do domínio são conjunto pequeno e conhecido (medido: `á â ã ç é ê í ó ô õ ú`, em **97 dos 771** nomes), e `translate` + `lower` são imutáveis de verdade.
+
+  **Por que coluna COMPUTADA e não GERADA:** coluna gerada seria indexável, mas acrescentaria coluna a `colaboradores` — e coluna nova toca o **dump**, a parte frágil do repo. A computada não armazena nada. 🔵 **Sem índice, e isso é medição:** 771 linhas em 528 kB, num banco de 14 MB que cabe inteiro nos 224 MB de cache; `ilike '%x%'` não usaria índice btree de qualquer forma.
+
+  ⚠️ **Só o NOME ignora acento.** Matrícula e CPF são comparados como estão — não têm acento, e normalizá-los seria trabalho sem efeito.
 
   ⚠️ A **ordenação também vai ao servidor** (`.order()` dinâmico + desempate por `id`, e `nullsFirst: false` para "nunca acessou" cair no fim). Ordenar só a página visível pareceria ordenar tudo — e mentiria.
 

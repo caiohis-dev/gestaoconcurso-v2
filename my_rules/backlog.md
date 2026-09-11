@@ -185,15 +185,26 @@ escrito *assumindo* esse comportamento, e `GerenciarSalasDistribuidas.ui.test.ts
 cobre isso. Mexer no global exige varrer quem depende dele. Único hook que já define
 `staleTime` por conta própria: `useBancos.tsx:22` (1h).
 
-## Busca sensível a acento (colaboradores E candidatos)
+## Busca sensível a acento — falta CANDIDATOS
 
-Desde 2026-09-10 a busca de `/colaboradores` é server-side, e com isso ficou **sensível a
-acento**: "jose" não acha "José". A de candidatos (`useCandidatos.tsx:171`) sempre foi.
-Com 1.527 nomes acentuados medidos na importação, isso encontra usuário.
+🔵 **`/colaboradores` foi resolvido em 2026-09-10** (migration `20260911011204`: coluna
+computada `colab_nome_busca` + `src/lib/texto.ts`). O item continua aberto para a outra
+tela.
 
-Saída: extensão `unaccent` + índice funcional sobre a coluna normalizada — senão a busca
-vira varredura completa. Resolve as **duas** telas de uma vez. Foi adiado de propósito ao
-fechar a busca sob demanda, para não abrir mudança de schema no mesmo tema.
+`useCandidatos.tsx:171` faz `.or(nome.ilike...)` direto na coluna, então **"jose" não acha
+"José"** na listagem de inscritos. Com 1.527 nomes acentuados medidos na importação, isso
+encontra usuário.
+
+**O caminho já está trilhado e é copiável:** função `IMMUTABLE` sobre a linha com o mesmo
+`translate()` (nada de extensão `unaccent`, que não é imutável de verdade), `GRANT` a
+`authenticated` **e `service_role`** — esquecer o segundo dá `42501` em toda leitura pela
+chave de serviço —, e o cliente normalizando o termo com o `removerAcentos` que já existe.
+⚠️ O teste de paridade entre os dois mapas (`src/lib/texto.test.ts`) precisa passar a
+cobrir a migration nova também: sem ele, divergir os mapas quebra a busca em silêncio.
+
+⚠️ `candidatos` tem MILHARES de linhas, ao contrário de `colaboradores` — então aqui a
+conta do índice muda, e o desenho pode ter de ser coluna **gerada** (indexável) em vez de
+computada. Meça antes: coluna gerada em `candidatos` mexe no dump.
 
 ## Rodar a suíte de testes automaticamente (CI e/ou pre-commit)
 
