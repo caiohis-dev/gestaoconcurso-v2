@@ -124,22 +124,21 @@ describe("rotaEntrada", () => {
   const aplicacaoProvas = MODULOS.find((m) => m.id === "aplicacao-provas")!;
   const editais = MODULOS.find((m) => m.id === "editais")!;
 
-  it("manda admin para o dashboard e coordenador para colaboradores", () => {
-    // Coordenador não tem acesso ao /dashboard; mandá-lo para lá faria o card do
-    // hub cair direto no guard da página.
-    expect(aplicacaoProvas.rotaEntrada({ isAdmin: true, isCoordenador: false })).toBe(
-      "/dashboard",
-    );
-    expect(aplicacaoProvas.rotaEntrada({ isAdmin: false, isCoordenador: true })).toBe(
-      "/colaboradores",
-    );
+  it("leva para /provas, qualquer que seja o papel", () => {
+    // ⚠️ Este caso já afirmou `/dashboard` para admin e `/colaboradores` para
+    // coordenador — um desvio por papel, trocado em 2026-09-10 a pedido do usuário.
+    // O que NÃO mudou é a razão de o desvio ter existido: coordenador não alcança
+    // `/dashboard` (guard `["admin"]`), e mandá-lo para lá o jogaria contra o guard da
+    // página. `/provas` é `["admin", "coordenador"]`, então serve os dois.
+    for (const ctx of [
+      { isAdmin: true, isCoordenador: false },
+      { isAdmin: false, isCoordenador: true },
+      { isAdmin: true, isCoordenador: true }, // superadmin: isAdmin o cobre
+    ]) {
+      expect(aplicacaoProvas.rotaEntrada(ctx)).toBe("/provas");
+    }
   });
 
-  it("manda o superadmin para o dashboard (isAdmin cobre superadmin)", () => {
-    expect(aplicacaoProvas.rotaEntrada({ isAdmin: true, isCoordenador: true })).toBe(
-      "/dashboard",
-    );
-  });
 
   it("leva Editais sempre para /editais, qualquer que seja o papel", () => {
     expect(editais.rotaEntrada({ isAdmin: true, isCoordenador: false })).toBe("/editais");

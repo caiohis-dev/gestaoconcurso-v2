@@ -76,7 +76,13 @@ const aplicacaoProvas: Modulo = {
   descricao: 'Cadastro de colaboradores, provas, unidades e a operação do dia da prova.',
   icone: ClipboardList,
   papeis: ['superadmin', 'admin', 'coordenador'],
-  rotaEntrada: ({ isAdmin }) => (isAdmin ? '/dashboard' : '/colaboradores'),
+  // 🔵 Passou a ser `/provas` para TODOS em 2026-09-10 (pedido do usuário). Antes era
+  // `isAdmin ? '/dashboard' : '/colaboradores'` — um desvio por papel que existia porque
+  // coordenador não alcança `/dashboard` (guard `["admin"]`) e cairia no guard da página.
+  // `/provas` é guardada por `["admin", "coordenador"]`, então serve os dois e o desvio
+  // deixou de ser necessário. ⚠️ Se um dia a entrada voltar a ser uma rota só-admin, o
+  // desvio TEM de voltar junto — senão o card do hub manda o coordenador para um muro.
+  rotaEntrada: () => '/provas',
   prefixosRota: [
     '/dashboard',
     '/colaboradores',

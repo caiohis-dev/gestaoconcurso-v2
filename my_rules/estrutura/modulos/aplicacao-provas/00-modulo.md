@@ -9,11 +9,15 @@
 | **`id`** em `src/lib/modulos.ts` | `aplicacao-provas` |
 | **Nome na UI** | Aplicação de Provas |
 | **Papéis com acesso** | `superadmin`, `admin`, `coordenador` |
-| **Rota de entrada** | `/dashboard` se `isAdmin`; `/colaboradores` para coordenador |
+| **Rota de entrada** | `/provas`, para todos os papéis (🔵 mudou em 2026-09-10) |
 | **`navLinks`** (header) | Dashboard (admin+), Colaboradores (todos), Provas (todos), Unidades de Prova (admin+) |
 | **Ícone** | `ClipboardList` (lucide) |
 
 É o módulo original — todo o sistema era isto até 2026-07-24, quando o hub e o módulo [Editais](../editais/00-modulo.md) o dividiram.
+
+> 🔵 **A rota de entrada era `/dashboard` para admin e `/colaboradores` para coordenador** — um desvio por papel, trocado em 2026-09-10 a pedido do usuário. O motivo do desvio **continua válido como aviso**: coordenador não alcança `/dashboard` (guard `["admin"]`), e o card do hub mandá-lo para lá o jogaria contra o guard da própria página, sem erro que explicasse. `/provas` é `["admin", "coordenador"]`, então serve os dois e o desvio deixou de ser necessário.
+>
+> 🔴 **Há um teste cruzando os dois arquivos** (`guards.test.tsx`, ao fim): para cada módulo e cada papel dele, a `rotaEntrada` de `modulos.ts` tem de constar como permitida na matriz de guards. Foi falsificado — apontar a entrada de volta para `/dashboard` reprova, nomeando o papel e a rota. Sem ele, nada obrigava os dois arquivos a concordarem.
 
 ## O que o módulo faz
 

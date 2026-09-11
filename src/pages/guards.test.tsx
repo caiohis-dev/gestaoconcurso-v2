@@ -29,6 +29,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { createTestQueryClient } from "@/test/utils";
 import { resetSupabaseMock, setTableResult, setRpcResult } from "@/test/supabase-mock";
 import { RequireAcesso, type PapelExigido } from "@/components/RequireAcesso";
+import { MODULOS } from "@/lib/modulos";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -672,5 +673,42 @@ describe("Perfil (/perfil)", () => {
       }),
     );
     await waitFor(() => expect(screen.getByLabelText("Nome Completo")).toHaveValue("Fulana de Souza"));
+  });
+});
+
+/**
+ * 🔴 O card do hub não pode mandar ninguém contra um muro.
+ *
+ * `modulos.ts` diz PARA ONDE o card de cada módulo leva (`rotaEntrada`); a matriz acima
+ * diz QUEM alcança cada rota (`exige`). São dois arquivos, e nada os obrigava a
+ * concordar — dá para mudar a rota de entrada para uma página que o papel não alcança, e
+ * o sintoma é o usuário clicar no módulo e ser rebatido pelo guard, sem erro que explique.
+ *
+ * Foi exatamente o risco que existiu enquanto `aplicacao-provas` entrava em `/dashboard`
+ * (só admin) com um desvio por papel mandando coordenador para `/colaboradores`. Em
+ * 2026-09-10 a entrada virou `/provas`, que é `["admin","coordenador"]`, e o desvio saiu.
+ * Este caso é o que garante que tirar o desvio continuou seguro — e que voltar a uma
+ * rota só-admin sem ele será reprovado.
+ */
+describe("a rota de entrada de cada módulo é alcançável por todos os papéis dele", () => {
+  const paginaDe = (rota: string) => PAGINAS.find((p) => p.rota === rota);
+
+  it.each(MODULOS.map((m) => [m.id, m] as const))("%s", (_id, modulo) => {
+    for (const papel of modulo.papeis) {
+      const ctx = {
+        isAdmin: papel === "admin" || papel === "superadmin",
+        isCoordenador: papel === "coordenador",
+      };
+      const entrada = modulo.rotaEntrada(ctx);
+      const pagina = paginaDe(entrada);
+
+      // Se a rota de entrada nem está na matriz, não dá para afirmar nada sobre ela —
+      // e não afirmar nada é o modo de falha que este arquivo existe para evitar.
+      expect(pagina, `rota de entrada ${entrada} não está na matriz de guards`).toBeDefined();
+      expect(
+        pagina!.permitidos,
+        `${modulo.id}: papel ${papel} entra em ${entrada}, que não o admite`,
+      ).toContain(papel);
+    }
   });
 });
