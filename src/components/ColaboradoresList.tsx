@@ -1,5 +1,12 @@
 import { useState } from 'react';
-import { useColaboradores, Colaborador } from '@/hooks/useColaboradores';
+import {
+  useBuscarColaboradores,
+  useColaboradoresMutations,
+  POR_PAGINA_COLABORADORES,
+  Colaborador,
+  ColaboradorListagem,
+  OrdemColaboradores,
+} from '@/hooks/useColaboradores';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
@@ -36,10 +43,6 @@ import { useToast } from '@/hooks/use-toast';
 function formatCPF(cpf: string): string {
   const str = cpf.padStart(11, '0');
   return `${str.slice(0, 3)}.${str.slice(3, 6)}.${str.slice(6, 9)}-${str.slice(9)}`;
-}
-
-function removeAccents(str: string): string {
-  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
 function formatTelefone(tel: number | null): string {
@@ -83,25 +86,99 @@ function SortableHeader({ label, column, currentColumn, direction, onSort }: Sor
   );
 }
 
+interface PaginacaoProps {
+  buscou: boolean;
+  pagina: number;
+  total: number;
+  ocupado: boolean;
+  onPagina: (atualiza: (p: number) => number) => void;
+}
+
+/**
+ * Botões próprios, seguindo o padrão real do repo (`Candidatos.tsx`).
+ * ⚠️ `components/ui/pagination.tsx` existe (shadcn, completo) mas não é importado por
+ * nenhuma tela — não é o padrão daqui, apesar de parecer.
+ */
+function PaginacaoBusca({ buscou, pagina, total, ocupado, onPagina }: PaginacaoProps) {
+  // A decisão de aparecer mora AQUI, não no chamador: uma página só não se pagina.
+  if (!buscou || total <= POR_PAGINA_COLABORADORES) return null;
+
+  const ultimaPagina = Math.max(0, Math.ceil(total / POR_PAGINA_COLABORADORES) - 1);
+
+  return (
+    <div className="flex items-center justify-between gap-4 flex-wrap">
+      <span className="text-sm text-muted-foreground">
+        Página {pagina + 1} de {ultimaPagina + 1} · {total} colaborador(es)
+      </span>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onPagina((p) => Math.max(0, p - 1))}
+          disabled={pagina === 0 || ocupado}
+        >
+          Anterior
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onPagina((p) => Math.min(ultimaPagina, p + 1))}
+          disabled={pagina >= ultimaPagina || ocupado}
+        >
+          Próxima
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function ColaboradoresList() {
-  const { colaboradores, isLoading, delete: deleteColaborador, isDeleting } = useColaboradores({ fetchAll: true });
+  const { delete: deleteColaborador, isDeleting } = useColaboradoresMutations();
   const { isAdmin, isCoordenador } = useAuth();
   const { toast } = useToast();
-  
+
   // Coordenadores can edit/delete, similar to admins
   const canEditDelete = isAdmin || isCoordenador;
+
+  // 🔴 DOIS estados, de propósito: `search` é o que está DIGITADO, `criterio` é o que foi
+  // SUBMETIDO. Só o segundo vai ao servidor. Digitar não consulta — a consulta acontece no
+  // clique em Buscar (ou no Enter), e nunca com critério vazio.
+  //
+  // Antes de 2026-09-10 esta tela baixava os 774 colaboradores inteiros ao montar (707 kB,
+  // 33 colunas cada, incluindo dados bancários) e filtrava no cliente, refazendo tudo a
+  // cada volta de foco da janela.
   const [search, setSearch] = useState('');
-  const hasSearch = search.trim().length > 0;
+  const [criterio, setCriterio] = useState('');
+  const [pagina, setPagina] = useState(0);
+  const podeBuscar = search.trim().length > 0;
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editColaborador, setEditColaborador] = useState<Colaborador | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [editLoadingId, setEditLoadingId] = useState<string | null>(null);
-  const [sortColumn, setSortColumn] = useState<'nome' | 'ultimo_acesso' | null>(null);
+  const [sortColumn, setSortColumn] = useState<OrdemColaboradores | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
-  const handleEdit = async (colaborador: Colaborador) => {
+  const { colaboradores, total, isFetching, buscou } = useBuscarColaboradores({
+    termo: criterio,
+    pagina,
+    ordenarPor: sortColumn,
+    direcao: sortDirection,
+  });
+
+  const buscaDesabilitada = !podeBuscar || isFetching;
+
+  const handleBuscar = () => {
+    if (!podeBuscar) return;
+    setCriterio(search.trim());
+    // Critério novo recomeça da primeira página — senão a busca nasce na página 3 da
+    // busca anterior e parece não ter achado nada.
+    setPagina(0);
+    setSelectedIds(new Set());
+  };
+
+  const handleEdit = async (colaborador: ColaboradorListagem) => {
     setEditLoadingId(colaborador.id);
     try {
       const { data, error } = await supabase
@@ -125,49 +202,23 @@ export default function ColaboradoresList() {
     }
   };
 
-  const handleSort = (column: 'nome' | 'ultimo_acesso') => {
+  // A ordenação vai ao SERVIDOR (entra na queryKey do hook), então vale para o resultado
+  // inteiro e não só para a página visível. Reordenar volta à página 0 pelo mesmo motivo
+  // que trocar de critério: a linha que você procura passou a estar em outro lugar.
+  const handleSort = (column: OrdemColaboradores) => {
     if (sortColumn === column) {
       setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
     } else {
       setSortColumn(column);
       setSortDirection('asc');
     }
+    setPagina(0);
   };
 
-  const searchNormalized = removeAccents(search.toLowerCase());
-
-  const filteredColaboradores = hasSearch
-    ? colaboradores
-        .filter((c) => {
-          const searchLower = search.toLowerCase();
-          return (
-            removeAccents((c.colab_nome_completo || '').toLowerCase()).includes(searchNormalized) ||
-            (c.colab_matricula || '').toLowerCase().includes(searchLower) ||
-            c.colab_cpf.toString().includes(search)
-          );
-        })
-    : [];
-
-
-  const sortedColaboradores = [...filteredColaboradores].sort((a, b) => {
-    if (!sortColumn) return 0;
-
-    let comparison = 0;
-    if (sortColumn === 'nome') {
-      comparison = (a.colab_nome_completo || '').localeCompare(
-        b.colab_nome_completo || '',
-        'pt-BR'
-      );
-    } else if (sortColumn === 'ultimo_acesso') {
-      const dateA = a.colab_ultimo_acesso ? new Date(a.colab_ultimo_acesso).getTime() : 0;
-      const dateB = b.colab_ultimo_acesso ? new Date(b.colab_ultimo_acesso).getTime() : 0;
-      comparison = dateA - dateB;
-    }
-
-    return sortDirection === 'asc' ? comparison : -comparison;
-  });
-
-  const selectableColaboradores = sortedColaboradores;
+  // Filtro e ordenação moram no SERVIDOR desde 2026-09-10. Filtrar aqui voltaria a exigir
+  // o conjunto inteiro em memória, e faria o contador `total` (que é do servidor) falar de
+  // um conjunto diferente do que a tabela mostra — a tela mentiria sem quebrar nada.
+  const selectableColaboradores = colaboradores;
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -232,13 +283,8 @@ export default function ColaboradoresList() {
     selectableColaboradores.every(c => selectedIds.has(c.id));
   const someSelected = selectedIds.size > 0;
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
+  // Não há mais spinner de página inteira: sem busca não há carga, então a tela nasce
+  // pronta. O estado de "buscando" é local ao botão e à tabela.
 
   return (
     <div className="space-y-4">
@@ -251,13 +297,26 @@ export default function ColaboradoresList() {
               placeholder="Buscar por nome, matrícula ou CPF..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleBuscar();
+                }
+              }}
               className="pl-10"
+              aria-label="Buscar por nome, matrícula ou CPF"
             />
           </div>
-          <Badge variant="outline" className="gap-1">
-            <Users className="h-3 w-3" />
-            {filteredColaboradores.length} colaborador(es)
-          </Badge>
+          <Button onClick={handleBuscar} disabled={buscaDesabilitada} className="gap-1">
+            {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+            Buscar
+          </Button>
+          {buscou && (
+            <Badge variant="outline" className="gap-1">
+              <Users className="h-3 w-3" />
+              {total} colaborador(es)
+            </Badge>
+          )}
         </div>
         {canEditDelete && someSelected && (
           <div className="flex items-center gap-2">
@@ -275,12 +334,24 @@ export default function ColaboradoresList() {
         )}
       </div>
 
-      {/* Table */}
-      {hasSearch ? (
-        sortedColaboradores.length === 0 ? (
+      {/* Table — TRÊS estados distintos, e confundi-los é o padrão "vazio enquanto
+          carrega" que já custou caro neste repo: "ainda não busquei", "busquei e não
+          achei" e "achei". O primeiro NÃO é um resultado vazio. */}
+      {!buscou ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <Search className="h-12 w-12 mx-auto mb-4 opacity-50" />
+          <p>Informe nome, matrícula ou CPF e clique em Buscar.</p>
+          <p className="text-sm mt-1">
+            A lista não é carregada automaticamente — são milhares de registros.
+          </p>
+        </div>
+      ) : colaboradores.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
             <p>Nenhum colaborador encontrado</p>
+            <p className="text-sm mt-1">
+              A busca diferencia acentos — tente "Jose" e "José".
+            </p>
           </div>
         ) : (
           <div className="rounded-lg border bg-card overflow-hidden">
@@ -319,7 +390,7 @@ export default function ColaboradoresList() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sortedColaboradores.map((colaborador) => {
+                  {colaboradores.map((colaborador) => {
                     return (
                     <TableRow key={colaborador.id} className={cn(
                       "hover:bg-muted/30",
@@ -391,8 +462,15 @@ export default function ColaboradoresList() {
               </Table>
             </div>
           </div>
-        )
-      ) : null}
+        )}
+
+      <PaginacaoBusca
+        buscou={buscou}
+        pagina={pagina}
+        total={total}
+        ocupado={isFetching}
+        onPagina={setPagina}
+      />
 
 
       {/* Delete confirmation */}

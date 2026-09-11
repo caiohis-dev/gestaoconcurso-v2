@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useColaboradores, Colaborador, ColaboradorInsert } from '@/hooks/useColaboradores';
+import { useColaboradoresMutations, Colaborador, ColaboradorInsert } from '@/hooks/useColaboradores';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -93,7 +93,11 @@ const initialFormData = {
 };
 
 export default function ColaboradorDialog({ open, onOpenChange, colaborador, publicMode = false, initialCpf }: ColaboradorDialogProps) {
-  const { create, update, isCreating, isUpdating } = useColaboradores();
+  // 🔴 `useColaboradoresMutations`, não `useColaboradores`: este diálogo nunca leu a
+  // listagem, mas o hook antigo trazia o `useQuery` junto e baixava a tabela inteira para
+  // descartar. Em `/cadastro-publico` o diálogo monta para visitante ANÔNIMO, onde essa
+  // consulta batia na RLS (`42501`) e era repetida 4 vezes pelo retry padrão.
+  const { create, update, isCreating, isUpdating } = useColaboradoresMutations();
   const { bancos } = useBancos();
   const [formData, setFormData] = useState(initialFormData);
   const [errors, setErrors] = useState<Record<string, string>>({});

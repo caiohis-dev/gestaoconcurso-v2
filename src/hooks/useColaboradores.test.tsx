@@ -27,6 +27,8 @@ vi.mock("@/hooks/useAuth", () => ({ useAuth: () => authMock }));
 
 import {
   useColaboradores,
+  useBuscarColaboradores,
+  POR_PAGINA_COLABORADORES,
   mensagemErroExclusaoColaborador,
 } from "@/hooks/useColaboradores";
 
@@ -295,5 +297,142 @@ describe("mensagemErroExclusaoColaborador", () => {
     const msg =
       'update or delete on table "colaboradores" violates foreign key constraint "colaboradores_prova_colaborador_id_fkey" on table "colaboradores_prova"';
     expect(mensagemErroExclusaoColaborador({ message: msg })).toContain("Remova a alocação");
+  });
+});
+
+/**
+ * A busca sob demanda de `/colaboradores` (2026-09-10).
+ *
+ * 🔴 O que estes testes guardam é que a tela NÃO consulta sozinha. Antes, ela baixava os
+ * 774 colaboradores inteiros ao montar — 707 kB, 33 colunas cada, com CPF, PIS e dados
+ * bancários de todo mundo — e refazia isso a cada volta de foco da janela, porque o
+ * `QueryClient` do `App.tsx` nasce sem `staleTime`.
+ */
+describe("useBuscarColaboradores", () => {
+  beforeEach(() => {
+    resetSupabaseMock();
+    toastMock.mockClear();
+    authMock.user = { id: "u1" };
+    authMock.isAdmin = true;
+    authMock.isCoordenador = false;
+  });
+
+  it("🔴 critério VAZIO não consulta nada", async () => {
+    // A barreira é o `enabled` do hook, não o botão desabilitado da tela: quem chamar o
+    // hook com termo vazio por qualquer caminho também não pode disparar consulta.
+    const { result } = renderHookWithProviders(() => useBuscarColaboradores({ termo: "" }));
+
+    await waitFor(() => expect(result.current.buscou).toBe(false));
+    expect(supabaseMock.from).not.toHaveBeenCalled();
+  });
+
+  it("🔴 critério só com espaços também não consulta", async () => {
+    const { result } = renderHookWithProviders(() => useBuscarColaboradores({ termo: "   " }));
+
+    await waitFor(() => expect(result.current.buscou).toBe(false));
+    expect(supabaseMock.from).not.toHaveBeenCalled();
+  });
+
+  it("não consulta sem usuário logado", async () => {
+    authMock.user = null;
+    const { result } = renderHookWithProviders(() => useBuscarColaboradores({ termo: "maria" }));
+
+    await waitFor(() => expect(result.current.buscou).toBe(false));
+    expect(supabaseMock.from).not.toHaveBeenCalled();
+  });
+
+  it("⭐ CONTROLE POSITIVO: com critério, consulta e devolve o registro", async () => {
+    // Sem este, todas as asserções acima passariam mesmo se o hook tivesse parado de
+    // buscar por completo — que é o modo de falha mais fácil de introduzir aqui.
+    setTableResult("colaboradores", { data: [COLABORADOR], error: null, count: 1 });
+
+    const { result } = renderHookWithProviders(() => useBuscarColaboradores({ termo: "maria" }));
+
+    await waitFor(() => expect(result.current.colaboradores).toHaveLength(1));
+    expect(result.current.total).toBe(1);
+    expect(result.current.buscou).toBe(true);
+  });
+
+  it("procura nos três campos e ESCAPA a sintaxe do `or`", async () => {
+    // `%`, `,` e parênteses são sintaxe do PostgREST: um deles digitado na busca
+    // quebraria a expressão inteira, e o erro sairia como 400 sem explicação.
+    setTableResult("colaboradores", { data: [], error: null, count: 0 });
+
+    const { result } = renderHookWithProviders(() =>
+      useBuscarColaboradores({ termo: "ma%ria,(x)" }),
+    );
+    await waitFor(() => expect(result.current.buscou).toBe(true));
+
+    const or = buildersDe("colaboradores")[0].or as ReturnType<typeof vi.fn>;
+    const expressao = or.mock.calls[0][0] as string;
+    expect(expressao).not.toMatch(/[%,()]ria/);
+    expect(expressao).toContain("colab_nome_completo.ilike");
+    expect(expressao).toContain("colab_matricula.ilike");
+    expect(expressao).toContain("colab_cpf.ilike");
+  });
+
+  it("🔴 NÃO seleciona `*` — a listagem não carrega dado bancário", async () => {
+    // O ponto é PII, não bytes: `select('*')` mandava CPF, PIS, agência, conta e chave
+    // PIX de 774 pessoas para o navegador de qualquer coordenador, para exibir 7 campos.
+    setTableResult("colaboradores", { data: [], error: null, count: 0 });
+
+    const { result } = renderHookWithProviders(() => useBuscarColaboradores({ termo: "maria" }));
+    await waitFor(() => expect(result.current.buscou).toBe(true));
+
+    const select = buildersDe("colaboradores")[0].select as ReturnType<typeof vi.fn>;
+    const colunas = select.mock.calls[0][0] as string;
+    expect(colunas).not.toBe("*");
+    for (const proibida of ["colab_pis", "agencia", "conta", "codigo_banco", "colab_email"]) {
+      expect(colunas).not.toContain(proibida);
+    }
+    expect(colunas).toContain("colab_nome_completo");
+  });
+
+  it("pede ao servidor só a fatia da página", async () => {
+    setTableResult("colaboradores", { data: [], error: null, count: 320 });
+
+    const { result } = renderHookWithProviders(() =>
+      useBuscarColaboradores({ termo: "maria", pagina: 2 }),
+    );
+    await waitFor(() => expect(result.current.buscou).toBe(true));
+
+    expect(buildersDe("colaboradores")[0].range).toHaveBeenCalledWith(
+      2 * POR_PAGINA_COLABORADORES,
+      3 * POR_PAGINA_COLABORADORES - 1,
+    );
+    // O total é do SERVIDOR: é ele que diz que existe mais além desta página.
+    expect(result.current.total).toBe(320);
+  });
+
+  it("a ordenação vai ao SERVIDOR, com desempate estável", async () => {
+    setTableResult("colaboradores", { data: [], error: null, count: 0 });
+
+    const { result } = renderHookWithProviders(() =>
+      useBuscarColaboradores({ termo: "maria", ordenarPor: "ultimo_acesso", direcao: "desc" }),
+    );
+    await waitFor(() => expect(result.current.buscou).toBe(true));
+
+    const order = buildersDe("colaboradores")[0].order as ReturnType<typeof vi.fn>;
+    // `nullsFirst: false` põe quem nunca acessou no FIM — ordenar por último acesso
+    // existe para achar essa gente, e o padrão do Postgres entregaria a lista invertida.
+    expect(order).toHaveBeenCalledWith("colab_ultimo_acesso", {
+      ascending: false,
+      nullsFirst: false,
+    });
+    // Sem desempate, duas linhas empatadas trocam de lugar entre páginas: uma se repete
+    // e a outra some. Silenciosamente.
+    expect(order).toHaveBeenCalledWith("id", { ascending: true });
+  });
+
+  it("sem ordenação escolhida, ordena por nome", async () => {
+    setTableResult("colaboradores", { data: [], error: null, count: 0 });
+
+    const { result } = renderHookWithProviders(() => useBuscarColaboradores({ termo: "maria" }));
+    await waitFor(() => expect(result.current.buscou).toBe(true));
+
+    expect(buildersDe("colaboradores")[0].order).toHaveBeenCalledWith("colab_nome_completo", {
+      ascending: true,
+      nullsFirst: false,
+    });
   });
 });

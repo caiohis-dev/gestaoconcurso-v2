@@ -4,8 +4,12 @@ import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/utils";
 
 const colaboradoresHook = vi.hoisted(() => ({ atual: null as unknown }));
+// ⚠️ `useColaboradoresMutations`, não `useColaboradores`: em 2026-09-10 as escritas foram
+// separadas da listagem, porque este diálogo usava só as mutations e pagava um
+// `select` da tabela inteira junto — em `/cadastro-publico`, como anônimo, virava 4
+// requisições recusadas por RLS. O diálogo NÃO deve consultar nada.
 vi.mock("@/hooks/useColaboradores", () => ({
-  useColaboradores: () => colaboradoresHook.atual,
+  useColaboradoresMutations: () => colaboradoresHook.atual,
 }));
 
 vi.mock("@/hooks/useBancos", () => ({

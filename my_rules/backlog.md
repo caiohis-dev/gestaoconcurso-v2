@@ -152,6 +152,49 @@ O que **existe** hoje é verificação manual da autorização de duas delas, em
 
 ---
 
+## 🔴 Selects sem teto: o PostgREST trunca em 1000 EM SILÊNCIO
+
+Achado em 2026-09-10, ao consertar `/colaboradores`. `supabase/config.toml:22` define
+`max_rows = 1000` e o PostgREST **corta a resposta sem erro nenhum** — a tela recebe
+1.000 linhas achando que recebeu todas. ⚠️ Esse é o valor do ambiente **local**; o de
+produção fica nas API settings do dashboard e precisa ser conferido lá.
+
+`/colaboradores` saiu da lista (passou a buscar sob demanda, paginado). O resto continua:
+
+| Onde | Tabela | Por que dói |
+|---|---|---|
+| 🔴 `useFuncoesAssociadas.tsx:19-28` | 3 selects sem filtro | o resultado vira um `Set` que decide se uma função **pode ser excluída**. Truncar libera exclusão de função EM USO — é bug de correção, não de performance |
+| `OcorrenciasProva.tsx:140-143` | `colaboradores` | picker de substituto, sem filtro, busca no cliente. ~774 hoje: o próximo a estourar |
+| `Dashboard.tsx:81-87` e `:109-113` | `colaboradores_prova`, `sala_prova` | agrega no cliente (`new Set(...).size`, soma). Acima de 1000 o card mostra número **errado, sem erro** |
+| `GerenciarProva.tsx:246-259` | `colaboradores_prova` | export XLSX da prova inteira: truncar gera **documento oficial incompleto** |
+| `useColaboradores.tsx` (picker) | `colaboradores` | `GerenciarColaboradoresProva` ainda precisa navegar o conjunto |
+
+**Onde está o padrão a reusar:** `useCandidatos.tsx:137-188` (`.range()` + `count: "exact"`,
+filtro no servidor) e `:288-317` (`buscarRelatorioCompleto`, laço de fatias de 1000 para
+export). A UI é feita à mão em `Candidatos.tsx:488-512` — `components/ui/pagination.tsx`
+existe mas **nenhuma tela o importa**.
+
+## Defaults do `QueryClient`: `staleTime: 0` e refetch a cada foco de janela
+
+`src/App.tsx:38` é `new QueryClient()` **sem `defaultOptions`**, então toda query do app
+é stale na hora e **refaz a cada alt-tab de volta**. Com ~180 ms de RTT para `us-west-2`,
+pesa em toda tela.
+
+🔴 **Não é mudança de uma linha.** `GerenciarSalasDistribuidas.tsx:58-62` tem estado local
+escrito *assumindo* esse comportamento, e `GerenciarSalasDistribuidas.ui.test.tsx:185`
+cobre isso. Mexer no global exige varrer quem depende dele. Único hook que já define
+`staleTime` por conta própria: `useBancos.tsx:22` (1h).
+
+## Busca sensível a acento (colaboradores E candidatos)
+
+Desde 2026-09-10 a busca de `/colaboradores` é server-side, e com isso ficou **sensível a
+acento**: "jose" não acha "José". A de candidatos (`useCandidatos.tsx:171`) sempre foi.
+Com 1.527 nomes acentuados medidos na importação, isso encontra usuário.
+
+Saída: extensão `unaccent` + índice funcional sobre a coluna normalizada — senão a busca
+vira varredura completa. Resolve as **duas** telas de uma vez. Foi adiado de propósito ao
+fechar a busca sob demanda, para não abrir mudança de schema no mesmo tema.
+
 ## Rodar a suíte de testes automaticamente (CI e/ou pre-commit)
 
 **Status:** pendente — aberto em 2026-07-25, junto com a introdução dos testes. **Adiado por decisão do usuário no mesmo dia: "deixar o CI para o final."** Segue sendo o item de maior alavancagem da lista; o adiamento é escolha consciente de ordem, não reavaliação do valor.

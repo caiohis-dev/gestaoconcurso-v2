@@ -56,9 +56,22 @@ describe("CadastroPublico — passo 1 (verificar CPF)", () => {
 
     await digitar(user, CPF_VALIDO);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toContain("check-cpf-colaborador");
+    // ⚠️ Filtra pela URL em vez de contar o `fetch` GLOBAL. Até 2026-09-10 esta asserção
+    // era `toHaveBeenCalledTimes(1)`, e passava por um motivo que não tinha nada a ver
+    // com o que ela mede: o passo seguinte monta o `ColaboradorDialog`, que chamava
+    // `useColaboradores()` → `useAuth()` → EXCEÇÃO, porque `renderWithProviders` não
+    // monta o AuthProvider de propósito. O diálogo morria antes de buscar o catálogo de
+    // bancos, e o contador parava em 1. Separadas as mutations da listagem, o formulário
+    // passou a renderizar de verdade — e a segunda chamada (`/rest/v1/bancos`) é o
+    // diálogo FUNCIONANDO, não regressão.
+    //
+    // Contar tráfego alheio fazia esta asserção depender de um crash. Agora ela mede só
+    // o que promete: a Edge Function foi chamada, uma vez (guarda contra duplo envio).
+    const chamadasEF = () =>
+      fetchMock.mock.calls.filter(([url]) => String(url).includes("check-cpf-colaborador"));
+
+    await waitFor(() => expect(chamadasEF()).toHaveLength(1));
+    const [, init] = chamadasEF()[0];
     // Vai SEM máscara: a EF compara com `colaboradores.colab_cpf`, que guarda só dígitos.
     expect(JSON.parse(init.body)).toEqual({ cpf: "52998224725" });
   });

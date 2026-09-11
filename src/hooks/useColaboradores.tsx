@@ -85,66 +85,56 @@ export interface Colaborador {
 
 export type ColaboradorInsert = Omit<Colaborador, 'id' | 'created_at' | 'updated_at' | 'colab_ultimo_acesso' | 'user_id'>;
 
+/**
+ * As colunas que as LISTAGENS realmente exibem — 7 das 33 da tabela.
+ *
+ * 🔴 Não é micro-otimização: `select('*')` traz CPF, PIS, banco, agência, conta e chave
+ * PIX de todo mundo para o navegador de qualquer coordenador. Medido em 2026-09-10
+ * contra o banco local (771 linhas): 707 kB com `*` contra 198 kB com estas 7 — e o que
+ * sai do fio é a base bancária inteira, que nenhuma listagem mostra.
+ *
+ * ⚠️ Serve os DOIS consumidores de listagem: a busca de `/colaboradores` (nome,
+ * matrícula, CPF, telefone, PIX, último acesso) e o picker de alocação de
+ * `GerenciarColaboradoresProva`, que usa só nome, CPF e telefone — subconjunto deste.
+ * Antes de tirar uma coluna daqui, confira os dois.
+ *
+ * A EDIÇÃO não depende disto: `ColaboradoresList.handleEdit` busca a linha completa com
+ * `.eq('id').single()` no momento do clique.
+ */
+const COLUNAS_LISTAGEM =
+  'id, colab_matricula, colab_nome_completo, colab_cpf, colab_telefone, colab_chave_pix, colab_ultimo_acesso';
+
+/** O recorte que as listagens recebem. Ver {@link COLUNAS_LISTAGEM}. */
+export type ColaboradorListagem = Pick<
+  Colaborador,
+  | 'id'
+  | 'colab_matricula'
+  | 'colab_nome_completo'
+  | 'colab_cpf'
+  | 'colab_telefone'
+  | 'colab_chave_pix'
+  | 'colab_ultimo_acesso'
+>;
+
 export interface UseColaboradoresOptions {
   /** When true, fetches all collaborators regardless of role (for adding to exams) */
   fetchAll?: boolean;
 }
 
-export function useColaboradores(options: UseColaboradoresOptions = {}) {
-  const { fetchAll = false } = options;
+/**
+ * Só as escritas, sem consulta nenhuma.
+ *
+ * 🔴 Existe porque `ColaboradorDialog` usava `useColaboradores()` apenas pelas mutations
+ * — e pagava a listagem inteira junto, sob outra `queryKey`, para jogar fora. Em
+ * `/cadastro-publico` era pior: o diálogo monta para visitante ANÔNIMO, a consulta batia
+ * na RLS (`42501 permission denied`) e o React Query, sem `retry` configurado, repetia
+ * 4 vezes por visita. Medido em 2026-09-10.
+ *
+ * Quem precisa das duas coisas usa `useColaboradores`, que compõe este hook.
+ */
+export function useColaboradoresMutations() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { user, isAdmin, isCoordenador } = useAuth();
-
-  const query = useQuery({
-    queryKey: ['colaboradores', user?.id, isAdmin, isCoordenador, fetchAll],
-    queryFn: async () => {
-      // If fetchAll is true or user is admin, get all colaboradores
-      if (fetchAll || isAdmin) {
-        const { data, error } = await supabase
-          .from('colaboradores')
-          .select('*')
-          .order('colab_nome_completo', { ascending: true });
-
-        if (error) throw error;
-        return data as Colaborador[];
-      }
-
-      // If user is coordenador, get only their colaboradores
-      if (isCoordenador && user?.id) {
-        // Get the list of colaborador IDs that this coordinator can see
-        const { data: allowedIds, error: idsError } = await supabase.rpc(
-          'get_coordenador_colaboradores',
-          { p_user_id: user.id }
-        );
-
-        if (idsError) throw idsError;
-
-        if (!allowedIds || allowedIds.length === 0) {
-          return [] as Colaborador[];
-        }
-
-        const { data, error } = await supabase
-          .from('colaboradores')
-          .select('*')
-          .in('id', allowedIds)
-          .order('colab_nome_completo', { ascending: true });
-
-        if (error) throw error;
-        return data as Colaborador[];
-      }
-
-      // Regular users can see all colaboradores (read-only)
-      const { data, error } = await supabase
-        .from('colaboradores')
-        .select('*')
-        .order('colab_nome_completo', { ascending: true });
-
-      if (error) throw error;
-      return data as Colaborador[];
-    },
-    enabled: !!user,
-  });
 
   const createMutation = useMutation({
     mutationFn: async (colaborador: ColaboradorInsert) => {
@@ -245,14 +235,174 @@ export function useColaboradores(options: UseColaboradoresOptions = {}) {
   });
 
   return {
-    colaboradores: query.data ?? [],
-    isLoading: query.isLoading,
-    error: query.error,
     create: createMutation.mutate,
     update: updateMutation.mutate,
     delete: deleteMutation.mutate,
     isCreating: createMutation.isPending,
     isUpdating: updateMutation.isPending,
     isDeleting: deleteMutation.isPending,
+  };
+}
+
+/**
+ * Listagem completa dos colaboradores — o PICKER de alocação.
+ *
+ * ⚠️ Isto NÃO é o que `/colaboradores` usa. Aquela tela passou a buscar sob demanda em
+ * 2026-09-10 (ver {@link useBuscarColaboradores}); este hook ficou para
+ * `GerenciarColaboradoresProva`, que precisa NAVEGAR o conjunto para escolher quem
+ * alocar, e por isso não comporta "só busca com critério".
+ *
+ * 🔴 O teto do PostgREST (`max_rows`, 1000 por padrão) vale aqui e ele TRUNCA EM
+ * SILÊNCIO. Com ~774 colaboradores ainda cabe, mas este hook é o próximo a estourar —
+ * e o sintoma será um colaborador que "não existe" no picker, sem erro nenhum.
+ */
+export function useColaboradores(options: UseColaboradoresOptions = {}) {
+  const { fetchAll = false } = options;
+  const { user, isAdmin, isCoordenador } = useAuth();
+  const mutations = useColaboradoresMutations();
+
+  const query = useQuery({
+    queryKey: ['colaboradores', user?.id, isAdmin, isCoordenador, fetchAll],
+    queryFn: async () => {
+      // If fetchAll is true or user is admin, get all colaboradores
+      if (fetchAll || isAdmin) {
+        const { data, error } = await supabase
+          .from('colaboradores')
+          .select(COLUNAS_LISTAGEM)
+          .order('colab_nome_completo', { ascending: true });
+
+        if (error) throw error;
+        return data as unknown as ColaboradorListagem[];
+      }
+
+      // If user is coordenador, get only their colaboradores
+      if (isCoordenador && user?.id) {
+        // Get the list of colaborador IDs that this coordinator can see
+        const { data: allowedIds, error: idsError } = await supabase.rpc(
+          'get_coordenador_colaboradores',
+          { p_user_id: user.id }
+        );
+
+        if (idsError) throw idsError;
+
+        if (!allowedIds || allowedIds.length === 0) {
+          return [] as ColaboradorListagem[];
+        }
+
+        const { data, error } = await supabase
+          .from('colaboradores')
+          .select(COLUNAS_LISTAGEM)
+          .in('id', allowedIds)
+          .order('colab_nome_completo', { ascending: true });
+
+        if (error) throw error;
+        return data as unknown as ColaboradorListagem[];
+      }
+
+      // Regular users can see all colaboradores (read-only)
+      const { data, error } = await supabase
+        .from('colaboradores')
+        .select(COLUNAS_LISTAGEM)
+        .order('colab_nome_completo', { ascending: true });
+
+      if (error) throw error;
+      return data as unknown as ColaboradorListagem[];
+    },
+    enabled: !!user,
+  });
+
+  return {
+    colaboradores: query.data ?? [],
+    isLoading: query.isLoading,
+    error: query.error,
+    ...mutations,
+  };
+}
+
+export type OrdemColaboradores = 'nome' | 'ultimo_acesso';
+
+const COLUNA_ORDEM: Record<OrdemColaboradores, string> = {
+  nome: 'colab_nome_completo',
+  ultimo_acesso: 'colab_ultimo_acesso',
+};
+
+export const POR_PAGINA_COLABORADORES = 50;
+
+export interface FiltroColaboradores {
+  /** Critério digitado. Vazio (ou só espaços) NÃO consulta — ver `enabled` abaixo. */
+  termo: string;
+  pagina?: number;
+  porPagina?: number;
+  ordenarPor?: OrdemColaboradores | null;
+  direcao?: 'asc' | 'desc';
+}
+
+/**
+ * Busca paginada de colaboradores, SOB DEMANDA.
+ *
+ * 🔴 `enabled` é a barreira, não o botão desabilitado. A tela não consulta no load nem
+ * com critério vazio — decisão do usuário em 2026-09-10, depois de medir que a listagem
+ * antiga baixava 707 kB (33 colunas × 771 linhas) a cada montagem E a cada volta de foco
+ * da janela, já que o `QueryClient` do `App.tsx` nasce sem `staleTime`.
+ *
+ * ⚠️ A busca é SENSÍVEL A ACENTO, e isto é uma regressão consciente: a versão anterior
+ * normalizava no cliente (`removeAccents`), então "jose" achava "José" e deixou de achar.
+ * Foi aceito para não abrir mudança de schema — tirar o acento no servidor exige a
+ * extensão `unaccent` mais índice funcional. Segue o mesmo comportamento da busca de
+ * candidatos (`useCandidatos.tsx`), que já era assim.
+ *
+ * A paginação não é enfeite: uma busca por "a" volta a encostar no teto de 1000 linhas
+ * que o PostgREST aplica em silêncio.
+ */
+export function useBuscarColaboradores({
+  termo,
+  pagina = 0,
+  porPagina = POR_PAGINA_COLABORADORES,
+  ordenarPor = null,
+  direcao = 'asc',
+}: FiltroColaboradores) {
+  const { user } = useAuth();
+  const criterio = termo.trim();
+
+  const query = useQuery({
+    queryKey: ['colaboradores', 'busca', user?.id, criterio, pagina, porPagina, ordenarPor, direcao],
+    enabled: !!user && criterio.length > 0,
+    queryFn: async () => {
+      // Mesmo escape de `useCandidatos`: `%`, `,` e parênteses são sintaxe do `or` do
+      // PostgREST, e um deles digitado na busca quebraria a expressão inteira.
+      const escapado = criterio.replace(/[%,()]/g, ' ');
+
+      const coluna = ordenarPor ? COLUNA_ORDEM[ordenarPor] : 'colab_nome_completo';
+
+      const { data, error, count } = await supabase
+        .from('colaboradores')
+        .select(COLUNAS_LISTAGEM, { count: 'exact' })
+        .or(
+          `colab_nome_completo.ilike.%${escapado}%,colab_matricula.ilike.%${escapado}%,colab_cpf.ilike.%${escapado}%`
+        )
+        // `nullsFirst: false` põe quem NUNCA acessou no fim, não no topo — ordenar por
+        // "último acesso" existe justamente para achar essa gente, e o padrão do Postgres
+        // (NULLS FIRST no DESC) entregaria a lista ao contrário do esperado.
+        .order(coluna, { ascending: direcao === 'asc', nullsFirst: false })
+        // Desempate estável: sem ele, duas linhas com o mesmo nome podem trocar de lugar
+        // entre uma página e outra, repetindo uma e escondendo a outra.
+        .order('id', { ascending: true })
+        .range(pagina * porPagina, pagina * porPagina + porPagina - 1);
+
+      if (error) throw error;
+      return {
+        colaboradores: (data ?? []) as unknown as ColaboradorListagem[],
+        total: count ?? 0,
+      };
+    },
+  });
+
+  return {
+    colaboradores: query.data?.colaboradores ?? [],
+    total: query.data?.total ?? 0,
+    isFetching: query.isFetching,
+    error: query.error,
+    /** Houve uma busca concluída? Distingue "ainda não buscou" de "não achou nada". */
+    buscou: query.isSuccess,
   };
 }
