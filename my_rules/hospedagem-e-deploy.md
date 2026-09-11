@@ -6,6 +6,17 @@ Como o gestaoconcurso vai ao ar. Par de [`banco-producao.md`](./banco-producao.m
 >
 > O deploy foi executado em outra sessão; o ferramental vive fora deste repo, em `configura_server_gestaoconcurso`. 🟢 **O secret `SITE_URL` e as redirect URLs — que ficaram como ressalva aqui desde 13/08 — foram CONFIRMADOS em 2026-09-09**, por uma recuperação de senha real: o e-mail chegou com o visual da FEVRE e o link abriu `fevre.online/redefinir-senha`.
 >
+> 🟢 **Deploy mais recente: 2026-09-10, release `v2.1.0`** (commit `f17a56f`) — e foi o primeiro feito pelo ritual inteiro no mesmo evento: merge, tag, `prod:push`, `deploy.sh`. **Como conferir que o deploy PEGOU**, além do "concluído" do script (que sempre sucede, porque o `rsync` sucede):
+>
+> ```bash
+> curl -s https://fevre.online | grep -o 'assets/index-[A-Za-z0-9]*\.js'   # bate com o build?
+> curl -s https://fevre.online/assets/index-<hash>.js | grep -c '127.0.0.1'  # tem de ser 0
+> ```
+>
+> Em 10/09: hash idêntico ao buildado, **0** ocorrências de `127.0.0.1` e 4 do projeto de produção.
+>
+> 🔴 **BANCO ANTES DO SITE.** O bundle da v2.1.0 chama a RPC `totais_da_prova` e a coluna computada `colab_nome_busca`. Publicar o site primeiro quebraria `/provas` e a busca de `/colaboradores` na cara do usuário; na ordem certa, o banco ganha dois objetos que o bundle antigo não usa. A ordem foi verificada por medição, não por memória — ver [`versionamento.md`](./versionamento.md).
+>
 > *(Este bloco dizia, até 2026-08-13: "nada está no ar… o servidor ainda não foi provisionado e o DNS de `fevre.online` ainda não aponta para lugar nenhum".)*
 
 ---

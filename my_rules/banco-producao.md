@@ -205,6 +205,8 @@ Medido depois da volta, com `docs/diagnostico-io-banco-producao.sql` (100% leitu
 
 > 🟢 **ESTE ROTEIRO JÁ FOI EXECUTADO — 2026-08-08 (passos 0 a 5, 7 a 9) e 2026-08-10 (passo 6 + o login real).** O banco de produção da v2 existe em **`zugigdpuxbpogoepdawm`** (us-west-2, PG 17.6.1.155, plano Free), com as 122 migrations, os dados carregados (controle positivo 12/12), as 8 edge functions com secrets, o Auth parametrizado e o **login real aprovado**. O repo terminou **deslinkado**.
 >
+> 🔵 **Desde então, produção recebeu mais dois lotes**, ambos pelo ritual de release: as **2** migrations do keep-alive em **2026-09-09** (`v2.0.0`) e as **2** de `colab_nome_busca` + `totais_da_prova` em **2026-09-10** (`v2.1.0`). São **126** migrations hoje — ⚠️ **não confie neste número**, ele envelhece a cada release; confira com `ls supabase/migrations/*.sql | wc -l` e com o `prod:push:dry`, que é quem sabe o que falta lá.
+>
 > ⚠️ **Ele fica aqui como roteiro, não como pendência.** Vale para uma eventual recriação do banco — e os passos que dependem de estado (0, 1, 2) só se repetem nesse caso. O registro do que foi medido e do que deu errado na execução está em [`analises/concluidos/roadmap-bootstrap-banco-producao.yaml`](./analises/concluidos/roadmap-bootstrap-banco-producao.yaml).
 >
 > 🔴 **O dia a dia agora é outro:** produção **existe** e é dona dos dados. A regra do topo deste arquivo passa a ter dente — migrations acumulam em `dev` e só sobem em release estável tagueada, com `prod:push:dry` antes.

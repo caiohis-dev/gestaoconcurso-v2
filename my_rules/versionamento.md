@@ -21,14 +21,21 @@ Duas branches de vida longa, com papéis diferentes. Combinado em 2026-07-13.
 **`dev` é a branch de integração** e a base do dia a dia. É de `dev` que saem as branches de tema e é para `dev` que elas voltam. Ela deve estar sempre em estado consistente (buildando, sem migration pela metade) — é ela que faz o papel que `main` normalmente faria.
 
 ```
-                         site no ar (13/08)      main alcanca dev (09/09)
-                         a partir da DEV                    │
-main   ──●(v1.0.0)──────────────────────────────────────────●(v2.0.0)
-           \                                               /
-dev         ●──●──●──●──●──●──●──●──●──●──●──●──●──●──●──●──●──●──●──●
-             \    /       \  /       \  /                      (segue a frente:
-feat/*        ●──●         ●●          ●●                       so documentacao)
+                         site no ar (13/08)   main alcanca dev   1a release
+                         a partir da DEV           (09/09)       incremental
+                                                      │           (10/09)
+main   ──●(v1.0.0)────────────────────────────────────●──────────●(v2.1.0)
+           \                                         /(v2.0.0)  /
+dev         ●──●──●──●──●──●──●──●──●──●──●──●──●──●──●──●──●──●●
+             \    /       \  /       \  /                        │
+feat/*        ●──●         ●●          ●●                  main == dev == prod
 ```
+
+🔵 **Em 2026-09-10 as três coincidem pela primeira vez em repouso** — `main`, `dev` e o
+schema de produção, todos em `f17a56f` / `v2.1.0`. A v2.0.0 levou um mês para alcançar
+esse estado; a v2.1.0 nasceu já nele, porque foi a **primeira release incremental** —
+merge, tag, `prod:push` e `deploy.sh` no mesmo evento, que é o ritual que esta página
+descreve e que até então nunca tinha acontecido como descrito.
 
 **Por que a `main` ficou congelada tanto tempo:** a v2 subiria como um bloco — banco novo, frontend novo, hospedagem nova (ver [`banco-producao.md`](./banco-producao.md)). Não existia subida incremental enquanto essa fundação não estivesse no ar, então `main` avançar a cada merge não significaria nada, e apagaria a única coisa que ela então significava: o retrato do que rodou (a v1).
 
@@ -48,6 +55,10 @@ Versionamento semântico, com prefixo `v`:
   **`v2.0.0` nasceu em 2026-09-09**, no commit `e36fd87`, quando `main` alcançou `dev` e as duas migrations do keep-alive foram para produção. Não existe tag em `dev`.
 
   ⚠️ **A tag NÃO marca o dia em que o sistema foi ao ar.** O site subiu em 13/08, da `dev`, quase um mês antes. `v2.0.0` marca o primeiro momento em que **código, schema de produção e `main` coincidiram** — que é o que a tag precisa significar para servir de ponto de retorno. Quem procurar "o commit que foi ao ar em agosto" não vai achar tag nenhuma, e isso é fato, não descuido.
+
+  **`v2.1.0` nasceu em 2026-09-10**, no commit `f17a56f`. É a **primeira release feita pelo ritual inteiro, na ordem certa e no mesmo evento**: merge `dev`→`main` (fast-forward, como na v2.0.0), tag, `prod:push` das 2 migrations, `deploy.sh`. Entregou a busca sob demanda de `/colaboradores` (com acento resolvido) e os totalizadores de `/provas` no modal.
+
+  🔴 **A ordem foi BANCO ANTES DO SITE, e não é detalhe.** O bundle da v2.1.0 chama a RPC `totais_da_prova` e a coluna computada `colab_nome_busca`; publicar o site primeiro quebraria as duas telas na cara do usuário. Na ordem certa, o banco ganha dois objetos que o bundle antigo simplesmente não usa — inofensivo. **Medido antes de começar**, com duas requisições de leitura e sem linkar: `PGRST202` para a RPC e `42703` para a coluna, os dois virando `42501 permission denied` depois do push. Um `200` ali teria sido notícia ruim: significaria que o `REVOKE` de `anon` não pegou.
 
 Crie a tag no commit que efetivamente entrega a versão, com mensagem: `git tag -a v2.1.0 -m "..."`.
 
