@@ -1312,6 +1312,10 @@ export type Database = {
         Args: { p_pcd: boolean; p_sala_especial: string }
         Returns: boolean
       }
+      funcoes_em_uso: {
+        Args: never
+        Returns: string[]
+      }
       totais_da_prova: {
         Args: {
           p_prova_id: string

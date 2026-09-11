@@ -2,9 +2,8 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { waitFor } from "@testing-library/react";
 import {
   supabaseMock,
-  setTableResult,
+  setRpcResult,
   resetSupabaseMock,
-  buildersDaTabela,
   erroPostgrest,
 } from "@/test/supabase-mock";
 import { renderHookWithProviders } from "@/test/utils";
@@ -16,87 +15,97 @@ vi.mock("@/integrations/supabase/client", async () => {
 
 import { useFuncoesAssociadas } from "@/hooks/useFuncoesAssociadas";
 
+/** As três que a RPC consulta — do lado de DENTRO do banco. O hook não deve tocá-las. */
 const TABELAS = ["valores_funcao_prova", "colaboradores_prova", "meta_colaboradores_unidade"];
-
-const vazio = () => TABELAS.forEach((t) => setTableResult(t, { data: [], error: null }));
 
 /**
  * Este hook responde a UMA pergunta: "esta função já é usada por alguma prova?" — e a
  * resposta decide se o botão de excluir fica habilitado.
  *
- * ⚠️ O CONTEXTO QUE TORNA ISSO CRÍTICO: as FKs de `funcao_id` **não protegem, apagam**
- * (verificado no banco em 2026-07-25):
+ * ─────────────────────────────────────────────────────────────────────────────
+ * 🔵 CORRIGIDO EM 2026-09-10 — e a correção vale mais que o resto do arquivo.
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Este cabeçalho afirmava, desde 2026-07-25:
  *
- *   colaboradores_prova.funcao_id ......... ON DELETE SET NULL
- *   meta_colaboradores_unidade.funcao_id .. ON DELETE CASCADE
- *   valores_funcao_prova.funcao_id ........ ON DELETE CASCADE
+ *   "as FKs de `funcao_id` não protegem, apagam:
+ *      colaboradores_prova ......... ON DELETE SET NULL
+ *      meta_colaboradores_unidade .. ON DELETE CASCADE
+ *      valores_funcao_prova ........ ON DELETE CASCADE
+ *    Excluir uma função ASSOCIADA não dá erro — zera a função de todas as alocações e
+ *    apaga metas e valores, em silêncio. A única barreira contra isso é este hook, no
+ *    cliente. NÃO HÁ REDE NO BANCO."
  *
- * Ou seja: excluir uma função ASSOCIADA não dá erro — ela **zera a função de todas as
- * alocações** e **apaga metas e valores de pagamento** de todas as provas, em silêncio.
- * A única barreira contra isso é este hook, no cliente. Não há rede no banco.
+ * **Era verdade quando foi escrito e virou falso UM DIA DEPOIS**, na migration
+ * `20260726190000_funcoes_colaboradores_on_delete_restrict.sql`. Medido em 2026-09-10:
+ * as **três FKs são `RESTRICT`**. O banco recusa, nomeando
+ * `colaboradores_prova_funcao_id_fkey`, e `useFuncoesColaboradores` traduz o `23503`.
+ *
+ * 🔴 **Este aviso envelhecido cobrou o preço que o `CLAUDE.md` prevê.** Em 2026-09-10 ele
+ * foi lido de boa-fé e virou um item de backlog afirmando que truncar a consulta
+ * "libera exclusão de função em uso" e que era "bug de correção" — falso nos dois pontos.
+ * O item só foi corrigido porque alguém foi medir as FKs antes de executá-lo.
+ *
+ * ⚠️ **O que este hook é hoje: CONVENIÊNCIA, não barreira.** Se ele falhar ou vier
+ * incompleto, o pior caso é um botão habilitado que devia estar cinza — o usuário clica e
+ * recebe a recusa do banco. **Não há perda de dado por este caminho.**
  */
 describe("useFuncoesAssociadas", () => {
   beforeEach(() => {
     resetSupabaseMock();
-    vazio();
+    setRpcResult("funcoes_em_uso", { data: [], error: null });
   });
 
-  it("pergunta às três tabelas que podem vincular uma função", async () => {
+  it("🔴 pergunta à RPC, e NÃO às três tabelas", async () => {
+    // O ponto do tema (2026-09-10). Antes, o hook baixava as três tabelas inteiras —
+    // 42.778 bytes em 3 requisições, medidos — para montar o Set no cliente. Pior: o
+    // PostgREST trunca em `max_rows` SEM ERRO, então passar de 1000 linhas em qualquer
+    // uma faria o Set nascer incompleto. Agregar no banco é o que fecha isso; nenhum
+    // conserto no cliente alcança.
     const { result } = renderHookWithProviders(() => useFuncoesAssociadas());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    // Se uma tabela nova passar a referenciar funcao_id e não entrar aqui, a exclusão
-    // volta a ser liberada para funções em uso — sem nada acusar.
+    expect(supabaseMock.rpc).toHaveBeenCalledWith("funcoes_em_uso");
     const consultadas = supabaseMock.from.mock.calls.map((c) => c[0]);
-    expect(consultadas.sort()).toEqual([...TABELAS].sort());
+    for (const tabela of TABELAS) {
+      expect(consultadas).not.toContain(tabela);
+    }
   });
 
-  it("une os ids das três origens, sem repetir", async () => {
-    setTableResult("valores_funcao_prova", { data: [{ funcao_id: "f1" }], error: null });
-    setTableResult("colaboradores_prova", {
-      data: [{ funcao_id: "f1" }, { funcao_id: "f2" }],
-      error: null,
-    });
-    setTableResult("meta_colaboradores_unidade", { data: [{ funcao_id: "f3" }], error: null });
+  it("⭐ CONTROLE POSITIVO: monta o Set com o que a RPC devolveu", async () => {
+    setRpcResult("funcoes_em_uso", { data: ["f1", "f2", "f3"], error: null });
 
     const { result } = renderHookWithProviders(() => useFuncoesAssociadas());
     await waitFor(() => expect(result.current.funcoesAssociadas.size).toBe(3));
 
-    // f1 aparece em duas tabelas e conta uma vez só.
     expect([...result.current.funcoesAssociadas].sort()).toEqual(["f1", "f2", "f3"]);
     expect(result.current.isFuncaoAssociada("f2")).toBe(true);
     expect(result.current.isFuncaoAssociada("f-livre")).toBe(false);
   });
 
-  it("ignora vínculo com funcao_id nulo", async () => {
-    // `colaboradores_prova.funcao_id` é nullable — e fica nulo justamente quando uma
-    // função é excluída (ON DELETE SET NULL). Um nulo não associa ninguém a nada.
-    setTableResult("colaboradores_prova", {
-      data: [{ funcao_id: null }, { funcao_id: "f1" }],
-      error: null,
-    });
+  it("não repete id, mesmo se a RPC devolver duplicata", async () => {
+    // O `UNION` da RPC já deduplica; o `Set` aqui é cinto e suspensório, e custa nada.
+    setRpcResult("funcoes_em_uso", { data: ["f1", "f1", "f2"], error: null });
 
     const { result } = renderHookWithProviders(() => useFuncoesAssociadas());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    expect([...result.current.funcoesAssociadas]).toEqual(["f1"]);
+    expect([...result.current.funcoesAssociadas].sort()).toEqual(["f1", "f2"]);
   });
 
   it("⚠️ ATENÇÃO: isFuncaoAssociada responde FALSE enquanto carrega", async () => {
     // `query.data?.has(id) ?? false` — durante a carga, TODA função parece livre.
     //
-    // Como as FKs apagam em cascata (ver o cabeçalho), um botão de excluir habilitado
-    // nessa janela é destrutivo de verdade. O que segura hoje é a PÁGINA, não o hook:
-    // `FuncoesColaboradores.tsx` só renderiza a tabela depois de `isLoadingAssociacoes`
-    // virar false.
+    // 🔵 A CONSEQUÊNCIA MUDOU, o aviso não. Quando este caso foi escrito, as FKs apagavam
+    // em cascata e um botão habilitado nessa janela era destrutivo. Hoje as FKs são
+    // RESTRICT: o pior caso é o usuário clicar e o banco recusar. Continua sendo UX ruim,
+    // e o que segura é a PÁGINA, não o hook — `FuncoesColaboradores.tsx` só renderiza a
+    // tabela depois de `isLoadingAssociacoes` virar false.
     //
     // Portanto: **quem reusar este hook precisa gatear pelo `isLoading` também.**
-    // Confiar só em `isFuncaoAssociada` reabre a janela num lugar novo.
-    setTableResult("valores_funcao_prova", { data: [{ funcao_id: "f1" }], error: null });
+    setRpcResult("funcoes_em_uso", { data: ["f1"], error: null });
 
     const { result } = renderHookWithProviders(() => useFuncoesAssociadas());
 
-    // Primeiro render: já responde, e responde "não associada" para uma função que É.
     expect(result.current.isLoading).toBe(true);
     expect(result.current.isFuncaoAssociada("f1")).toBe(false);
 
@@ -111,16 +120,15 @@ describe("useFuncoesAssociadas", () => {
     expect(result.current.funcoesAssociadas.size).toBe(0);
   });
 
-  it.each(TABELAS)("falha fechada quando %s dá erro", async (tabela) => {
-    // Falhar por completo é o comportamento certo aqui: uma resposta PARCIAL diria
-    // "não associada" para funções que estão em uso na tabela que falhou — e o botão
-    // de excluir seria liberado sobre um cascade destrutivo.
-    setTableResult(tabela, { data: null, error: erroPostgrest("42501", "sem permissão") });
+  it("falha fechada quando a RPC dá erro", async () => {
+    // Resposta parcial diria "não associada" para função em uso, e o botão de excluir
+    // seria liberado. Falhar por completo é o comportamento certo — a página mostra o
+    // estado de carga e não renderiza a tabela.
+    setRpcResult("funcoes_em_uso", { data: null, error: erroPostgrest("42501", "sem permissão") });
 
     const { result } = renderHookWithProviders(() => useFuncoesAssociadas());
     await waitFor(() => expect(result.current.error).toBeTruthy());
 
     expect(result.current.funcoesAssociadas.size).toBe(0);
-    expect(buildersDaTabela(tabela).length).toBeGreaterThan(0);
   });
 });

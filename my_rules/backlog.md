@@ -163,7 +163,7 @@ produção fica nas API settings do dashboard e precisa ser conferido lá.
 
 | Onde | Tabela | Por que dói |
 |---|---|---|
-| 🔴 `useFuncoesAssociadas.tsx:19-28` | 3 selects sem filtro | o resultado vira um `Set` que decide se uma função **pode ser excluída**. Truncar libera exclusão de função EM USO — é bug de correção, não de performance |
+| ✅ ~~`useFuncoesAssociadas.tsx`~~ | — | **FECHADO em 2026-09-10** pela RPC `funcoes_em_uso`: 42,8 kB em 3 requisições viraram 680 bytes em uma, e o teto de 1000 deixou de alcançar a tela |
 | `OcorrenciasProva.tsx:140-143` | `colaboradores` | picker de substituto, sem filtro, busca no cliente. ~774 hoje: o próximo a estourar |
 | `Dashboard.tsx:81-87` e `:109-113` | `colaboradores_prova`, `sala_prova` | agrega no cliente (`new Set(...).size`, soma). Acima de 1000 o card mostra número **errado, sem erro** |
 | `GerenciarProva.tsx:246-259` | `colaboradores_prova` | export XLSX da prova inteira: truncar gera **documento oficial incompleto** |
@@ -173,6 +173,25 @@ produção fica nas API settings do dashboard e precisa ser conferido lá.
 filtro no servidor) e `:288-317` (`buscarRelatorioCompleto`, laço de fatias de 1000 para
 export). A UI é feita à mão em `Candidatos.tsx:488-512` — `components/ui/pagination.tsx`
 existe mas **nenhuma tela o importa**.
+
+## ✅ `useFuncoesAssociadas` — 42 kB para calcular booleanos — FECHADO em 2026-09-10
+
+**Status:** ✅ **resolvido no mesmo dia**, pela RPC `funcoes_em_uso` (migration `20260911022341`) — 42,8 kB em 3 requisições viraram **680 bytes em uma**, e a tela saiu do alcance do teto de 1000. Bateria em `docs/bateria-funcoes-em-uso.sql`, rodada. **Fica aqui, e não em `concluidos/`, pelo que a correção da premissa ensina.** Aberto em 2026-09-10. 🔴 **A primeira versão deste item afirmava coisa errada, e a correção é a parte que vale ler.**
+**Área:** Aplicação de Provas — `/funcoes-colaboradores`
+
+Eu escrevi, ao abrir o item: *"o resultado vira um `Set` que decide se uma função **pode ser excluída**. Truncar libera exclusão de função EM USO — é bug de correção, não de performance."* **Medido no mesmo dia, é falso nos três pontos:**
+
+| Afirmado | Medido |
+|---|---|
+| truncar libera exclusão de função em uso | as **3 FKs são `RESTRICT`** — o banco recusa |
+| é bug de correção | a UI **já traduz** o `23503` (`useFuncoesColaboradores.tsx:42`) |
+| risco ativo | 554 / 186 / 24 linhas — nenhuma perto do teto de 1000 |
+
+⚠️ **E a primeira tentativa de provar a recusa provou a regra ERRADA.** Apagar "Coordenador Geral" foi recusado por `prevent_system_funcao_changes()` ("não é permitido excluir funções básicas do sistema"), não pela FK — é o padrão de **ofuscação** que o `CLAUDE.md` §8 descreve. Só com uma função `cargo_editavel = true` **e** em uso a FK apareceu, nomeada: `colaboradores_prova_funcao_id_fkey`. **Ao provar uma recusa, leia o NOME de quem barrou.**
+
+**O que sobra, e é o item de verdade:** `useFuncoesAssociadas` faz **3 consultas sem filtro** (42.778 bytes medidos) para produzir um `Set` de ids. O `Set` só desabilita o botão de excluir e escreve o tooltip. Se um dia passar de 1000 linhas, o sintoma é o botão **não** desabilitar: o usuário clica, o banco recusa, e ele vê a mensagem traduzida. **Degradação de UX, não perda de dado.**
+
+**A saída é a mesma de `totais_da_prova` (10/09):** uma RPC que devolve os ids das funções em uso, agregando no banco. Passa de 42,8 kB em 3 requisições para menos de 1 kB em uma, e fica **imune ao teto de 1000** — que é o único jeito de fechar o risco futuro, porque nenhum conserto no cliente o alcança.
 
 ## Defaults do `QueryClient`: `staleTime: 0` e refetch a cada foco de janela
 

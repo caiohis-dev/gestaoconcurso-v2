@@ -48,7 +48,7 @@ Dentro de uma doc viva, um `⚠️` marcando que *aquela frase específica* mudo
 | Mexer em / entender um **módulo** | `my_rules/estrutura/modulos/<id>/00-modulo.md` — o contrato | Não comece por `arquitetura-geral.md`, nem por grep |
 | **Autorização**, papéis, login, RLS, guard de rota | `estrutura/transversais/auth-e-permissoes.md` **+** `src/pages/guards.test.tsx` (a matriz executável) | Não deduza papel lendo página por página |
 | Implementar/mexer numa **regra de negócio**, constraint, exclusão | `estrutura/transversais/invariantes.md` — o mapa + a lista de 6 perguntas | ⚠️ Não implemente regra num `if` do hook: ela não vale para PostgREST, EF nem script |
-| Escrever **teste** | `estrutura/transversais/testes.md` — as **11 armadilhas** | Não escreva antes de lê-las; várias já custaram retrabalho |
+| Escrever **teste** | `estrutura/transversais/testes.md` — as **12 armadilhas** | Não escreva antes de lê-las; várias já custaram retrabalho |
 | **E-mail**, Edge Functions | `estrutura/transversais/integracoes-externas.md` | — |
 | **Banco local**, migrations, seed, dump | `estrutura/transversais/desenvolvimento-local.md` | Não presuma a ordem de carga: migration ≠ `seed.pos.sql` ≠ dump |
 | **Constraint** / regra no banco | `analises/concluidos/roadmap-db-constraints.yaml` + o módulo dono da tabela | Não crie CHECK sem **medir o dado existente** antes |
@@ -156,7 +156,7 @@ sg docker -c 'npx supabase db reset'    # aplica migrations + os 3 seeds
 **Não há CI.** Nada roda a suíte sozinho; cada tema fechado depende de alguém lembrar. É o item de maior alavancagem do backlog, adiado por decisão do usuário.
 
 ```bash
-npm test                                  # 1342 testes em 69 arquivos
+npm test                                  # 1340 testes em 69 arquivos
 npx tsc --noEmit -p tsconfig.app.json     # tem de sair limpo
 npm run build
 npm run lint                              # baseline 117 (59 erros, 58 avisos)
