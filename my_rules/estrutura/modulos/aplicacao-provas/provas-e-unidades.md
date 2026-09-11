@@ -2,6 +2,7 @@
 
 > Documento de área do módulo **Aplicação de Provas** — comece pelo contrato em [`00-modulo.md`](./00-modulo.md). A alocação de pessoas dentro de uma prova/unidade fica em [`alocacao-e-funcoes.md`](./alocacao-e-funcoes.md); ocorrências durante a prova em [`ocorrencias.md`](./ocorrencias.md); documentos gerados a partir de uma prova finalizada em [`documentos-e-relatorios.md`](./documentos-e-relatorios.md).
 
+
 ## Entidades e relação entre elas
 
 - **`editais`** — **entidade de outro módulo.** O CRUD, o schema, a unicidade do nome e o modelo "edital é template" estão em [`../editais/00-modulo.md`](../editais/00-modulo.md); não duplicado aqui. O que interessa deste lado: a prova **referencia** um edital e **herda dele apenas sugestões, na criação**.
@@ -259,6 +260,50 @@ Verificado sem reset, em transação: `DROP` + CHECK + `DELETE FROM sala_prova` 
 3. Salas ajustadas/fiscais atribuídos em `/gerenciar-salas-distribuidas/:provaId/:unidadeId`.
 4. Colaboradores alocados (ver [`alocacao-e-funcoes.md`](./alocacao-e-funcoes.md)) e ocorrências registradas durante a aplicação (ver [`ocorrencias.md`](./ocorrencias.md)).
 5. **Finalização** — RPCs `finalizar_prova`/`finalizar_prova_unidade` (e reversão via `reabrir_prova`/`reabrir_prova_unidade`). Só depois de `prova_finalizada = true` é possível acessar `/documentos-impressao/:provaId` (a página redireciona para `/gerenciar-prova/:provaId` se a prova ainda não estiver finalizada).
+
+## A listagem `/provas` não consulta nada (2026-09-10)
+
+`Provas.tsx` renderiza **um `ProvaCard` por prova, sem paginação**. Até 10/09 cada cartão
+fazia **três** consultas ao montar — `prova_unidades`, `meta_colaboradores_unidade`,
+`colaboradores_prova` — e somava no cliente para exibir os totalizadores.
+
+**Medido no banco local (cópia de produção), na maior das 2 provas — 11 unidades, 531
+alocações:** 122.418 bytes em 3 requisições **por cartão**, a cada abertura da tela *e* a
+cada volta de foco da janela (o `QueryClient` do `App.tsx` nasce sem `staleTime`). Como
+provas nunca são apagadas — são o histórico operacional —, o custo da listagem crescia
+com a vida inteira do sistema.
+
+Hoje o cartão mostra só título, data, hora e "criado por", tudo vindo da prop `prova`, e
+os totais moram em `ProvaTotaisDialog`, atrás de um botão de **lanterna** à esquerda da
+engrenagem. A consulta é atrasada por `enabled: open` e a soma é feita no banco.
+
+| | cru | gzip | requisições | quando |
+|---|---|---|---|---|
+| Antes | 122.418 | 3.771 | 3 | **em todo load, por cartão** |
+| Depois | 43.665 | 2.246 | 1 | só no clique |
+
+⚠️ **Note o que o ganho NÃO é.** Comprimido, a economia por abertura é modesta (1,7×) —
+a RPC repete o nome da unidade em cada uma das 172 linhas, e JSON assim comprime bem. **O
+ganho é a tela deixar de consultar**: de `N × 3` requisições no load para zero.
+
+🔴 **`p_prova_unidade_ids` NÃO é redundante com a RLS, e isso foi medido, não deduzido.**
+As duas policies envolvidas recortam em granularidades diferentes:
+
+| Tabela | Recorte | O coordenador de 1 das 11 unidades vê |
+|---|---|---|
+| `meta_colaboradores_unidade` | por **unidade** | meta em **1** unidade |
+| `colaboradores_prova` | por **prova** (`is_coordenador_prova(uid, pu.prova_id)`) | ocupação em **11** |
+| `prova_unidades` | `USING (true)` | o nome das 11 |
+
+Ou seja: sem o parâmetro, o coordenador veria a **ocupação de unidades que não coordena**
+— a RLS não impede isso, e nunca impediu; quem impedia era o filtro client-side que a
+tela já fazia. O parâmetro preserva esse recorte. ⚠️ `NULL` = sem recorte (admin); array
+**vazio** = nenhuma unidade. Trocar um pelo outro faria um coordenador sem unidade ver a
+prova inteira. A bateria `docs/bateria-totais-da-prova.sql` afirma os três casos.
+
+⚠️ **Função com gente alocada e SEM meta cadastrada continua invisível.** A RPC devolve a
+linha (`meta = 0`), e o descarte é da UI (`.filter(f => f.meta > 0)`) — comportamento
+preexistente, preservado de propósito para a refatoração não mudar nada visível.
 
 ## Acesso restrito de coordenador
 

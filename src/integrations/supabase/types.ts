@@ -1312,6 +1312,22 @@ export type Database = {
         Args: { p_pcd: boolean; p_sala_especial: string }
         Returns: boolean
       }
+      totais_da_prova: {
+        Args: {
+          p_prova_id: string
+          p_prova_unidade_ids?: string[]
+        }
+        Returns: {
+          funcao_id: string
+          funcao_nome: string
+          meta: number
+          ocupadas: number
+          prova_unidade_id: string
+          unid_nome: string
+          unid_sigla: string
+          unidade_finalizada: boolean
+        }[]
+      }
       candidatos_da_prova: {
         Args: {
           p_busca?: string

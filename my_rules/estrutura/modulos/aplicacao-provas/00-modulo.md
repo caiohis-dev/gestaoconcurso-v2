@@ -131,6 +131,7 @@ Todas `SECURITY DEFINER`, chamadas via `supabase.rpc(...)`:
 | `get_coordenador_colaboradores` | `useColaboradores` | recorte do coordenador |
 | `get_coordenador_prova_unidade_ids` | `useCoordenadorUnidades` | idem |
 | `vincular_unidade_a_prova`, `desvincular_unidade_da_prova` | `useProvaUnidades` | transacionais desde 26/07 — ver `provas-e-unidades.md` |
+| `totais_da_prova` | `ProvaTotaisDialog` | 🔵 **10/09** — soma meta × ocupação NO BANCO, uma linha por (unidade × função). `SECURITY INVOKER`, e o `p_prova_unidade_ids` **não é redundante com a RLS** — ver `provas-e-unidades.md` |
 | `salvar_salas_distribuidas` | `useSalasDistribuidas` | 🔵 **03/08** — o lote de salas numa transação, com renumeração em dois passos; é o que permite **trocar o número de duas salas** |
 
 > 🔵 **Corrigido em 2026-07-31 — o cast das RPCs de lock.** Esta tabela afirmava que as três *"não estão no `types.ts` gerado"*, e era isso que justificava o `(supabase.rpc as any)` em `useProvaLock`. **As três estão** — `acquire_prova_lock` tem `Args` e `Returns` completos na linha ~1137. O `types.ts` foi regerado em algum momento e a justificativa caducou junto.
