@@ -35,13 +35,21 @@ Além dos documentos da página acima, `GerenciarProva.tsx` tem três exportaç�
 
 | Função | Flag | Formato | Fonte |
 |---|---|---|---|
-| `exportColaboradores` | `isExporting` | PDF | `colaboradores_prova` da prova |
-| `exportCoordenadores` | `isExportingCoordenadores` | PDF | `coordenadores_prova` da prova |
-| **`exportCargosCSV`** | `isExportingCargos` | **CSV** | `colaboradores_prova` + `valores_funcao_prova`, agregados por função |
+| `exportColaboradores` | `isExporting` | **XLS** (`XLSX.writeFile`) | `colaboradores_prova` da prova |
+| `exportCoordenadores` | `isExportingCoordenadores` | **XLS** (`XLSX.writeFile`) | `coordenadores_prova` da prova |
+| **`exportCargosCSV`** | `isExportingCargos` | **CSV** (`new Blob`) | `colaboradores_prova` + `valores_funcao_prova`, agregados por função |
+
+> ⚠️ **Esta tabela dizia PDF nas duas primeiras** — corrigido em 2026-09-10, conferindo o código: **nenhuma das três gera PDF.** Duas escrevem planilha com `XLSX.writeFile` e a terceira monta CSV com `Blob`. A frase que seguia ("ao mexer em **layout de PDF**, `exportColaboradores` e `exportCoordenadores` andam juntas, compartilham padrões visuais") descrevia um trabalho que não existe: planilha não tem layout visual a compartilhar. Quem gera PDF nesta módulo é `DocumentosImpressao.tsx`, na seção acima.
 
 `exportCargosCSV` monta um mapa `funcao_id → { nome, count, valor }` semeado por `valores_funcao_prova` e depois percorre as alocações. Uma função **com gente alocada mas sem valor cadastrado entra assim mesmo**, com `valor: 0` (`if (!map[c.funcao_id]) map[c.funcao_id] = { …, valor: 0 }`) — o relatório não esconde alocação por falta de valor. A linha só é omitida quando `count === 0 && valor === 0`, e se nada sobra a página avisa "Não há cargos alocados nesta prova" em vez de baixar arquivo vazio.
 
-Ao mexer em layout de PDF, `exportColaboradores` e `exportCoordenadores` andam juntas (compartilham padrões visuais); `exportCargosCSV` é independente e não é afetada.
+🔴 **As três buscam EM FATIAS desde 2026-09-10, e isso não é opcional.** O PostgREST corta a resposta em `max_rows` (1000 por padrão) **sem erro nenhum**: uma prova com mais de 1.000 alocações gerava um **documento oficial incompleto** e nada denunciava. As três passaram a usar `buscarEmFatias` (`src/lib/buscar-em-fatias.ts`), que percorre com `.range()` até a fatia vir menor que o teto.
+
+⚠️ **O `.order('id')` que veio junto NÃO é cosmético:** sem ordem determinística o banco pode devolver linhas em ordem diferente entre uma fatia e outra, e o laço **repete uma e pula outra** — calado. Medido em 10/09 na maior prova (531 alocações): as fatias `0-499` e `500-999` cobrem as 531 sem repetir e sem pular.
+
+🔵 **A ordem do ARQUIVO mudou, e é mudança consciente.** `exportColaboradores` não ordenava nada — saía na ordem física que o banco devolvesse. Agora a consulta ordena por `id` (para o laço) e o array montado é ordenado por **sigla da unidade, depois nome**, que é a ordem de conferência de uma folha de colaboradores. As outras duas já ordenavam no cliente e não mudaram.
+
+`exportCargosCSV` é independente das outras duas em formato e agregação, mas divide com elas o mesmo laço de fatias.
 
 ## `/painel-dados-colaboradores/:provaId` (`PainelDadosColaboradores.tsx`)
 

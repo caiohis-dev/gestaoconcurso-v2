@@ -32,6 +32,7 @@ import { ProvaDialog } from "@/components/ProvaDialog";
 import { formatDateBRWithFallback } from "@/lib/utils";
 import { PasswordConfirmDialog } from "@/components/PasswordConfirmDialog";
 import { supabase } from "@/integrations/supabase/client";
+import { buscarEmFatias } from "@/lib/buscar-em-fatias";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
@@ -243,22 +244,28 @@ export default function GerenciarProva() {
     
     setIsExporting(true);
     try {
-      const { data: colaboradoresProva, error } = await supabase
-        .from('colaboradores_prova')
-        .select(`
-          *,
-          colaboradores (*),
-          funcoes_colaboradores (cargo_nome, cargo_cbo),
-          prova_unidades!inner (
-            prova_id,
-            unidades_prova (
-              unid_sigla
+      // 🔴 EM FATIAS, e não numa consulta só: o PostgREST corta em `max_rows` (1000) SEM
+      // ERRO, e uma prova grande geraria uma planilha oficial INCOMPLETA que ninguém
+      // percebe. O `.order('id')` não é cosmético — é o que impede o laço de repetir e
+      // pular linhas entre as fatias. A ordem do ARQUIVO é decidida depois, abaixo.
+      const colaboradoresProva = await buscarEmFatias((de, ate) =>
+        supabase
+          .from('colaboradores_prova')
+          .select(`
+            *,
+            colaboradores (*),
+            funcoes_colaboradores (cargo_nome, cargo_cbo),
+            prova_unidades!inner (
+              prova_id,
+              unidades_prova (
+                unid_sigla
+              )
             )
-          )
-        `)
-        .eq('prova_unidades.prova_id', provaId);
-
-      if (error) throw error;
+          `)
+          .eq('prova_unidades.prova_id', provaId)
+          .order('id', { ascending: true })
+          .range(de, ate),
+      );
 
       if (!colaboradoresProva || colaboradoresProva.length === 0) {
         toast({
@@ -320,6 +327,20 @@ export default function GerenciarProva() {
         };
       });
 
+      // 🔵 A ordem do ARQUIVO é decidida aqui, e não pelo banco. A consulta ordena por
+      // `id` porque o laço de fatias exige ordem estável — mas `id` é uuid, e sairia
+      // embaralhado para quem lê. Unidade e depois nome é a ordem de conferência de uma
+      // folha de colaboradores.
+      //
+      // ⚠️ Isto MUDA a ordem em relação ao arquivo de antes de 2026-09-10, que saía na
+      // ordem física que o banco devolvesse (sem `ORDER BY`). É mudança consciente, e
+      // alinha este export com os outros dois desta tela, que já ordenavam no cliente.
+      data.sort(
+        (a, b) =>
+          a["Sigla Unidade"].localeCompare(b["Sigla Unidade"], "pt-BR") ||
+          a["Nome Completo"].localeCompare(b["Nome Completo"], "pt-BR"),
+      );
+
       const worksheet = XLSX.utils.json_to_sheet(data);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "Colaboradores");
@@ -348,18 +369,20 @@ export default function GerenciarProva() {
 
     setIsExportingCoordenadores(true);
     try {
-      const { data: coordenadores, error } = await supabase
-        .from('coordenadores_prova')
-        .select(`
-          colaboradores_prova!inner (
-            colaboradores (
-              colab_nome_completo
+      const coordenadores = await buscarEmFatias((de, ate) =>
+        supabase
+          .from('coordenadores_prova')
+          .select(`
+            colaboradores_prova!inner (
+              colaboradores (
+                colab_nome_completo
+              )
             )
-          )
-        `)
-        .eq('prova_id', provaId);
-
-      if (error) throw error;
+          `)
+          .eq('prova_id', provaId)
+          .order('id', { ascending: true })
+          .range(de, ate),
+      );
 
       const rows = (coordenadores || [])
         .map((c: any) => c.colaboradores_prova?.colaboradores)
@@ -405,16 +428,18 @@ export default function GerenciarProva() {
     if (!provaId || !prova) return;
     setIsExportingCargos(true);
     try {
-      const { data: colabs, error } = await supabase
-        .from('colaboradores_prova')
-        .select(`
-          funcao_id,
-          funcoes_colaboradores (cargo_nome),
-          prova_unidades!inner (prova_id)
-        `)
-        .eq('prova_unidades.prova_id', provaId);
-
-      if (error) throw error;
+      const colabs = await buscarEmFatias((de, ate) =>
+        supabase
+          .from('colaboradores_prova')
+          .select(`
+            funcao_id,
+            funcoes_colaboradores (cargo_nome),
+            prova_unidades!inner (prova_id)
+          `)
+          .eq('prova_unidades.prova_id', provaId)
+          .order('id', { ascending: true })
+          .range(de, ate),
+      );
 
       const { data: valores, error: valoresError } = await supabase
         .from('valores_funcao_prova')

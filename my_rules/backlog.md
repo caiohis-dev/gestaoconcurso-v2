@@ -166,12 +166,14 @@ produção fica nas API settings do dashboard e precisa ser conferido lá.
 | ✅ ~~`useFuncoesAssociadas.tsx`~~ | — | **FECHADO em 2026-09-10** pela RPC `funcoes_em_uso`: 42,8 kB em 3 requisições viraram 680 bytes em uma, e o teto de 1000 deixou de alcançar a tela |
 | `OcorrenciasProva.tsx:140-143` | `colaboradores` | picker de substituto, sem filtro, busca no cliente. ~774 hoje: o próximo a estourar |
 | `Dashboard.tsx:81-87` e `:109-113` | `colaboradores_prova`, `sala_prova` | agrega no cliente (`new Set(...).size`, soma). Acima de 1000 o card mostra número **errado, sem erro** |
-| `GerenciarProva.tsx:246-259` | `colaboradores_prova` | export XLSX da prova inteira: truncar gera **documento oficial incompleto** |
+| ✅ ~~`GerenciarProva.tsx`~~ (as **3** exportações) | — | **FECHADO em 2026-09-10** por `src/lib/buscar-em-fatias.ts`. ⚠️ Junto saiu um erro de doc: as duas primeiras eram descritas como PDF e são **planilha** |
 | `useColaboradores.tsx` (picker) | `colaboradores` | `GerenciarColaboradoresProva` ainda precisa navegar o conjunto |
 
 **Onde está o padrão a reusar:** `useCandidatos.tsx:137-188` (`.range()` + `count: "exact"`,
-filtro no servidor) e `:288-317` (`buscarRelatorioCompleto`, laço de fatias de 1000 para
-export). A UI é feita à mão em `Candidatos.tsx:488-512` — `components/ui/pagination.tsx`
+filtro no servidor) para LISTAGEM paginada, e **`src/lib/buscar-em-fatias.ts`** para EXPORT
+(trazer tudo, em fatias) — este último nasceu em 10/09 generalizando o laço que vivia em
+`buscarRelatorioCompleto`. ⚠️ Quem usar `buscarEmFatias` **precisa ordenar por coluna
+única**, senão o laço repete e pula linhas em silêncio. A UI é feita à mão em `Candidatos.tsx:488-512` — `components/ui/pagination.tsx`
 existe mas **nenhuma tela o importa**.
 
 ## ✅ `useFuncoesAssociadas` — 42 kB para calcular booleanos — FECHADO em 2026-09-10
