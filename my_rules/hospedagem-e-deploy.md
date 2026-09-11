@@ -38,9 +38,13 @@ Três consequências que definem tudo o mais:
 
 ## Onde vive o ferramental
 
-🔴 **Fora deste repositório**, em `configura_server_gestaoconcurso` (decisão de 2026-08-08). Ele é um fork dedicado de `configura_server_agnostico`, e contém os quatro scripts (`01-hardening.sh`, `02-app.sh`, `04-tls.sh`, `deploy.sh`), os dois templates de nginx e o `config.env`.
+🔴 **Fora deste repositório**, em `configura_server_gestaoconcurso` (decisão de 2026-08-08). Ele é um fork dedicado de `configura_server_agnostico`, e contém **cinco** scripts (`01-hardening.sh`, `02-app.sh`, `04-tls.sh`, `05-keep-alive.sh`, `deploy.sh`), os dois templates de nginx e o `config.env`.
 
-**Este repositório não versiona infraestrutura.** A fronteira é deliberada: aplicação de um lado, servidor do outro. O preço é que publicar exige os dois repositórios lado a lado — o `deploy.sh` roda a partir da raiz do projeto, então no dia do deploy a pasta `server_setup/` do ferramental é copiada para cá.
+> ⚠️ **Esta linha dizia "os quatro scripts" e omitia o `05-keep-alive.sh`** — corrigido em 2026-09-10. Ele nasceu em 08/09, junto com a mitigação da pausa por inatividade, e é o que instala o cron diário no servidor. Quem recriar o servidor seguindo a lista antiga sobe tudo menos o keep-alive, e a falha é **silenciosa**: só aparece 7 dias depois, com o projeto pausado. Ver [`banco-producao.md`](./banco-producao.md).
+
+**Este repositório não versiona infraestrutura.** A fronteira é deliberada: aplicação de um lado, servidor do outro. O preço é que publicar exige os dois repositórios **lado a lado na mesma máquina** — o `deploy.sh` acha o projeto pelo `PROJETO_DIR` do `config.env`, que hoje vale `"../gestaoconcurso"`, resolvido a partir da raiz do ferramental.
+
+> ⚠️ **Esta linha mandava copiar a pasta `server_setup/` para dentro deste repo no dia do deploy** — corrigido em 2026-09-10, conferindo o script. O `deploy.sh` diz no próprio cabeçalho que roda *"na SUA máquina, de qualquer diretório"*, e o comentário dele explica por que NÃO faz `cd $SCRIPT_DIR/..`: o ferramental é bash puro, sem `package.json`, então subir um nível cairia num diretório onde o `npm` não tem o que rodar. **Seguir a instrução antiga duplicaria o ferramental dentro do repo da aplicação — exatamente o que a decisão de 08/08 removeu.**
 
 ⚠️ Até 2026-08-08 havia um `server_setup/config.env` solto neste repo, com os valores de **exemplo** do ferramental genérico (`BIND_APP`, `/var/www/configura-server`). Foi removido: config obsoleta de infraestrutura, dentro do repo da aplicação, é a pior combinação — parece pronta e não é.
 
