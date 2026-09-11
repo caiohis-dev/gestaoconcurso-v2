@@ -83,7 +83,7 @@ Decidido em 2026-08-08: o projeto de produção da v2 nasce no **plano Free** do
 
 Ficam **documentadas, não mitigadas** (decisão do usuário em 2026-08-08). Não há procedimento para elas; há o custo, que precisa estar consciente:
 
-- **O projeto pausa após 1 semana de inatividade.** O perfil de uso deste sistema é exatamente o que dispara isso: rajada perto da prova, meses de silêncio depois. Despausar é manual, pelo dashboard. ⚠️ Abrir o dashboard **não** conta como atividade; o que conta é requisição ao projeto.
+- **O projeto pausa após 1 semana de inatividade.** O perfil de uso deste sistema é exatamente o que dispara isso: rajada perto da prova, meses de silêncio depois. Despausar é manual, pelo dashboard. ⚠️ Abrir o dashboard **não** conta como atividade; o que conta é requisição ao projeto. 🔵 **E pausa não é o único jeito de sair do ar** — ver [O segundo modo de falha](#o-segundo-modo-de-falha-site-no-ar-dado-morto-2026-09-10), cujo sintoma é quase o oposto.
 
   🔴 **ACONTECEU em 2026-09-08** — deixou de ser hipótese. O sistema saiu do ar e o projeto foi despausado à mão. Ver a seção [O keep-alive](#o-keep-alive--como-a-pausa-passou-a-ser-mitigada) logo abaixo, que é a mitigação que nasceu daí.
 
@@ -123,6 +123,84 @@ Diário, não semanal: o limite é 7 dias, então uma batida por dia dá margem 
 
 ⚠️ **O que isto NÃO prova:** que a pausa foi evitada. Uma escrita real disparada de fora é o mais próximo que dá para construir do critério *"requisição ao projeto"*, mas a confirmação é **empírica** — passar mais de 7 dias sem uso e o projeto seguir ativo. **O detector é a própria tabela: se a linha mais recente tiver mais de 2 dias, o keep-alive está quebrado** — e nada mais avisa, porque o cron vive fora daqui.
 
+## O segundo modo de falha: site no ar, dado morto (2026-09-10)
+
+Até 08/09 este doc conhecia **um** jeito de o sistema sair do ar: a pausa por inatividade. Em 10/09 apareceu outro, com sintoma **quase oposto** — e confundir os dois manda consertar a coisa errada.
+
+**O que se viu:** `fevre.online` respondendo `200` normalmente, o hostname do projeto resolvendo no DNS, e **toda** requisição de dado morrendo. No dashboard, o próprio SQL Editor devolvia `Connection terminated due to connection timeout` — nem de dentro dava para consultar.
+
+🔴 **O sinal que fecha o diagnóstico é o `PGRST002`.** Uma consulta real à API devolve:
+
+```
+{"code":"PGRST002","message":"Could not query the database for the schema cache. Retrying."}
+```
+
+Isso é o **PostgREST do próprio Supabase**, hospedado ao lado do banco, dizendo que não alcança o Postgres. Nenhuma configuração nossa pode causar nem consertar isso.
+
+⚠️ **Foi incidente da plataforma, e a classe afetada era a nossa.** O `status.supabase.com` registrava *"Unresponsive Projects — **Nano** projects becoming unresponsive after a period of time, typically hours"*, impacto `major`, componente `Database`. Plano Free = instância **Nano**. **Antes de investigar qualquer coisa, confira o status da plataforma** — custa uma requisição:
+
+```bash
+curl -s https://status.supabase.com/api/v2/incidents/unresolved.json | grep -o '"name":"[^"]*"'
+```
+
+### Como separar os três modos em segundos
+
+| Sintoma | DNS do projeto | Site | Consulta de dado | É |
+|---|---|---|---|---|
+| `Network error when attempting to fetch` | **NXDOMAIN** | fora | nem sai | **projeto PAUSADO** (08/09) |
+| Site carrega, dado falha, `PGRST002` | resolve | `200` | timeout / `503` | **banco inacessível** — incidente ou sobrecarga (10/09) |
+| Site carrega, dado falha, erro de auth | resolve | `200` | `401`/`404` coerente | **bundle apontando para o Supabase errado** |
+
+A sonda que produz a linha do meio, sem `supabase link` e 100% leitura:
+
+```bash
+set -a; . ./.env.production; set +a
+curl -s -H "apikey: $(echo $VITE_SUPABASE_PUBLISHABLE_KEY | tr -d '"')" \
+  "$(echo $VITE_SUPABASE_URL | tr -d '"')/rest/v1/saude_banco?select=dia&limit=1"
+```
+
+🔴 **Leia o CORPO, não só o código HTTP — e o `401` sozinho NÃO prova nada.** `GET /rest/v1/` **sem** `apikey` devolve `401` em 0,1s mesmo com o banco morto: quem responde é a borda, que nunca toca o Postgres. Durante todo o incidente essa sonda esteve verde. O que prova banco vivo é o corpo trazer **SQLSTATE do Postgres**:
+
+- `{"code":"42501","message":"permission denied for table saude_banco"}` → **o Postgres executou e negou** (o `anon` não tem grant nesta tabela, de propósito). Banco vivo.
+- `{"code":"PGRST002",...}` → PostgREST não alcança o banco. Banco fora.
+- `{"message":"No API key found in request"}` → você esqueceu a chave; a borda respondeu e nada foi medido.
+
+### O desfecho de 10/09 — quem restabeleceu foi o RESTART, não o rollout
+
+| Momento (UTC) | Fato |
+|---|---|
+| 15:26 | Supabase abre o incidente (`investigating`) |
+| 15:46 | `identified`, mitigação em implantação |
+| 17:59 | *"rollouts bem-sucedidos nas primeiras regiões, prosseguindo globalmente"* |
+| ~19:01 | o usuário percebe o sistema fora |
+| 19:23 | medido daqui: 3× timeout de 30s e `503` com `PGRST002` |
+| **19:41** | **Supabase: *"fix em todas as regiões… **Users still affected are encouraged to restart their projects**"*** |
+| 23:37 | restart manual pelo dashboard |
+| 23:38–23:40 | serviços subindo: `521` → `502` → `521` |
+| **23:41:43** | **`42501` — banco vivo.** ~4h40 fora, contadas da primeira observação |
+
+🔴 **A lição operacional está no update das 19:41: o fix previne RECORRÊNCIA, não ressuscita quem já travou.** Um projeto preso continua preso até alguém clicar em **Project Settings → General → Restart project**. Esperar não resolve — foram 3h45 de sondagem contínua, 180 tentativas, todas `000`, entre o rollout global e o restart.
+
+⚠️ **E o erro de leitura que causou essa espera:** *"fix rolled out across all regions"* soa como fim, e a instrução para os afetados vinha **na mesma frase, depois**. **Leia o último update inteiro antes de decidir esperar** — a instrução acionável pode chegar depois do anúncio que parece encerrar o caso.
+
+🔵 **A assinatura da volta é reconhecível** e vale como referência: `000` → `521` → `502` → `521` → `401`, em ~4 minutos. Bate com o padrão medido no restore de 08/09 (`521` → `404` com o schema cache carregando → `401`). **Ver o primeiro `521` não é ter voltado; é ter começado a voltar.** Espere o corpo trazer SQLSTATE.
+
+### O beco sem saída que custou tempo
+
+Junto veio um segundo aviso do dashboard — *"seu projeto está prestes a esgotar o Orçamento de E/S de Disco"* — e o assistente de IA do Supabase produziu um texto longo sobre `CONNECTION TERMINATED DUE TO CONNECTION TIMEOUT` (arquivado em `docs/errors/`). Ele lista string de conexão, modo de pooler (porta 6543), `connection_limit`, `pool_timeout`, `connect_timeout` — **tudo inaplicável aqui**: é resposta escrita para um cenário Prisma/serverless, e este sistema não tem pool próprio, nem servidor de aplicação, nem Prisma. O front é bundle estático falando PostgREST.
+
+🔴 **A lição é sobre a FORMA do texto, não sobre o Supabase.** Resposta genérica de assistente enumera causas plausíveis **sem medir nenhuma**, e lida com pressa vira roteiro de mudanças em produção que não tinham o que consertar. O `PGRST002` e a página de status responderam em **duas requisições** o que aquele documento não responderia nunca.
+
+### O aviso de E/S: metade respondida, metade perdida para sempre
+
+Medido depois da volta, com `docs/diagnostico-io-banco-producao.sql` (100% leitura, SQL Editor, sem `link`):
+
+🟢 **Leitura está descartada como causa, e isso é estrutural.** B5 deu `cache_pct` **99,92%**, `shared_buffers` de **224 MB** (28672 × 8 kB) e banco de **14 MB** — cabe **~16×** no cache. Depois do aquecimento, o disco não é mais tocado para ler. Vale hoje e vale sempre, enquanto o banco for deste tamanho.
+
+🔴 **A metade da escrita é IRRECUPERÁVEL, e a culpa é do próprio conserto.** O restart que trouxe o banco de volta descartou as estatísticas cumulativas, então B1 e B2 perderam a janela do estouro. **O ato de restabelecer o serviço destrói a evidência de por que ele caiu** — e não há como ter os dois. Se acontecer de novo e a causa importar mais que o minuto de indisponibilidade, **colete B1/B2 ANTES de reiniciar**; se o banco não responder nem para isso, aceite que a resposta se perdeu.
+
+⚠️ Sobra, sem prova: o aviso pode ter sido causa independente ou **sintoma do mesmo defeito da plataforma nos Nano**. Não houve importação no período — a única operação deste sistema que move E/S de verdade — e `candidatos` estava (e está) em zero, o que enfraquece a hipótese de escrita nossa. **Pergunta aberta, não causa conhecida.**
+
 ## Bootstrap do banco novo (na primeira subida a produção)
 
 > 🟢 **ESTE ROTEIRO JÁ FOI EXECUTADO — 2026-08-08 (passos 0 a 5, 7 a 9) e 2026-08-10 (passo 6 + o login real).** O banco de produção da v2 existe em **`zugigdpuxbpogoepdawm`** (us-west-2, PG 17.6.1.155, plano Free), com as 122 migrations, os dados carregados (controle positivo 12/12), as 8 edge functions com secrets, o Auth parametrizado e o **login real aprovado**. O repo terminou **deslinkado**.
@@ -141,8 +219,8 @@ Ordem importa. Não pule o passo 2.
 
    ⚠️ Não se assuste com o `project_id = "dqslqfzqukcahogkieet"` no `config.toml`: ele é herança do projeto Lovable e serve **só** para nomear os containers Docker locais (`supabase_db_dqslqfzqukcahogkieet`) — não é ele que define o projeto remoto. Quem faz isso é o `link`, que grava a ref em `supabase/.temp/`. Mudar o `project_id` renomearia os containers e recriaria o banco local à toa; deixe como está.
 2. **Conferir antes de escrever:** `npm run prod:push:dry`. O banco novo está vazio, então o dry-run deve listar **todas** as migrations do repo — confira o total com `ls supabase/migrations/*.sql | wc -l` na hora (eram **122** em 2026-08-08). Se listar menos, pare: significa que o banco não é o que pensamos. **Não confie no número escrito aqui** — ele envelhece a cada migration nova, e o comando não.
-3. **Aplicar o schema:** `npm run prod:push`. Isso cria tudo, inclusive os GRANTs da `20260712010000_grant_api_roles_table_privileges.sql` (sem eles o login autentica mas a UI nunca avança) e os 7 cargos básicos.
-4. **Carregar os dados** de produção, uma vez, a partir do dump: `supabase/seed.local.sql` (gitignored). Ele traz `public.*` mais `auth.users` e `auth.identities` — é o que faz os logins antigos continuarem funcionando. Todos os INSERTs têm `ON CONFLICT`, então recarregar não quebra. Carregue com `psql` na connection string do projeto novo, **não** via `db push`. ⚠️ **O dump precisa carregar as duas correções manuais** (e-mails duplicados zerados + coluna `colab_codigo_acesso` removida dos INSERTs) — senão o passo quebra (a segunda com `column "colab_codigo_acesso" does not exist`, porque as migrations do passo 3 já dropam a coluna). Detalhes em [`estrutura/transversais/desenvolvimento-local.md`](./estrutura/transversais/desenvolvimento-local.md). O dump local desta máquina já as tem; um dump **novo** (via `export-seed`) nasce sem elas.
+3. **Aplicar o schema:** `npm run prod:push`. Isso cria tudo, inclusive os GRANTs da `20260712010000_grant_api_roles_table_privileges.sql` (sem eles o login autentica mas a UI nunca avança) e os **7 registros de `funcoes_colaboradores`** (`20260712134220_seed_funcoes_basicas_sistema.sql`). ⚠️ Esta linha dizia *"os 7 cargos básicos"*, e a palavra estava errada: **não é `public.cargos`**, que é do módulo Candidatos e que **nenhuma migration semeia**. Em 10/09 a confusão custou tempo — ver `cargos = 0` em produção parece perda de dado e não é.
+4. **Carregar os dados** de produção, uma vez, a partir do dump: `supabase/seed.local.sql` (gitignored). Ele traz `public.*` mais `auth.users` e `auth.identities` — é o que faz os logins antigos continuarem funcionando. Todos os INSERTs têm `ON CONFLICT`, então recarregar não quebra. Carregue com `psql` na connection string do projeto novo, **não** via `db push`. 🔵 **O dump NÃO traz candidatos** — nem `candidatos`, nem `candidatos_alocacao`, nem `cargos` (medido no dump de 03/08: 771 `colaboradores`, 554 `colaboradores_prova`, 42 `sala_prova`, e **zero** das três). Logo **produção nasce e permanece com esses três em zero até a primeira importação**, que é operação de véspera de prova. Confirmado em 10/09 por `count(*)`: 774/576/42 povoadas, as três em 0. **Isso é o esperado, não perda.** ⚠️ **O dump precisa carregar as duas correções manuais** (e-mails duplicados zerados + coluna `colab_codigo_acesso` removida dos INSERTs) — senão o passo quebra (a segunda com `column "colab_codigo_acesso" does not exist`, porque as migrations do passo 3 já dropam a coluna). Detalhes em [`estrutura/transversais/desenvolvimento-local.md`](./estrutura/transversais/desenvolvimento-local.md). O dump local desta máquina já as tem; um dump **novo** (via `export-seed`) nasce sem elas.
 5. **Rodar o `supabase/seed.pos.sql`** (versionado), com `psql`, na mesma connection string — **depois** da carga do passo 4 e **nunca antes**. Ele contém as operações de dados que só fazem sentido com o dump já carregado; hoje, o backfill que vincula os 12 colaboradores que já são usuários (a cúpula: 2 admins + 10 coordenadores) às contas do Auth. **Pular este passo faz a cúpula nascer sem `user_id` e sem o papel `colaborador`** — eles continuariam entrando como admin/coordenador, mas ficariam sem acesso aos próprios dados de colaborador, e o erro é silencioso. É idempotente: rodar duas vezes não faz efeito. Por que não é migration: `db push` aplicaria o backfill **antes** do passo 4, contra tabelas vazias, casando zero linhas — e migration não roda duas vezes. Ver [`estrutura/transversais/desenvolvimento-local.md`](./estrutura/transversais/desenvolvimento-local.md).
 6. **Configurar o auth no dashboard** — isto **não** vem do `config.toml` e é fácil esquecer: confirmação de e-mail **ligada**, `site_url` do domínio real, e **redirect URLs incluindo as rotas internas do domínio** (ex.: `https://SEU_DOMINIO/**`) — sem isso, os links de recuperação de senha e o invite da reivindicação (subetapa 2B) caem no `site_url` em vez de `/redefinir-senha`, e o fluxo trava. Signup fechado se o cadastro for só por convite. **Cadastre o SMTP da Hostinger como Custom SMTP** (`smtp.hostinger.com`:465, as mesmas credenciais do passo 7) — o app não passa por ele, mas sem isso o SMTP embutido entrega 2 mensagens/hora e só para endereços do time. **Verifique também os Rate Limits nativos do Auth** (limite de e-mails transacionais e requisições de token), ajustando-os conforme as cotas do plano para evitar bloqueios de login em dias de pico; com Custom SMTP o padrão de e-mail sobe de 2 para 30 por hora. O `additional_redirect_urls` do `config.toml` cobre só o dev local; produção é configurada aqui.
 7. **Publicar as edge functions:** `npx supabase functions deploy` (as **8** de `supabase/functions/` — o nono diretório é `_shared` e não é function) e cadastrar os secrets `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` **e `SITE_URL`**. `db push` não publica function nenhuma.

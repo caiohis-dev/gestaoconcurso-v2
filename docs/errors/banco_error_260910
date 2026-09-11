@@ -1,0 +1,147 @@
+
+O usuário está enfrentando erros de tempo limite de conexão. A mensagem de erro é: "CONNECTION TERMINATED DUE TO CONNECTION TIMEOUT". Quais são as causas mais prováveis desse problema e como o usuário pode resolvê-lo?
+
+Causas mais prováveis
+A mensagem “CONNECTION TERMINATED DUE TO CONNECTION TIMEOUT” geralmente significa que o cliente não conseguiu estabelecer ou obter uma conexão com o banco de dados dentro do tempo limite configurado. As causas mais comuns são:
+
+    Sobrecarga do banco de dados
+
+        Alto uso de CPU, memória ou E/S pode impedir que novas conexões sejam aceitas prontamente.
+
+        Consultas lentas ou bloqueadas também podem manter as conexões ocupadas.
+
+    Esgotamento do pool de conexões
+
+        Muitas instâncias da aplicação ou conexões de clientes estão competindo por um pool limitado.
+
+        Isso é comum com implantações serverless que criam um novo cliente de banco de dados por requisição.
+
+        Um connection_limit do Prisma excessivamente alto pode piorar o problema.
+
+    Configuração incorreta de conexão
+
+        Uma string de conexão desatualizada, malformada ou incompleta.
+
+        Host do projeto, porta, nome do banco de dados, usuário ou senha incorretos.
+
+        Uso do modo de conexão incorreto do Supabase para a aplicação.
+
+    Modo de pooler incorreto
+
+        Conexões diretas e pooling em modo de sessão (session-mode) têm capacidade de conexão mais limitada.
+
+        Aplicações serverless geralmente precisam do modo de transação do Supavisor (transaction mode), normalmente na porta 6543, em vez de abrir muitas conexões diretas ou de sessão.
+
+    Problemas de rede ou DNS
+
+        Problemas temporários de conectividade entre o host da aplicação e o Supabase.
+
+        Firewall, restrições de porta de saída, falhas de DNS ou roteamento IPv6 instável.
+
+        Um problema transitório da plataforma ou de rede regional também é possível.
+
+    Valores de tempo limite muito curtos
+
+        O cliente pode abandonar o estabelecimento da conexão antes que o banco de dados ou o pooler consigam responder.
+
+        Aumentar o connect_timeout pode ajudar com conexões lentas, porém saudáveis, mas não resolverá um pool esgotado ou um banco de dados sobrecarregado.
+
+Ordem de resolução recomendada
+
+1. Verifique a string de conexão
+Copie os detalhes de conexão novamente da caixa de diálogo Connect do projeto e verifique:
+
+    Hostname do projeto
+
+    Porta
+
+    Nome do banco de dados
+
+    Nome de usuário
+
+    Senha
+
+    Configurações de SSL
+
+    Se o aplicativo deve usar pooling direto, de sessão ou de transação
+
+Não exponha a senha ou a string de conexão publicamente durante a depuração.
+
+2. Use o modo de conexão apropriado
+Para aplicações serverless como Vercel, AWS Lambda ou Edge Functions:
+
+    Prefira o modo de transação do Supavisor na porta 6543.
+
+    Mantenha o limite de conexão do lado da aplicação baixo, frequentemente começando em 1 para cargas de trabalho serverless.
+
+    Evite criar um grande pool de conexões a cada invocação de função.
+
+Para servidores de longa duração que requerem estado de sessão ou sessões preparadas:
+
+    Use o modo de sessão na porta 5432, ou uma conexão direta onde apropriado.
+
+    Confirme se o tamanho do pool configurado é suficiente, mas não desnecessariamente grande.
+
+3. Reduza a pressão das conexões
+
+    Reutilize um cliente ou pool de banco de dados em processos de aplicação de longa duração.
+
+    Não instancie um novo pool para cada requisição.
+
+    Reduza o connection_limit se ele tiver sido aumentado manualmente.
+
+    Certifique-se de que as conexões sejam liberadas ou desconectadas corretamente.
+
+    Reduza o número de workers da aplicação se cada worker abrir seu próprio pool.
+
+Para o Prisma, os parâmetros típicos a serem revisados incluem:
+connection_limit pool_timeout connect_timeout
+
+Aumentar o pool_timeout pode ajudar quando as conexões estão temporariamente em fila. É melhor reduzir a concorrência desnecessária primeiro.
+
+4. Verifique a carga do banco de dados e consultas lentas
+Revise as páginas de observabilidade do banco de dados e Query Performance do projeto em busca de:
+
+    Alto uso de CPU, memória ou E/S de disco
+
+    Consultas de longa duração
+
+    Contenção de bloqueios (locks)
+
+    Um aumento repentino nas conexões ativas
+
+    Consultas retornando conjuntos de resultados excessivamente grandes
+
+Otimize consultas lentas, adicione índices apropriados, pagine leituras grandes e evite manter transações abertas por mais tempo do que o necessário. Se a carga de trabalho for legitimamente maior, aumentar a capacidade de processamento (compute) pode ser adequado.
+
+5. Aumente o tempo limite de conexão com cautela
+Para o Prisma, por exemplo:
+connect_timeout=30
+
+Isso dá ao cliente mais tempo para se conectar. Deve ser tratado como uma mitigação, não como a correção principal: um tempo limite maior pode simplesmente fazer com que as requisições aguardem mais tempo quando o pool ou o banco de dados não estiverem saudáveis.
+
+6. Teste a partir do ambiente da aplicação
+Uma conexão que funciona localmente pode falhar em produção por causa de:
+
+    Tráfego de saída restrito
+
+    Comportamento diferente do DNS
+
+    Problemas de conectividade IPv6
+
+    Variáveis de ambiente de produção incorretas
+
+    Uma configuração de pool de conexões específica da implantação (deployment)
+
+Teste a resolução de DNS e o acesso TCP a partir do mesmo ambiente de execução onde a falha ocorre.
+
+Distinga o tempo limite de conexão do tempo limite de consulta
+Estes erros são relacionados, mas diferentes:
+
+    Tempo limite de conexão (Connection timeout): o cliente não consegue estabelecer ou obter uma conexão.
+
+    Tempo limite de instrução/consulta (Statement/query timeout): uma conexão existe, mas a instrução SQL demora muito para ser executada.
+
+O tempo limite de consulta da API documentado do Supabase é limitado a 60 segundos. Operações administrativas mais longas devem usar um modo Supavisor apropriado ou conexão direta, enquanto o desempenho da consulta deve ser tratado separadamente.
+
+As orientações oficiais de solução de problemas do Supabase identificam sobrecarga do banco de dados, strings de conexão malformadas, problemas transitórios de rede, capacidade insuficiente do pool, limites de conexão excessivos e consultas lentas como as causas principais. A verificação do status de incidente não pôde ser concluída neste momento, portanto, um problema temporário na plataforma não pode ser descartado.
