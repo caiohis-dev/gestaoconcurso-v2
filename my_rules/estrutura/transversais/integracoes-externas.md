@@ -30,7 +30,6 @@ Todas em `supabase/functions/`, CORS liberado (`Access-Control-Allow-Origin: *`)
 | Function | Propósito |
 |---|---|
 | `create-admin` | Cria usuário no Supabase Auth + atribui role — usado por `useUsers.createUser`. ✅ Exige **superadmin autenticado** desde 25/07 (ver abaixo). Aceita `admin`, `user` e `superadmin`; **recusa `coordenador` com 400** desde 26/07 |
-| `create-coordenador` | Fluxo específico de criação de coordenador (usa `serve` do `deno.land/std`, padrão ligeiramente diferente das demais que usam `Deno.serve` direto — histórico de escrita em momentos diferentes, não um problema funcional) |
 | `check-cpf-colaborador` | Checa existência de CPF — devolve só `{exists}` (endurecida na 2B; antes vazava o e-mail). Usada em `/cadastro-publico` para decidir cadastrar-ou-reivindicar |
 | `reivindicar-acesso` | Caminho do **CPF** na porta única (2B): CPF → `{existe, ja_vinculado, email_mascarado}`, e dispara o link de acesso. Rate limit por IP (`reivindicacao_rate_limit`), **compartilhado com a `recuperar-senha`** — separados, o atacante somaria 5 + 5 |
 | `public-create-colaborador` | Cadastro público (reescrito na 2C): insere a linha e dispara o link de acesso. Não pede mais código de 4 dígitos; e-mail obrigatório |
@@ -40,9 +39,11 @@ Todas em `supabase/functions/`, CORS liberado (`Access-Control-Allow-Origin: *`)
 | `_shared/enviar-link-acesso.ts` | Helper (não é function): generateLink + HTML da FEVRE + `send-email`. Usado por `reivindicar-acesso`, `public-create-colaborador`, `corrigir-email-acesso` e `recuperar-senha`. O parâmetro `contexto` (`primeiro-acesso`/`redefinir`) muda o texto e **não** coincide com o `tipo` do link: a correção de e-mail usa link `recovery` por razão técnica, mas para a pessoa é primeiro acesso |
 | `send-email` | Ver seção acima — **só `service_role`** |
 
-**`reset-codigo-acesso` não existe mais.** Servia ao "esqueci meu código", morto desde a 2A; foi **removida do repo** na 2D (2026-07-15), junto com o DROP da coluna `colab_codigo_acesso`. As 9 acima são as que existem hoje em `supabase/functions/` (eram 8 até 2026-09-08, quando entrou a `keep-alive`).
+**`reset-codigo-acesso` não existe mais.** Servia ao "esqueci meu código", morto desde a 2A; foi **removida do repo** na 2D (2026-07-15), junto com o DROP da coluna `colab_codigo_acesso`. As 8 acima são as que existem hoje em `supabase/functions/` (eram 8 até 2026-09-08, quando entrou a `keep-alive`, chegando a 9; voltaram a 8 em 2026-09-12 com a saída da `create-coordenador`).
 
-`supabase/config.toml` só configura explicitamente `verify_jwt = false` para `create-coordenador` — as demais seguem o padrão default do Supabase. **Atenção:** esse default (`verify_jwt = true`) aceita a **anon key**, que é pública. Ele impede chamada anônima crua, mas **não** é controle de acesso; onde importa quem chama, a checagem é no corpo da function (como na `send-email`).
+🔵 **`create-coordenador` foi REMOVIDA em 2026-09-12.** Ela criava a conta do coordenador a partir de e-mail e senha digitados no diálogo — o fluxo de antes da v2. A concessão virou a RPC `conceder_coordenador`, que usa a conta que o colaborador já tem; ver [`auth-e-permissoes.md`](./auth-e-permissoes.md). ⚠️ **Remover do repo não remove de produção:** enquanto ela não for apagada lá (`supabase functions delete create-coordenador`, no próximo deploy consciente), o caminho antigo segue chamável por um admin.
+
+`supabase/config.toml` **não configura `verify_jwt` para nenhuma function** — todas seguem o padrão do Supabase. Até 2026-09-12 havia uma exceção, `verify_jwt = false` na `create-coordenador`, que saiu com ela. **Atenção:** o default (`verify_jwt = true`) aceita a **anon key**, que é pública. Ele impede chamada anônima crua, mas **não** é controle de acesso; onde importa quem chama, a checagem é no corpo da function (como na `send-email`).
 
 ### `create-admin` — fechada em 2026-07-25 (era o buraco mais grave do sistema)
 

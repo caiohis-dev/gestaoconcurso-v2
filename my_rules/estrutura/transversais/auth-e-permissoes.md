@@ -175,21 +175,30 @@ As páginas de gestão **não guardam mais a si mesmas**. A autorização de rot
 
 🧪 **A especificação é `src/pages/guards.test.tsx`** — 137 testes, matriz 19 páginas × 5 papéis. O harness compõe rota + wrapper como o `App.tsx` faz; se um teste dali quebrar numa refatoração de autorização, a decisão mudou de comportamento.
 
-### Conceder acesso de coordenador — um caminho só, desde 2026-07-26
+### Conceder acesso de coordenador — a conta vem do CADASTRO (desde 2026-09-12)
 
-**`useCoordenadoresProva.createMutation`**, no `CoordenadoresProvaDialog`, dentro da gestão da prova. Ele **exige alocação real**: um registro em `colaboradores_prova` para aquele colaborador, com função de coordenação (`FUNCOES_COORDENACAO`, ver [`alocacao-e-funcoes.md`](../modulos/aplicacao-provas/alocacao-e-funcoes.md)). Só vincula `user_id` ao `colaborador_prova_id` que já existe.
+**A RPC `conceder_coordenador(p_colaborador_prova_id)`**, chamada pelo `CoordenadoresProvaDialog` através do `useCoordenadoresProva`. O cliente manda **só o id da alocação**: prova e conta são derivadas no banco, dentro de uma transação.
 
-**O segundo caminho foi removido.** `useUsers.addCoordenadorAccess`, em `/gerenciar-usuarios`, adicionava o papel e, **quando não havia alocação elegível, fabricava um registro sintético** — pegava qualquer colaborador (`.limit(1)`, sem ordenação) e criava uma linha em `colaboradores_prova` sem função e sem valor, só para satisfazer a FK `NOT NULL` de `coordenadores_prova`.
+A regra que isso estabelece: **`coordenadores_prova.user_id` é sempre `colaboradores.user_id` do colaborador daquela alocação.** Não é um campo a preencher, é uma derivação — e um **trigger** (`check_coordenador_prova_coerente_trigger`, migration `20260912165246`) a faz valer também por PostgREST direto e `psql`, junto com a coerência do `prova_id`.
 
-**Por que aquilo era poluição, não atalho:** `colaboradores_prova` é a tabela de **alocação real** — de onde saem os relatórios e a base de pagamento. A linha fabricada punha um colaborador "trabalhando" numa unidade para a qual ninguém o escalou, e nada na tela de alocação a distinguia de uma real.
+A RPC exige, nesta ordem, e cada recusa **nomeia a providência**: chamador `admin` (via `has_role`, `42501`) · alocação existente · função em `FUNCOES_COORDENACAO` · **o colaborador já ter conta** · o alvo não ser admin · não haver acesso já concedido naquela prova.
 
-**A regra que ficou:** nesta tela se concede **papel puro** (superadmin, admin). Coordenação depende de alocação, então se concede — e se revoga — na prova. A coluna Coordenador do `/gerenciar-usuarios` virou **somente leitura**: mostra o papel e as provas, sem controle.
-
-> ✅ **A fabricação acabou — as duas cópias saíram em 2026-07-26.** A EF `create-admin` tinha a própria (`createCoordenadorAccess`), com o mesmo `.limit(1)` e rodando com `service_role`, fora da RLS. Ela **passou a recusar `role: "coordenador"` com 400**, apontando o fluxo da prova, e o `provaId` saiu do contrato.
+> ⚠️ **O que mudou de fato, e por quê.** Até 2026-09-12 o diálogo pedia **e-mail e senha** e chamava a Edge Function **`create-coordenador`**, que **criava uma conta no Auth** (`admin.createUser` com `email_confirm: true`) e devolvia a senha num toast para o admin repassar. Era o fluxo de antes da v2, quando colaborador não era usuário do sistema — e convivia mal com o mecanismo próprio da v2 (invite + `handle_new_user`): senha escolhida pelo admin, e-mail marcado como confirmado sem prova de posse da caixa, e um campo de e-mail livre que ninguém conferia contra o cadastro.
 >
-> **Por que recusar em vez de só ignorar o papel:** o papel sozinho não é inofensivo. `RequireAcesso` deriva `isCoordenador` de `user_roles` — quem o recebesse sem vínculo **passaria pelos guards** das rotas de coordenação e entraria, para ver listas vazias (as consultas se apoiam em `coordenadores_prova`). É o meio-usuário que levou alguém a fabricar alocação em primeiro lugar. Rebaixar em silêncio para `user` seria pior: papel errado, sem sinal.
+> 🔴 **Três defeitos morreram com a EF** — vale guardar a forma deles:
+> 1. Ela criava a conta **antes** de gravar `colab_email`, então `handle_new_user` não casava nada: `colaboradores.user_id` ficava NULL e o papel `colaborador` não era concedido — **coordenador que não é colaborador**. E sem conserto no app: reivindicar pelo CPF dispara `generateLink('invite')` num e-mail que já tem conta, o invite falha, e `reivindicar-acesso` responde sucesso assim mesmo.
+> 2. No rollback chamava `deleteUser` **inclusive quando reaproveitara conta existente** (`isExistingUser` era atribuída e nunca lida) — com `profiles`/`user_roles` em CASCADE, apagava conta e papéis de gente real.
+> 3. `listUsers()` sem paginação (50/página): passando de 50 contas deixaria de achar a conta existente.
 >
-> ⚠️ **Nada automatizado guarda isso** — a EF é Deno, fora do alcance da suíte, e o teste `⚠️ DEFEITO` que acusava a fabricação saiu junto com o hook. Quem mexer na `create-admin` roda a bateria manual: [`../../../docs/bateria-create-admin-autorizacao.md`](../../../docs/bateria-create-admin-autorizacao.md), casos **A9/A10** — e confere a **contagem** das duas tabelas antes e depois, porque o 400 sozinho não prova nada.
+> ⚠️ **Esta seção afirmava, desde 2026-07-26, que quem concedia era `useCoordenadoresProva.createMutation` e que ele "só vinculava o `user_id` ao `colaborador_prova_id` que já existe".** Era falso: o `createMutation` nunca teve chamador — quem agia era a EF, que criava conta. É a classe de erro que o `docs:conferir` não pega (símbolo certo, comportamento mentindo), e só releitura dirigida ao código encontra.
+
+**Quem ainda NÃO tem conta aparece na lista, desabilitado, com o motivo escrito** — e os dois motivos pedem providências diferentes: *sem conta* (a pessoa entra em `/auth` por "Estou sem minha senha") × *sem e-mail no cadastro* (alguém cadastra o e-mail antes; são **255** colaboradores assim, medido em 2026-09-12). Sumir da lista seria perda silenciosa: o admin procuraria o nome e nada diria por quê.
+
+**A concessão por `/gerenciar-usuarios` saiu em 2026-07-26**, junto com a **fabricação de alocação** que existia em dois lugares (`useUsers.addCoordenadorAccess` e `createCoordenadorAccess`, na EF `create-admin`): quando não havia alocação elegível, pegava-se **qualquer colaborador** (`.limit(1)`, sem ordenação) e criava-se uma linha em `colaboradores_prova` — a tabela de alocação real, base de relatório e pagamento. A `create-admin` passou a **recusar `role: "coordenador"` com 400**.
+
+> **Por que recusar em vez de só ignorar o papel:** o papel sozinho não é inofensivo. `RequireAcesso` deriva `isCoordenador` de `user_roles` — quem o recebesse sem vínculo **passaria pelos guards** das rotas de coordenação e entraria, para ver listas vazias (as consultas se apoiam em `coordenadores_prova`). Rebaixar em silêncio para `user` seria pior: papel errado, sem sinal.
+>
+> ⚠️ Quem mexer na `create-admin` roda a bateria manual [`../../../docs/bateria-create-admin-autorizacao.md`](../../../docs/bateria-create-admin-autorizacao.md), casos **A9/A10** — conferindo a **contagem** das duas tabelas antes e depois, porque o 400 sozinho não prova nada.
 
 **Revogar** acontece no mesmo diálogo: o `deleteMutation` do `useCoordenadoresProva` apaga o vínculo e, **se era o último**, remove também o papel. A ordem é a segura — apaga o acesso antes do papel, então falhar no fim deixa papel sem acesso, que não concede nada (`is_coordenador_prova` lê só `coordenadores_prova`).
 
@@ -197,20 +206,15 @@ A revogação em massa por `updateRole` (`action: "remove"`) continua existindo 
 
 ✅ **Isso eram dois passos SEM transação até 2026-07-26, e na pior ordem:** `updateRole` apagava `user_roles` **e só depois** `coordenadores_prova`. Como `is_coordenador_prova` consulta **apenas** `coordenadores_prova` — nunca `user_roles` —, falhar no segundo passo **tirava o papel da tela e mantinha o acesso real pela RLS**: a pessoa sumia da lista de coordenadores e seguia entrando nas provas dela.
 
-Agora é uma transação só, pela RPC **`revogar_coordenador(p_user_id)`** (migration `20260726160000`). O corpo de uma função roda dentro de uma transação, então falhar em qualquer um dos DELETEs desfaz o outro. A autorização é `has_role(auth.uid(), 'admin')` — a mesma exigência das policies que ela substitui, nem mais nem menos —, e a função é cirúrgica: apaga o papel `coordenador` e os vínculos, preservando os outros papéis da pessoa.
+Agora é uma transação só, pela RPC **`revogar_coordenador(p_user_id)`** (migration `20260726160000`). O corpo de uma função roda dentro de uma transação, então falhar em qualquer um dos DELETEs desfaz o outro. A autorização é `has_role(auth.uid(), 'admin')`, e a função é cirúrgica: apaga o papel `coordenador` e os vínculos, preservando os outros papéis da pessoa. **A `conceder_coordenador` é a simétrica dela, e nasceu pelo mesmo motivo.**
 
 > **Só o coordenador passa pela RPC.** Revogar `admin` ou `user` segue sendo um `DELETE` direto, que já é atômico por ser uma operação só. RPC ali seria cerimônia sem ganho.
 
-✅ **O superadmin voltou a poder conceder acesso de coordenador (corrigido em 2026-07-26).** A EF `create-coordenador` autorizava o chamador com `SELECT` em `user_roles` filtrando `role = 'admin'` — match literal. Superadmin não tem linha `admin` (a `create-admin` insere só o papel escolhido), então levava **403 "Only admins can create coordinators"** justamente no caminho canônico da concessão. Era a **terceira ocorrência** da classe que a migration `20260725195530_superadmin_implica_admin_em_has_role.sql` existe para resolver. As duas checagens passaram a usar `has_role`:
+✅ **O superadmin voltou a poder conceder acesso de coordenador (corrigido em 2026-07-26).** A EF `create-coordenador` autorizava o chamador com `SELECT` em `user_roles` filtrando `role = 'admin'` — match literal. Superadmin não tem linha `admin` (a `create-admin` insere só o papel escolhido), então levava **403** justamente no caminho canônico da concessão. Era a **terceira ocorrência** da classe que a migration `20260725195530_superadmin_implica_admin_em_has_role.sql` existe para resolver. Com a EF removida, a checagem vive num lugar só — `has_role(auth.uid(), 'admin')` dentro da `conceder_coordenador` —, e o **caso 3.2 da bateria fabrica um superadmin SEM linha `admin`** para provar que ele passa. Usar as contas de superadmin do banco local não provaria nada: elas também têm linha `admin`.
 
-| Onde | Papel exigido |
-|---|---|
-| EF `create-coordenador` — autorização do chamador | `has_role(user.id, 'admin')` |
-| `CoordenadoresProvaDialog` — barreira do e-mail já cadastrado | `has_role(profile.id, 'admin')` |
+**A regra, para não voltar:** papel para **autorizar** sai do `has_role`. `SELECT` literal em `user_roles` só se presta a duas coisas — apagar uma linha específica, ou checar se ela já existe antes de inserir (idempotência).
 
-**A regra, para não voltar:** papel para **autorizar** sai do `has_role`. `SELECT` literal em `user_roles` só se presta a duas coisas — apagar uma linha específica, ou checar se ela já existe antes de inserir (idempotência). Uma varredura em 2026-07-26 confirmou que os `.eq("role", …)` restantes no repo são todos desses dois tipos.
-
-🧪 O diálogo tem bateria de interação desde 2026-07-26 (`CoordenadoresProvaDialog.ui.test.tsx`, 23 testes): a barreira do e-mail, o body da EF, os dois formatos de erro dela e o fluxo de remoção.
+🧪 **A verificação real é a bateria [`../../../docs/bateria-conceder-coordenador.sql`](../../../docs/bateria-conceder-coordenador.sql)** — 14 casos em transação com `ROLLBACK`, com **controle positivo** (a concessão legítima continua passando, conferida por contagem) e afirmando **o nome de quem barrou**, não só que houve recusa. A suíte Vitest mocka o Supabase e não alcança RPC nem trigger; `CoordenadoresProvaDialog.ui.test.tsx` e `useCoordenadoresProva.test.tsx` cobrem só o lado do cliente.
 
 ### RLS não é o único portão: sem `GRANT`, a policy nem é avaliada
 
