@@ -396,7 +396,6 @@ export default function GerenciarColaboradoresProva() {
     if (!provaUnidadeId || !user) return;
     const { data, error } = await supabase.rpc("finalizar_prova_unidade", {
       p_prova_unidade_id: provaUnidadeId,
-      p_user_id: user.id,
     });
     if (error || data !== true) {
       setResultDialog({ open: true, success: false, message: error?.message || "Não foi possível finalizar a unidade." });
@@ -410,7 +409,6 @@ export default function GerenciarColaboradoresProva() {
     if (!provaUnidadeId || !user) return;
     const { data, error } = await supabase.rpc("reabrir_prova_unidade", {
       p_prova_unidade_id: provaUnidadeId,
-      p_user_id: user.id,
     });
     if (error || data !== true) {
       setResultDialog({ open: true, success: false, message: error?.message || "Não foi possível reabrir a unidade." });

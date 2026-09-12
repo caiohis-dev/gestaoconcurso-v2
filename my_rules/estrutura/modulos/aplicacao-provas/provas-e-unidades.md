@@ -158,8 +158,12 @@ A barreira é o trigger **`check_sala_de_prova_finalizada`** (`BEFORE INSERT OR 
 
 | nível | coluna | quem aciona |
 |---|---|---|
-| prova | `provas.prova_finalizada` | criador da prova (ou superadmin), via `finalizar_prova` |
+| prova | `provas.prova_finalizada` | criador da prova **ou superadmin**, via `finalizar_prova` |
 | unidade | `prova_unidades.unidade_finalizada` | **também o coordenador**, via `finalizar_prova_unidade` |
+
+> 🔵 **A linha "ou superadmin" da prova só passou a ser VERDADE em 2026-09-12.** Até então `finalizar_prova`/`reabrir_prova` exigiam ser o criador, e ponto — nem superadmin passava; a doc afirmava o contrário desde antes. O conserto (migration `20260912191749`) alinhou o código à doc por decisão do usuário, e não o inverso: o motivo é operacional e medido — as provas do banco foram criadas por uma admin que não é superadmin, então ninguém mais conseguiria finalizá-las se ela saísse.
+>
+> ⚠️ **As quatro RPCs liam `p_user_id`, enviado pelo cliente, em vez de `auth.uid()`** — qualquer autenticado finalizava prova alheia sabendo o `created_by`. O parâmetro saiu da assinatura. Detalhe em [`../../transversais/auth-e-permissoes.md`](../../transversais/auth-e-permissoes.md); a prova, em `docs/bateria-finalizacao-autorizacao.sql`.
 
 ⚠️ **Consequências que precisam ser ditas, as duas assumidas:**
 

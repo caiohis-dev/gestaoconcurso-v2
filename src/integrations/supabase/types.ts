@@ -1445,11 +1445,11 @@ export type Database = {
         }[]
       }
       finalizar_prova: {
-        Args: { p_prova_id: string; p_user_id: string }
+        Args: { p_prova_id: string }
         Returns: boolean
       }
       finalizar_prova_unidade: {
-        Args: { p_prova_unidade_id: string; p_user_id: string }
+        Args: { p_prova_unidade_id: string }
         Returns: boolean
       }
       get_coordenador_colaboradores: {
@@ -1509,11 +1509,11 @@ export type Database = {
       }
       meu_colaborador_id: { Args: never; Returns: string }
       reabrir_prova: {
-        Args: { p_prova_id: string; p_user_id: string }
+        Args: { p_prova_id: string }
         Returns: boolean
       }
       reabrir_prova_unidade: {
-        Args: { p_prova_unidade_id: string; p_user_id: string }
+        Args: { p_prova_unidade_id: string }
         Returns: boolean
       }
       recusa_alocacao_se_finalizada: {

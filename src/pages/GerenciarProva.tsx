@@ -196,7 +196,6 @@ export default function GerenciarProva() {
 
     const { error } = await supabase.rpc("finalizar_prova", {
       p_prova_id: provaId,
-      p_user_id: user.id,
     });
 
     if (error) {
@@ -215,7 +214,6 @@ export default function GerenciarProva() {
 
     const { error } = await supabase.rpc("reabrir_prova", {
       p_prova_id: provaId,
-      p_user_id: user.id,
     });
 
     if (error) {

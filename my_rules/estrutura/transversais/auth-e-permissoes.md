@@ -321,7 +321,17 @@ Medido em 08/09 contra o banco local: das 53 funções de `public`, **38** eram 
 
 ⚠️ **Dois alarmes que a medição derrubou** — ficam aqui para ninguém "reabrir": `assign_coordenador_role` **não** era escalada de privilégio (`has_role` usa `SELECT EXISTS`, que devolve `false` e **nunca `NULL`**, então a guarda dispara mesmo com `auth.uid()` nulo), e `salvar_salas_distribuidas` tem guarda real de admin. `get_coordenador_colaboradores` vazava **UUIDs internos, não PII**.
 
-🔴 **O que continua aberto e é de usuário LOGADO:** `finalizar_prova`/`reabrir_prova` (e as `_unidade`) comparam `created_by` com **`p_user_id`, parâmetro do chamador**, sem consultar `auth.uid()`. Ver o item no [`backlog.md`](../../backlog.md).
+✅ **FECHADO em 2026-09-12 — era o que sobrava, e valia para usuário LOGADO.** `finalizar_prova`/`reabrir_prova` e as `_unidade` decidiam a autorização sobre **`p_user_id`, parâmetro do chamador**: não era autorização, era uma conferência que o atacante controlava dos dois lados. O parâmetro foi **removido da assinatura** e as quatro passaram a ler `auth.uid()` (migration `20260912191749`).
+
+⚠️ **Elas NÃO têm a mesma política, e a nota do backlog descrevia só as duas primeiras** — reescrever as quatro igual teria tirado acesso do coordenador no dia da prova:
+
+| RPC | Quem pode |
+|---|---|
+| `finalizar_prova` · `reabrir_prova` | superadmin **ou** o criador da prova *(o superadmin entrou em 12/09 — antes era só o criador, e nem as contas superadmin socorriam)* |
+| `finalizar_prova_unidade` | superadmin **ou** criador **ou** **coordenador da prova** |
+| `reabrir_prova_unidade` | superadmin **ou** quem finalizou aquela unidade |
+
+🧪 `docs/bateria-finalizacao-autorizacao.sql` — 9 casos. ⚠️ Ela existe porque **nada mais guarda isto**: nenhum teste caiu quando o defeito foi consertado, e o `tsc` não impede reintroduzir `p_user_id` na chamada (medido).
 
 #### RLS de `cargos` e `cargo_apelidos`
 

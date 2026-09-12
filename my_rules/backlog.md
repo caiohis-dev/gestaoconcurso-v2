@@ -281,9 +281,19 @@ Junto com a refatoração, **corrigir a funcionalidade de "Faltou"**: quando uma
 
 ---
 
-## 🔴 `finalizar_prova` / `reabrir_prova` confiam no `p_user_id` do chamador
+## ✅ `finalizar_prova` / `reabrir_prova` confiavam no `p_user_id` do chamador — FECHADO em 2026-09-12
 
-**Status:** aberto em 2026-09-08, medido e **deliberadamente adiado** (decisão do usuário no mesmo dia). O acesso **anônimo** foi fechado; isto é o que sobra, e vale para usuário **logado**.
+**Status:** ✅ **resolvido**, migration `20260912191749_finalizacao_por_auth_uid.sql`. Aberto em 2026-09-08, medido e adiado por decisão do usuário; executado em 12/09. **Fica aqui, e não em `concluidos/`, pelo que a premissa incompleta ensina.**
+
+> ✅ **O que foi feito:** `p_user_id` foi **removido da assinatura** das quatro RPCs, que passaram a ler `auth.uid()` — vinda do JWT, que o cliente não escolhe. Manter o parâmetro e ignorá-lo deixaria no contrato um argumento que parece autorizar e não autoriza.
+>
+> 🔵 **A política das duas de PROVA mudou, por decisão do usuário:** passou a ser **superadmin OU o criador**, alinhando com o que as `_unidade` já faziam. O motivo é operacional e foi medido: as 2 provas do banco foram criadas por uma admin que **não** é superadmin, então nem as contas superadmin conseguiam finalizá-las — se aquela pessoa saísse, ninguém socorria. A política das duas `_unidade` **não mudou**.
+>
+> 🔴 **A NOTA ABAIXO ESTAVA INCOMPLETA, e isso mudou o conserto.** Ela descreve as quatro como "comparam `created_by` com `p_user_id`" — exato só para as duas de PROVA. Medido no corpo de cada uma antes de reescrever, as `_unidade` já tinham regras mais ricas **e diferentes entre si**: `finalizar_prova_unidade` aceitava superadmin OU criador OU **coordenador da prova** (ramo usado de verdade — 2 das 11 unidades finalizadas foram por coordenadores), e `reabrir_prova_unidade` aceitava superadmin OU **quem finalizou aquela unidade**. Reescrever as quatro com a mesma regra teria tirado acesso de coordenador no dia da prova.
+>
+> ⚠️ **E a previsão de que "os testes que exercitam essas RPCs vão cair" NÃO se cumpriu: nenhum caiu.** Ninguém guardava o contrato — as menções em `guards.test.tsx` são uma lista de nomes para o mock, e as outras são comentários. O `tsc` também não guarda: reintroduzir `p_user_id` na chamada passa limpo (medido). A testemunha que faltava virou **`docs/bateria-finalizacao-autorizacao.sql`** — 9 casos, com controle positivo e falsificação.
+
+**Status original (2026-09-08):** aberto, medido e **deliberadamente adiado** (decisão do usuário no mesmo dia). O acesso **anônimo** foi fechado; isto é o que sobra, e vale para usuário **logado**.
 **Área:** Auth e Permissões (ver [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md))
 
 As quatro funções de finalização (`finalizar_prova`, `reabrir_prova`, e as `_unidade`) **não consultam `auth.uid()`**. Elas comparam o `created_by` da prova com **`p_user_id`, que é parâmetro fornecido pelo próprio chamador**:
@@ -294,9 +304,9 @@ IF v_created_by != p_user_id THEN RAISE EXCEPTION 'Apenas o usuário que criou a
 
 Isso não é autorização — é uma conferência que o atacante controla dos dois lados. **Qualquer usuário autenticado** que saiba o `prova_id` e o `created_by` finaliza (ou reabre) prova alheia.
 
-**O conserto é trocar o parâmetro por `auth.uid()`**, mas ⚠️ isso muda a assinatura e a semântica: `GerenciarProva.tsx:196` e `GerenciarColaboradoresProva.tsx:402` passam o `p_user_id`, e os testes que exercitam essas RPCs vão cair — **e os que caem são a pergunta, não o obstáculo** (armadilha 8 de `testes.md`).
+**O conserto foi trocar o parâmetro por `auth.uid()`**, mudando a assinatura: os quatro chamadores (`GerenciarProva.tsx` e `GerenciarColaboradoresProva.tsx`) deixaram de enviar `p_user_id`. ⚠️ Previa-se que "os testes que exercitam essas RPCs vão cair" — **nenhum caiu**, porque nenhum afirmava o corpo da chamada.
 
-⚠️ Ao mexer, veja se a regra pretendida é mesmo "só o criador": hoje **nem admin** finaliza prova de outro, o que pode ser deliberado ou acidental. Decidir antes de codificar.
+⚠️ A pergunta "a regra pretendida é mesmo 'só o criador'?" foi levada ao usuário antes de codificar, e a resposta foi **não**: passou a ser superadmin OU criador.
 
 ---
 
