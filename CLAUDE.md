@@ -146,7 +146,7 @@ sg docker -c 'npx supabase db reset'    # aplica migrations + os 3 seeds
 ```
 
 - Gerenciador é **npm** (não bun). `npm run dev` sobe na porta 8080.
-- Vite lê `.env` só no boot — reinicie o dev server depois de mexer nele.
+- Vite lê `.env.local` só no boot — reinicie o dev server depois de mexer nele. 🔵 O `.env` da raiz **não existe mais** (removido em 2026-09-12: apontava para o Docker local com cara de produção); os três arquivos estão documentados em `.env.example`.
 - 🔵 **`deno` ESTÁ instalado desde 2026-08-02** (2.9.4, em `~/.deno/bin`) e os testes de Edge Function rodam com **`npm run test:ef`**. ⚠️ Ele **não** é dependência do projeto e **não** entra no `package.json` — o script só o localiza e falha com instrução se faltar. `npm test` (Vitest) **continua sem alcançar** essa camada. Ver `estrutura/transversais/testes.md`.
 
 ---

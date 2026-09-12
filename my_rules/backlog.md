@@ -383,15 +383,27 @@ Um script **gitignored** para apontar o `npm run dev` ao Supabase local ou ao pr
 
 🔴 **Leia o R1 antes de executar.** Com o interruptor ligado, **todo clique escreve em produção** — um banco sem backup nenhum, onde importar candidatos é troca total (apaga a lista do edital inteira). Por isso o roadmap tem uma etapa só de guarda: faixa visível na tela e confirmação digitada.
 
-🔵 **O achado que mais muda a leitura:** o mecanismo de alternância que a doc descreve **não funciona, e não funciona há quase um mês**. Tanto o comentário dentro do `.env.local` quanto `desenvolvimento-local.md:30` dizem que basta esse arquivo existir ou não — mas apagá-lo cai no `.env`, que **também aponta para o Docker local**. Hoje não há caminho nenhum, nem manual, para apontar o `dev` para a nuvem.
+🔵 **O achado que mais muda a leitura:** o mecanismo de alternância que a doc descrevia **não funcionava, e não funcionou por quase um mês**. Tanto o comentário dentro do `.env.local` quanto `desenvolvimento-local.md` diziam que basta esse arquivo existir ou não — mas apagá-lo caía no `.env`, que **também apontava para o Docker local**.
 
-⚠️ **Este item absorveu o do `.env` da raiz** (achado A2 do bootstrap), que era item próprio aqui — ele é a causa do problema acima e fecha na etapa 1.
+✅ **Metade disso fechou em 2026-09-12**, com a remoção do `.env` (item próprio, mais abaixo) e a correção dos dois textos falsos. **O que sobra, e é este item:** continua **não havendo caminho** para apontar o `dev` para a nuvem. A diferença é o modo de falhar — hoje, sem `.env.local`, o cliente fica sem `VITE_SUPABASE_URL` e **quebra alto**, em vez de falar com o banco errado em silêncio.
+
+⚠️ **Este item absorvia o do `.env` da raiz** (achado A2 do bootstrap) — aquele fechou sozinho em 12/09, sem esperar por este.
 
 ---
 
-## O `.env` da raiz se chama produção e aponta para o Docker local
+## ✅ O `.env` da raiz se chamava produção e apontava para o Docker local — FECHADO em 2026-09-12
 
-**Status:** ⏳ absorvido pelo item acima (etapa 1 do roadmap de alternância)
+**Status:** ✅ **resolvido.** O `.env` foi **removido** (o `.env.local` já cobria o desenvolvimento e vence a precedência, então ele só existia para enganar), e os três arquivos passaram a ser documentados no **`.env.example`** — o único `.env*` versionado da raiz, sem segredo nenhum.
+
+> 🔵 **Medido depois de remover:** `npm run build` sai com **0** ocorrências de `127.0.0.1` e 7 do projeto de produção; `vite build --mode development` sai com 4 e **0**. Cada modo aponta para onde deve.
+>
+> 🔴 **ACHADO NÃO PREVISTO, e mais grave que o item:** o `.env.local` guardava quatro variáveis `SMTP_*` com a **senha real do e-mail da FEVRE**, em texto claro. **Ninguém as lia** — o Vite só embute o prefixo `VITE_` (conferido: 0 ocorrências no bundle) e as Edge Functions leem `supabase/functions/.env`. Era credencial viva guardada onde não servia. As quatro linhas saíram.
+>
+> ⏭️ **PENDENTE, e é do usuário:** a senha ficou exposta no histórico da sessão em que foi achada (2026-09-12) — **rotacionar na Hostinger** e, depois, atualizar o secret no dashboard do Supabase e o `supabase/functions/.env` local. O envio se confirma com uma recuperação de senha real, como em 09/09.
+>
+> ⚠️ **O texto abaixo descrevia a situação até 12/09** e fica pelo que a armadilha ensina. A proposta que ele registrava — *"renomear para `.env.local`, que é o que ele de fato é"* — **não era executável**: `.env.local` já existia, e os dois apontavam para o Docker. Pior, o cabeçalho do `.env.local` afirmava que apagá-lo "volta a usar o `.env` de produção", o que era falso nos dois sentidos.
+
+**Status original:** ⏳ absorvido pelo item acima (etapa 1 do roadmap de alternância)
 **Área:** Infraestrutura / build (ver [`hospedagem-e-deploy.md`](./hospedagem-e-deploy.md))
 
 O arquivo `.env` da raiz contém `VITE_SUPABASE_URL="http://127.0.0.1:54321"` com a publishable key **local** — e se apresenta como o arquivo de produção. É a **armadilha nº 1 do §8 do CLAUDE.md**: o nome mente antes do código.

@@ -95,6 +95,12 @@ Duas coisas protegem contra isso:
 
    ⚠️ **`.env.production` vence o `.env.local`** — medido, e é o contrário do que a intuição sugere. E **não** precisa de `--mode production`: o `vite build` já roda em modo production. O `.gitignore` cobre `.env.*`; não versione.
 
+   🔵 **O `.env` da raiz foi REMOVIDO em 2026-09-12.** Ele apontava para o Docker **local** e o nome sugeria ser o principal — a armadilha nº 1 do §8 do `CLAUDE.md`. `.env.local` já cobria o desenvolvimento, então ele só existia para enganar. **Quem documenta os três arquivos agora é o [`.env.example`](../.env.example)**, que é o único `.env*` versionado da raiz e não tem segredo.
+
+   🔵 **Medido depois de remover**, porque "não quebrou" não se presume: `npm run build` sai com **0** ocorrências de `127.0.0.1` e 7 do projeto de produção; `vite build --mode development` sai com 4 e **0**. Cada modo aponta para onde deve.
+
+   🔴 **Saíram junto quatro variáveis `SMTP_*` do `.env.local`, com a senha real do e-mail da FEVRE.** Ninguém as lia: o Vite só embute o prefixo `VITE_`, e as Edge Functions leem `supabase/functions/.env`. Era credencial viva guardada onde não servia — e o bundle nunca a carregou (conferido: 0 ocorrências). ⚠️ **A senha ficou exposta no histórico da sessão em que isso foi achado, então a rotação na Hostinger é pendência aberta**; depois de trocar, atualizar o secret no dashboard do Supabase e o `supabase/functions/.env` local.
+
 2. **O gate do `deploy.sh`**, que confere o **bundle** (não o `.env`) e recusa enviar se achar a URL ou a chave locais. Só o bundle diz o que foi realmente embutido — a precedência entre arquivos `.env` é justamente o que engana.
 
 ---
