@@ -14,6 +14,7 @@ export interface ColaboradorProva {
     id: string;
     colab_nome_completo: string;
     colab_cpf: string;
+    colab_telefone: number | null;
   };
   funcoes_colaboradores?: {
     id: string;
@@ -71,7 +72,8 @@ export function useColaboradoresProva(provaUnidadeId: string) {
           colaboradores (
             id,
             colab_nome_completo,
-            colab_cpf
+            colab_cpf,
+            colab_telefone
           ),
           funcoes_colaboradores (
             id,
@@ -87,64 +89,19 @@ export function useColaboradoresProva(provaUnidadeId: string) {
     enabled: !!provaUnidadeId,
   });
 
-  // Get prova_id from prova_unidade to check colaboradores already assigned to the same prova
-  const colaboradoresAlocadosQuery = useQuery({
-    queryKey: ["colaboradores_alocados_prova_unidade", provaUnidadeId],
-    queryFn: async () => {
-      // First get the prova_id from prova_unidades
-      const { data: provaUnidade, error: puError } = await supabase
-        .from("prova_unidades")
-        .select("prova_id")
-        .eq("id", provaUnidadeId)
-        .single();
-
-      if (puError) throw puError;
-
-      // Get all prova_unidades for this prova with unit names and siglas
-      const { data: allProvaUnidades, error: allPuError } = await supabase
-        .from("prova_unidades")
-        .select("id, unidades_prova(unid_nome, unid_sigla)")
-        .eq("prova_id", provaUnidade.prova_id);
-
-      if (allPuError) throw allPuError;
-
-      if (!allProvaUnidades || allProvaUnidades.length === 0) {
-        return { ids: [] as string[], info: {} as Record<string, { prova_unidade_id: string; unid_nome: string; unid_sigla: string }> };
-      }
-
-      const puMap = new Map<string, { unid_nome: string; unid_sigla: string }>();
-      allProvaUnidades.forEach((pu: { id: string; unidades_prova: { unid_nome: string; unid_sigla: string } | null }) => {
-        puMap.set(pu.id, {
-          unid_nome: pu.unidades_prova?.unid_nome ?? "",
-          unid_sigla: pu.unidades_prova?.unid_sigla ?? "",
-        });
-      });
-
-      // Get all colaboradores already assigned to any unit of this prova
-      const { data: colaboradores, error: colabError } = await supabase
-        .from("colaboradores_prova")
-        .select("colaborador_id, prova_unidade_id")
-        .in("prova_unidade_id", Array.from(puMap.keys()));
-
-      if (colabError) throw colabError;
-
-      const info: Record<string, { prova_unidade_id: string; unid_nome: string; unid_sigla: string }> = {};
-      const ids: string[] = [];
-      (colaboradores ?? []).forEach((c) => {
-        const unitInfo = puMap.get(c.prova_unidade_id) ?? { unid_nome: "", unid_sigla: "" };
-        ids.push(c.colaborador_id);
-        info[c.colaborador_id] = {
-          prova_unidade_id: c.prova_unidade_id,
-          unid_nome: unitInfo.unid_nome,
-          unid_sigla: unitInfo.unid_sigla,
-        };
-      });
-
-      return { ids, info };
-    },
-    enabled: !!provaUnidadeId,
-  });
-
+  // 🔵 A query `colaboradoresAlocadosQuery` saiu daqui em 2026-09-12.
+  //
+  // Ela fazia TRÊS requisições — prova_id da unidade, todas as prova_unidades da prova,
+  // e todas as alocações delas — para montar, no cliente, um `Map` de "quem já está em
+  // que unidade". Só servia ao picker de `GerenciarColaboradoresProva`, e o último passo
+  // (`colaboradores_prova` filtrado por `.in(...)`, sem `.range()`) batia no teto
+  // `max_rows` do PostgREST, que corta SEM ERRO: 531 alocações na maior prova, contra um
+  // teto de 1000. Truncar ali fazia alguém já alocado em outra unidade aparecer como
+  // livre. ⚠️ O estrago é de UX, não de dado: o trigger `check_colaborador_prova_unique`
+  // recusa a alocação no banco, nomeando o motivo — o que se perde é o aviso preventivo.
+  //
+  // O cruzamento agora vem pronto da RPC `buscar_colaboradores_para_alocacao`, junto com
+  // a busca — ver `useBuscarColaboradoresParaAlocacao` em `useColaboradores.tsx`.
 
   const createMutation = useMutation({
     mutationFn: async (data: ColaboradorProvaInsert) => {
@@ -255,9 +212,6 @@ export function useColaboradoresProva(provaUnidadeId: string) {
     colaboradoresProva: query.data ?? [],
     isLoading: query.isLoading,
     error: query.error,
-    colaboradoresAlocados: colaboradoresAlocadosQuery.data?.ids ?? [],
-    colaboradoresAlocadosInfo: colaboradoresAlocadosQuery.data?.info ?? {},
-    isLoadingAlocados: colaboradoresAlocadosQuery.isLoading,
 
 
     create: createMutation.mutate,

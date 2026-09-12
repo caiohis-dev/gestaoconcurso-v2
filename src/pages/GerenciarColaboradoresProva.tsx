@@ -4,7 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useProvas } from "@/hooks/useProvas";
 import { useUnidadesProva } from "@/hooks/useUnidadesProva";
-import { useColaboradores } from "@/hooks/useColaboradores";
+import { useBuscarColaboradoresParaAlocacao } from "@/hooks/useColaboradores";
+import { useDebounce } from "@/hooks/use-debounce";
 import { useColaboradoresProva } from "@/hooks/useColaboradoresProva";
 import { useFuncoesColaboradores } from "@/hooks/useFuncoesColaboradores";
 import { useValoresFuncaoProva } from "@/hooks/useValoresFuncaoProva";
@@ -44,13 +45,10 @@ export default function GerenciarColaboradoresProva() {
   const { user, loading: authLoading, isAdmin, isCoordenador, isSuperAdmin } = useAuth();
   const { provas, isLoading: isLoadingProvas } = useProvas();
   const { unidades, isLoading: isLoadingUnidades } = useUnidadesProva();
-  const { colaboradores, isLoading: isLoadingColaboradores } = useColaboradores({ fetchAll: true });
   const { funcoes, isLoading: isLoadingFuncoes } = useFuncoesColaboradores();
   const {
     colaboradoresProva,
     isLoading: isLoadingColabProva,
-    colaboradoresAlocados,
-    colaboradoresAlocadosInfo,
 
     create,
     update,
@@ -189,26 +187,23 @@ export default function GerenciarColaboradoresProva() {
     return formatDateBRWithFallback(dateStr);
   };
 
-  // Colaboradores alocados na unidade ATUAL (devem ser totalmente ocultados)
-  const colaboradoresNaUnidadeAtual = useMemo(() => {
-    return new Set(
-      Object.entries(colaboradoresAlocadosInfo)
-        .filter(([, info]) => info.prova_unidade_id === provaUnidadeId)
-        .map(([colabId]) => colabId)
-    );
-  }, [colaboradoresAlocadosInfo, provaUnidadeId]);
-
-  const colaboradoresDisponiveis = useMemo(() => {
-    return colaboradores.filter((c) => !colaboradoresNaUnidadeAtual.has(c.id));
-  }, [colaboradores, colaboradoresNaUnidadeAtual]);
-
-
-  const colaboradoresFiltrados = useMemo(() => {
-    if (!filterText) return colaboradoresDisponiveis;
-    return colaboradoresDisponiveis.filter((c) =>
-      c.colab_nome_completo.toLowerCase().includes(filterText.toLowerCase())
-    );
-  }, [colaboradoresDisponiveis, filterText]);
+  // 🔴 A busca acontece NO BANCO desde 2026-09-12, e não é otimização: baixar a lista
+  // inteira para filtrar em memória batia no teto `max_rows` do PostgREST (1000), que
+  // corta a resposta SEM ERRO — 771 colaboradores já eram 77% dele. O sintoma seria um
+  // colaborador sumindo daqui, e ninguém conseguindo alocá-lo, sem sinal nenhum.
+  //
+  // A mesma RPC devolve o cruzamento com as alocações da prova (quem está em que
+  // unidade), que antes custava outras 3 requisições e um `Map` montado no cliente.
+  const termoBusca = useDebounce(filterText);
+  const {
+    colaboradores: colaboradoresFiltrados,
+    isFetching: buscandoColaboradores,
+    podeHaverMais,
+  } = useBuscarColaboradoresParaAlocacao({
+    provaId,
+    termo: termoBusca,
+    excluirProvaUnidadeId: provaUnidadeId,
+  });
 
   // Ordena colaboradores por função e depois por nome (ordem alfabética)
   const colaboradoresProvaSorted = useMemo(() => {
@@ -317,7 +312,7 @@ export default function GerenciarColaboradoresProva() {
     setEditFuncao("");
   };
 
-  const isLoading = isLoadingProvas || isLoadingUnidades || isLoadingColabProva || isLoadingColaboradores || isLoadingFuncoes || isLoadingValores || isLoadingMetas;
+  const isLoading = isLoadingProvas || isLoadingUnidades || isLoadingColabProva || isLoadingFuncoes || isLoadingValores || isLoadingMetas;
   
   // Funções com metas definidas para exibir no totalizador
   const funcoesComMeta = useMemo(() => {
@@ -645,13 +640,16 @@ export default function GerenciarColaboradoresProva() {
                       <Select
                         value={selectedColaborador}
                         onValueChange={setSelectedColaborador}
-                        disabled={colaboradoresFiltrados.length === 0}
+                        disabled={colaboradoresFiltrados.length === 0 && !buscandoColaboradores}
                       >
                         <SelectTrigger>
                           <SelectValue
                             placeholder={
-                              colaboradoresDisponiveis.length === 0
-                                ? "Sem colaboradores"
+                              // ⚠️ Enquanto busca, NÃO afirma que não há resultado: é o
+                              // padrão "vazio enquanto carrega", que já rendeu defeito
+                              // neste repo. Com o debounce, essa janela ficou maior.
+                              buscandoColaboradores
+                                ? "Buscando..."
                                 : colaboradoresFiltrados.length === 0
                                 ? "Nenhum resultado"
                                 : "Selecionar"
@@ -660,14 +658,16 @@ export default function GerenciarColaboradoresProva() {
                         </SelectTrigger>
                         <SelectContent>
                           {colaboradoresFiltrados.map((colab) => {
-                            const alocInfo = colaboradoresAlocadosInfo[colab.id];
-                            const isAlocadoOutraUnidade = !!alocInfo && alocInfo.prova_unidade_id !== provaUnidadeId;
+                            // O cruzamento vem pronto do banco. `alocado_prova_unidade_id`
+                            // nunca é a unidade atual — a RPC já a excluiu —, então basta
+                            // ele existir para a pessoa estar presa a outra unidade.
+                            const isAlocadoOutraUnidade = !!colab.alocado_prova_unidade_id;
                             return (
                               <SelectItem key={colab.id} value={colab.id} disabled={isAlocadoOutraUnidade}>
                                 {colab.colab_nome_completo}
                                 {isAlocadoOutraUnidade && (
                                   <span className="ml-2 text-xs text-muted-foreground">
-                                    {alocInfo.unid_sigla.trim()}
+                                    {colab.alocado_unid_sigla?.trim()}
                                   </span>
                                 )}
                               </SelectItem>
@@ -676,6 +676,14 @@ export default function GerenciarColaboradoresProva() {
 
                         </SelectContent>
                       </Select>
+                      {podeHaverMais && (
+                        // Sem este aviso, quem procura alguém que ficou fora do limite
+                        // conclui que a pessoa não existe — o mesmo engano silencioso que
+                        // o teto de 1000 causava, só que menor e mais honesto.
+                        <p className="text-xs text-muted-foreground">
+                          Mostrando os primeiros resultados. Refine a busca para achar quem não está na lista.
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="space-y-2">
@@ -744,7 +752,7 @@ export default function GerenciarColaboradoresProva() {
                         </TableCell>
                         <TableCell>
                           {(() => {
-                            const colab = colaboradores.find(c => c.id === cp.colaborador_id);
+                            const colab = cp.colaboradores;
                             if (!colab?.colab_cpf) return "-";
                             const cpf = colab.colab_cpf.toString().padStart(11, '0');
                             return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
@@ -752,7 +760,7 @@ export default function GerenciarColaboradoresProva() {
                         </TableCell>
                         <TableCell>
                           {(() => {
-                            const colab = colaboradores.find(c => c.id === cp.colaborador_id);
+                            const colab = cp.colaboradores;
                             if (!colab?.colab_telefone) return "-";
                             const phone = colab.colab_telefone.toString();
                             if (phone.length === 11) return phone.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");

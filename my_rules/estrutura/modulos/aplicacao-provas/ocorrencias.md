@@ -19,6 +19,8 @@ A guarda era `if (ids && ids.length > 0)`, então `[]` não aplicava filtro e de
 
 ## Entidade `ocorrencias_colaborador`
 
+> 🔵 **O picker "Selecionar Substituto" busca NO SERVIDOR desde 2026-09-12.** Ele abria com duas consultas sem teto — todos os colaboradores (771) mais todas as alocações da prova — e filtrava em memória; o PostgREST corta em `max_rows` (1000) **sem erro**, então um colaborador sumiria da lista calado. Hoje usa a RPC `buscar_colaboradores_para_alocacao` (a mesma do picker de alocação), sem `p_excluir_prova_unidade_id`: aqui se vê todo mundo, e quem já está alocado aparece com a sigla e o botão desabilitado. Ver [`alocacao-e-funcoes.md`](./alocacao-e-funcoes.md).
+
 `useOcorrencias.tsx` (página `OcorrenciasProva.tsx`, rota `/ocorrencias-prova/:provaId`): registra um incidente ligado a um `colaborador_id`, dentro de uma `prova_id`/`prova_unidade_id`, com `descricao`, `tipo_ocorrencia`, `data_ocorrencia`, e um flag `substituido` + `substituto_id` (FK para outro colaborador que o substituiu).
 
 ## Regra não óbvia: quem aparece no combobox de "Nova Ocorrência"

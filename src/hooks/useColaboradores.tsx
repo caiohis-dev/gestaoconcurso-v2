@@ -117,11 +117,6 @@ export type ColaboradorListagem = Pick<
   | 'colab_ultimo_acesso'
 >;
 
-export interface UseColaboradoresOptions {
-  /** When true, fetches all collaborators regardless of role (for adding to exams) */
-  fetchAll?: boolean;
-}
-
 /**
  * Só as escritas, sem consulta nenhuma.
  *
@@ -245,80 +240,24 @@ export function useColaboradoresMutations() {
   };
 }
 
-/**
- * Listagem completa dos colaboradores — o PICKER de alocação.
+/*
+ * 🔵 `useColaboradores()` — a listagem INTEIRA — saiu em 2026-09-12.
  *
- * ⚠️ Isto NÃO é o que `/colaboradores` usa. Aquela tela passou a buscar sob demanda em
- * 2026-09-10 (ver {@link useBuscarColaboradores}); este hook ficou para
- * `GerenciarColaboradoresProva`, que precisa NAVEGAR o conjunto para escolher quem
- * alocar, e por isso não comporta "só busca com critério".
+ * Ela baixava todos os colaboradores (`COLUNAS_LISTAGEM`, com CPF, telefone e chave PIX)
+ * e tinha UM consumidor: o picker de `GerenciarColaboradoresProva`. Sem `.range()`, batia
+ * no teto `max_rows` do PostgREST — 771 linhas contra 1000, e o corte é SILENCIOSO.
  *
- * 🔴 O teto do PostgREST (`max_rows`, 1000 por padrão) vale aqui e ele TRUNCA EM
- * SILÊNCIO. Com ~774 colaboradores ainda cabe, mas este hook é o próximo a estourar —
- * e o sintoma será um colaborador que "não existe" no picker, sem erro nenhum.
+ * O que a substituiu, por caso de uso:
+ *   · picker de alocação  → `useBuscarColaboradoresParaAlocacao` (abaixo), que busca e
+ *     cruza no banco, com LIMIT;
+ *   · listagem de /colaboradores → `useBuscarColaboradores` (busca paginada, sob demanda);
+ *   · escritas → `useColaboradoresMutations`, separado desde 2026-09-10.
+ *
+ * O ramo `isCoordenador` saiu junto: fazia `get_coordenador_colaboradores` e depois
+ * `.in('id', allowedIds)` com a lista inteira na URL — o mesmo teto, mais um limite de
+ * tamanho de URL. A RPC nova respeita a RLS por ser SECURITY INVOKER, então o recorte do
+ * coordenador continua valendo sem precisar ser remontado no cliente.
  */
-export function useColaboradores(options: UseColaboradoresOptions = {}) {
-  const { fetchAll = false } = options;
-  const { user, isAdmin, isCoordenador } = useAuth();
-  const mutations = useColaboradoresMutations();
-
-  const query = useQuery({
-    queryKey: ['colaboradores', user?.id, isAdmin, isCoordenador, fetchAll],
-    queryFn: async () => {
-      // If fetchAll is true or user is admin, get all colaboradores
-      if (fetchAll || isAdmin) {
-        const { data, error } = await supabase
-          .from('colaboradores')
-          .select(COLUNAS_LISTAGEM)
-          .order('colab_nome_completo', { ascending: true });
-
-        if (error) throw error;
-        return data as unknown as ColaboradorListagem[];
-      }
-
-      // If user is coordenador, get only their colaboradores
-      if (isCoordenador && user?.id) {
-        // Get the list of colaborador IDs that this coordinator can see
-        const { data: allowedIds, error: idsError } = await supabase.rpc(
-          'get_coordenador_colaboradores',
-          { p_user_id: user.id }
-        );
-
-        if (idsError) throw idsError;
-
-        if (!allowedIds || allowedIds.length === 0) {
-          return [] as ColaboradorListagem[];
-        }
-
-        const { data, error } = await supabase
-          .from('colaboradores')
-          .select(COLUNAS_LISTAGEM)
-          .in('id', allowedIds)
-          .order('colab_nome_completo', { ascending: true });
-
-        if (error) throw error;
-        return data as unknown as ColaboradorListagem[];
-      }
-
-      // Regular users can see all colaboradores (read-only)
-      const { data, error } = await supabase
-        .from('colaboradores')
-        .select(COLUNAS_LISTAGEM)
-        .order('colab_nome_completo', { ascending: true });
-
-      if (error) throw error;
-      return data as unknown as ColaboradorListagem[];
-    },
-    enabled: !!user,
-  });
-
-  return {
-    colaboradores: query.data ?? [],
-    isLoading: query.isLoading,
-    error: query.error,
-    ...mutations,
-  };
-}
 
 export type OrdemColaboradores = 'nome' | 'ultimo_acesso';
 
@@ -410,5 +349,89 @@ export function useBuscarColaboradores({
     error: query.error,
     /** Houve uma busca concluída? Distingue "ainda não buscou" de "não achou nada". */
     buscou: query.isSuccess,
+  };
+}
+
+/** Uma linha do picker de alocação — o que `buscar_colaboradores_para_alocacao` devolve. */
+export interface ColaboradorParaAlocacao {
+  id: string;
+  colab_nome_completo: string;
+  colab_cpf: string | null;
+  /** Em que unidade DESTA prova a pessoa já está alocada. `null` = livre. */
+  alocado_prova_unidade_id: string | null;
+  alocado_unid_sigla: string | null;
+}
+
+export const LIMITE_PICKER_ALOCACAO = 50;
+
+export interface FiltroAlocacao {
+  provaId: string | undefined;
+  termo: string;
+  /** Quem já está NESTA unidade sai da lista. Omitido, ninguém sai. */
+  excluirProvaUnidadeId?: string | null;
+  limite?: number;
+  /** O picker só consulta quando abre — ver a nota abaixo. */
+  habilitado?: boolean;
+}
+
+/**
+ * Busca colaboradores para ALOCAR, já sabendo quem está em qual unidade da prova.
+ *
+ * 🔴 Substitui, desde 2026-09-12, o par "baixa todos + cruza no cliente" que vivia em
+ * `useColaboradores({fetchAll:true})` + `useColaboradoresProva.colaboradoresAlocadosQuery`.
+ * Aquilo batia no teto `max_rows` do PostgREST (1000, `config.toml:22`), que **corta sem
+ * erro nenhum** — medido em 12/09: 771 colaboradores (77% do teto) e 531 alocações na
+ * maior prova. O sintoma seria um colaborador sumindo do picker, sem sinal. A RPC tem
+ * `LIMIT`, então o teto deixou de alcançar esta tela.
+ *
+ * ⚠️ **O acento depende dos DOIS lados casarem.** A RPC normaliza o dado (a mesma
+ * `colab_nome_busca` de `/colaboradores`) e aqui o termo digitado passa por
+ * {@link removerAcentos}. Mexer num só faz a busca parar de achar, sem erro.
+ *
+ * ⚠️ **Termo vazio devolve as primeiras `limite` por nome — não lista vazia.** É a
+ * diferença deliberada em relação a `useBuscarColaboradores`, cujo `enabled` exige
+ * critério: lá a tela montava sozinha e baixava 707 kB; aqui o `<Select>` só consulta
+ * quando é aberto, e quem aloca costuma escolher sem digitar. Zerar a lista trocaria um
+ * defeito silencioso por um fluxo quebrado.
+ */
+export function useBuscarColaboradoresParaAlocacao({
+  provaId,
+  termo,
+  excluirProvaUnidadeId = null,
+  limite = LIMITE_PICKER_ALOCACAO,
+  habilitado = true,
+}: FiltroAlocacao) {
+  const { user } = useAuth();
+  const criterio = termo.trim();
+
+  const query = useQuery({
+    queryKey: [
+      'colaboradores', 'alocacao', user?.id, provaId, criterio, excluirProvaUnidadeId, limite,
+    ],
+    enabled: !!user && !!provaId && habilitado,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('buscar_colaboradores_para_alocacao', {
+        p_prova_id: provaId!,
+        // O lado do dado já está sem acento; o termo tem de chegar igual.
+        p_termo: removerAcentos(criterio),
+        p_excluir_prova_unidade_id: excluirProvaUnidadeId,
+        p_limite: limite,
+      });
+
+      if (error) throw error;
+      return (data ?? []) as ColaboradorParaAlocacao[];
+    },
+  });
+
+  return {
+    colaboradores: query.data ?? [],
+    isFetching: query.isFetching,
+    error: query.error,
+    /**
+     * A lista pode estar truncada em `limite`? Então há mais gente que o termo alcança, e
+     * a tela precisa dizer isso — senão quem procura alguém que ficou de fora conclui que
+     * a pessoa não existe, que é exatamente o defeito que este tema veio fechar.
+     */
+    podeHaverMais: (query.data?.length ?? 0) >= limite,
   };
 }

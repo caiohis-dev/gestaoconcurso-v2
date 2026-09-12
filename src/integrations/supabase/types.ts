@@ -1397,6 +1397,21 @@ export type Database = {
           unidade_id: string
         }[]
       }
+      buscar_colaboradores_para_alocacao: {
+        Args: {
+          p_prova_id: string
+          p_termo?: string
+          p_excluir_prova_unidade_id?: string | null
+          p_limite?: number
+        }
+        Returns: {
+          id: string
+          colab_nome_completo: string
+          colab_cpf: string | null
+          alocado_prova_unidade_id: string | null
+          alocado_unid_sigla: string | null
+        }[]
+      }
       conceder_coordenador: {
         Args: { p_colaborador_prova_id: string }
         Returns: string

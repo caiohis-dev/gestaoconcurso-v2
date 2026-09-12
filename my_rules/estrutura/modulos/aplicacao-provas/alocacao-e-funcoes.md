@@ -106,9 +106,13 @@ Três escolhas de desenho que precisam sobreviver a refatoração:
 `useColaboradoresProva.tsx`: liga `colaborador_id` + `prova_unidade_id` + `funcao_id`, com um **`valor_pagamento` próprio, copiado no momento da alocação** — não é um lookup ao vivo em `valores_funcao_prova`. Consequência prática: mudar o valor de uma função em `valores_funcao_prova` **não** atualiza retroativamente colaboradores já alocados; é preciso editar cada `colaboradores_prova` manualmente (ou reatribuir) se o valor mudou depois da alocação.
 
 Regras de negócio observadas:
-- **Um colaborador só pode estar alocado em uma unidade por prova** — a inserção falha no banco com mensagem contendo "já está alocado", capturada e traduzida no hook (`createMutation`).
+- **Um colaborador só pode estar alocado em uma unidade por prova** — e **quem garante isso é o banco**, no trigger `check_colaborador_prova_unique` (`BEFORE INSERT OR UPDATE`), que recusa com *"Este colaborador já está alocado em outra unidade desta prova."*; o hook captura e traduz. ⚠️ A unique da tabela (`unique_colaborador_prova_unidade`) cobre só `(prova_unidade_id, colaborador_id)` — é o **trigger**, não ela, que fecha o caso entre unidades. Confundir os dois leva a concluir que a regra é só da tela; ela não é.
 - **Exclusão bloqueada se o colaborador tiver acesso de coordenador vinculado** (`coordenadores_prova.colaborador_prova_id`) — é preciso remover o acesso de coordenador antes de desalocar.
-- A query `colaboradoresAlocadosQuery` retorna todos os colaboradores já alocados em **qualquer** unidade da mesma prova (não só a unidade atual) com a sigla da unidade onde estão — usado pela UI para desabilitar/anotar colaboradores já ocupados em outro lugar da mesma prova ao montar o combobox de adição.
+- 🔵 **O picker de adição busca NO SERVIDOR desde 2026-09-12.** Antes, `useColaboradores({fetchAll:true})` baixava todos os colaboradores e a query `colaboradoresAlocadosQuery` (3 requisições) trazia todas as alocações da prova, para cruzar no cliente. Nenhuma das duas tinha `.range()`, e o PostgREST corta em `max_rows` (1000) **sem erro** — medido: 771 colaboradores (77% do teto) e 531 alocações na maior prova.
+
+  Hoje é a RPC **`buscar_colaboradores_para_alocacao`** (migration `20260912180627`), com `LIMIT`, que já devolve `alocado_prova_unidade_id` + `alocado_unid_sigla`. Quem está na unidade **atual** sai da lista; quem está em **outra** fica visível e desabilitado, com a sigla. Ver [`../../transversais/auth-e-permissoes.md`](../../transversais/auth-e-permissoes.md) para o lado da RLS (a função é `SECURITY INVOKER`) e `docs/bateria-buscar-colaboradores-alocacao.sql` para a verificação.
+
+  ⚠️ **O que se perdia com o truncamento era o AVISO, não a regra** — o trigger acima recusaria a alocação de qualquer forma. Vale registrar porque a primeira leitura deste tema concluiu o contrário, por ler o nome do trigger na listagem sem abrir o corpo.
 
 ## Acesso de coordenador (`coordenadores_prova`)
 

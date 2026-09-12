@@ -7,6 +7,8 @@ import { useProvaUnidades } from "@/hooks/useProvaUnidades";
 import { useCoordenadorUnidades } from "@/hooks/useCoordenadorUnidades";
 import { useOcorrencias, Ocorrencia, OcorrenciaInsert } from "@/hooks/useOcorrencias";
 import { supabase } from "@/integrations/supabase/client";
+import { useBuscarColaboradoresParaAlocacao } from "@/hooks/useColaboradores";
+import { useDebounce } from "@/hooks/use-debounce";
 import { useToast } from "@/hooks/use-toast";
 import { PasswordConfirmDialog } from "@/components/PasswordConfirmDialog";
 
@@ -121,54 +123,37 @@ export default function OcorrenciasProva() {
   const [dataDisplay, setDataDisplay] = useState<string>("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [substitutoOpen, setSubstitutoOpen] = useState(false);
-  const [allColaboradores, setAllColaboradores] = useState<{ id: string; colab_nome_completo: string }[]>([]);
-  const [loadingAllColabs, setLoadingAllColabs] = useState(false);
+  // 🔵 `allColaboradores` e `alocadosMap` saíram em 2026-09-12. A lista inteira vinha em
+  // duas consultas sem teto (771 colaboradores + todas as alocações da prova) e o filtro
+  // acontecia aqui em memória — o PostgREST corta em `max_rows` (1000) SEM ERRO, então um
+  // colaborador simplesmente sumiria do picker. Agora a busca e o cruzamento são da RPC
+  // `buscar_colaboradores_para_alocacao`, com LIMIT.
   const [substitutoSearch, setSubstitutoSearch] = useState("");
   const [substitutoNome, setSubstitutoNome] = useState<string>("");
   const [substitutoId, setSubstitutoId] = useState<string>("");
-  const [alocadosMap, setAlocadosMap] = useState<Record<string, string>>({});
   const [encerrarUnidadeId, setEncerrarUnidadeId] = useState<string | null>(null);
   const logoBase64 = useLogoBase64();
   const [exportingPdf, setExportingPdf] = useState(false);
 
-  const openSubstituto = async () => {
+  const openSubstituto = () => {
     setSubstitutoOpen(true);
     setSubstitutoSearch("");
-    setLoadingAllColabs(true);
-
-    const [colabsRes, alocRes] = await Promise.all([
-      supabase
-        .from("colaboradores")
-        .select("id, colab_nome_completo")
-        .order("colab_nome_completo", { ascending: true }),
-      supabase
-        .from("colaboradores_prova")
-        .select("colaborador_id, prova_unidades!inner ( prova_id, unidades_prova ( unid_sigla ) )")
-        .eq("prova_unidades.prova_id", provaId || ""),
-    ]);
-
-    const list = ((colabsRes.data as any[]) || []).sort((a, b) =>
-      (a.colab_nome_completo || "").localeCompare(b.colab_nome_completo || "", "pt-BR"),
-    );
-    setAllColaboradores(list);
-
-    const map: Record<string, string> = {};
-    ((alocRes.data as any[]) || []).forEach((row) => {
-      const sigla = row?.prova_unidades?.unidades_prova?.unid_sigla?.trim();
-      if (row?.colaborador_id && sigla && !map[row.colaborador_id]) {
-        map[row.colaborador_id] = sigla;
-      }
-    });
-    setAlocadosMap(map);
-
-    setLoadingAllColabs(false);
   };
 
-  const filteredAllColaboradores = useMemo(() => {
-    const q = substitutoSearch.trim().toLowerCase();
-    if (!q) return allColaboradores;
-    return allColaboradores.filter((c) => (c.colab_nome_completo || "").toLowerCase().includes(q));
-  }, [allColaboradores, substitutoSearch]);
+  const termoSubstituto = useDebounce(substitutoSearch);
+  // Sem `excluirProvaUnidadeId`: aqui se vê todo mundo, e quem já está alocado aparece
+  // com a sigla e o botão desabilitado — a escolha de um substituto precisa mostrar
+  // por que alguém não serve, não escondê-lo.
+  const {
+    colaboradores: colaboradoresSubstituto,
+    isFetching: loadingAllColabs,
+    podeHaverMais: podeHaverMaisSubstitutos,
+  } = useBuscarColaboradoresParaAlocacao({
+    provaId,
+    termo: termoSubstituto,
+    habilitado: substitutoOpen,
+  });
+
 
   const [colaboradoresUnidade, setColaboradoresUnidade] = useState<
     { id: string; colab_nome_completo: string; colab_cpf: string; sigla_alocada: string; disabled: boolean }[]
@@ -834,18 +819,23 @@ export default function OcorrenciasProva() {
               value={substitutoSearch}
               onChange={(e) => setSubstitutoSearch(e.target.value)}
             />
+            {podeHaverMaisSubstitutos && (
+              <p className="text-xs text-muted-foreground">
+                Mostrando os primeiros resultados. Refine a busca para achar quem não está na lista.
+              </p>
+            )}
             <Card>
               <CardContent className="p-0 max-h-[400px] overflow-y-auto">
                 {loadingAllColabs ? (
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="h-6 w-6 animate-spin text-primary" />
                   </div>
-                ) : filteredAllColaboradores.length === 0 ? (
+                ) : colaboradoresSubstituto.length === 0 ? (
                   <div className="py-8 text-center text-sm text-muted-foreground">Nenhum colaborador encontrado.</div>
                 ) : (
                   <ul className="divide-y">
-                    {filteredAllColaboradores.map((c) => {
-                      const sigla = alocadosMap[c.id];
+                    {colaboradoresSubstituto.map((c) => {
+                      const sigla = c.alocado_unid_sigla?.trim();
                       const alocado = !!sigla;
                       return (
                         <li key={c.id} className="flex items-center justify-between gap-2 px-4 py-2 text-sm">

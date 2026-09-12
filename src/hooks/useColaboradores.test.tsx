@@ -26,8 +26,10 @@ const { authMock } = vi.hoisted(() => ({
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => authMock }));
 
 import {
-  useColaboradores,
+  useColaboradoresMutations,
   useBuscarColaboradores,
+  useBuscarColaboradoresParaAlocacao,
+  LIMITE_PICKER_ALOCACAO,
   POR_PAGINA_COLABORADORES,
   mensagemErroExclusaoColaborador,
 } from "@/hooks/useColaboradores";
@@ -56,80 +58,14 @@ describe("useColaboradores", () => {
    * Quebrar o que está aqui piora a UX, não abre vazamento — mas o inverso também
    * vale: consertar aqui não substitui policy.
    */
-  describe("recorte por papel", () => {
-    it("não consulta nada sem usuário logado (enabled: !!user)", async () => {
-      authMock.user = null;
-      const { result } = renderHookWithProviders(() => useColaboradores());
-      await waitFor(() => expect(result.current.isLoading).toBe(false));
-      expect(supabaseMock.from).not.toHaveBeenCalled();
-    });
-
-    it("admin busca todos, sem passar pela RPC de coordenador", async () => {
-      authMock.isAdmin = true;
-      setTableResult("colaboradores", { data: [COLABORADOR], error: null });
-
-      const { result } = renderHookWithProviders(() => useColaboradores());
-      await waitFor(() => expect(result.current.colaboradores).toHaveLength(1));
-
-      expect(supabaseMock.rpc).not.toHaveBeenCalled();
-      expect(buildersDe("colaboradores")[0].order).toHaveBeenCalledWith(
-        "colab_nome_completo",
-        { ascending: true },
-      );
-    });
-
-    it("coordenador resolve os ids pela RPC e filtra por eles", async () => {
-      authMock.isCoordenador = true;
-      setRpcResult("get_coordenador_colaboradores", { data: ["colab-1", "colab-2"], error: null });
-      setTableResult("colaboradores", { data: [COLABORADOR], error: null });
-
-      const { result } = renderHookWithProviders(() => useColaboradores());
-      await waitFor(() => expect(result.current.colaboradores).toHaveLength(1));
-
-      expect(supabaseMock.rpc).toHaveBeenCalledWith("get_coordenador_colaboradores", {
-        p_user_id: "u1",
-      });
-      expect(buildersDe("colaboradores")[0].in).toHaveBeenCalledWith("id", [
-        "colab-1",
-        "colab-2",
-      ]);
-    });
-
-    it("coordenador sem colaboradores não consulta a tabela", async () => {
-      // Curto-circuito importante: sem ele, `.in('id', [])` iria ao banco à toa.
-      authMock.isCoordenador = true;
-      setRpcResult("get_coordenador_colaboradores", { data: [], error: null });
-
-      const { result } = renderHookWithProviders(() => useColaboradores());
-      await waitFor(() => expect(result.current.isLoading).toBe(false));
-
-      expect(result.current.colaboradores).toEqual([]);
-      expect(supabaseMock.from).not.toHaveBeenCalled();
-    });
-
-    it("fetchAll: true tem precedência sobre o recorte de coordenador", async () => {
-      // É como as telas que precisam da lista inteira (ex.: alocação) escapam do
-      // recorte. Se a precedência inverter, o coordenador deixa de conseguir alocar.
-      authMock.isCoordenador = true;
-      setTableResult("colaboradores", { data: [COLABORADOR], error: null });
-
-      const { result } = renderHookWithProviders(() => useColaboradores({ fetchAll: true }));
-      await waitFor(() => expect(result.current.colaboradores).toHaveLength(1));
-
-      expect(supabaseMock.rpc).not.toHaveBeenCalled();
-    });
-
-    it("propaga erro da RPC", async () => {
-      authMock.isCoordenador = true;
-      setRpcResult("get_coordenador_colaboradores", {
-        data: null,
-        error: erroPostgrest("42883", "function does not exist"),
-      });
-
-      const { result } = renderHookWithProviders(() => useColaboradores());
-      await waitFor(() => expect(result.current.error).toBeTruthy());
-    });
-  });
+  /**
+   * 🔵 O describe "recorte por papel" saiu em 2026-09-12, com o `useColaboradores()` que
+   * ele testava — a listagem inteira, que batia no teto `max_rows` do PostgREST. Ele
+   * cobria o ramo de coordenador (`get_coordenador_colaboradores` + `.in('id', ids)`) e a
+   * precedência do `fetchAll`. Nada disso existe mais: o recorte do coordenador agora é a
+   * RLS, respeitada porque a RPC nova é SECURITY INVOKER, e não precisa ser remontado no
+   * cliente. Ver `useBuscarColaboradoresParaAlocacao` abaixo.
+   */
 
   /**
    * `mensagemDuplicidade` traduz o nome da CONSTRAINT para uma frase acionável.
@@ -140,7 +76,7 @@ describe("useColaboradores", () => {
   describe("tradução de violação de unicidade", () => {
     async function criarComErro(error: { code?: string; message: string; details?: string }) {
       setTableResult("colaboradores", { data: null, error: error as never });
-      const { result } = renderHookWithProviders(() => useColaboradores());
+      const { result } = renderHookWithProviders(() => useColaboradoresMutations());
       result.current.create({ colab_cpf: "12345678901" } as never);
       await waitFor(() => expect(toastMock).toHaveBeenCalled());
       return toastMock.mock.calls.at(-1)?.[0] as { description: string };
@@ -217,7 +153,7 @@ describe("useColaboradores", () => {
      */
     async function excluirComErro(message: string, code = "23503") {
       setTableResult("colaboradores", { data: null, error: { code, message } as never });
-      const { result } = renderHookWithProviders(() => useColaboradores());
+      const { result } = renderHookWithProviders(() => useColaboradoresMutations());
       result.current.delete("colab-1");
       await waitFor(() =>
         expect(toastMock).toHaveBeenCalledWith(
@@ -241,8 +177,8 @@ describe("useColaboradores", () => {
       // DELETE. Deixar de consultar é parte do conserto, não detalhe de performance.
       setTableResult("colaboradores", { data: [], error: null });
 
-      const { result } = renderHookWithProviders(() => useColaboradores());
-      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      // `useColaboradoresMutations` não tem consulta nenhuma para esperar — é só escrita.
+      const { result } = renderHookWithProviders(() => useColaboradoresMutations());
       supabaseMock.from.mockClear();
 
       result.current.delete("colab-1");
@@ -471,5 +407,113 @@ describe("useBuscarColaboradores", () => {
       ascending: true,
       nullsFirst: false,
     });
+  });
+});
+
+describe("useBuscarColaboradoresParaAlocacao", () => {
+  /**
+   * 🔴 Este hook existe para tirar os pickers do teto `max_rows` do PostgREST, que corta
+   * a resposta SEM ERRO. Medido em 2026-09-12: 771 colaboradores contra um teto de 1000.
+   * O que ele substituiu baixava a lista inteira e filtrava em memória.
+   */
+  beforeEach(() => {
+    authMock.user = { id: "u1" };
+    authMock.isAdmin = false;
+    authMock.isCoordenador = false;
+  });
+
+  const LINHA = {
+    id: "colab-1",
+    colab_nome_completo: "José da Silva",
+    colab_cpf: "12345678901",
+    alocado_prova_unidade_id: null,
+    alocado_unid_sigla: null,
+  };
+
+  it("manda o termo SEM ACENTO — é o lado do cliente do par", async () => {
+    // ⚠️ O dado é normalizado no banco (`colab_nome_busca`). Se o termo for cru, a busca
+    // simplesmente não acha, sem erro nenhum. Os dois lados ou nenhum.
+    setRpcResult("buscar_colaboradores_para_alocacao", { data: [LINHA], error: null });
+
+    const { result } = renderHookWithProviders(() =>
+      useBuscarColaboradoresParaAlocacao({ provaId: "prova-1", termo: "  José  " }),
+    );
+    await waitFor(() => expect(result.current.colaboradores).toHaveLength(1));
+
+    expect(supabaseMock.rpc).toHaveBeenCalledWith("buscar_colaboradores_para_alocacao", {
+      p_prova_id: "prova-1",
+      p_termo: "jose",
+      p_excluir_prova_unidade_id: null,
+      p_limite: LIMITE_PICKER_ALOCACAO,
+    });
+  });
+
+  it("repassa a unidade a excluir, que é o que tira da lista quem já está nela", async () => {
+    setRpcResult("buscar_colaboradores_para_alocacao", { data: [], error: null });
+
+    const { result } = renderHookWithProviders(() =>
+      useBuscarColaboradoresParaAlocacao({
+        provaId: "prova-1",
+        termo: "",
+        excluirProvaUnidadeId: "pu-7",
+      }),
+    );
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+    expect(supabaseMock.rpc).toHaveBeenCalledWith(
+      "buscar_colaboradores_para_alocacao",
+      expect.objectContaining({ p_excluir_prova_unidade_id: "pu-7" }),
+    );
+  });
+
+  it("termo vazio CONSULTA — não é a mesma regra de /colaboradores", async () => {
+    // Lá o `enabled` exige critério porque a tela montava sozinha e baixava 707 kB. Aqui
+    // o picker só consulta quando é aberto, e quem aloca costuma escolher sem digitar.
+    setRpcResult("buscar_colaboradores_para_alocacao", { data: [LINHA], error: null });
+
+    const { result } = renderHookWithProviders(() =>
+      useBuscarColaboradoresParaAlocacao({ provaId: "prova-1", termo: "" }),
+    );
+
+    await waitFor(() => expect(result.current.colaboradores).toHaveLength(1));
+  });
+
+  it("não consulta sem prova, nem quando o picker está fechado", async () => {
+    const semProva = renderHookWithProviders(() =>
+      useBuscarColaboradoresParaAlocacao({ provaId: undefined, termo: "a" }),
+    );
+    await waitFor(() => expect(semProva.result.current.isFetching).toBe(false));
+
+    const fechado = renderHookWithProviders(() =>
+      useBuscarColaboradoresParaAlocacao({ provaId: "prova-1", termo: "a", habilitado: false }),
+    );
+    await waitFor(() => expect(fechado.result.current.isFetching).toBe(false));
+
+    expect(supabaseMock.rpc).not.toHaveBeenCalled();
+  });
+
+  it("avisa que pode haver mais quando a resposta encosta no limite", async () => {
+    // É o que impede o novo engano: sem este sinal, quem não aparece "não existe" —
+    // exatamente o que o teto de 1000 fazia, só que menor.
+    const cheia = Array.from({ length: LIMITE_PICKER_ALOCACAO }, (_, i) => ({
+      ...LINHA,
+      id: `colab-${i}`,
+    }));
+    setRpcResult("buscar_colaboradores_para_alocacao", { data: cheia, error: null });
+
+    const { result } = renderHookWithProviders(() =>
+      useBuscarColaboradoresParaAlocacao({ provaId: "prova-1", termo: "a" }),
+    );
+    await waitFor(() => expect(result.current.podeHaverMais).toBe(true));
+  });
+
+  it("resposta menor que o limite NÃO avisa", async () => {
+    setRpcResult("buscar_colaboradores_para_alocacao", { data: [LINHA], error: null });
+
+    const { result } = renderHookWithProviders(() =>
+      useBuscarColaboradoresParaAlocacao({ provaId: "prova-1", termo: "jose" }),
+    );
+    await waitFor(() => expect(result.current.colaboradores).toHaveLength(1));
+    expect(result.current.podeHaverMais).toBe(false);
   });
 });

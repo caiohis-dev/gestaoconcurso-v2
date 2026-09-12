@@ -74,39 +74,19 @@ describe("useColaboradoresProva", () => {
     });
   });
 
-  describe("colaboradores já alocados em outra unidade da mesma prova", () => {
-    it("monta ids e a sigla da unidade onde cada um está", async () => {
-      // É o que permite ao combobox mostrar o colaborador DESABILITADO, com a sigla
-      // de onde ele já está — em vez de simplesmente escondê-lo, o que faria o
-      // usuário procurar por alguém que "sumiu".
-      setTableResultSequence("prova_unidades", [
-        { data: { prova_id: "prova-1" }, error: null },
-        {
-          data: [
-            { id: "pu-1", unidades_prova: { unid_nome: "Escola A", unid_sigla: "EA" } },
-            { id: "pu-2", unidades_prova: { unid_nome: "Escola B", unid_sigla: "EB" } },
-          ],
-          error: null,
-        },
-      ]);
-      setTableResultSequence("colaboradores_prova", [
-        { data: [], error: null }, // a listagem da unidade atual
-        { data: [{ colaborador_id: "colab-9", prova_unidade_id: "pu-2" }], error: null },
-      ]);
-
-      const { result } = renderHookWithProviders(() => useColaboradoresProva(PROVA_UNIDADE_ID));
-
-      // O hook achata o retorno: `colaboradoresAlocados` é o ARRAY de ids, e a
-      // informação da unidade vem separada em `colaboradoresAlocadosInfo`.
-      await waitFor(() => expect(result.current.colaboradoresAlocados).toHaveLength(1));
-      expect(result.current.colaboradoresAlocados).toEqual(["colab-9"]);
-      expect(result.current.colaboradoresAlocadosInfo["colab-9"]).toEqual({
-        prova_unidade_id: "pu-2",
-        unid_nome: "Escola B",
-        unid_sigla: "EB",
-      });
-    });
-  });
+  /**
+   * 🔵 O describe "colaboradores já alocados em outra unidade da mesma prova" saiu em
+   * 2026-09-12, junto com a query que ele cobria. Ela fazia 3 requisições para montar o
+   * `Map` de "quem está em que unidade", e a última — `colaboradores_prova` com `.in(...)`
+   * e sem `.range()` — batia no teto `max_rows` do PostgREST, que corta SEM ERRO (531
+   * alocações na maior prova, contra 1000). Truncar ali fazia alguém já alocado noutra
+   * unidade aparecer como livre — perda do AVISO, não da regra: quem recusa a alocação é
+   * o trigger `check_colaborador_prova_unique`, no banco.
+   *
+   * O cruzamento agora vem pronto da RPC `buscar_colaboradores_para_alocacao`, e o que o
+   * guarda é a bateria `docs/bateria-buscar-colaboradores-alocacao.sql` — a suíte mocka o
+   * Supabase e não alcançaria o JOIN.
+   */
 
   describe("create", () => {
     it("carimba created_by com o usuário da sessão", async () => {
