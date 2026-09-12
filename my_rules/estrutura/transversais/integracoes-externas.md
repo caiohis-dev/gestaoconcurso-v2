@@ -43,6 +43,8 @@ Todas em `supabase/functions/`, CORS liberado (`Access-Control-Allow-Origin: *`)
 
 🔵 **`create-coordenador` foi REMOVIDA em 2026-09-12.** Ela criava a conta do coordenador a partir de e-mail e senha digitados no diálogo — o fluxo de antes da v2. A concessão virou a RPC `conceder_coordenador`, que usa a conta que o colaborador já tem; ver [`auth-e-permissoes.md`](./auth-e-permissoes.md). ⚠️ **Remover do repo não remove de produção:** enquanto ela não for apagada lá (`supabase functions delete create-coordenador`, no próximo deploy consciente), o caminho antigo segue chamável por um admin.
 
+🔵 **Toda porta pública passa pelo rate limit desde 2026-09-12.** O helper `_shared/rate-limit.ts` chama a RPC `registrar_tentativa` e devolve 429 — as quatro EFs alcançáveis sem sessão (`reivindicar-acesso`, `recuperar-senha`, `public-create-colaborador`, `check-cpf-colaborador`) o usam, e **duas delas não tinham teto nenhum** até então. Detalhe e tetos em [`auth-e-permissoes.md`](./auth-e-permissoes.md).
+
 `supabase/config.toml` **não configura `verify_jwt` para nenhuma function** — todas seguem o padrão do Supabase. Até 2026-09-12 havia uma exceção, `verify_jwt = false` na `create-coordenador`, que saiu com ela. **Atenção:** o default (`verify_jwt = true`) aceita a **anon key**, que é pública. Ele impede chamada anônima crua, mas **não** é controle de acesso; onde importa quem chama, a checagem é no corpo da function (como na `send-email`).
 
 ### `create-admin` — fechada em 2026-07-25 (era o buraco mais grave do sistema)

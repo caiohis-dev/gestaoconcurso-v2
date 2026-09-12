@@ -164,10 +164,14 @@ produção fica nas API settings do dashboard e precisa ser conferido lá.
 | Onde | Tabela | Por que dói |
 |---|---|---|
 | ✅ ~~`useFuncoesAssociadas.tsx`~~ | — | **FECHADO em 2026-09-10** pela RPC `funcoes_em_uso`: 42,8 kB em 3 requisições viraram 680 bytes em uma, e o teto de 1000 deixou de alcançar a tela |
-| `OcorrenciasProva.tsx:140-143` | `colaboradores` | picker de substituto, sem filtro, busca no cliente. ~774 hoje: o próximo a estourar |
-| `Dashboard.tsx:81-87` e `:109-113` | `colaboradores_prova`, `sala_prova` | agrega no cliente (`new Set(...).size`, soma). Acima de 1000 o card mostra número **errado, sem erro** |
+| ✅ ~~`OcorrenciasProva.tsx`~~ (picker de substituto) | — | **FECHADO em 2026-09-12** pela RPC `buscar_colaboradores_para_alocacao` |
+| `Dashboard.tsx:81-87` e `:109-113` | `colaboradores_prova`, `sala_prova` | agrega no cliente (`new Set(...).size`, soma). Acima de 1000 o card mostra número **errado, sem erro**. Medido em 12/09: 555 e 42 linhas — o que sobra de risco ativo nesta tabela |
 | ✅ ~~`GerenciarProva.tsx`~~ (as **3** exportações) | — | **FECHADO em 2026-09-10** por `src/lib/buscar-em-fatias.ts`. ⚠️ Junto saiu um erro de doc: as duas primeiras eram descritas como PDF e são **planilha** |
-| `useColaboradores.tsx` (picker) | `colaboradores` | `GerenciarColaboradoresProva` ainda precisa navegar o conjunto |
+| ✅ ~~`useColaboradores.tsx` (picker)~~ | — | **FECHADO em 2026-09-12**: o hook de listagem inteira foi REMOVIDO (ficou órfão), e `GerenciarColaboradoresProva` passou a buscar no servidor |
+
+> ✅ **Os dois pickers de `colaboradores` fecharam em 2026-09-12** pela RPC `buscar_colaboradores_para_alocacao` (migration `20260912180627`), que busca e cruza no banco com `LIMIT` — imune ao teto por construção. Saíram junto: o hook `useColaboradores()` inteiro (órfão) e a `colaboradoresAlocadosQuery` (3 requisições). Bateria: `docs/bateria-buscar-colaboradores-alocacao.sql`, 15 casos, rodada e falsificada nos dois pontos que importam (o `LIMIT` e o `SECURITY INVOKER`).
+>
+> 🔴 **E este item também carregou premissa errada — a segunda vez nesta mesma seção.** Ao abrir o tema eu escrevi que o truncamento do cruzamento *"fura uma regra que só a tela sustenta"*, porque a unique da tabela é `(prova_unidade_id, colaborador_id)` e não cobre duas unidades da mesma prova. **Falso:** o trigger `check_colaborador_prova_unique` recusa no banco, nomeando o motivo. O que o truncamento tirava era o **aviso preventivo** — degradação de UX, não furo de regra. O erro veio de ler o NOME do trigger na listagem do `\d` sem abrir o corpo, que é exatamente o que o [`CLAUDE.md`](../CLAUDE.md) §8 manda não fazer. **Não há item a abrir sobre essa regra.**
 
 **Onde está o padrão a reusar:** `useCandidatos.tsx:137-188` (`.range()` + `count: "exact"`,
 filtro no servidor) para LISTAGEM paginada, e **`src/lib/buscar-em-fatias.ts`** para EXPORT
@@ -532,7 +536,7 @@ A única função de fiscal cadastrada chama-se **"Fiscal"**, sem "de sala" — 
 
 **Status:** anotados, sem desenho e sem ordem definida. Nenhum tem dono nem medição ainda.
 
-- ~~Rate Limiting~~ → **saiu daqui em 2026-08-13**: virou desenho medido, com roadmap próprio em [`analises/roadmap-rate-limit-fluxos-de-acesso.yaml`](./analises/roadmap-rate-limit-fluxos-de-acesso.yaml) (o porquê está em [`analises/analise-rate-limit-login.md`](./analises/analise-rate-limit-login.md)). 🔴 **Deixou de ser "futuro distante":** o teto que já existe nos fluxos de acesso **falha aberto** e não é atômico, e duas Edge Functions públicas não têm teto nenhum — uma delas escreve PII e dispara e-mail com o domínio da FEVRE a cada chamada. Não há bloqueador: as três medições que decidiam o desenho foram feitas contra produção em 13/08.
+- ~~Rate Limiting~~ → **saiu daqui em 2026-08-13** (roadmap próprio em [`analises/roadmap-rate-limit-fluxos-de-acesso.yaml`](./analises/roadmap-rate-limit-fluxos-de-acesso.yaml); o porquê em [`analises/analise-rate-limit-login.md`](./analises/analise-rate-limit-login.md)). ✅ **Etapas 1 e 2 EXECUTADAS em 2026-09-12:** a RPC `registrar_tentativa` (atômica, falhando fechado, com retenção e IPv6 normalizado para /64) substituiu o teto que falhava aberto, e as **duas portas públicas que não tinham teto nenhum** passaram a ter — `public-create-colaborador` (3/60min) e `check-cpf-colaborador` (30/15min). ⏭️ **Continuam abertas** as etapas 3 (`minimum_password_length` > 6, que é config de dashboard), 4 (cooldown por ALVO na `reivindicar-acesso`) e 5 (contar os 429). ⚠️ Os tetos são **ordem de grandeza, não número medido** — ninguém passou por esses fluxos ainda.
 - Caching & CDN
 - Load Balancing & Scaling
 - Error Tracking & Logs

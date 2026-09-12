@@ -30,9 +30,37 @@ Componente: `ReivindicarAcessoCard` com a prop **`permitirEmail`**. Sem ela (o `
 
 Uniformizar "para ficar consistente" quebra um dos dois lados: revelando, reabre a enumeração por e-mail; calando, mata o e-mail mascarado e o aviso que os **254 sem e-mail** recebem. Para esses 254 a tela do caminho do e-mail traz a dica **"tente pelo CPF"** — sem ela eles digitariam o e-mail pessoal, não receberiam nada e não teriam como saber por quê.
 
-**Rate limit compartilhado.** As duas portas gravam na **mesma** tabela `reivindicacao_rate_limit` (5/15 min por IP). Separadas, o atacante somaria 5 pelo CPF **mais** 5 pelo e-mail.
+**Rate limit compartilhado.** As duas portas gastam do **mesmo** orçamento — o escopo `acesso`, 5/15 min por IP, na tabela `reivindicacao_rate_limit`. Separadas, o atacante somaria 5 pelo CPF **mais** 5 pelo e-mail.
 
-> 🔴 **A MECÂNICA desse teto tem defeitos conhecidos desde 2026-08-13 — o desenho está certo, a engrenagem não.** Ele **falha ABERTO** (o `error` da consulta é descartado, então `count` vem `undefined` e a requisição passa), **não é atômico** (checa e insere em duas idas ao banco: 50 chamadas em paralelo furam o teto de 5) e a tabela **não tem retenção**. Além disso, `public-create-colaborador` e `check-cpf-colaborador` são públicas e **não têm teto nenhum**. Conserto desenhado em [`../../analises/roadmap-rate-limit-fluxos-de-acesso.yaml`](../../analises/roadmap-rate-limit-fluxos-de-acesso.yaml); o porquê, em [`../../analises/analise-rate-limit-login.md`](../../analises/analise-rate-limit-login.md). **Não confie neste teto como barreira enquanto isso não for feito.**
+### O teto: quatro portas, um só mecanismo (✅ consertado em 2026-09-12)
+
+Toda porta pública passa por **`supabase/functions/_shared/rate-limit.ts`**, que chama a RPC **`registrar_tentativa(p_escopo, p_chave, p_max, p_janela)`** (migration `20260912184822`). Nenhuma Edge Function monta a consulta à mão.
+
+| Escopo | Portas | Teto | Por quê |
+|---|---|---|---|
+| `acesso` | `reivindicar-acesso` + `recuperar-senha` | **5 / 15 min** | orçamento compartilhado, como acima |
+| `cadastro` | `public-create-colaborador` | **3 / 60 min** | o mais apertado: escreve PII e dispara e-mail com o domínio da FEVRE |
+| `checagem-cpf` | `check-cpf-colaborador` | **30 / 15 min** | sem efeito colateral; o teto é contra **varredura**, não contra abuso pontual |
+
+🔴 **A regra que define o helper: na dúvida, BLOQUEIA.** Erro da RPC devolve `false`, não `true`.
+
+> ✅ **Os três defeitos de mecânica morreram com a RPC** — e vale guardar a forma deles, porque é a que mais se repete:
+>
+> | Defeito | O que era | O que fechou |
+> |---|---|---|
+> | **Falhava ABERTO** | `const { count } = await …` descartava o `error`; com a consulta falhando, `count` vinha `undefined`, `0 >= 5` era falso e a requisição **passava** — o teto sumia exatamente quando o banco estava em apuros | o helper bloqueia em caso de erro |
+> | **Não era atômico** | checar e inserir eram duas idas ao banco: 50 chamadas em paralelo liam `count = 0` e furavam o teto juntas | tudo numa transação, dentro da RPC |
+> | **Crescia para sempre** | nada apagava linha velha | a RPC expurga a janela da chave **e** tudo acima de 24h |
+>
+> ⚠️ **A tentativa BARRADA também é registrada.** Se só as aprovadas contassem, a janela expiraria enquanto o atacante continua batendo, e ele voltaria a passar.
+>
+> 🔴 **A chave normaliza IPv6 para o prefixo `/64`, e isso é preventivo.** Hoje o endpoint é IPv4-only; se a Supabase publicar `AAAA`, cada casa passa a ter ~18 quintilhões de endereços, **rotacionados sozinhos** pelas privacy extensions — e um teto por endereço inteiro viraria pó em silêncio, por um caminho que ninguém associaria a rate limit.
+>
+> ⚠️ **`chave` nunca guarda CPF ou e-mail em claro** (a coluna chamava-se `ip` e foi renomeada por isso): a tabela viraria um registro de "quem tentou entrar", que hoje não existe e que ninguém pediu.
+>
+> 🧪 `docs/bateria-rate-limit.sql` (a mecânica no banco) + `supabase/functions/_shared/rate-limit.test.ts` (13 casos, `npm run test:ef`). Os dois foram **falsificados**: reintroduzir o "erro libera" derruba o caso do falha-fechado, e a versão que conta antes de inserir derruba o caso da tentativa barrada.
+>
+> ⏭️ **O que o roadmap ainda não executou:** o cooldown por **alvo** na `reivindicar-acesso` (etapa 4 — sem ele, quem rotaciona IP bombardeia UMA pessoa de e-mail), `minimum_password_length` acima de 6 (etapa 3) e a contagem de 429 (etapa 5). Ver [`../../analises/roadmap-rate-limit-fluxos-de-acesso.yaml`](../../analises/roadmap-rate-limit-fluxos-de-acesso.yaml).
 >
 > 🔵 **Medido contra produção em 2026-08-13**, e serve para não remedir: o IP que a Edge Function lê é o do **cliente real** e **não é forjável** por `X-Forwarded-For` (o edge sobrescreve, apesar da Cloudflare na frente); o endpoint é **IPv4-only** (sem `AAAA`); e a tabela de produção tinha **2 linhas no total**, ambas de teste — **nenhum colaborador real usou esses fluxos** desde que o site subiu.
 

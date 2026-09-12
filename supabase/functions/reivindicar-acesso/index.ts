@@ -2,6 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { z } from 'npm:zod@3';
 import { enviarLinkAcesso, mascararEmail } from '../_shared/enviar-link-acesso.ts';
+import { barrarSeExcedeu } from '../_shared/rate-limit.ts';
 
 // Subetapa 2B — reivindicação do acesso do colaborador.
 //
@@ -21,8 +22,6 @@ const BodySchema = z.object({
 // Teto do rate limit: no máximo N tentativas por IP na janela. A função revela se um
 // CPF existe (concessão aceita no desenho); o teto impede varrer CPFs em massa e
 // disparar e-mails em série.
-const RATE_LIMIT_MAX = 5;
-const RATE_LIMIT_JANELA_MIN = 15;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -47,18 +46,12 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
-    // --- Rate limit por IP ---
-    const ip = (req.headers.get('x-forwarded-for') ?? '').split(',')[0].trim() || 'desconhecido';
-    const desde = new Date(Date.now() - RATE_LIMIT_JANELA_MIN * 60_000).toISOString();
-    const { count } = await supabase
-      .from('reivindicacao_rate_limit')
-      .select('*', { count: 'exact', head: true })
-      .eq('ip', ip)
-      .gte('created_at', desde);
-    if ((count ?? 0) >= RATE_LIMIT_MAX) {
-      return jsonResp({ error: 'Muitas tentativas. Aguarde alguns minutos e tente de novo.' }, 429);
-    }
-    await supabase.from('reivindicacao_rate_limit').insert({ ip });
+    // --- Rate limit por IP (orcamento 'acesso', COMPARTILHADO com a outra porta) ---
+    // 🔴 Ate 2026-09-12 isto era uma consulta crua cujo `error` era descartado: a
+    // requisicao PASSAVA quando o banco falhava. Agora a RPC decide, numa transacao, e o
+    // helper bloqueia tambem em caso de erro.
+    const barrado = await barrarSeExcedeu(supabase, 'acesso', req, jsonResp);
+    if (barrado) return barrado;
 
     // --- Localiza o cadastro ---
     const { data: colab, error: fetchErr } = await supabase

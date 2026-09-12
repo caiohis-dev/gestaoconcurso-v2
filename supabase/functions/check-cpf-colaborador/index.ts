@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { z } from 'npm:zod@3';
+import { barrarSeExcedeu } from '../_shared/rate-limit.ts';
 
 const BodySchema = z.object({
   cpf: z.string().min(1).max(20),
@@ -46,6 +47,25 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
+
+    const jsonResp = (body: unknown, status = 200) =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+
+    // --- Rate limit (escopo 'checagem-cpf') ---
+    //
+    // Esta porta tambem ficou sem teto ate 2026-09-12, mas o teto dela e' FOLGADO de
+    // proposito (30/15min): ela nao tem efeito colateral nenhum — devolve so' `{exists}`,
+    // nao escreve e nao envia e-mail. O que o teto barra aqui e' VARREDURA: sem ele,
+    // alguem percorre o espaco de CPFs e monta a lista de quem tem cadastro.
+    //
+    // ⚠️ O 429 e' a MESMA frase generica das outras portas. Um erro especifico daqui
+    // ("limite da checagem de CPF") ja' contaria ao atacante que ele achou o endpoint
+    // certo para varrer.
+    const barrado = await barrarSeExcedeu(supabase, 'checagem-cpf', req, jsonResp);
+    if (barrado) return barrado;
 
     const { data, error } = await supabase
       .from('colaboradores')

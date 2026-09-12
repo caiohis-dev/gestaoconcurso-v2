@@ -2,6 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { z } from 'npm:zod@3';
 import { enviarLinkAcesso, mascararEmail } from '../_shared/enviar-link-acesso.ts';
+import { barrarSeExcedeu } from '../_shared/rate-limit.ts';
 
 // Subetapa 2C: o cadastro público cria a linha de colaborador e dispara o link de
 // acesso (invite) para o e-mail informado — o mesmo fluxo da reivindicação. Não pede
@@ -60,6 +61,25 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
+
+    const jsonResp = (body: unknown, status = 200) =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+
+    // --- Rate limit (escopo 'cadastro') ---
+    //
+    // 🔴 Esta porta ficou SEM TETO NENHUM ate 2026-09-12, e era a mais grave do sistema:
+    // sem sessao e sem barreira, cada chamada INSERE PII de gente real em `colaboradores`
+    // e DISPARA um e-mail com SPF/DKIM da FEVRE para o endereco que o corpo mandar.
+    //
+    // ⚠️ A ORDEM IMPORTA e e' por isso que o teto vem AQUI: antes do INSERT e antes do
+    // envio. Depois de qualquer um dos dois, o dano ja' aconteceu — linha gravada numa
+    // base sem backup, ou e-mail saido pelo dominio da FEVRE. O pior deles nao e' a base
+    // poluida: e' o dominio numa blocklist, que derruba TODOS os fluxos legitimos.
+    const barrado = await barrarSeExcedeu(supabase, 'cadastro', req, jsonResp);
+    if (barrado) return barrado;
 
     // Duplicate CPF check
     const { data: existing } = await supabase

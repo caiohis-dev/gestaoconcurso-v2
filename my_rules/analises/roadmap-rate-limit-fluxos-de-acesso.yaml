@@ -1,6 +1,6 @@
 # Roadmap VIVO — rate limit dos fluxos de acesso (login, senha, colaboradores)
 # Criado em 2026-08-13. Leia my_rules/analises/README.md antes de usar como guia.
-# ⏳ NÃO INICIADO — nenhuma linha de código escrita. O passo 0 (medição) está COMPLETO.
+# ✅ ETAPAS 1 e 2 EXECUTADAS em 2026-09-12. Etapas 3, 4 e 5 continuam abertas.
 #
 # O PORQUÊ mora em analise-rate-limit-login.md, no mesmo diretório. Este arquivo é só o
 # plano de execução; ele NÃO repete o raciocínio, e sim aponta para a seção que o guarda.
@@ -10,10 +10,12 @@ roadmap:
   criado: "2026-08-13"
   analise_irma: "my_rules/analises/analise-rate-limit-login.md"
   status: >
-    ⏳ **NÃO INICIADO.** O desenho está fechado e o passo 0 (as três medições contra
-    produção) foi executado em 13/08. Não há bloqueador técnico. Faltam três decisões de
-    NÚMERO (ver `decisoes_a_confirmar`) — e nenhuma delas impede começar pela Etapa 1,
-    que é estrutural e não escolhe teto nenhum.
+    ✅ **ETAPAS 1 e 2 EXECUTADAS em 2026-09-12**, com os tetos da N1 confirmados pelo
+    usuário. As quatro premissas do roadmap foram CONFERIDAS contra o código antes de
+    executar (ele é de 13/08) e as quatro continuavam valendo, letra por letra.
+    ⏭️ Abertas: Etapa 3 (senha mínima, é config de dashboard), Etapa 4 (cooldown por
+    alvo) e Etapa 5 (contar os 429 — que é o que transforma os números chutados em
+    números medidos, na primeira convocação).
 
   origem: >
     Pedido do usuário em 2026-08-13: "faça uma análise sobre uma possível implementação de
@@ -91,7 +93,7 @@ roadmap:
 
     - id: 1
       titulo: "A RPC de rate limit — atômica, falhando FECHADO, com retenção"
-      status: "⏳ não iniciado"
+      status: "✅ CONCLUÍDA em 2026-09-12 — migration 20260912184822 + _shared/rate-limit.ts"
       corrige: "D1 (falha aberta) · D2 (não atômico) · D4 (cresce para sempre)"
       por_que_primeiro: >
         É estrutural e não depende de nenhuma decisão de número. Hoje o teto passa TUDO se
@@ -133,7 +135,7 @@ roadmap:
 
     - id: 2
       titulo: "Tapar as duas portas públicas sem teto"
-      status: "⏳ não iniciado"
+      status: "✅ CONCLUÍDA em 2026-09-12 — cadastro 3/60min, checagem de CPF 30/15min"
       depende_de: 1
       arquivos:
         - "supabase/functions/public-create-colaborador/index.ts  (117 linhas, ZERO rate limit hoje)"
