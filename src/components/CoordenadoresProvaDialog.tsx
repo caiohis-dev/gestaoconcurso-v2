@@ -1,8 +1,5 @@
 import { useState } from "react";
-import { useCoordenadoresProva } from "@/hooks/useCoordenadoresProva";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
-import { useQueryClient } from "@tanstack/react-query";
+import { useCoordenadoresProva, type ImpedimentoCoordenador } from "@/hooks/useCoordenadoresProva";
 import {
   Dialog,
   DialogContent,
@@ -28,7 +25,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Table,
@@ -38,9 +34,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, UserPlus, Trash2, Shield, Mail, Key } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
-import { mensagemDeErroDaFuncao } from "@/lib/edge-function-error";
+import { Loader2, UserPlus, Trash2, Shield } from "lucide-react";
 
 interface CoordenadoresProvaDialogProps {
   open: boolean;
@@ -50,6 +44,21 @@ interface CoordenadoresProvaDialogProps {
   provaUnidadeId?: string; // Filter colaboradores by this unit if provided
 }
 
+// Os dois impedimentos pedem providências diferentes, então a frase é diferente. Ela
+// aparece no próprio item da lista — o impedido NÃO some do seletor, senão o admin
+// procuraria o nome, não acharia e não teria como saber por quê.
+const TEXTO_IMPEDIMENTO: Record<ImpedimentoCoordenador, string> = {
+  "sem-conta": "ainda sem acesso ao sistema",
+  "sem-email": "sem e-mail no cadastro",
+};
+
+const AJUDA_IMPEDIMENTO: Record<ImpedimentoCoordenador, string> = {
+  "sem-conta":
+    'Ele precisa entrar em /auth e usar "Estou sem minha senha" para criar o acesso. Assim que definir a senha, ele aparece aqui.',
+  "sem-email":
+    "O cadastro dele não tem e-mail, e é pelo e-mail que o acesso nasce. Cadastre o e-mail na ficha do colaborador primeiro.",
+};
+
 export function CoordenadoresProvaDialog({
   open,
   onOpenChange,
@@ -57,148 +66,26 @@ export function CoordenadoresProvaDialog({
   provaEdital,
   provaUnidadeId,
 }: CoordenadoresProvaDialogProps) {
-  const { user } = useAuth();
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
   const {
     coordenadores,
     colaboradoresDisponiveis,
     isLoading,
+    conceder,
+    isConcedendo,
     delete: deleteCoordenador,
     isDeleting,
   } = useCoordenadoresProva(provaId, provaUnidadeId);
 
   const [selectedColaborador, setSelectedColaborador] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [coordenadorToDelete, setCoordenadorToDelete] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const selectedColabData = colaboradoresDisponiveis.find(
-    (c) => c.id === selectedColaborador
-  );
+  const selecionado = colaboradoresDisponiveis.find((c) => c.id === selectedColaborador);
 
-  const handleSelectColaborador = (colaboradorProvaId: string) => {
-    setSelectedColaborador(colaboradorProvaId);
-    const colab = colaboradoresDisponiveis.find((c) => c.id === colaboradorProvaId);
-    if (colab?.colaboradores?.colab_email) {
-      setEmail(colab.colaboradores.colab_email);
-    } else {
-      setEmail("");
-    }
-    setPassword("");
-  };
-
-  const generatePassword = () => {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-    let result = "";
-    for (let i = 0; i < 8; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    setPassword(result);
-  };
-
-  const handleSubmit = async () => {
-    if (!selectedColaborador || !email || !password) {
-      toast({
-        title: "Campos obrigatórios",
-        description: "Preencha todos os campos para continuar.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      // Check if the email is already used by an admin user
-      const { data: profileByEmail } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("email", email.toLowerCase().trim())
-        .single();
-
-      if (profileByEmail) {
-        // Via `has_role` (RPC), não por SELECT em `user_roles`: até 2026-07-26 isto era
-        // `.eq("role", "admin")`, e o e-mail de um SUPERADMIN passava reto pela barreira
-        // — ele não tem linha `admin` na tabela. A hierarquia (superadmin ⇒ admin) vive
-        // dentro do `has_role` desde a migration 20260725195530.
-        const { data: ehAdmin } = await supabase.rpc("has_role", {
-          _user_id: profileByEmail.id,
-          _role: "admin",
-        });
-
-        if (ehAdmin) {
-          toast({
-            title: "Email já cadastrado como Administrador",
-            description: "Este email já pertence a um Administrador do sistema e não pode ser utilizado para criar acesso de Coordenador.",
-            variant: "destructive",
-          });
-          setIsSubmitting(false);
-          return;
-        }
-      }
-
-      // Call edge function to create coordinator (keeps admin session intact)
-      const { data, error } = await supabase.functions.invoke("create-coordenador", {
-        body: {
-          email,
-          password,
-          fullName: selectedColabData?.colaboradores?.colab_nome_completo || "",
-          colaboradorProvaId: selectedColaborador,
-          provaId,
-          colaboradorId: selectedColabData?.colaboradores?.id,
-        },
-      });
-
-      // A EF recusa com status não-2xx e o motivo no corpo — que o `invoke` esconde em
-      // `error.context.body`. O desembrulho virou helper compartilhado em 2026-07-26.
-      if (error) {
-        toast({
-          title: "Erro ao criar acesso",
-          description: mensagemDeErroDaFuncao(error, null, "Erro ao criar coordenador"),
-          variant: "destructive",
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Check for error in response data
-      if (data?.error) {
-        toast({
-          title: "Erro ao criar acesso",
-          description: data.error,
-          variant: "destructive",
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Invalidate queries to refresh the list
-      queryClient.invalidateQueries({ queryKey: ["coordenadores-prova", provaId] });
-      queryClient.invalidateQueries({ queryKey: ["colaboradores-elegiveis-coordenacao", provaId] });
-
-      toast({
-        title: "Coordenador cadastrado",
-        description: `Acesso criado com sucesso. Envie as credenciais para o coordenador: Email: ${email} | Senha: ${password}`,
-      });
-
-      // Reset form
-      setSelectedColaborador("");
-      setEmail("");
-      setPassword("");
-    } catch (error: unknown) {
-      console.error("Error creating coordenador:", error);
-      const errorMessage = error instanceof Error ? error.message : "Não foi possível criar o acesso do coordenador.";
-      toast({
-        title: "Erro ao criar acesso",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
+  const handleSubmit = () => {
+    if (!selectedColaborador) return;
+    conceder(selectedColaborador);
+    setSelectedColaborador("");
   };
 
   const handleDeleteClick = (id: string) => {
@@ -241,12 +128,17 @@ export function CoordenadoresProvaDialog({
                 Conceder Acesso a Coordenador
               </h3>
 
+              <p className="text-sm text-muted-foreground">
+                O acesso usa a conta que o colaborador já tem no sistema — nenhuma senha é
+                criada aqui.
+              </p>
+
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Colaborador (Coordenador Geral ou Auxiliar)</Label>
                   <Select
                     value={selectedColaborador}
-                    onValueChange={handleSelectColaborador}
+                    onValueChange={setSelectedColaborador}
                     disabled={colaboradoresDisponiveis.length === 0}
                   >
                     <SelectTrigger>
@@ -262,59 +154,30 @@ export function CoordenadoresProvaDialog({
                     </SelectTrigger>
                     <SelectContent>
                       {colaboradoresDisponiveis.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.colaboradores?.colab_nome_completo} ({c.funcoes_colaboradores?.cargo_nome})
+                        <SelectItem
+                          key={c.id}
+                          value={c.id}
+                          disabled={c.impedimento !== null}
+                        >
+                          {c.nome} ({c.funcao})
+                          {c.impedimento && ` — ${TEXTO_IMPEDIMENTO[c.impedimento]}`}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
 
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2">
-                    <Mail className="h-4 w-4" />
-                    Email de Acesso
-                  </Label>
-                  <Input
-                    type="email"
-                    placeholder="email@exemplo.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    disabled={!selectedColaborador}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2">
-                    <Key className="h-4 w-4" />
-                    Senha
-                  </Label>
-                  <div className="flex gap-2">
-                    <Input
-                      type="text"
-                      placeholder="Senha de acesso"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      disabled={!selectedColaborador}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={generatePassword}
-                      disabled={!selectedColaborador}
-                    >
-                      Gerar
-                    </Button>
-                  </div>
-                </div>
-
                 <div className="flex items-end">
                   <Button
                     onClick={handleSubmit}
-                    disabled={!selectedColaborador || !email || !password || isSubmitting}
+                    disabled={
+                      !selectedColaborador ||
+                      selecionado?.impedimento !== null ||
+                      isConcedendo
+                    }
                     className="w-full gap-2"
                   >
-                    {isSubmitting ? (
+                    {isConcedendo ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <UserPlus className="h-4 w-4" />
@@ -323,6 +186,18 @@ export function CoordenadoresProvaDialog({
                   </Button>
                 </div>
               </div>
+
+              {colaboradoresDisponiveis.some((c) => c.impedimento === "sem-conta") && (
+                <p className="text-sm text-muted-foreground">
+                  {AJUDA_IMPEDIMENTO["sem-conta"]}
+                </p>
+              )}
+
+              {colaboradoresDisponiveis.some((c) => c.impedimento === "sem-email") && (
+                <p className="text-sm text-muted-foreground">
+                  {AJUDA_IMPEDIMENTO["sem-email"]}
+                </p>
+              )}
 
               {colaboradoresDisponiveis.length === 0 && !isLoading && (
                 <p className="text-sm text-muted-foreground">

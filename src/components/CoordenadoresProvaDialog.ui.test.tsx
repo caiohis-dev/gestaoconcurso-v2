@@ -1,16 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-// O diálogo chama `useQueryClient()` direto para invalidar as listas depois de conceder
-// acesso, então precisa do QueryClientProvider mesmo com o hook de dados mockado.
 import { renderWithProviders } from "@/test/utils";
-import {
-  resetSupabaseMock,
-  setTableResult,
-  setRpcResult,
-  setFunctionResult,
-  supabaseMock,
-} from "@/test/supabase-mock";
+import { resetSupabaseMock, supabaseMock } from "@/test/supabase-mock";
 
 const toastMock = vi.hoisted(() => vi.fn());
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: toastMock }) }));
@@ -21,20 +13,21 @@ vi.mock("@/integrations/supabase/client", async () => {
 });
 
 /**
- * O hook é mockado; o diálogo, não. A lógica de quem é ELEGÍVEL (as duas funções de
- * coordenação, e excluir quem já tem acesso) vive no `useCoordenadoresProva` e tem teste
- * próprio — repeti-la aqui seria testar o mesmo contrato duas vezes e travar o hook por
- * fora. O que este arquivo cobre é o que só existe no diálogo: a barreira do e-mail de
- * admin, a montagem do body da Edge Function, o tratamento dos dois formatos de erro
- * dela, e o fluxo de remoção.
+ * O hook é mockado; o diálogo, não. Quem é ELEGÍVEL e por que está IMPEDIDO são
+ * derivações do `useCoordenadoresProva`, com teste próprio. O que este arquivo cobre é
+ * o que só existe no diálogo: o impedido aparecer desabilitado e com o motivo escrito,
+ * a concessão mandar só o id da alocação, e o fluxo de remoção.
+ *
+ * ⚠️ Este arquivo mudou de assunto em 2026-09-12. Antes ele cobria o e-mail, a senha
+ * gerada, a barreira do e-mail de admin e os dois formatos de erro da Edge Function
+ * `create-coordenador` — que CRIAVA a conta do coordenador. A conta agora vem do
+ * cadastro do colaborador, a EF foi removida, e a barreira do admin virou recusa da RPC
+ * `conceder_coordenador` (onde não se contorna pelo PostgREST). Os casos não foram
+ * "consertados": o comportamento que eles afirmavam deixou de ser o desejado.
  */
 const hookMock = vi.hoisted(() => ({ atual: null as unknown }));
 vi.mock("@/hooks/useCoordenadoresProva", () => ({
   useCoordenadoresProva: () => hookMock.atual,
-}));
-
-vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ user: { id: "admin-1", email: "admin@fevre.test" } }),
 }));
 
 import { CoordenadoresProvaDialog } from "@/components/CoordenadoresProvaDialog";
@@ -45,15 +38,9 @@ const PROVA_ID = "prova-1";
 function elegivel(over: Record<string, unknown> = {}) {
   return {
     id: "cp-1",
-    colaborador_id: "colab-1",
-    funcao_id: "11a310e5-0fce-46f2-8ad7-769a5e5d7f89",
-    colaboradores: {
-      id: "colab-1",
-      colab_nome_completo: "Fulana de Souza",
-      colab_cpf: "12345678901",
-      colab_email: "fulana@exemplo.com",
-    },
-    funcoes_colaboradores: { id: "f-1", cargo_nome: "Coordenador Geral" },
+    nome: "Fulana de Souza",
+    funcao: "Coordenador Geral",
+    impedimento: null as null | "sem-conta" | "sem-email",
     ...over,
   };
 }
@@ -84,6 +71,7 @@ function comAcesso(over: Record<string, unknown> = {}) {
 }
 
 describe("CoordenadoresProvaDialog (interação)", () => {
+  let conceder: ReturnType<typeof vi.fn>;
   let deleteCoordenador: ReturnType<typeof vi.fn>;
   let onOpenChange: ReturnType<typeof vi.fn>;
 
@@ -92,9 +80,9 @@ describe("CoordenadoresProvaDialog (interação)", () => {
       coordenadores: [],
       colaboradoresDisponiveis: [elegivel()],
       isLoading: false,
-      create: vi.fn(),
+      conceder,
       delete: deleteCoordenador,
-      isCreating: false,
+      isConcedendo: false,
       isDeleting: false,
       ...over,
     };
@@ -103,12 +91,9 @@ describe("CoordenadoresProvaDialog (interação)", () => {
   beforeEach(() => {
     resetSupabaseMock();
     toastMock.mockClear();
+    conceder = vi.fn();
     deleteCoordenador = vi.fn();
     onOpenChange = vi.fn();
-    // Nenhum profile com esse e-mail: o caminho normal, em que a barreira não dispara.
-    setTableResult("profiles", { data: null, error: null });
-    setRpcResult("has_role", { data: false, error: null });
-    setFunctionResult("create-coordenador", { data: { success: true }, error: null });
     comHook();
   });
 
@@ -122,8 +107,6 @@ describe("CoordenadoresProvaDialog (interação)", () => {
       />,
     );
 
-  const campoEmail = () => screen.getByPlaceholderText("email@exemplo.com");
-  const campoSenha = () => screen.getByPlaceholderText("Senha de acesso");
   const botaoConceder = () => screen.getByRole("button", { name: /Conceder Acesso/ });
 
   /** Escolhe o colaborador no Select do Radix. */
@@ -132,45 +115,34 @@ describe("CoordenadoresProvaDialog (interação)", () => {
     await user.click(await screen.findByRole("option", { name: nome }));
   }
 
-  describe("o formulário só abre depois de escolher o colaborador", () => {
-    it("mantém e-mail, senha e Gerar travados até a escolha", () => {
+  describe("a concessão usa a conta que o colaborador JÁ tem", () => {
+    it("não pede e-mail nem senha", () => {
+      // REGRESSÃO do tema de 2026-09-12. Enquanto existiram, esses dois campos criavam
+      // uma conta nova a cada concessão — com senha escolhida pelo admin e o e-mail
+      // digitado à mão, que podia divergir do cadastro. Se voltarem, isto cai.
       abrir();
-      expect(campoEmail()).toBeDisabled();
-      expect(campoSenha()).toBeDisabled();
-      expect(screen.getByRole("button", { name: "Gerar" })).toBeDisabled();
-      expect(botaoConceder()).toBeDisabled();
+
+      expect(screen.queryByPlaceholderText("email@exemplo.com")).not.toBeInTheDocument();
+      expect(screen.queryByPlaceholderText("Senha de acesso")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Gerar" })).not.toBeInTheDocument();
+      expect(screen.getByText(/nenhuma senha é criada aqui/i)).toBeInTheDocument();
     });
 
-    it("escolher o colaborador preenche o e-mail do cadastro dele", async () => {
-      // É o que evita digitar e-mail errado na mão: o acesso nasce amarrado ao e-mail
-      // que já está no cadastro do colaborador.
+    it("concede mandando só o id da alocação", async () => {
+      // Controle positivo do tema: o caminho legítimo tem de continuar funcionando.
       const user = userEvent.setup();
       abrir();
       await escolherColaborador(user, /Fulana de Souza/);
+      await user.click(botaoConceder());
 
-      expect(campoEmail()).toHaveValue("fulana@exemplo.com");
-      expect(campoEmail()).toBeEnabled();
+      expect(conceder).toHaveBeenCalledWith("cp-1");
+      // Nenhuma Edge Function no caminho: a concessão é uma RPC, dentro do hook.
+      expect(supabaseMock.functions.invoke).not.toHaveBeenCalled();
     });
 
-    it("colaborador sem e-mail no cadastro deixa o campo vazio para digitar", async () => {
-      comHook({
-        colaboradoresDisponiveis: [
-          elegivel({
-            colaboradores: {
-              id: "colab-1",
-              colab_nome_completo: "Sem Email",
-              colab_cpf: "11122233344",
-              colab_email: null,
-            },
-          }),
-        ],
-      });
-      const user = userEvent.setup();
+    it("o botão fica travado enquanto ninguém foi escolhido", () => {
       abrir();
-      await escolherColaborador(user, /Sem Email/);
-
-      expect(campoEmail()).toHaveValue("");
-      expect(campoEmail()).toBeEnabled();
+      expect(botaoConceder()).toBeDisabled();
     });
 
     it("mostra a função junto do nome, porque é ela que dá a elegibilidade", async () => {
@@ -181,18 +153,6 @@ describe("CoordenadoresProvaDialog (interação)", () => {
       expect(
         await screen.findByRole("option", { name: "Fulana de Souza (Coordenador Geral)" }),
       ).toBeInTheDocument();
-    });
-
-    it("gera senha de 8 caracteres sem os ambíguos", async () => {
-      // O alfabeto omite O/0/o, I/l/1 — senha ditada por telefone ou copiada à mão.
-      const user = userEvent.setup();
-      abrir();
-      await escolherColaborador(user, /Fulana/);
-      await user.click(screen.getByRole("button", { name: "Gerar" }));
-
-      const gerada = (campoSenha() as HTMLInputElement).value;
-      expect(gerada).toHaveLength(8);
-      expect(gerada).toMatch(/^[ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789]{8}$/);
     });
 
     it("sem colaborador elegível, explica o porquê e desabilita o Select", () => {
@@ -217,167 +177,47 @@ describe("CoordenadoresProvaDialog (interação)", () => {
     });
   });
 
-  describe("a barreira do e-mail de administrador", () => {
-    async function preencherEEnviar() {
+  describe("quem está impedido APARECE, desabilitado e com o motivo", () => {
+    /**
+     * ⚠️ O ponto todo destes casos: sumir da lista seria perda silenciosa. O admin
+     * procuraria o nome do coordenador, não o acharia, e nada na tela diria por quê —
+     * o formato de defeito que este repo mais teme.
+     */
+    it("'sem conta' fica visível, desabilitado, e a tela diz o que fazer", async () => {
+      comHook({
+        colaboradoresDisponiveis: [elegivel({ nome: "Sem Conta", impedimento: "sem-conta" })],
+      });
       const user = userEvent.setup();
       abrir();
-      await escolherColaborador(user, /Fulana/);
-      await user.clear(campoEmail());
-      await user.type(campoEmail(), "chefe@fevre.test");
-      await user.type(campoSenha(), "Senha123");
-      await user.click(botaoConceder());
-      return user;
-    }
+      await user.click(screen.getByRole("combobox"));
 
-    it("recusa e-mail que já é de admin, sem chamar a Edge Function", async () => {
-      // Dar acesso de coordenador ao e-mail de um admin rebaixaria uma conta de gestão.
-      setTableResult("profiles", { data: { id: "admin-9" }, error: null });
-      setRpcResult("has_role", { data: true, error: null });
-      await preencherEEnviar();
-
-      await waitFor(() =>
-        expect(toastMock).toHaveBeenCalledWith(
-          expect.objectContaining({ title: "Email já cadastrado como Administrador" }),
-        ),
-      );
-      expect(supabaseMock.functions.invoke).not.toHaveBeenCalled();
+      const opcao = await screen.findByRole("option", { name: /Sem Conta/ });
+      expect(opcao).toHaveTextContent("ainda sem acesso ao sistema");
+      expect(opcao).toHaveAttribute("aria-disabled", "true");
+      expect(screen.getByText(/Estou sem minha senha/)).toBeInTheDocument();
     });
 
-    it("pergunta ao has_role, não à tabela — é o que faz a barreira pegar superadmin", async () => {
-      // REGRESSÃO. Até 2026-07-26 isto era `.eq("role", "admin")`, match literal, e o
-      // e-mail de um superadmin passava reto: ele não tem linha 'admin' em user_roles.
-      // A hierarquia (superadmin ⇒ admin) mora dentro do `has_role`, então perguntar a
-      // ele é o que fecha o caso — não melhorar o filtro da tabela.
-      setTableResult("profiles", { data: { id: "super-9" }, error: null });
-      setRpcResult("has_role", { data: true, error: null });
-      await preencherEEnviar();
-
-      await waitFor(() =>
-        expect(supabaseMock.rpc).toHaveBeenCalledWith("has_role", {
-          _user_id: "super-9",
-          _role: "admin",
-        }),
-      );
-      expect(supabaseMock.functions.invoke).not.toHaveBeenCalled();
-    });
-
-    it("e-mail de conta que existe mas não é admin segue em frente", async () => {
-      setTableResult("profiles", { data: { id: "user-9" }, error: null });
-      setRpcResult("has_role", { data: false, error: null });
-      await preencherEEnviar();
-
-      await waitFor(() => expect(supabaseMock.functions.invoke).toHaveBeenCalled());
-    });
-  });
-
-  describe("a chamada da Edge Function", () => {
-    async function conceder() {
+    it("'sem e-mail' recebe instrução DIFERENTE, porque a providência é outra", async () => {
+      // Para quem não tem e-mail no cadastro não adianta "peça que ele reivindique":
+      // o acesso nasce pelo e-mail. Alguém tem de cadastrá-lo antes.
+      comHook({
+        colaboradoresDisponiveis: [elegivel({ nome: "Sem Email", impedimento: "sem-email" })],
+      });
       const user = userEvent.setup();
       abrir();
-      await escolherColaborador(user, /Fulana/);
-      await user.type(campoSenha(), "Senha123");
-      await user.click(botaoConceder());
-      return user;
-    }
+      await user.click(screen.getByRole("combobox"));
 
-    it("manda o body completo para create-coordenador", async () => {
-      await conceder();
-
-      await waitFor(() =>
-        expect(supabaseMock.functions.invoke).toHaveBeenCalledWith("create-coordenador", {
-          body: {
-            email: "fulana@exemplo.com",
-            password: "Senha123",
-            fullName: "Fulana de Souza",
-            colaboradorProvaId: "cp-1",
-            provaId: PROVA_ID,
-            colaboradorId: "colab-1",
-          },
-        }),
-      );
+      const opcao = await screen.findByRole("option", { name: /Sem Email/ });
+      expect(opcao).toHaveTextContent("sem e-mail no cadastro");
+      expect(screen.getByText(/Cadastre o e-mail na ficha do colaborador/)).toBeInTheDocument();
     });
 
-    it("no sucesso, avisa e limpa o formulário", async () => {
-      await conceder();
-
-      await waitFor(() =>
-        expect(toastMock).toHaveBeenCalledWith(
-          expect.objectContaining({ title: "Coordenador cadastrado" }),
-        ),
-      );
-      // Limpar importa: sem isso, um segundo clique repetiria a concessão.
-      await waitFor(() => expect(campoSenha()).toHaveValue(""));
-      expect(campoEmail()).toHaveValue("");
-      expect(campoEmail()).toBeDisabled();
-    });
-
-    it("entrega as credenciais no aviso, porque é o único momento em que a senha existe", async () => {
-      // A senha não é recuperável depois — o admin tem de repassá-la. Se este texto
-      // sumir, o coordenador fica sem como entrar.
-      await conceder();
-
-      await waitFor(() =>
-        expect(toastMock).toHaveBeenCalledWith(
-          expect.objectContaining({
-            description: expect.stringContaining("fulana@exemplo.com"),
-          }),
-        ),
-      );
-      expect(toastMock).toHaveBeenCalledWith(
-        expect.objectContaining({ description: expect.stringContaining("Senha123") }),
-      );
-    });
-
-    it("erro dentro do corpo da resposta vira aviso, e o formulário NÃO é limpo", async () => {
-      setFunctionResult("create-coordenador", {
-        data: { error: "Este e-mail já tem conta" },
-        error: null,
-      });
-      await conceder();
-
-      await waitFor(() =>
-        expect(toastMock).toHaveBeenCalledWith(
-          expect.objectContaining({
-            title: "Erro ao criar acesso",
-            description: "Este e-mail já tem conta",
-          }),
-        ),
-      );
-      // Preservar o preenchimento é o que permite corrigir e tentar de novo.
-      expect(campoSenha()).toHaveValue("Senha123");
-    });
-
-    it("extrai a mensagem de dentro do context.body do FunctionsHttpError", async () => {
-      // O supabase-js embrulha o corpo do erro HTTP em `context.body` como STRING. Sem
-      // desembrulhar, o usuário veria "Edge Function returned a non-2xx status code".
-      setFunctionResult("create-coordenador", {
-        data: null,
-        error: {
-          message: "Edge Function returned a non-2xx status code",
-          context: { body: JSON.stringify({ error: "CPF já vinculado a outra conta" }) },
-        },
-      });
-      await conceder();
-
-      await waitFor(() =>
-        expect(toastMock).toHaveBeenCalledWith(
-          expect.objectContaining({ description: "CPF já vinculado a outra conta" }),
-        ),
-      );
-    });
-
-    it("cai na mensagem do erro quando não há context.body", async () => {
-      setFunctionResult("create-coordenador", {
-        data: null,
-        error: { message: "Failed to fetch" },
-      });
-      await conceder();
-
-      await waitFor(() =>
-        expect(toastMock).toHaveBeenCalledWith(
-          expect.objectContaining({ description: "Failed to fetch" }),
-        ),
-      );
+    it("não mostra instrução de impedimento quando ninguém está impedido", () => {
+      abrir();
+      expect(screen.queryByText(/Estou sem minha senha/)).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/Cadastre o e-mail na ficha do colaborador/),
+      ).not.toBeInTheDocument();
     });
   });
 

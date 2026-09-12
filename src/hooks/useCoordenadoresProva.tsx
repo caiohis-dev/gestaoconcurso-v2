@@ -26,10 +26,20 @@ export interface CoordenadorProva {
   };
 }
 
-export interface CoordenadorProvaInsert {
-  colaborador_prova_id: string;
-  user_id: string;
-  prova_id: string;
+// ⚠️ NÃO existe mais um `CoordenadorProvaInsert`: o cliente não monta a linha de
+// `coordenadores_prova`. Ele manda só o id da alocação, e a RPC deriva prova e conta.
+//
+// Por que um colaborador elegível pela FUNÇÃO ainda não pode receber o acesso.
+// `null` = pode. Os dois motivos pedem providências DIFERENTES, então são valores
+// distintos: um é a pessoa que reivindica a conta, o outro é alguém que cadastra o
+// e-mail dela antes. Ver `CoordenadoresProvaDialog`, que os escreve na tela.
+export type ImpedimentoCoordenador = "sem-conta" | "sem-email";
+
+export interface ColaboradorElegivel {
+  id: string;
+  nome: string;
+  funcao: string;
+  impedimento: ImpedimentoCoordenador | null;
 }
 
 // IDs das funções de coordenação (Coordenador Geral e Auxiliar de Coordenação)
@@ -94,7 +104,8 @@ export function useCoordenadoresProva(provaId: string, provaUnidadeId?: string) 
             id,
             colab_nome_completo,
             colab_cpf,
-            colab_email
+            colab_email,
+            user_id
           ),
           funcoes_colaboradores (
             id,
@@ -123,31 +134,56 @@ export function useCoordenadoresProva(provaId: string, provaUnidadeId?: string) 
   // Get colaboradores that already have coordinator access
   const coordenadoresIds = coordenadores.map((c) => c.colaborador_prova_id);
 
-  // Filter to only show eligible colaboradores not yet with access
-  const colaboradoresDisponiveis = colaboradoresElegiveis.filter(
-    (c) => !coordenadoresIds.includes(c.id)
-  );
+  // Elegíveis pela função, ainda sem acesso — COM o motivo de quem não pode receber.
+  //
+  // ⚠️ Quem está impedido continua na lista, desabilitado. Sumir seria perda silenciosa:
+  // o admin procuraria o nome, não acharia e não teria como saber por quê. O motivo é
+  // calculado aqui porque depende de `colaboradores.user_id`, que é o que a RPC exige.
+  const colaboradoresDisponiveis: ColaboradorElegivel[] = colaboradoresElegiveis
+    .filter((c) => !coordenadoresIds.includes(c.id))
+    .map((c) => {
+      const colab = c.colaboradores;
+      const temEmail = !!colab?.colab_email?.trim();
+      return {
+        id: c.id,
+        nome: colab?.colab_nome_completo ?? "(sem nome)",
+        funcao: c.funcoes_colaboradores?.cargo_nome ?? "-",
+        impedimento: colab?.user_id
+          ? null
+          : temEmail
+          ? ("sem-conta" as const)
+          : ("sem-email" as const),
+      };
+    });
 
-  // Create coordenador access
-  const createMutation = useMutation({
-    mutationFn: async (data: CoordenadorProvaInsert) => {
-      const { data: result, error } = await supabase
-        .from("coordenadores_prova")
-        .insert(data)
-        .select()
-        .single();
+  // Conceder acesso — uma chamada, uma transação.
+  //
+  // Até 2026-09-12 isto era a Edge Function `create-coordenador`, que recebia e-mail e
+  // SENHA do formulário e CRIAVA uma conta no Auth. A conta agora vem do cadastro: a RPC
+  // resolve o `user_id` a partir da alocação e recusa, nomeando o que fazer, quando o
+  // colaborador ainda não tem conta. O `user_id` deixou de trafegar pelo cliente.
+  const concederMutation = useMutation({
+    mutationFn: async (colaboradorProvaId: string) => {
+      const { data, error } = await supabase.rpc("conceder_coordenador", {
+        p_colaborador_prova_id: colaboradorProvaId,
+      });
 
       if (error) throw error;
-      return result;
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["coordenadores-prova", provaId] });
+      queryClient.invalidateQueries({
+        queryKey: ["colaboradores-elegiveis-coordenacao", provaId],
+      });
       toast({
         title: "Acesso concedido",
         description: "O colaborador agora tem acesso como Coordenador.",
       });
     },
     onError: (error: Error) => {
+      // A mensagem vem do banco e NOMEIA a providência ("peça que ele entre em /auth…").
+      // Engoli-la por uma frase genérica já foi dívida duas vezes neste repo.
       toast({
         title: "Erro ao conceder acesso",
         description: error.message,
@@ -211,9 +247,9 @@ export function useCoordenadoresProva(provaId: string, provaUnidadeId?: string) 
     coordenadores,
     colaboradoresDisponiveis,
     isLoading: isLoading || isLoadingElegiveis,
-    create: createMutation.mutate,
+    conceder: concederMutation.mutate,
     delete: deleteMutation.mutate,
-    isCreating: createMutation.isPending,
+    isConcedendo: concederMutation.isPending,
     isDeleting: deleteMutation.isPending,
   };
 }

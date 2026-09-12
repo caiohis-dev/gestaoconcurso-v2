@@ -1397,6 +1397,10 @@ export type Database = {
           unidade_id: string
         }[]
       }
+      conceder_coordenador: {
+        Args: { p_colaborador_prova_id: string }
+        Returns: string
+      }
       contar_candidatos_por_edital: {
         Args: never
         Returns: {

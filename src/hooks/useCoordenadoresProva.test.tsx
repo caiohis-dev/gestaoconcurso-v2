@@ -4,6 +4,7 @@ import {
   supabaseMock,
   setTableResult,
   setTableResultSequence,
+  setRpcResult,
   resetSupabaseMock,
   erroPostgrest,
   type QueryBuilderMock,
@@ -118,20 +119,119 @@ describe("useCoordenadoresProva", () => {
     });
   });
 
-  describe("create", () => {
-    it("avisa em caso de sucesso", async () => {
-      // Mesma colisão do delete: o insert devolve UM registro, a listagem espera
-      // um array. A sequência separa os dois.
-      const { result } = await carregarEDepois([
-        { data: { id: "cp-9" }, error: null },
-        { data: [], error: null },
-      ]);
-
-      result.current.create({
-        colaborador_prova_id: "alocacao-2",
-        user_id: "u2",
-        prova_id: PROVA_ID,
+  describe("impedimento — quem NÃO pode receber o acesso, e por quê", () => {
+    /**
+     * ⚠️ O impedido continua na lista. Até 2026-09-12 o diálogo criava a conta do
+     * coordenador ali mesmo (e-mail + senha digitados, Edge Function
+     * `create-coordenador`), então "não tem conta" não era um estado que aparecesse.
+     * Agora o acesso usa a conta que o colaborador já tem — e sumir da lista quem
+     * ainda não tem seria perda silenciosa: o admin procuraria o nome e não teria
+     * como saber por que ele não está lá.
+     */
+    async function elegivelCom(colaborador: Record<string, unknown>) {
+      setTableResult("coordenadores_prova", { data: [], error: null });
+      setTableResult("colaboradores_prova", {
+        data: [
+          {
+            id: "alocacao-1",
+            colaborador_id: "colab-1",
+            funcao_id: COORDENADOR_GERAL,
+            colaboradores: colaborador,
+            funcoes_colaboradores: { id: COORDENADOR_GERAL, cargo_nome: "Coordenador Geral" },
+          },
+        ],
+        error: null,
       });
+
+      const { result } = renderHookWithProviders(() => useCoordenadoresProva(PROVA_ID));
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      return result;
+    }
+
+    it("sem impedimento quando o colaborador já tem conta", async () => {
+      const result = await elegivelCom({
+        id: "colab-1",
+        colab_nome_completo: "MARIA",
+        colab_email: "maria@exemplo.com",
+        user_id: "u1",
+      });
+
+      expect(result.current.colaboradoresDisponiveis[0]).toMatchObject({
+        nome: "MARIA",
+        funcao: "Coordenador Geral",
+        impedimento: null,
+      });
+    });
+
+    it("'sem-conta' quando tem e-mail mas ainda não reivindicou o acesso", async () => {
+      const result = await elegivelCom({
+        id: "colab-1",
+        colab_nome_completo: "MARIA",
+        colab_email: "maria@exemplo.com",
+        user_id: null,
+      });
+
+      expect(result.current.colaboradoresDisponiveis[0].impedimento).toBe("sem-conta");
+    });
+
+    it("'sem-email' quando o cadastro não tem e-mail — a providência é outra", async () => {
+      // São 255 colaboradores nesse estado (medido em 2026-09-12). Para eles não
+      // adianta "peça que ele reivindique": o acesso nasce pelo e-mail, que não existe.
+      const result = await elegivelCom({
+        id: "colab-1",
+        colab_nome_completo: "MARIA",
+        colab_email: null,
+        user_id: null,
+      });
+
+      expect(result.current.colaboradoresDisponiveis[0].impedimento).toBe("sem-email");
+    });
+
+    it("e-mail em branco conta como sem e-mail", async () => {
+      const result = await elegivelCom({
+        id: "colab-1",
+        colab_nome_completo: "MARIA",
+        colab_email: "   ",
+        user_id: null,
+      });
+
+      expect(result.current.colaboradoresDisponiveis[0].impedimento).toBe("sem-email");
+    });
+  });
+
+  describe("conceder", () => {
+    /**
+     * A concessão virou a RPC `conceder_coordenador` em 2026-09-12. O cliente manda
+     * SÓ o id da alocação: prova e conta são derivadas no banco. Este teste afirma
+     * justamente isso — que o `user_id` não trafega mais pelo cliente, que era o
+     * campo livre por onde a conta do acesso passava a divergir da do cadastro.
+     */
+    async function carregado() {
+      setTableResult("colaboradores_prova", { data: [], error: null });
+      setTableResult("coordenadores_prova", { data: [], error: null });
+      const { result } = renderHookWithProviders(() => useCoordenadoresProva(PROVA_ID));
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      return result;
+    }
+
+    it("chama a RPC com o id da alocação, e só com ele", async () => {
+      setRpcResult("conceder_coordenador", { data: "cp-9", error: null });
+      const result = await carregado();
+
+      result.current.conceder("alocacao-2");
+
+      await waitFor(() =>
+        expect(supabaseMock.rpc).toHaveBeenCalledWith("conceder_coordenador", {
+          p_colaborador_prova_id: "alocacao-2",
+        }),
+      );
+    });
+
+    it("avisa em caso de sucesso", async () => {
+      setRpcResult("conceder_coordenador", { data: "cp-9", error: null });
+      const result = await carregado();
+
+      result.current.conceder("alocacao-2");
 
       await waitFor(() =>
         expect(toastMock).toHaveBeenCalledWith(
@@ -140,21 +240,21 @@ describe("useCoordenadoresProva", () => {
       );
     });
 
-    it("mostra o erro sem traduzir", async () => {
-      // Diferente do useEditais, este hook NÃO traduz 23503 — a mensagem crua do
-      // Postgres chega ao usuário. Registrado como está, não como deveria ser.
-      const { result } = await carregarEDepois([
-        { data: null, error: erroPostgrest("23503", "violates foreign key constraint") },
-        { data: [], error: null },
-      ]);
+    it("a recusa do banco chega ao usuário COM a providência escrita", async () => {
+      // A RPC recusa nomeando o que fazer. Trocar isso por uma frase genérica já foi
+      // dívida duas vezes neste repo — a mensagem é a metade útil da recusa.
+      const recusa =
+        'MARIA ainda não tem acesso ao sistema. Peça que ele entre em /auth e use "Estou sem minha senha"';
+      setRpcResult("conceder_coordenador", { data: null, error: erroPostgrest("P0001", recusa) });
+      const result = await carregado();
 
-      result.current.create({ colaborador_prova_id: "x", user_id: "u", prova_id: PROVA_ID });
+      result.current.conceder("alocacao-2");
 
       await waitFor(() =>
         expect(toastMock).toHaveBeenCalledWith(
           expect.objectContaining({
             title: "Erro ao conceder acesso",
-            description: "violates foreign key constraint",
+            description: recusa,
           }),
         ),
       );

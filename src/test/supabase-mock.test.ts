@@ -158,9 +158,9 @@ describe("mock do client do Supabase", () => {
 
   describe("Edge Functions", () => {
     it("atende functions.invoke por nome", async () => {
-      setFunctionResult("create-coordenador", { data: { success: true }, error: null });
+      setFunctionResult("send-email", { data: { success: true }, error: null });
 
-      await expect(supabaseMock.functions.invoke("create-coordenador", {})).resolves.toEqual({
+      await expect(supabaseMock.functions.invoke("send-email", {})).resolves.toEqual({
         data: { success: true },
         error: null,
       });
@@ -171,7 +171,7 @@ describe("mock do client do Supabase", () => {
       // `context.body` como STRING, e quem consome desserializa para achar a mensagem
       // (é o que o CoordenadoresProvaDialog faz). O tipo do mock só cobria erro do
       // PostgREST, então esse teste só compilava com cast — daí o `FunctionErrorLike`.
-      setFunctionResult("create-coordenador", {
+      setFunctionResult("send-email", {
         data: null,
         error: {
           message: "Edge Function returned a non-2xx status code",
@@ -179,7 +179,7 @@ describe("mock do client do Supabase", () => {
         },
       });
 
-      const { error } = await supabaseMock.functions.invoke("create-coordenador", {});
+      const { error } = await supabaseMock.functions.invoke("send-email", {});
       expect(JSON.parse((error as { context: { body: string } }).context.body)).toEqual({
         error: "CPF já vinculado",
       });

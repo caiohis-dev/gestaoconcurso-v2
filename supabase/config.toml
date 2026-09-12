@@ -123,5 +123,3 @@ deno_version = 2
 [analytics]
 enabled = false
 
-[functions.create-coordenador]
-verify_jwt = false
