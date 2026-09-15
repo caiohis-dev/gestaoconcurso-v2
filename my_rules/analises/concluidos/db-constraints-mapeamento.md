@@ -78,6 +78,8 @@ Já tem 7 CHECKs (bancários + `tipo_chave_pix`) — os campos de banco **já es
 | Coluna | Regra Zod | Hoje no banco | Balde | Proposta | Violações |
 |---|---|---|---|---|---|
 | `colab_nome_completo` | `min(1).max(40)` | `varchar(40)` NOT NULL | (a) | `length(trim(...)) > 0` | 0 |
+
+> ⚠️ **A linha do nome descreve 25/07 e mudou em 2026-09-15:** a coluna é **`text` sem teto** e o Zod não tem mais `.max(40)` (migration `20260915221737`). A CHECK proposta aqui — `length(trim(...)) > 0` — **continua valendo**; o que caiu foi o teto, que nunca foi CHECK, era o tipo. Ver [`../../estrutura/modulos/aplicacao-provas/colaboradores.md`](../../estrutura/modulos/aplicacao-provas/colaboradores.md).
 | `colab_cpf` | `.length(11)` — ⚠️ **não exige dígito** | `char(11)` NOT NULL | (a) | `colab_cpf ~ '^[0-9]{11}$'` | 0 |
 | `colab_telefone` | `.int().positive()` | `bigint` NULL | (a) | `IS NULL OR > 0` | 0 |
 | `colab_numero_casa` | `number` | `integer` NULL | (a) | `IS NULL OR >= 0` | 0 |

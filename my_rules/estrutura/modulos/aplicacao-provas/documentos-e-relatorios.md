@@ -28,6 +28,14 @@
 - **Só acessível se `prova.prova_finalizada === true`** — do contrário redireciona para `/gerenciar-prova/:provaId`. Também é **restrita a `admin`** (não a `coordenador`), diferente de outras telas de gestão de prova onde o coordenador tem acesso parcial. ⚠️ **Desde 2026-07-26 o papel é declarado na rota**, no `RequireAcesso` do `App.tsx` — se um coordenador precisar gerar documentos, é lá que muda, não nesta página.
 - Gera PDFs 100% client-side com jsPDF + `jspdf-autotable`, em landscape, com cabeçalho customizável **por prova** (`prova_cabecalho_linha1/2`, com fallback para o texto padrão da fundação). O nome exibido no centro do cabeçalho é o do **edital** (via join `prova.editais.nome`).
   - **Importante (desde 2026-07-24):** as duas linhas de cabeçalho lidas pelo PDF são as **da prova**, não as do edital. O edital só fornece o valor inicial (sugestão) ao cadastrar a prova; editar o cabeçalho do edital depois **não** altera os PDFs de provas já existentes. Ver [`provas-e-unidades.md`](./provas-e-unidades.md) (editais como modelo).
+### 🔴 A coluna "Nome" da folha de assinatura CORTA nome longo em silêncio — e isso é escolha
+
+`DocumentosImpressao.tsx` fixa a coluna Nome em **80 mm com `overflow: 'hidden'`**, sobre `fontSize: 9` em Times. É deliberado e está comentado no código: a folha tem **15 linhas de altura FIXA** para assinar, e um nome que quebrasse em duas linhas **empurraria a grade inteira**.
+
+**A conta:** ~45 caracteres cabem em 80 mm nessa fonte — e o nome sai sempre em **CAIXA ALTA** (o trigger `tr_uppercase_colab_nome_completo` grava assim), que é mais larga que a caixa baixa. O que passa disso **não aparece no papel**, sem aviso na tela nem no PDF.
+
+⚠️ **Isto passou a ser alcançável em 2026-09-15**, quando `colab_nome_completo` virou `text` sem teto (ver [`colaboradores.md`](./colaboradores.md)): antes o próprio banco limitava o nome a 40 caracteres, dentro do que a coluna comporta. **Ficar assim foi decisão do usuário no mesmo dia**, com o corte medido à vista — é risco aceito, não pendência a resolver por conta própria. Se um dia for tratado, as duas saídas são reduzir a fonte só naquela célula ou alargar a coluna tirando largura de outra, e **as duas exigem reconferir as 15 linhas por página** — é trabalho de leiaute de documento assinado, não de cadastro.
+
 - **Recibo de pagamento** (`gerarReciboPagamento`): busca `colaboradores_prova` da unidade (com `valor_pagamento` já "congelado" na alocação — ver [`alocacao-e-funcoes.md`](./alocacao-e-funcoes.md)) e complementa com `valores_funcao_prova` como mapa auxiliar; busca separadamente o nome do "Coordenador Geral" daquela unidade para exibir no documento; agrupa colaboradores por função (ordenado alfabeticamente) para montar as tabelas.
 ## As três exportações do `GerenciarProva.tsx` — e a que não é PDF
 

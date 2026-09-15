@@ -29,7 +29,8 @@ import { z } from 'zod';
 
 export const colaboradorSchema = z.object({
   colab_matricula: z.string().max(6, 'Máximo 6 caracteres').nullable().optional(),
-  colab_nome_completo: z.string().min(1, 'Nome completo obrigatório').max(40, 'Máximo 40 caracteres'),
+  // Sem teto: a coluna virou `text` em 2026-09-15 e não há CHECK de tamanho no banco.
+  colab_nome_completo: z.string().min(1, 'Nome completo obrigatório'),
   colab_cpf: z.string().length(11, 'CPF deve ter 11 dígitos'),
   colab_data_nascimento: z.string().min(1, 'Data de nascimento obrigatória'),
   colab_nacionalidade: z.string().max(10, 'Máximo 10 caracteres').nullable().optional(),
@@ -403,15 +404,11 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
                 {errors.colab_data_nascimento && <p className="text-sm text-destructive">{errors.colab_data_nascimento}</p>}
               </div>
               <div className="space-y-2 sm:col-span-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="nome">Nome Completo *</Label>
-                  <span className="text-xs text-muted-foreground">{formData.colab_nome_completo.length}/40</span>
-                </div>
+                <Label htmlFor="nome">Nome Completo *</Label>
                 <Input
                   id="nome"
                   value={formData.colab_nome_completo}
                   onChange={(e) => updateField('colab_nome_completo', e.target.value)}
-                  maxLength={40}
                   placeholder="Nome completo do colaborador"
                 />
                 {errors.colab_nome_completo && <p className="text-sm text-destructive">{errors.colab_nome_completo}</p>}

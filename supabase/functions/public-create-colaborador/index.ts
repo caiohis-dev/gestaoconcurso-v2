@@ -10,7 +10,10 @@ import { barrarSeExcedeu } from '../_shared/rate-limit.ts';
 
 const BodySchema = z.object({
   colab_matricula: z.string().max(6).nullable().optional(),
-  colab_nome_completo: z.string().min(1).max(40),
+  // Sem `.max()`: a coluna virou `text` em 2026-09-15 e não tem teto no banco. Esta era
+  // a única barreira de SERVIDOR sobre o tamanho do nome — mantê-la faria o cadastro
+  // público recusar o que o banco aceita.
+  colab_nome_completo: z.string().min(1),
   colab_cpf: z.string().min(1).max(11),
   colab_data_nascimento: z.string().min(1),
   colab_nacionalidade: z.string().max(10).nullable().optional(),

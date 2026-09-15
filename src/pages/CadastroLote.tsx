@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { cpfValido } from '@/lib/cpf';
+import { converterDataPlanilha } from '@/lib/data-planilha';
 import { supabase } from '@/integrations/supabase/client';
 import Layout from '@/components/Layout';
 import { Button } from '@/components/ui/button';
@@ -39,9 +40,10 @@ const COLUNAS_BANCO = [
 ];
 
 // Limites de tamanho das colunas do banco (character varying/character)
+// `colab_nome_completo` NÃO está aqui: a coluna virou `text` em 2026-09-15 e não tem
+// mais teto. Sem a chave, o nome não passa pelo laço que trunca nem pelo que rejeita.
 const LIMITES_COLUNAS: Record<string, number> = {
   colab_matricula: 6,
-  colab_nome_completo: 40,
   colab_cpf: 11,
   colab_nacionalidade: 10,
   colab_pis: 11,
@@ -257,52 +259,6 @@ export default function CadastroLote() {
     return 'Outros';
   };
 
-  // Converte data serial do Excel (ou string ddmmaaaa / dd/mm/aaaa) para YYYY-MM-DD
-  const converterDataExcel = (valor: any): string => {
-    if (valor === undefined || valor === null || valor === '') {
-      return '';
-    }
-
-    const numeroSerial = Number(valor);
-    if (!isNaN(numeroSerial) && Number.isInteger(numeroSerial) && typeof valor !== 'string') {
-      // Data base: 20/12/1899 (conforme especificado)
-      const dataBase = new Date(1899, 11, 20);
-      const dataConvertida = new Date(dataBase.getTime() + numeroSerial * 24 * 60 * 60 * 1000);
-
-      const ano = dataConvertida.getFullYear();
-      const mes = String(dataConvertida.getMonth() + 1).padStart(2, '0');
-      const dia = String(dataConvertida.getDate()).padStart(2, '0');
-
-      return `${ano}-${mes}-${dia}`;
-    }
-
-    const texto = valor.toString().trim();
-
-    // Já em formato ISO YYYY-MM-DD
-    let m = texto.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-
-    // Formato dd/mm/aaaa, dd-mm-aaaa, dd.mm.aaaa (aceita 1 ou 2 dígitos para dia/mês)
-    m = texto.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
-    if (m) {
-      const dia = m[1].padStart(2, '0');
-      const mes = m[2].padStart(2, '0');
-      return `${m[3]}-${mes}-${dia}`;
-    }
-
-    // Formato ddmmaaaa (8 dígitos, sem separador)
-    const soDigitos = texto.replace(/\D/g, '');
-    if (soDigitos.length === 8) {
-      const dia = soDigitos.slice(0, 2);
-      const mes = soDigitos.slice(2, 4);
-      const ano = soDigitos.slice(4, 8);
-      return `${ano}-${mes}-${dia}`;
-    }
-
-    return texto;
-  };
-
-
   const formatarDados = (linha: any) => {
     const getValor = (colunaBanco: string) => {
       const colunaExcel = mapeamento[colunaBanco];
@@ -327,7 +283,7 @@ export default function CadastroLote() {
       colab_matricula: texto('colab_matricula'),
       colab_nome_completo: texto('colab_nome_completo') || '',
       colab_cpf: getValor('colab_cpf')?.toString().replace(/\D/g, '').padStart(11, '0') || '',
-      colab_data_nascimento: converterDataExcel(getValor('colab_data_nascimento')),
+      colab_data_nascimento: converterDataPlanilha(getValor('colab_data_nascimento')),
       colab_nacionalidade: texto('colab_nacionalidade'),
       colab_pis: getValor('colab_pis')?.toString().replace(/\D/g, '') || null,
       colab_rua: texto('colab_rua'),
@@ -346,7 +302,7 @@ export default function CadastroLote() {
     };
 
     // Truncamento silencioso para campos textuais tolerantes: mantém apenas o número máximo de caracteres
-    const CAMPOS_TRUNCAR = ['colab_nome_completo', 'colab_complemento_endereco', 'colab_rua', 'colab_bairro'];
+    const CAMPOS_TRUNCAR = ['colab_complemento_endereco', 'colab_rua', 'colab_bairro'];
     for (const campo of CAMPOS_TRUNCAR) {
       const valor = (colaborador as any)[campo];
       const limite = LIMITES_COLUNAS[campo];

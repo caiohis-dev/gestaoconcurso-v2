@@ -394,15 +394,11 @@ export default function PerfilColaborador() {
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="nome_completo">Nome Completo *</Label>
-                <span className="text-xs text-muted-foreground">{formData.colab_nome_completo.length}/40</span>
-              </div>
+              <Label htmlFor="nome_completo">Nome Completo *</Label>
               <Input
                 id="nome_completo"
                 value={formData.colab_nome_completo}
                 onChange={(e) => setFormData({ ...formData, colab_nome_completo: e.target.value })}
-                maxLength={40}
               />
             </div>
             <div className="space-y-2">

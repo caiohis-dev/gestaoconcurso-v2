@@ -1,6 +1,6 @@
 # Importação em lote de colaboradores — `/cadastro-lote`
 
-Feature do módulo [Aplicação de Provas](./00-modulo.md), parte de [colaboradores](./colaboradores.md). Código: `src/pages/CadastroLote.tsx` (1.118 linhas).
+Feature do módulo [Aplicação de Provas](./00-modulo.md), parte de [colaboradores](./colaboradores.md). Código: `src/pages/CadastroLote.tsx` (1.074 linhas) + `src/lib/data-planilha.ts` (a conversão de data, extraída em 2026-09-15 — ver §4).
 
 > 🔵 **Este arquivo morava em `docs/features/cadastro-lote-sanitizacao.md` até 2026-07-31.** Foi movido para cá porque é doc de **feature de módulo**, e a regra da casa é que o doc do módulo baste para refatorá-lo sem reler o codebase — com a sanitização fora da pasta, não bastava. Na mudança ele foi **conferido linha a linha contra o código**, e **cinco afirmações estavam erradas**; as correções estão marcadas com 🔴 ao longo do texto.
 
@@ -79,9 +79,9 @@ return limpo === '' ? null : limpo;
 | Coluna | Tipo | Tratamento |
 |---|---|---|
 | `colab_matricula` | texto (6) | `texto()` — trim, vazio → `NULL` |
-| `colab_nome_completo` | texto (40) | `texto()`, com fallback `''`. **Obrigatório** |
+| `colab_nome_completo` | `text`, **sem teto** | `texto()`, com fallback `''`. **Obrigatório** · 🔵 era `texto (40)` até 15/09 (§5) |
 | `colab_cpf` | texto (11) | Só dígitos + `padStart(11,'0')`. **Validado antes por `cpfValido`** |
-| `colab_data_nascimento` | `YYYY-MM-DD` | `converterDataExcel` (§4). **Obrigatório** |
+| `colab_data_nascimento` | `YYYY-MM-DD` | `converterDataPlanilha` (§4). **Obrigatório** |
 | `colab_nacionalidade` | texto (10) | `texto()` |
 | `colab_pis` | texto (11) | Só dígitos (`\D` removido). Vazio → `NULL`. Não usa `texto()` — dígito não precisa de trim |
 | `colab_rua` | texto (34) | `texto()` · ⚠️ **truncado** (§6) |
@@ -102,9 +102,11 @@ return limpo === '' ? null : limpo;
 
 ## 4. Datas
 
-`converterDataExcel` (linha 261) tenta, nesta ordem:
+🔵 **Desde 2026-09-15 isto mora em [`src/lib/data-planilha.ts`](../../../../src/lib/data-planilha.ts)** (`converterDataPlanilha`), fora do componente — era a única forma de ter teste, e `src/lib/data-planilha.test.ts` (10 casos) é o teste. Antes era `converterDataExcel`, definida dentro de `CadastroLote` e **inalcançável pela suíte**.
 
-1. **Serial do Excel** (número, e o valor **não** é string) → base `20/12/1899` + N dias.
+Tenta, nesta ordem:
+
+1. **Serial do Excel** (número, e o valor **não** é string) → base `30/12/1899` + N dias, tudo em **UTC**.
 2. **ISO `YYYY-MM-DD`** → mantém.
 3. **`D/M/AAAA`** com `/`, `-` ou `.` → aceita 1 **ou** 2 dígitos em dia e mês, normaliza com `padStart`.
 4. **8 dígitos seguidos** (`DDMMAAAA`) → fatia 2/2/4.
@@ -112,19 +114,37 @@ return limpo === '' ? null : limpo;
 
 Vazio devolve `''`, que cai na validação de obrigatórios.
 
+> 🔴 **CORRIGIDO EM 2026-09-15, e o erro já está no banco. Esta linha dizia base `20/12/1899`** — e não era doc errada sobre código certo: o código dizia o mesmo, com o comentário *"conforme especificado"*. A base do serial do Excel (sistema 1900) é **30/12/1899**, que é o que [`src/lib/candidatos-import.ts`](../../../../src/lib/candidatos-import.ts) sempre usou. Dez dias de diferença:
+>
+> ```
+> serial 23906  →  base 20/12/1899 = 1965-06-03   ← ficou gravado
+>               →  base 30/12/1899 = 1965-06-13   ← a data verdadeira
+> ```
+>
+> **Como apareceu:** um arquivo de correção de 107 colaboradores, em 15/09. Das 94 datas de nascimento que divergiam, **89 divergiam por exatamente +10 dias** — não eram 89 erros de digitação, era esta linha. As outras 5 tinham deltas irregulares e eram correções de verdade.
+>
+> ⚠️ **Corrigir o código não corrige quem já entrou.** Todo cadastro importado por planilha **com célula de data numérica** antes de 15/09 tem data 10 dias antes da verdade, e o arquivo de correção cobriu só aquelas 107 pessoas. **Não há como saber quais das outras estão erradas sem uma fonte externa** — a planilha original de cada importação. Quem for conferir data de nascimento de colaborador antigo, saiba disso.
+>
+> **A aritmética passou a ser toda em UTC**, e isso não é preciosismo: `new Date(1899, 11, 20)` era hora **local**, e em 1899 o fuso do Brasil era LMT (−03:06:28). Somar dias inteiros sobre offset de minutos quebrados e ler o dia com `getDate()` pode deslocar a data em um dia.
+>
+> ⚠️ **Duas conversões de data de planilha continuam existindo** (esta e a `parseData` de `candidatos-import.ts`), com contratos diferentes: esta devolve o texto cru quando não reconhece, a outra devolve `null`, e só a outra tem guarda de plausibilidade (`serial > 10000 && < 60000`, para `2005` não virar data). Unificar não foi feito — são dois importadores com regras de erro diferentes de propósito.
+
 ---
 
-## 5. 🔴 Tamanho: QUATRO campos são truncados em silêncio, não rejeitados
+## 5. 🔴 Tamanho: TRÊS campos são truncados em silêncio, não rejeitados
 
-> 🔴 **O doc antigo afirmava:** *"Se houver excesso, a linha é rejeitada antes do INSERT"* — e listava `colab_nome_completo` (40) na tabela de exemplos. **Falso para quatro campos**, incluindo o nome.
+> 🔴 **O doc antigo afirmava:** *"Se houver excesso, a linha é rejeitada antes do INSERT"* — e listava `colab_nome_completo` (40) na tabela de exemplos. **Falso**: esses campos eram cortados, não rejeitados.
 
 ```ts
-const CAMPOS_TRUNCAR = ['colab_nome_completo', 'colab_complemento_endereco',
-                        'colab_rua', 'colab_bairro'];
+const CAMPOS_TRUNCAR = ['colab_complemento_endereco', 'colab_rua', 'colab_bairro'];
 // ...  valor.slice(0, limite)   ← corta e segue, sem log, sem aviso, sem contador
 ```
 
-🔴 **Um nome com mais de 40 caracteres entra cortado e ninguém é avisado.** É **perda silenciosa** — o formato de erro que este repo mais teme: não dá erro, o relatório diz "cadastrado com sucesso", e o dado está errado. Está registrado como achado em aberto no [`backlog.md`](../../../backlog.md), não como comportamento desejado.
+🔵 **O NOME saiu desta lista em 2026-09-15, e o caminho foi tirar o teto, não avisar do corte.** `colab_nome_completo` virou `text` (migration `20260915221737_nome_colaborador_para_text.sql`) e a chave saiu de `LIMITES_COLUNAS` — sem ela, o nome não passa pelo laço que trunca **nem** pelo que rejeita: entra inteiro. O que justificou mexer foi medição, não estética: das 771 linhas, **7 estavam exatamente em 40 caracteres**, com corte no meio da palavra (`…BATISTA DE O`, `…S. F. DE ALM`) e espaço sobrando no fim. Eram nomes truncados, não nomes de 40 letras. ⚠️ Esta seção dizia *"QUATRO campos"* e *"um nome com mais de 40 caracteres entra cortado e ninguém é avisado"* — a frase valia até 15/09.
+
+🔴 **Os outros três continuam cortando em silêncio**, e isso é **perda silenciosa** — o formato de erro que este repo mais teme: não dá erro, o relatório diz "cadastrado com sucesso", e o dado está errado. **Não é comportamento desejado: é dívida aberta**, e ficar aberta foi decisão do usuário em 15/09.
+
+> ⚠️ **Esta seção dizia que o truncamento "está registrado como achado em aberto no `backlog.md`" — e não está:** não existe item sobre isso no backlog, hoje nem antes. O ponteiro falso é pior que a ausência, porque faz quem lê acreditar que alguém já anotou. Não criar o item foi decisão do usuário em 15/09; **o registro é este parágrafo**.
 
 **Os demais campos** (`colab_matricula` 6, `colab_nacionalidade` 10, `colab_pis` 11, `colab_cidade` 15, `colab_email` 255, `colab_chave_pix` 255, `colab_cpf` 11) **rejeitam** a linha, com mensagem que nomeia a coluna da planilha, a do banco e o limite.
 
