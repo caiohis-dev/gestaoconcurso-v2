@@ -1,0 +1,34 @@
+-- colaboradores.colab_nome_completo: varchar(40) -> text
+--
+-- POR QUE
+-- O teto de 40 estava cortando nome de gente. Medido no banco local em 2026-09-15,
+-- sobre as 771 linhas: 7 nomes estao EXATAMENTE em 40 caracteres, e o fim deles
+-- denuncia corte no meio da palavra ("...BATISTA DE O", "...S. F. DE ALM") ou espaco
+-- sobrando ("...ELLO BREVES "). Nao sao nomes de 40 letras: sao nomes truncados.
+-- O truncamento silencioso do /cadastro-lote (slice(0, 40)) sai no mesmo passe, no
+-- cliente -- so para o nome; os outros tres campos truncados seguem como divida
+-- registrada no backlog, por decisao do usuario.
+--
+-- POR QUE SEM CHECK DE TETO
+-- Divergencia consciente do precedente de candidatos.n_inscricao, que virou
+-- `text` + CHECK nomeada de 12: ali o teto era regra do edital, aqui nao existe
+-- teto natural para nome de pessoa. As outras colunas de nome do repo -- candidatos.nome,
+-- cargos.nome, editais.nome -- sao `text` sem CHECK de tamanho. O que sobrou em
+-- varchar(n) (colaboradores, funcoes_colaboradores, unidades_prova, bancos) e o
+-- schema da era Lovable. Decisao do usuario nesta sessao: nenhum teto, nem no banco
+-- nem no cliente -- maxLength no input foi recusado porque corta colagem em silencio.
+--
+-- O QUE CONTINUA
+--   NOT NULL                         (desde 20251224152152)
+--   chk_colab_nome_preenchido        length(trim(colab_nome_completo)) > 0
+-- A CHECK e o UNICO objeto que depende desta coluna (conferido em pg_depend sobre o
+-- attnum: zero views, zero indices, e as RPCs get_meu_colaborador,
+-- update_meu_colaborador e buscar_colaboradores_para_alocacao ja declaravam `text`).
+-- O Postgres a recria no ALTER TYPE -- a bateria docs/bateria-nome-colaborador-text.sql
+-- confirma que ela sobreviveu, em vez de supor.
+--
+-- CUSTO: nenhum. varchar(40) -> text e binariamente compativel: NAO reescreve a tabela
+-- (medido no repo em my_rules/analises/roadmap-n-inscricao-12-caracteres.yaml:146).
+
+ALTER TABLE public.colaboradores
+  ALTER COLUMN colab_nome_completo TYPE text;

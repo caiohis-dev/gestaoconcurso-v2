@@ -173,9 +173,23 @@ describe("colaboradorSchema", () => {
     });
   });
 
+  describe("nome completo — sem teto desde 2026-09-15", () => {
+    it("aceita nome longo: a coluna virou `text` e o schema não tem mais `.max(40)`", () => {
+      // O teto de 40 cortava nome de gente: 7 das 771 linhas estavam exatamente em 40,
+      // com corte no meio da palavra. Este caso é o controle positivo do lado do cliente —
+      // o par dele no banco está em docs/bateria-nome-colaborador-text.sql.
+      expect(colaboradorSchema.safeParse({ ...valido, colab_nome_completo: "a".repeat(41) }).success).toBe(true);
+      expect(colaboradorSchema.safeParse({ ...valido, colab_nome_completo: "a".repeat(200) }).success).toBe(true);
+    });
+
+    it("continua exigindo nome: vazio é recusado", () => {
+      expect(colaboradorSchema.safeParse({ ...valido, colab_nome_completo: "" }).success).toBe(false);
+    });
+  });
+
   describe("limites de texto que espelham as colunas", () => {
+    // `colab_nome_completo` saiu desta lista em 2026-09-15 — ver o describe acima.
     it.each([
-      ["colab_nome_completo", 40],
       ["colab_matricula", 6],
       ["colab_nacionalidade", 10],
       ["colab_pis", 11],

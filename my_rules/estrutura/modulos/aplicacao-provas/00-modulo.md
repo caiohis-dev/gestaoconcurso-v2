@@ -78,7 +78,7 @@ Até 2026-07-25 as validações viviam **só** no Zod dos formulários, e uma ch
 | `sala_prova` | capacidade e número positivos; `sala_andar >= 1` quando informado; 🔵 **`sala_numero` = `sala_andar` × 100 + (1..99)** quando há andar (`chk_sala_numero_casa_com_andar`, 03/08) |
 | `provas` | edital denormalizado não-vazio; candidatos positivos; **`hora_final > hora_inicio`** |
 | `funcoes_colaboradores` | `cargo_nome` não-vazio |
-| `colaboradores` | nome não-vazio; **CPF exatamente 11 dígitos**; telefone positivo; nº da casa não-negativo; e-mail com formato mínimo |
+| `colaboradores` | nome não-vazio; **CPF exatamente 11 dígitos**; telefone positivo; nº da casa não-negativo; e-mail com formato mínimo — 🔵 o nome segue com CHECK de não-vazio, mas a coluna virou **`text` sem teto** em 15/09 (`20260915221737`), e não há CHECK de tamanho: ver [`colaboradores.md`](./colaboradores.md) |
 
 Três coisas que valem saber antes de mexer aqui:
 

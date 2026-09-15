@@ -26,6 +26,28 @@ Unicidade responde "esse valor já existe?". **Formato** é outra pergunta, e at
 
 O e-mail exige um formato mínimo (`algo@algo.algo`, sem espaços) e **ausência é `NULL`, nunca `''`** — o que conversa com o aviso do índice acima.
 
+### 🔵 `colab_nome_completo` é `text` desde 2026-09-15 — e NÃO tem teto em lugar nenhum
+
+Era `varchar(40)`, herança do schema do dashboard do Lovable. Migration `20260915221737_nome_colaborador_para_text.sql`.
+
+**O que motivou:** medição, não estética. Das 771 linhas, **7 estavam exatamente em 40 caracteres**, e o fim delas denuncia corte no meio da palavra (`…BATISTA DE O`, `…S. F. DE ALM`) ou espaço sobrando (`…ELLO BREVES `). O teto estava perdendo nome de gente — e o `CadastroLote` ainda cortava em silêncio.
+
+⚠️ **O teto saiu de TODOS os caminhos de escrita, de propósito** — não existe mais número 40 em lugar nenhum deste fluxo:
+
+| Onde havia teto | O que ficou |
+|---|---|
+| a coluna, `varchar(40)` | `text` |
+| `ColaboradorDialog` — Zod `.max(40)`, `maxLength={40}`, contador "/40" | só `.min(1)`; sem `maxLength`, sem contador |
+| `PerfilColaborador` — `maxLength={40}` e contador (não usa Zod) | nada; quem responde é a CHECK de não-vazio e o `NULLIF(TRIM(...))` da RPC |
+| `CadastroLote` — `LIMITES_COLUNAS` + `CAMPOS_TRUNCAR` | a chave saiu das duas: o nome não é truncado nem rejeitado |
+| EF `public-create-colaborador` — Zod `.max(40)` | `.min(1)` — **era a única barreira de servidor** |
+
+**Não há CHECK de teto, e é decisão consciente.** Diverge do precedente de `candidatos.n_inscricao` (que virou `text` **+ CHECK nomeada de 12**): lá o teto era regra do edital, aqui nome de pessoa não tem teto natural. As outras colunas de nome do repo — `candidatos.nome`, `cargos.nome`, `editais.nome` — já são `text` sem CHECK. O `maxLength` no input foi recusado justamente porque **corta colagem em silêncio**.
+
+**O que continua valendo:** `NOT NULL` e `chk_colab_nome_preenchido` (`length(trim(...)) > 0`), mais o trigger `tr_uppercase_colab_nome_completo`, que grava tudo em **CAIXA ALTA**. Prova executável em [`../../../../docs/bateria-nome-colaborador-text.sql`](../../../../docs/bateria-nome-colaborador-text.sql) — 6 casos, com **controle positivo** (nome de 100 caracteres entra e volta inteiro), falsificada devolvendo o `varchar(40)` em transação: os controles negativos seguiram passando e só o positivo reprovou.
+
+🔴 **A consequência que sobrou, aceita com o risco à vista:** a folha de assinatura em PDF **corta nome longo em silêncio** — ver [`documentos-e-relatorios.md`](./documentos-e-relatorios.md).
+
 ⚠️ **O `CadastroLote` teve de mudar junto, e o motivo importa.** A importação gravava os textos crus da planilha, sem `trim` — e planilha traz espaço nas pontas o tempo todo. Foi assim que os 22 e-mails com espaço entraram. Enquanto não havia constraint, isso era cosmético; com `chk_colab_email_formato`, a **linha inteira falharia na importação**. O `CadastroLote` passou a normalizar todo campo textual (`trim`, e vazio vira `NULL`) e a traduzir violação de CHECK em erro legível ("E-mail com formato inválido" em vez de "Outros"). **Lição para constraint futura:** antes de apertar o banco, olhe quem escreve nele *sem* passar pelo formulário — no caso, a importação em lote e as Edge Functions.
 
 **O que o índice do PIX não resolve (dívida consciente):** a mesma chave escrita em formatos diferentes ainda passa — `127.139.687-47` e `12713968747` são a mesma chave no arranjo do BACEN e valores distintos aqui. Das 565 chaves preenchidas, **94 estão em formatos mistos** (CPF pontuado, telefone com parênteses, espaços internos) e **uma tem 21 dígitos** — não é chave válida de tipo nenhum. Normalizar isso é mexer em dado bancário de 565 pessoas e ficou fora de escopo.
