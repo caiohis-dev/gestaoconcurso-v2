@@ -65,10 +65,24 @@ Se todo capítulo pode entrar ou sair, **a numeração é sempre calculada, nunc
 |---|---|
 | `Estrutura de Edital.md` numera PCD como | capítulo **[8]** |
 | No Edital 002/2026 publicado, PCD é | capítulo **7** |
-| O modelo abstrato tem | 18 capítulos |
+| O catálogo tem | **19 elementos, 17 numerados** (⚠️ corrigido em 2026-09-16: dizia "18 capítulos" — preâmbulo e anexos não recebem número) |
 | O Edital 002 publicado tem | **16** + Anexo I |
 
 E o 002 já carrega o resíduo do erro que isso produz: uma linha solta **`"10. e seus subitens"`** dentro do capítulo 7 — referência cruzada que envelheceu quando a numeração mudou.
+
+### 🔴 …e o mesmo vale um nível abaixo: o ITEM
+
+**Medido em 2026-09-16, depois de o usuário perguntar se os artigos são tratados isoladamente:**
+
+| | referências a item/subitem | referências a capítulo |
+|---|---|---|
+| Edital 002/2026 | 32 | **0** |
+| Edital 003/2026 | 29 | **0** |
+| Edital 004/2026 | 34 | **0** |
+
+**95 referências cruzadas, nenhuma para capítulo.** E o resíduo do 002, acima, é uma referência **de item**. Numerar só o capítulo resolveria o caso que não acontece.
+
+Decisão: o capítulo continua sendo **um campo de texto**, escrito como lista, e **o sistema numera os itens** (`7.1`, `7.2.1`, alínea `a)`). Referência por âncora: `{{item:laudo}}`. Sem tabela nova, sem editor de árvore. Entregue na fatia 1.
 
 ---
 

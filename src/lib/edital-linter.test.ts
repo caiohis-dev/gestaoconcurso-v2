@@ -138,3 +138,38 @@ describe("resumoDoLinter", () => {
     expect(resumoDoLinter(analisarEdital({ overrides }))).toEqual({ erros: 1, avisos: 1 });
   });
 });
+
+describe("referência a ITEM — a granularidade que os editais reais usam", () => {
+  it("acusa âncora duplicada", () => {
+    const achados = analisarEdital({
+      overrides: comTexto("vagas_pcd", "- {#laudo} um\n- {#laudo} dois"),
+    });
+    expect(achados.map((a) => a.regra)).toEqual(["ancora-duplicada"]);
+  });
+
+  it("acusa referência a item que não existe", () => {
+    const achados = analisarEdital({
+      overrides: comTexto("prova_objetiva", "nos termos do {{item:nao_existe}}"),
+    });
+    expect(achados.map((a) => a.regra)).toEqual(["referencia-de-item-quebrada"]);
+  });
+
+  it("⭐ CONTROLE NEGATIVO: referência que resolve não acusa", () => {
+    const overrides = comTexto("vagas_pcd", "- {#laudo} do laudo").map((c) =>
+      c.chave === "prova_objetiva" ? { ...c, texto: "ver {{item:laudo}}" } : c,
+    );
+    expect(regras(overrides)).toEqual([]);
+  });
+
+  it("🔴 desligar o capítulo da âncora QUEBRA a referência, e o linter acusa", () => {
+    // O par que prova que a regra olha o estado do edital: a mesma referência passa e
+    // depois falha, sem ninguém tocar no texto que a contém.
+    const base = comTexto("vagas_pcd", "- {#laudo} do laudo").map((c) =>
+      c.chave === "prova_objetiva" ? { ...c, texto: "ver {{item:laudo}}" } : c,
+    );
+    expect(regras(base)).toEqual([]);
+
+    const semPcd = base.map((c) => (c.chave === "vagas_pcd" ? { ...c, incluido: false } : c));
+    expect(regras(semPcd)).toContain("referencia-de-item-quebrada");
+  });
+});

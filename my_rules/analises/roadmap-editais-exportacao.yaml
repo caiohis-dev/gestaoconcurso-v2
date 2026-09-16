@@ -19,6 +19,18 @@ roadmap:
     JSON estruturado ... alimentar a API do portal de inscrições da banca
 
   # ═══════════════════════════════════════════════════════════════════════════
+  o_que_a_fatia_1_ja_resolveu: |
+    🔵 2026-09-16. O PDF NÃO precisa numerar nada — chega tudo numerado:
+
+    · Número do CAPÍTULO: `src/lib/edital-numeracao.ts`.
+    · Número do ITEM e da alínea (`7.2.1`, `a)`): `src/lib/edital-itens.ts`.
+    · As duas referências cruzadas já resolvidas: `{{cap:chave}}` e `{{item:ancora}}`.
+
+    ⚠️ **Não reimplemente numeração no exportador.** Duas numerações divergindo é como
+    um PDF sai com número diferente do preview — e o PDF é o que vai ao Diário Oficial.
+    O exportador consome `parsearCapitulo` e os dois resolvedores, como o preview faz.
+
+  # ═══════════════════════════════════════════════════════════════════════════
   reuso_que_ja_existe: |
     ⚠️ Conferir o estado destes arquivos NA HORA — doc é snapshot, e esta é a fatia mais
     distante no tempo de todas:

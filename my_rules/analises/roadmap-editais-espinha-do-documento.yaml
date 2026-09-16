@@ -62,7 +62,8 @@ roadmap:
 
          `Estrutura de Edital.md` numera PCD como .......... capítulo [8]
          No Edital 002/2026 publicado, PCD é ............... capítulo 7
-         O modelo abstrato tem ............................. 18 capítulos
+         O catálogo tem ................ 19 elementos, dos quais 17 NUMERADOS
+         (⚠️ este roadmap dizia "18": preâmbulo e anexos não recebem número)
          O Edital 002 publicado tem ........................ 16 + Anexo I
 
        A causa é simples: capítulo condicional que não entra não ocupa número, e todos
@@ -104,7 +105,7 @@ roadmap:
         🔴 RECUSADO explicitamente: stepper artesanal com blocos `{passo === n}`.
         `src/pages/CandidatosImportar.tsx:83` avisa, sobre o dele: "adicionar um passo
         precisa tocar TRÊS lugares: a trilha, os blocos `{passo === n}` e as transições.
-        Errar um deixa um passo inalcançável, sem erro nenhum na tela." Com 18 capítulos
+        Errar um deixa um passo inalcançável, sem erro nenhum na tela." Com 19 elementos
         que entram e saem, isso é o mesmo defeito multiplicado por 18.
 
     P5. **CRIAR EDITAL É RPC EM TRANSAÇÃO.** Criar o edital e semear seus capítulos são
@@ -152,7 +153,7 @@ roadmap:
       nome: "As funções puras — numeração, referência cruzada e linter"
       status: "⏳ pendente"
       entrega:
-        - "`src/lib/edital-capitulos.ts`: o catálogo dos 18, com `chave`, `titulo`, `condicional`."
+        - "`src/lib/edital-capitulos.ts`: o catálogo dos 19, com `chave`, `titulo`, `numerado`, `padrao`."
         - >
           `src/lib/edital-numeracao.ts`: capítulos incluídos → números (P2), e resolução de
           referência cruzada por `chave` (P3).
@@ -262,6 +263,16 @@ roadmap:
        exercitada e o caso dizia OK. É a armadilha do CLAUDE.md §8 (regra nova ofuscada
        pela antiga). Corrigido: o caso cria um edital limpo e exige o NOME exato da
        constraint.
+
+    🔴 O ITEM ENTROU NO ESCOPO, depois de uma pergunta do usuário ("os artigos são
+       tratados isoladamente ou estão todos na mesma caixa?"). A medição inverteu a
+       prioridade: nos três editais há 95 referências cruzadas e NENHUMA aponta para
+       capítulo — todas apontam para item. O `{{cap:chave}}` que esta fatia entregou
+       referenciava justamente o que ninguém referencia, e o resíduo "10. e seus
+       subitens" do Edital 002 é uma referência DE ITEM.
+       Resolvido sem tabela nova: `src/lib/edital-itens.ts` numera os itens a partir de
+       uma lista no próprio texto do capítulo, e `{{item:ancora}}` resolve a referência.
+       ⚠️ Lição para as fatias seguintes: a granularidade que importa é a do ITEM.
 
     🔴 ACHADO no lint: o `EditalStudio` nasceu com complexidade 19 (teto 15), subindo a
        baseline de 111 para 112. Em vez de subir o número, os painéis viraram componentes

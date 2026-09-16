@@ -19,6 +19,12 @@ import Layout from "@/components/Layout";
 import { useEdital } from "@/hooks/useEdital";
 import { analisarEdital, resumoDoLinter, type Achado } from "@/lib/edital-linter";
 import { resolverReferencias, type CapituloResolvido } from "@/lib/edital-numeracao";
+import {
+  parsearCapitulo,
+  ancorasDoDocumento,
+  mapaDeAncoras,
+  resolverReferenciasDeItem,
+} from "@/lib/edital-itens";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -80,6 +86,48 @@ function Trilha({
 }
 
 /** Preview do documento e painel do linter — a terceira projeção da mesma lista. */
+/**
+ * O corpo do capítulo, com os ITENS numerados pelo sistema.
+ *
+ * 🔴 É aqui que a numeração de item acontece — nunca no texto que a pessoa digita. Foi
+ * medido: nos três editais reais, as 95 referências cruzadas apontam TODAS para item, e
+ * nenhuma para capítulo. Ver `src/lib/edital-itens.ts`.
+ */
+function CorpoDoCapitulo({
+  capitulo,
+  documento,
+  ancoras,
+}: {
+  capitulo: CapituloResolvido;
+  documento: CapituloResolvido[];
+  ancoras: Map<string, string>;
+}) {
+  const linhas = parsearCapitulo(capitulo.texto, capitulo.numero);
+  if (linhas.length === 0) return <p className="text-sm text-muted-foreground">—</p>;
+
+  // As duas resoluções de referência, em ordem: capítulo e depois item.
+  const resolver = (t: string) => resolverReferenciasDeItem(resolverReferencias(t, documento), ancoras);
+
+  return (
+    <div className="space-y-1 text-sm text-muted-foreground">
+      {linhas.map((l, i) => (
+        <p
+          key={`${l.linha}-${i}`}
+          className="whitespace-pre-wrap"
+          style={{ paddingLeft: l.tipo === "item" ? `${l.nivel * 1.25}rem` : undefined }}
+        >
+          {l.tipo === "item" && l.numero && (
+            <span className="font-medium text-foreground">
+              {l.nivel === 2 ? `${l.numero}) ` : `${l.numero}. `}
+            </span>
+          )}
+          {resolver(l.texto)}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 function PreviewELinter({
   documento,
   achados,
@@ -88,6 +136,7 @@ function PreviewELinter({
   achados: Achado[];
 }) {
   const resumo = resumoDoLinter(achados);
+  const ancoras = mapaDeAncoras(ancorasDoDocumento(documento));
   const limpo = resumo.erros === 0 && resumo.avisos === 0;
   return (
     <div className="flex h-full flex-col">
@@ -129,15 +178,12 @@ function PreviewELinter({
           {documento
             .filter((c) => c.incluido)
             .map((cap) => (
-              <section key={cap.chave}>
+              <section key={cap.chave} className="space-y-1">
                 <h3 className="text-sm font-semibold uppercase">
                   {cap.numero !== null && `${cap.numero}. `}
                   {cap.titulo}
                 </h3>
-                <p className="whitespace-pre-wrap text-sm text-muted-foreground">
-                  {/* A referência cruzada vira número AQUI, na renderização. */}
-                  {resolverReferencias(cap.texto, documento) || "—"}
-                </p>
+                <CorpoDoCapitulo capitulo={cap} documento={documento} ancoras={ancoras} />
               </section>
             ))}
         </div>
@@ -262,7 +308,7 @@ export default function EditalStudio() {
                 <Textarea
                   value={rascunho ?? selecionado.texto}
                   onChange={(e) => setRascunho(e.target.value)}
-                  placeholder="Redação do capítulo. Para referenciar outro capítulo, escreva {{cap:chave}} — o número é resolvido sozinho."
+                  placeholder={"Escreva os itens como lista — o sistema numera.\n\n- Primeiro item\n- Segundo item\n  - Subitem\n- {#minha_ancora} Item que outros podem referenciar\n\nPara referenciar: {{item:minha_ancora}} ou {{cap:vagas_pcd}}."}
                   className="min-h-[320px] flex-1 font-mono text-sm"
                 />
               </div>

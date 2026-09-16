@@ -32,6 +32,16 @@ roadmap:
     incompleto, detectável.
 
   # ═══════════════════════════════════════════════════════════════════════════
+  o_que_a_fatia_1_ja_resolveu: |
+    🔵 2026-09-16. A ementa é texto longo e estruturado em tópicos — exatamente a forma
+    que o mecanismo de ITEM da fatia 1 já cobre (`src/lib/edital-itens.ts`): lista no
+    próprio texto, numeração gerada, âncora para referência.
+
+    ⚠️ Decidir se a ementa usa esse mecanismo ou vira campo estruturado próprio. Se for
+    texto, **não invente uma segunda sintaxe de lista** — a do capítulo já existe e o
+    preview já a renderiza.
+
+  # ═══════════════════════════════════════════════════════════════════════════
   etapas:
     - id: 1
       nome: "Banco — as ementas"

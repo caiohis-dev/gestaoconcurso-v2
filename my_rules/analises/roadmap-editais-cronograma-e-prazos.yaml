@@ -119,3 +119,5 @@ roadmap:
     R3. **O cronograma é referenciado de dentro de outros capítulos** ("até a data prevista
         no Anexo…"). Essa referência tem de ser por chave de etapa, não por data copiada —
         mesmo raciocínio da referência cruzada de capítulo (fatia 1, P3).
+        🔵 2026-09-16: o mecanismo já existe e é por ÂNCORA DE ITEM (`{{item:ancora}}`,
+        `src/lib/edital-itens.ts`), entregue na fatia 1. Não inventar um terceiro.

@@ -166,7 +166,9 @@ O preço veio em 10/09: o bloco foi lido de boa-fé numa varredura e virou um **
 
 ## O que está coberto (2026-07-27)
 
-**1.407 testes em 75 arquivos** (medido em 2026-09-16, ao fim da **fatia 1 da v3 do módulo Editais — a espinha do documento** — dois arquivos novos, os dois de LÓGICA PURA: `src/lib/edital-numeracao.test.ts` (20 casos) e `src/lib/edital-linter.test.ts` (14).
+**1.426 testes em 76 arquivos** (medido em 2026-09-16, ao fim da **fatia 1 da v3 do módulo Editais — a espinha do documento** — três arquivos novos, todos de LÓGICA PURA: `src/lib/edital-numeracao.test.ts` (20 casos), `src/lib/edital-itens.test.ts` (15) e `src/lib/edital-linter.test.ts` (18).
+
+🔴 **`edital-itens.test.ts` nasceu de uma pergunta do usuário que mudou o desenho**: "os artigos são tratados isoladamente ou estão todos na mesma caixa?" A medição respondeu — nos três editais há **95 referências cruzadas e NENHUMA aponta para capítulo**; todas apontam para item. O mecanismo que eu tinha entregue referenciava justamente o que ninguém referencia.
 
 ⭐ **O controle positivo deles são os TRÊS EDITAIS REAIS da FEVRE**, medidos no material de referência: 002 tem 16 capítulos, 003 tem 15, 004 tem 16 — e o capítulo de PCD cai em **7, 7 e 8**, conforme a territorialidade entre ou não. Três numerações diferentes saindo do mesmo catálogo; é o que prova que o modelo descreve a realidade.
 

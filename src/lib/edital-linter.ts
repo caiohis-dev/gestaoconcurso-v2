@@ -14,6 +14,7 @@
  * para nenhuma das duas. Procurar marcador vazio é regex.
  */
 import { montarDocumento, referenciasDoTexto, type CapituloResolvido } from "@/lib/edital-numeracao";
+import { ancorasDoDocumento, mapaDeAncoras, RE_REFERENCIA_ITEM } from "@/lib/edital-itens";
 
 export type Severidade = "erro" | "aviso";
 
@@ -43,9 +44,35 @@ export interface EntradaLinter {
   overrides?: readonly { chave: string; ordem?: number | null; incluido?: boolean | null; texto?: string | null }[];
 }
 
+/** Âncora repetida faz a referência cair no primeiro item, que pode não ser o pretendido. */
+function ancorasDuplicadas(ancoras: readonly { ancora: string; capitulo: string }[]): Achado[] {
+  const vistas = new Set<string>();
+  const achados: Achado[] = [];
+  for (const a of ancoras) {
+    if (vistas.has(a.ancora)) {
+      achados.push({
+        severidade: "erro",
+        capitulo: a.capitulo,
+        regra: "ancora-duplicada",
+        mensagem: `A âncora "${a.ancora}" aparece mais de uma vez. Quem a referenciar vai cair no primeiro item, e não necessariamente no pretendido.`,
+      });
+    }
+    vistas.add(a.ancora);
+  }
+  return achados;
+}
+
 export function analisarEdital(entrada: EntradaLinter): Achado[] {
   const documento = entrada.documento ?? montarDocumento(entrada.overrides ?? []);
   const achados: Achado[] = [];
+
+  // 🔴 As referências dos editais reais apontam para ITEM, não para capítulo: 95 delas
+  // nos três de referência, e nenhuma para capítulo. Por isso a âncora de item tem as
+  // suas próprias duas regras.
+  const ancoras = ancorasDoDocumento(documento);
+  const mapaAncoras = mapaDeAncoras(ancoras);
+
+  achados.push(...ancorasDuplicadas(ancoras));
 
   for (const cap of documento) {
     // Capítulo desligado não se analisa: o texto dele não sai no documento. Analisá-lo
@@ -81,6 +108,17 @@ export function analisarEdital(entrada: EntradaLinter): Achado[] {
           capitulo: cap.chave,
           regra: "placeholder-nao-preenchido",
           mensagem: `"${cap.titulo}" tem ${p.descricao}. Foi assim que "dia XX/xx/2026" chegou ao Diário Oficial no Edital 004/2026.`,
+        });
+      }
+    }
+
+    for (const m of cap.texto.matchAll(RE_REFERENCIA_ITEM)) {
+      if (!mapaAncoras.has(m[1])) {
+        achados.push({
+          severidade: "erro",
+          capitulo: cap.chave,
+          regra: "referencia-de-item-quebrada",
+          mensagem: `"${cap.titulo}" referencia o item "${m[1]}", e nenhuma âncora com esse nome existe num capítulo incluído.`,
         });
       }
     }

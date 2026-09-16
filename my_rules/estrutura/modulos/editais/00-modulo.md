@@ -38,7 +38,8 @@ O **edital** é o **documento normativo do certame**, montado por capítulos den
 | `src/pages/EditalStudio.tsx` | 🔵 **v3** — a tela de autoria, rota `/editais/:editalId`, três painéis |
 | `src/hooks/useEdital.tsx` | 🔵 **v3** — um edital + seus capítulos; grava capítulo por **upsert** |
 | `src/lib/edital-capitulos.ts` | 🔵 **v3** — o catálogo canônico: 19 elementos, dos quais **17 numerados** |
-| `src/lib/edital-numeracao.ts` | 🔵 **v3** — função pura: numeração calculada e referência cruzada por `chave` |
+| `src/lib/edital-numeracao.ts` | 🔵 **v3** — função pura: numeração de CAPÍTULO e referência por `chave` |
+| `src/lib/edital-itens.ts` | 🔵 **v3** — função pura: numeração de ITEM e referência por âncora |
 | `src/lib/edital-linter.ts` | 🔵 **v3** — função pura: as regras determinísticas, sem LLM |
 
 Não há Edge Function nem view neste módulo: é CRUD direto via PostgREST, contido pela RLS. 🔵 **Nem RPC** — e isso foi decidido na implementação, contra o que o roadmap previa: ver "A linha de capítulo é um override" abaixo.
@@ -58,6 +59,37 @@ O mesmo capítulo em três posições. O catálogo tem **19 elementos — 17 num
 O Edital 002 publicado carrega o resíduo de numerar à mão: uma linha solta **`"10. e seus subitens"`** dentro do capítulo 7. Por isso **referência cruzada aponta para a `chave`** (`{{cap:vagas_pcd}}`), e o número é resolvido na renderização. Referência que não resolve vira marcador visível `[?chave]` — nunca some, nunca inventa número.
 
 **O catálogo vive em CÓDIGO**, não no banco: versionado, revisável em diff, testável como dado puro.
+
+### 🔴 O ITEM também é numerado pelo sistema — e é ele que as referências usam
+
+**Medido nos três editais reais em 2026-09-16, e o resultado inverteu a prioridade:**
+
+| | referências a item/subitem | referências a capítulo |
+|---|---|---|
+| Edital 002/2026 | 32 | **0** |
+| Edital 003/2026 | 29 | **0** |
+| Edital 004/2026 | 34 | **0** |
+
+**95 referências cruzadas, nenhuma para capítulo.** Todas para item (*"nos termos do subitem 10.13"*). E o resíduo que originou o módulo — `"10. e seus subitens"` no Edital 002 — é uma referência **de item**. Numerar só o capítulo resolveria o caso que não acontece.
+
+Volume: ~270 a 330 itens por edital, em até 3 níveis, mais alíneas em letra.
+
+**Como se escreve.** O capítulo continua sendo **um campo de texto**; quem redige **não digita número**:
+
+```
+Parágrafo de abertura, sem numeração.
+- Primeiro item do capítulo.
+- Segundo item.
+  - Subitem do segundo.
+    - alínea do subitem
+- {#laudo} Item com âncora, para ser referenciado.
+```
+
+Num capítulo 7 isso vira `7.1`, `7.2`, `7.2.1`, alínea `a)`, `7.3`. **Inserir item no meio renumera tudo abaixo sozinho** — e a referência `{{item:laudo}}` acompanha, porque aponta para a âncora, não para o número.
+
+⚠️ **A indentação é tolerante** (3 espaços contam como 1 nível), de propósito: perder um item por um espaço a mais seria pior que o nível errado, que o preview mostra na hora.
+
+**As duas resoluções de referência convivem:** `{{cap:chave}}` para capítulo e `{{item:ancora}}` para item. As duas viram marcador visível (`[?…]`) quando não resolvem — nunca somem, nunca inventam número. Ver `src/lib/edital-itens.ts`.
 
 ### A linha de capítulo é um OVERRIDE, não um registro obrigatório
 
