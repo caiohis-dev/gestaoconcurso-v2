@@ -40,6 +40,10 @@ O **edital** é o **documento normativo do certame**, montado por capítulos den
 | `src/lib/edital-capitulos.ts` | 🔵 **v3** — o catálogo canônico: 19 elementos, dos quais **17 numerados** |
 | `src/lib/edital-numeracao.ts` | 🔵 **v3** — função pura: numeração de CAPÍTULO e referência por `chave` |
 | `src/lib/edital-itens.ts` | 🔵 **v3** — função pura: numeração de ITEM e referência por âncora |
+| `src/lib/edital-cotas.ts` | 🔵 **v3 fatia 2** — função pura: a reserva de PCD e cotas raciais |
+| `src/hooks/useEditalCargos.tsx` | 🔵 **v3 fatia 2** — o Quadro I; escreve em `edital_cargos` |
+| `src/components/QuadroDeCargos.tsx` | 🔵 **v3 fatia 2** — o primeiro capítulo com parâmetro estruturado |
+| `supabase/migrations/20260916184254_editais_cargos_vagas_e_cg001_por_nome.sql` | 🔵 **v3 fatia 2** — `edital_cargos`, as colunas de `cargos`, e a CG001 estreitada |
 | `src/lib/edital-linter.ts` | 🔵 **v3** — função pura: as regras determinísticas, sem LLM |
 
 Não há Edge Function nem view neste módulo: é CRUD direto via PostgREST, contido pela RLS. 🔵 **Nem RPC** — e isso foi decidido na implementação, contra o que o roadmap previa: ver "A linha de capítulo é um override" abaixo.
@@ -90,6 +94,37 @@ Num capítulo 7 isso vira `7.1`, `7.2`, `7.2.1`, alínea `a)`, `7.3`. **Inserir 
 ⚠️ **A indentação é tolerante** (3 espaços contam como 1 nível), de propósito: perder um item por um espaço a mais seria pior que o nível errado, que o preview mostra na hora.
 
 **As duas resoluções de referência convivem:** `{{cap:chave}}` para capítulo e `{{item:ancora}}` para item. As duas viram marcador visível (`[?…]`) quando não resolvem — nunca somem, nunca inventam número. Ver `src/lib/edital-itens.ts`.
+
+### 🔵 O Quadro I, e a regra de cotas que foi MEDIDA (fatia 2, 2026-09-16)
+
+O capítulo `quadro_de_cargos` é o **primeiro com parâmetro estruturado**: em vez de texto livre, um formulário — e é o padrão que as fatias seguintes repetem.
+
+**A regra das cotas não foi estimada.** Contei as vagas declaradas nos Editais 002 e 003 — 11 cargos, 22 valores — e ela saiu do dado:
+
+```
+total = AC + PD + CN          (a base é o TOTAL, não o AC)
+PD    = arredonda(total × 0,10)     arredondamento COMUM, meio para cima
+CN    = arredonda(total × 0,20)     sem piso de 1 vaga
+AC    = total − PD − CN
+```
+
+Cada grupo de dados descarta uma hipótese: **não é teto** (Arte tem 1 vaga e declara zero PCD), **não é piso** (Ed. Física tem 8 e declara 1), **é meio-para-cima e não meio-para-o-par** (Docente II: 0,5 → 1), e **a base é o total** (Matemática declara 2, que é 10% de 17 e não de 12).
+
+🔴 **Na tela, quem preenche digita o TOTAL** e o sistema propõe as três colunas. Inverter daria 11 de PCD onde o Edital 003 publica 16.
+
+⚠️ **É a prática da FEVRE medida, não o texto da lei.** Cargo pequeno não reserva vaga nenhuma. Se uma norma exigir piso de 1, muda em `src/lib/edital-cotas.ts` e os 22 valores acusam a diferença.
+
+**As vagas são GRAVADAS, não recalculadas na leitura.** Um edital publica números; recalcular faria um edital antigo mudar sozinho se a regra mudasse. A `CHECK chk_edital_cargo_vagas_somam` garante que o total é a soma das partes — no banco, não só na tela.
+
+### 🔴 A CG001 foi estreitada pela SEGUNDA vez
+
+`cargos` é do módulo Candidatos e é a fonte de verdade (decisão D2) — não se duplica. Mas o trigger `cargos_recusa_alterar_com_inscritos` barrava **qualquer** UPDATE num cargo com inscritos, sem olhar a coluna. Com isso, o autor do edital não conseguiria definir `conselho_classe_obrigatorio` em nenhum cargo reaproveitado de um certame anterior.
+
+Desde a migration `20260916184254`, **só a troca do NOME tranca** — que é o que a regra realmente protege. A mensagem mudou de *"não pode ser alterado"* para *"não pode ser RENOMEADO"*.
+
+⚠️ Foi a segunda vez: a primeira, em 01/08, tirou `cargo_apelidos` da contagem. O padrão se repete — a regra nasce larga e se estreita conforme o uso mostra onde ela precisa morder.
+
+⚠️ **Conferido antes de liberar:** `cargos.ativo` não tem consumidor nenhum, então liberá-la não esconde dado. Se um dia passar a filtrar alguma listagem, revisitar o caso 4b.3 de `docs/bateria-cargos.sql`.
 
 ### A linha de capítulo é um OVERRIDE, não um registro obrigatório
 

@@ -32,6 +32,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ArrowLeft, Loader2, AlertTriangle, CircleAlert, CheckCircle2 } from "lucide-react";
+import { QuadroDeCargos } from "@/components/QuadroDeCargos";
 
 /** O número como sai no documento; capítulo sem número mostra um traço. */
 function Numero({ capitulo }: { capitulo: CapituloResolvido }) {
@@ -125,6 +126,93 @@ function CorpoDoCapitulo({
         </p>
       ))}
     </div>
+  );
+}
+
+/** O painel central: o capítulo selecionado, com o editor que ele pedir. */
+function PainelDoCapitulo({
+  capitulo,
+  editalId,
+  rascunho,
+  setRascunho,
+  gravarCapitulo,
+  isGravando,
+}: {
+  capitulo: CapituloResolvido | undefined;
+  editalId: string | undefined;
+  rascunho: string | null;
+  setRascunho: (v: string | null) => void;
+  gravarCapitulo: (c: CapituloResolvido) => void;
+  isGravando: boolean;
+}) {
+  if (!capitulo) return null;
+  const selecionado = capitulo;
+  return (
+    <>
+{selecionado && (
+              <div className="flex h-full flex-col gap-3 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <h2 className="text-lg font-semibold">
+                    {selecionado.numero !== null && `${selecionado.numero}. `}
+                    {selecionado.titulo}
+                  </h2>
+                  {/* Salvar fica junto do "Incluir", no alto: são as duas ações do
+                      capítulo, e no rodapé o botão saía do campo de visão em capítulo
+                      longo — justamente quando há mais o que salvar. */}
+                  <div className="flex shrink-0 items-center gap-3">
+                    {rascunho !== null && (
+                      <span className="text-xs text-muted-foreground">alterações não salvas</span>
+                    )}
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        gravarCapitulo({ ...selecionado, texto: rascunho ?? selecionado.texto });
+                        setRascunho(null);
+                      }}
+                      disabled={isGravando || rascunho === null}
+                    >
+                      {isGravando ? "Salvando…" : "Salvar capítulo"}
+                    </Button>
+                    <label className="flex items-center gap-2 text-sm">
+                      <Switch
+                        checked={selecionado.incluido}
+                        onCheckedChange={(incluido) =>
+                          gravarCapitulo({ ...selecionado, incluido, texto: rascunho ?? selecionado.texto })
+                        }
+                        aria-label={`Incluir "${selecionado.titulo}" no edital`}
+                      />
+                      Incluir
+                    </label>
+                  </div>
+                </div>
+
+                {!selecionado.numerado && (
+                  <p className="text-xs text-muted-foreground">
+                    Elemento {selecionado.chave === "preambulo" ? "pré-textual" : "pós-textual"}: entra no
+                    documento e não recebe número.
+                  </p>
+                )}
+
+                {/*
+                  🔵 O PRIMEIRO CAPÍTULO COM PARÂMETRO ESTRUTURADO (fatia 2). É o padrão
+                  que as fatias seguintes repetem: o capítulo deixa de ser texto livre e
+                  vira formulário, e o texto do edital passa a ser gerado do dado.
+                  ⚠️ A escolha é pela CHAVE do capítulo, no catálogo — não por número nem
+                  por posição, que mudam conforme os condicionais entram e saem.
+                */}
+                {selecionado.chave === "quadro_de_cargos" && editalId && (
+                  <QuadroDeCargos editalId={editalId} />
+                )}
+
+                <Textarea
+                  value={rascunho ?? selecionado.texto}
+                  onChange={(e) => setRascunho(e.target.value)}
+                  placeholder={"Escreva os itens como lista — o sistema numera.\n\n- Primeiro item\n- Segundo item\n  - Subitem\n- {#minha_ancora} Item que outros podem referenciar\n\nPara referenciar: {{item:minha_ancora}} ou {{cap:vagas_pcd}}."}
+                  className="min-h-[320px] flex-1 font-mono text-sm"
+                />
+              </div>
+            )}
+    </>
   );
 }
 
@@ -261,58 +349,14 @@ export default function EditalStudio() {
 
           {/* ── Centro: o capítulo selecionado ────────────────────────────────── */}
           <ResizablePanel defaultSize={42} minSize={25}>
-            {selecionado && (
-              <div className="flex h-full flex-col gap-3 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <h2 className="text-lg font-semibold">
-                    {selecionado.numero !== null && `${selecionado.numero}. `}
-                    {selecionado.titulo}
-                  </h2>
-                  {/* Salvar fica junto do "Incluir", no alto: são as duas ações do
-                      capítulo, e no rodapé o botão saía do campo de visão em capítulo
-                      longo — justamente quando há mais o que salvar. */}
-                  <div className="flex shrink-0 items-center gap-3">
-                    {rascunho !== null && (
-                      <span className="text-xs text-muted-foreground">alterações não salvas</span>
-                    )}
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        gravarCapitulo({ ...selecionado, texto: rascunho ?? selecionado.texto });
-                        setRascunho(null);
-                      }}
-                      disabled={isGravando || rascunho === null}
-                    >
-                      {isGravando ? "Salvando…" : "Salvar capítulo"}
-                    </Button>
-                    <label className="flex items-center gap-2 text-sm">
-                      <Switch
-                        checked={selecionado.incluido}
-                        onCheckedChange={(incluido) =>
-                          gravarCapitulo({ ...selecionado, incluido, texto: rascunho ?? selecionado.texto })
-                        }
-                        aria-label={`Incluir "${selecionado.titulo}" no edital`}
-                      />
-                      Incluir
-                    </label>
-                  </div>
-                </div>
-
-                {!selecionado.numerado && (
-                  <p className="text-xs text-muted-foreground">
-                    Elemento {selecionado.chave === "preambulo" ? "pré-textual" : "pós-textual"}: entra no
-                    documento e não recebe número.
-                  </p>
-                )}
-
-                <Textarea
-                  value={rascunho ?? selecionado.texto}
-                  onChange={(e) => setRascunho(e.target.value)}
-                  placeholder={"Escreva os itens como lista — o sistema numera.\n\n- Primeiro item\n- Segundo item\n  - Subitem\n- {#minha_ancora} Item que outros podem referenciar\n\nPara referenciar: {{item:minha_ancora}} ou {{cap:vagas_pcd}}."}
-                  className="min-h-[320px] flex-1 font-mono text-sm"
-                />
-              </div>
-            )}
+            <PainelDoCapitulo
+              capitulo={selecionado}
+              editalId={editalId}
+              rascunho={rascunho}
+              setRascunho={setRascunho}
+              gravarCapitulo={gravarCapitulo}
+              isGravando={isGravando}
+            />
           </ResizablePanel>
 
           <ResizableHandle withHandle />

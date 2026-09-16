@@ -371,8 +371,10 @@ export type Database = {
       cargos: {
         Row: {
           ativo: boolean
+          conselho_classe_obrigatorio: string | null
           created_at: string | null
           created_by: string | null
+          escolaridade_minima: string | null
           id: string
           nome: string
           nome_chave: string | null
@@ -380,8 +382,10 @@ export type Database = {
         }
         Insert: {
           ativo?: boolean
+          conselho_classe_obrigatorio?: string | null
           created_at?: string | null
           created_by?: string | null
+          escolaridade_minima?: string | null
           id?: string
           nome: string
           nome_chave?: string | null
@@ -389,8 +393,10 @@ export type Database = {
         }
         Update: {
           ativo?: boolean
+          conselho_classe_obrigatorio?: string | null
           created_at?: string | null
           created_by?: string | null
+          escolaridade_minima?: string | null
           id?: string
           nome?: string
           nome_chave?: string | null
@@ -706,6 +712,81 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "edital_capitulos_edital_id_fkey"
+            columns: ["edital_id"]
+            isOneToOne: false
+            referencedRelation: "editais"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      edital_cargos: {
+        Row: {
+          cadastro_reserva: boolean | null
+          carga_horaria_unidade: string | null
+          carga_horaria_valor: number | null
+          cargo_id: string
+          codigo_inscricao: string | null
+          created_at: string
+          created_by: string | null
+          edital_id: string
+          habilitacao: string | null
+          id: string
+          regime_plantao_permitido: boolean | null
+          updated_at: string
+          vagas_ampla_concorrencia: number | null
+          vagas_negros: number | null
+          vagas_pcd: number | null
+          vagas_total: number | null
+          vencimento_base: number | null
+        }
+        Insert: {
+          cadastro_reserva?: boolean | null
+          carga_horaria_unidade?: string | null
+          carga_horaria_valor?: number | null
+          cargo_id: string
+          codigo_inscricao?: string | null
+          created_at?: string
+          created_by?: string | null
+          edital_id: string
+          habilitacao?: string | null
+          id?: string
+          regime_plantao_permitido?: boolean | null
+          updated_at?: string
+          vagas_ampla_concorrencia?: number | null
+          vagas_negros?: number | null
+          vagas_pcd?: number | null
+          vagas_total?: number | null
+          vencimento_base?: number | null
+        }
+        Update: {
+          cadastro_reserva?: boolean | null
+          carga_horaria_unidade?: string | null
+          carga_horaria_valor?: number | null
+          cargo_id?: string
+          codigo_inscricao?: string | null
+          created_at?: string
+          created_by?: string | null
+          edital_id?: string
+          habilitacao?: string | null
+          id?: string
+          regime_plantao_permitido?: boolean | null
+          updated_at?: string
+          vagas_ampla_concorrencia?: number | null
+          vagas_negros?: number | null
+          vagas_pcd?: number | null
+          vagas_total?: number | null
+          vencimento_base?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "edital_cargos_cargo_id_fkey"
+            columns: ["cargo_id"]
+            isOneToOne: false
+            referencedRelation: "cargos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "edital_cargos_edital_id_fkey"
             columns: ["edital_id"]
             isOneToOne: false
             referencedRelation: "editais"

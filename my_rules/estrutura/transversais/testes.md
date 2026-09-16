@@ -166,7 +166,13 @@ O preço veio em 10/09: o bloco foi lido de boa-fé numa varredura e virou um **
 
 ## O que está coberto (2026-07-27)
 
-**1.426 testes em 76 arquivos** (medido em 2026-09-16, ao fim da **fatia 1 da v3 do módulo Editais — a espinha do documento** — três arquivos novos, todos de LÓGICA PURA: `src/lib/edital-numeracao.test.ts` (20 casos), `src/lib/edital-itens.test.ts` (15) e `src/lib/edital-linter.test.ts` (18).
+**1.452 testes em 77 arquivos** (medido em 2026-09-16, ao fim da **fatia 2 da v3 do módulo Editais — o Quadro I** — arquivo novo `src/lib/edital-cotas.test.ts` (26 casos).
+
+⭐ **O controle positivo são os 22 valores REAIS dos Editais 002 e 003** — 11 cargos, com AC/PCD/CN como publicados. A regra de cotas não foi estimada: foi inferida desses números, e cada grupo deles descarta uma hipótese (teto, piso, meio-para-o-par, base no AC em vez do total).
+
+🔴 **A falsificação pegou um defeito MEU, e não do código.** `ceil` e `floor` derrubam 10 casos cada, mas trocar minha implementação elaborada por `Math.round` cru **não derrubou nenhum**. Medido em seguida: zero divergências entre as duas em 200.000 totais. A implementação foi simplificada — manter complexidade sustentada por um perigo que não se demonstra é carregar um comentário que envelhece como verdade.
+
+Eram **1.426 em 76** ao fim da fatia 1 do mesmo dia — a espinha do documento** — três arquivos novos, todos de LÓGICA PURA: `src/lib/edital-numeracao.test.ts` (20 casos), `src/lib/edital-itens.test.ts` (15) e `src/lib/edital-linter.test.ts` (18).
 
 🔴 **`edital-itens.test.ts` nasceu de uma pergunta do usuário que mudou o desenho**: "os artigos são tratados isoladamente ou estão todos na mesma caixa?" A medição respondeu — nos três editais há **95 referências cruzadas e NENHUMA aponta para capítulo**; todas apontam para item. O mecanismo que eu tinha entregue referenciava justamente o que ninguém referencia.
 

@@ -288,11 +288,30 @@ BEGIN;
 ROLLBACK;
 
 \echo ''
-\echo '-- 4b.3 ⚠️ O trigger é sobre a LINHA, não a coluna: trocar `ativo` também é'
-\echo '--     recusado, mesmo sem tocar no nome (esperado: CG001)'
-\echo '--     🔴 A FIXTURE AQUI TEM DE SER UM INSCRITO, não um apelido. Com apelido este'
-\echo '--     caso passaria a PERMITIR o UPDATE desde 01/08 — e continuaria "verde"'
-\echo '--     afirmando no \echo o contrário do que o banco faz.'
+\echo '-- 4b.3 ⭐ CONTROLE POSITIVO — trocar coluna que NÃO é o nome é ACEITO, mesmo'
+\echo '--     com inscritos (esperado: UPDATE 1)'
+--
+-- 🔴 ESTE CASO AFIRMAVA O CONTRÁRIO ATÉ 2026-09-16, e o texto antigo era:
+--   "O trigger é sobre a LINHA, não a coluna: trocar `ativo` também é recusado, mesmo
+--    sem tocar no nome (esperado: CG001)"
+--
+-- Era verdade, e era deliberado. Mudou porque a CG001 foi ESTREITADA pela segunda vez
+-- (migration 20260916184254): ela passa a barrar só a troca do NOME, que é o que ela
+-- realmente protege — renomear um cargo com inscritos muda o significado do vínculo que
+-- os inscritos já têm.
+--
+-- O motivo do estreitamento veio do módulo Editais: com a regra larga, o autor do edital
+-- não conseguiria definir `escolaridade_minima` nem `conselho_classe_obrigatorio` em
+-- nenhum cargo que já tivesse um inscrito — e é justamente o cargo reaproveitado de um
+-- certame anterior que precisa disso.
+--
+-- ⚠️ Conferido antes de liberar: `cargos.ativo` NÃO TEM CONSUMIDOR. Nada filtra por ela
+-- (há teste afirmando que cargo inativo continua listado), então liberar o UPDATE não
+-- esconde dado de ninguém. Se um dia `ativo` passar a filtrar alguma listagem, revisitar
+-- ISTO aqui antes — é o tipo de coluna órfã que ganha significado sem avisar.
+--
+-- ⚠️ A fixture continua sendo um INSCRITO, não um apelido: com apelido o caso passaria
+-- pelo motivo errado, e ficaria verde afirmando o que não testa.
 BEGIN;
   INSERT INTO public.cargos (id, nome)
     VALUES ('66666666-6666-6666-6666-666666666668', 'BATERIA CARGO ATIVO');
@@ -305,6 +324,26 @@ BEGIN;
 ROLLBACK;
 
 \echo ''
+\echo ''
+\echo '-- 4b.3b ⭐ CONTROLE POSITIVO DO MÓDULO EDITAIS — definir escolaridade e conselho'
+\echo '--     de classe num cargo COM inscritos é ACEITO. É o motivo do estreitamento.'
+\echo '--     E o NOME do mesmo cargo continua trancado: o par é o que prova a regra.'
+BEGIN;
+  INSERT INTO public.cargos (id, nome)
+    VALUES ('66666666-6666-6666-6666-666666666669', 'BATERIA CARGO METADADO');
+  INSERT INTO public.candidatos (edital_id, n_inscricao, nome, cargo, cargo_id)
+    SELECT id, '999005', 'INSCRITO DE TESTE', 'BATERIA CARGO METADADO',
+           '66666666-6666-6666-6666-666666666669'
+      FROM public.editais LIMIT 1;
+  UPDATE public.cargos
+     SET escolaridade_minima = 'SUPERIOR', conselho_classe_obrigatorio = 'COREN'
+   WHERE id = '66666666-6666-6666-6666-666666666669';
+  SELECT escolaridade_minima, conselho_classe_obrigatorio FROM public.cargos
+   WHERE id = '66666666-6666-6666-6666-666666666669';
+  UPDATE public.cargos SET nome = 'OUTRO NOME'
+   WHERE id = '66666666-6666-6666-6666-666666666669';
+ROLLBACK;
+
 \echo '-- 4b.4 CONTROLE POSITIVO — cargo SEM menção nenhuma é renomeável'
 \echo '--     (esperado: UPDATE 1). É a metade que prova que a regra não travou tudo:'
 \echo '--     a janela para corrigir um nome existe, e vai ATÉ a primeira importação.'
