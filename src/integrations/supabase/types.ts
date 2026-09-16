@@ -615,6 +615,62 @@ export type Database = {
           },
         ]
       }
+      cronograma_etapas: {
+        Row: {
+          chave: string | null
+          created_at: string
+          created_by: string | null
+          datas: string[]
+          edital_id: string
+          horario_limite: string | null
+          id: string
+          nome_evento: string
+          observacao: string | null
+          ordem: number
+          permite_prorrogacao: boolean | null
+          tipo: string
+          updated_at: string
+        }
+        Insert: {
+          chave?: string | null
+          created_at?: string
+          created_by?: string | null
+          datas?: string[]
+          edital_id: string
+          horario_limite?: string | null
+          id?: string
+          nome_evento: string
+          observacao?: string | null
+          ordem?: number
+          permite_prorrogacao?: boolean | null
+          tipo?: string
+          updated_at?: string
+        }
+        Update: {
+          chave?: string | null
+          created_at?: string
+          created_by?: string | null
+          datas?: string[]
+          edital_id?: string
+          horario_limite?: string | null
+          id?: string
+          nome_evento?: string
+          observacao?: string | null
+          ordem?: number
+          permite_prorrogacao?: boolean | null
+          tipo?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cronograma_etapas_edital_id_fkey"
+            columns: ["edital_id"]
+            isOneToOne: false
+            referencedRelation: "editais"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       editais: {
         Row: {
           ano: number | null

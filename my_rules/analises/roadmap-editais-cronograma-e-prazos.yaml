@@ -6,8 +6,13 @@ roadmap:
   titulo: "Editais fatia 3 — cronograma e prazos (o motor de datas)"
   criado: "2026-09-16"
   status: >
-    ⏳ NÃO INICIADO — 🟡 ESBOÇO. Detalhar antes de executar: falta decidir de onde vem a
-    lista de feriados municipais, e sem ela o cálculo de prazo recursal é chute.
+    🟢 EXECUTADA em 2026-09-16. ✅ P1 respondida por medição — a pergunta se dissolveu
+    (ver `p1_resolvida`). Migration 20260916191028, `src/lib/edital-cronograma.ts`,
+    `CronogramaEtapas.tsx` e `docs/bateria-edital-cronograma.sql`. 1.470 testes em 78
+    arquivos, tsc, build, lint 111 (baseline), docs:conferir limpo, db reset completo.
+    ⚠️ Ver `desvios_da_execucao`: apareceu uma TERCEIRA forma de data que o roadmap não
+    previa, e o cronograma real pegou dois defeitos meus.
+    🟢 Aguardando merge para ir a concluidos/.
   depende_de: "Fatia 1 (espinha)."
 
   origem: >
@@ -29,13 +34,34 @@ roadmap:
     ser pego pelo sistema ou pelo leitor do Diário Oficial.
 
   # ═══════════════════════════════════════════════════════════════════════════
-  a_decidir_antes_de_codificar: |
-    🔴 P1. DE ONDE VEM A LISTA DE FERIADOS MUNICIPAIS DE VOLTA REDONDA?
-        O padrão FEVRE trava o prazo recursal do gabarito em "1 dia útil" após a publicação.
-        "Dia útil" depende de feriado municipal, e não há essa informação em lugar nenhum do
-        sistema hoje. Tabela? Arquivo versionado? Entrada manual por edital?
-        ⚠️ Sem resposta, o cálculo é chute — e prazo recursal errado é vício de edital.
+  # ═══════════════════════════════════════════════════════════════════════════
+  p1_resolvida: |
+    ✅ **MEDIDO em 2026-09-16, e a pergunta se dissolveu.** Eu perguntava de onde viria a
+    lista de feriados municipais, supondo que o sistema teria de CALCULAR "1 dia útil".
+    Fui ver como os editais reais escrevem isso:
 
+      Edital 003, item 12.2:
+        "terá 01 (um) dia útil (21/09/2026) para recorrer"
+      Edital 003, item 12.5:
+        "do dia 06/10/2026 (um dia útil após a publicação do Resultado Preliminar)"
+
+    🔴 **A DATA É ESCRITA, não calculada.** "1 dia útil" é texto descritivo ao lado dela.
+    Quem decide a data é quem monta o cronograma — o sistema não precisa de calendário de
+    feriados para nada.
+
+    O que o sistema faz é **CONFERIR**, e nenhuma conferência precisa de feriado:
+    · precedência entre etapas (comparação de datas, só isso);
+    · etapa em fim de semana (dia da semana sai da própria data).
+
+    **Medição que sustenta a segunda:** das 16 datas do Edital 003, **exatamente uma cai em
+    fim de semana — 20/09/2026, um domingo — e é o dia da prova.** É precisamente a exceção
+    que a regra previa. E 21/09 (o "1 dia útil" do recurso) é segunda-feira, coerente.
+
+    ⚠️ Se um dia alguém quiser que o sistema PROPONHA a data em vez de conferir, aí a lista
+    de feriados volta a ser necessária. Não é o caso agora, e construir o calendário sem
+    esse pedido seria inventar trabalho.
+
+  a_decidir_antes_de_codificar: |
     P2. PRECEDÊNCIA É ALERTA OU TRAVA?
         Recomendação: ALERTA em tudo, exceto onde a ordem inverta a lógica do certame
         (prova antes do fim das inscrições, resultado antes da prova). Travar demais faz
@@ -121,3 +147,31 @@ roadmap:
         mesmo raciocínio da referência cruzada de capítulo (fatia 1, P3).
         🔵 2026-09-16: o mecanismo já existe e é por ÂNCORA DE ITEM (`{{item:ancora}}`,
         `src/lib/edital-itens.ts`), entregue na fatia 1. Não inventar um terceiro.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  desvios_da_execucao: |
+    ➕ 🔴 UMA TERCEIRA FORMA DE DATA, que o roadmap não previa. Ele propunha
+       `data_inicio` + `data_fim`. O cronograma real do Edital 003 tem TRÊS formas:
+       data única, intervalo ("29/06 a 27/07") e ALTERNATIVAS ("06/07, 09/07, 13/07,
+       16/07 ou 20/07"). Espremer as alternativas num intervalo publicaria um edital
+       FALSO — o candidato leria 15 dias onde só 5 são oferecidos. Modelado como
+       `tipo` + `datas date[]`, com CHECK de cardinalidade.
+       🔵 Efeito colateral bom: as "datas de perícia disponíveis" da fatia 4 são
+       exatamente uma etapa ALTERNATIVAS. A fatia 4 reaproveita, não recria.
+
+    🔴 O CRONOGRAMA REAL PEGOU DOIS DEFEITOS MEUS, e nenhum teste inventado pegaria:
+       1. A exceção de fim de semana olhava a ETAPA chamada "prova". Mas o gabarito é
+          divulgado no MESMO domingo do exame, e a regra acusava. O critério certo é a
+          DATA da prova.
+       2. A precedência comparava sempre "fim de A × início de B". Com isso acusava que a
+          isenção (08/07) vem depois do início das inscrições (29/06) — quando a regra é
+          "até o FIM delas" (27/07). Cada regra passou a declarar qual ponta comparar.
+       ⚠️ A lição: inventar erro em edital VÁLIDO é o jeito mais rápido de ensinar alguém
+       a ignorar o painel de avisos. Pior que não acusar.
+
+    ⚠️ ARMADILHA DE FUSO evitada: `new Date("2026-09-20").getDay()` é UTC e devolveria
+       sábado no Brasil. O dia da semana é calculado sobre os números do calendário.
+
+    ⚠️ A UI do cronograma foi pendurada no capítulo `anexos`, porque é lá que o cronograma
+       sai no documento (elemento pós-textual). Se um dia virar capítulo próprio, é uma
+       entrada no catálogo — não mexe nesta fatia.

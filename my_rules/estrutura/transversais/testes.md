@@ -166,7 +166,15 @@ O preço veio em 10/09: o bloco foi lido de boa-fé numa varredura e virou um **
 
 ## O que está coberto (2026-07-27)
 
-**1.452 testes em 77 arquivos** (medido em 2026-09-16, ao fim da **fatia 2 da v3 do módulo Editais — o Quadro I** — arquivo novo `src/lib/edital-cotas.test.ts` (26 casos).
+**1.470 testes em 78 arquivos** (medido em 2026-09-16, ao fim da **fatia 3 da v3 do módulo Editais — o cronograma** — arquivo novo `src/lib/edital-cronograma.test.ts` (18 casos).
+
+⭐ **O controle positivo é o cronograma REAL do Edital 003/2026**, as 16 etapas como publicadas, e ele tem de passar SEM UM ÚNICO AVISO.
+
+🔴 **Ele pegou DOIS defeitos meus na primeira execução**, e nenhum teste inventado teria pego: (1) a exceção de fim de semana olhava a etapa chamada "prova", e o gabarito é divulgado no MESMO domingo; (2) a precedência comparava sempre "fim de A × início de B", acusando que a isenção (08/07) vem depois do início das inscrições (29/06) — quando a regra é até o FIM delas (27/07). Comparar a ponta errada **inventa erro em edital válido**, que é o jeito mais rápido de ensinar alguém a ignorar o painel.
+
+⚠️ Também guarda a armadilha de fuso: `new Date("2026-09-20").getDay()` é UTC e devolveria sábado no Brasil. A conta é feita sobre os números do calendário.
+
+Eram **1.452 em 77** ao fim da fatia 2 do mesmo dia — o Quadro I** — arquivo novo `src/lib/edital-cotas.test.ts` (26 casos).
 
 ⭐ **O controle positivo são os 22 valores REAIS dos Editais 002 e 003** — 11 cargos, com AC/PCD/CN como publicados. A regra de cotas não foi estimada: foi inferida desses números, e cada grupo deles descarta uma hipótese (teto, piso, meio-para-o-par, base no AC em vez do total).
 

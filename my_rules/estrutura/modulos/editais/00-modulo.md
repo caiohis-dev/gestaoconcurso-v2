@@ -41,6 +41,9 @@ O **edital** é o **documento normativo do certame**, montado por capítulos den
 | `src/lib/edital-numeracao.ts` | 🔵 **v3** — função pura: numeração de CAPÍTULO e referência por `chave` |
 | `src/lib/edital-itens.ts` | 🔵 **v3** — função pura: numeração de ITEM e referência por âncora |
 | `src/lib/edital-cotas.ts` | 🔵 **v3 fatia 2** — função pura: a reserva de PCD e cotas raciais |
+| `src/lib/edital-cronograma.ts` | 🔵 **v3 fatia 3** — função pura: etapas, precedência e fim de semana |
+| `src/hooks/useCronograma.tsx` · `src/components/CronogramaEtapas.tsx` | 🔵 **v3 fatia 3** |
+| `supabase/migrations/20260916191028_editais_cronograma_etapas.sql` | 🔵 **v3 fatia 3** — `cronograma_etapas` |
 | `src/hooks/useEditalCargos.tsx` | 🔵 **v3 fatia 2** — o Quadro I; escreve em `edital_cargos` |
 | `src/components/QuadroDeCargos.tsx` | 🔵 **v3 fatia 2** — o primeiro capítulo com parâmetro estruturado |
 | `supabase/migrations/20260916184254_editais_cargos_vagas_e_cg001_por_nome.sql` | 🔵 **v3 fatia 2** — `edital_cargos`, as colunas de `cargos`, e a CG001 estreitada |
@@ -115,6 +118,28 @@ Cada grupo de dados descarta uma hipótese: **não é teto** (Arte tem 1 vaga e 
 ⚠️ **É a prática da FEVRE medida, não o texto da lei.** Cargo pequeno não reserva vaga nenhuma. Se uma norma exigir piso de 1, muda em `src/lib/edital-cotas.ts` e os 22 valores acusam a diferença.
 
 **As vagas são GRAVADAS, não recalculadas na leitura.** Um edital publica números; recalcular faria um edital antigo mudar sozinho se a regra mudasse. A `CHECK chk_edital_cargo_vagas_somam` garante que o total é a soma das partes — no banco, não só na tela.
+
+### 🔵 O cronograma, e as TRÊS formas de data (fatia 3, 2026-09-16)
+
+🎯 **É aqui que o `"dia XX/xx/2026"` do Edital 004 deixa de ser possível.** Enquanto a data é texto corrido, "vazio" não é estado. Vinda de `cronograma_etapas`, etapa sem data aparece no painel antes de alguém publicar.
+
+⚠️ **Gravar etapa sem data é ESTADO VÁLIDO; publicar não é.** O par é deliberado: travar a gravação travaria a redação.
+
+**O modelo tem três formas, e isso foi medido no cronograma real do Edital 003:**
+
+| forma | exemplo real |
+|---|---|
+| `DATA_UNICA` | Prova objetiva — `20/09/2026` |
+| `INTERVALO` | Inscrições — `29/06/2026 a 27/07/2026` |
+| `ALTERNATIVAS` | Retirada do atestado — `06/07, 09/07, 13/07, 16/07 ou 20/07` |
+
+🔴 **Espremer as ALTERNATIVAS num intervalo publicaria um edital FALSO** — o candidato leria que pode ir de 06/07 a 20/07, quando só cinco dias são oferecidos. A CHECK `chk_cronograma_cardinalidade` garante que a quantidade de datas combina com o tipo.
+
+**Não há calendário de feriados, e não é omissão.** Medido: a data é escrita e "1 dia útil" é texto descritivo ao lado dela (*"terá 01 (um) dia útil (21/09/2026) para recorrer"*). O sistema **confere, não calcula** — precedência é comparação de datas, e fim de semana sai do dia da semana.
+
+⚠️ **A exceção de fim de semana é a DATA DA PROVA, não a etapa.** O gabarito do Edital 003 é divulgado no mesmo domingo do exame. Das 16 datas do documento, só essa cai em fim de semana.
+
+⚠️ **Cada precedência declara qual PONTA comparar.** "Isenção até o fim das inscrições" compara fim × fim; "inscrições antes da prova" compara fim × início. Comparar sempre fim × início acusa erro em edital válido — foi o que a primeira versão fez com o Edital 003.
 
 ### 🔴 A CG001 foi estreitada pela SEGUNDA vez
 

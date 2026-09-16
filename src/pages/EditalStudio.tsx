@@ -33,6 +33,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ArrowLeft, Loader2, AlertTriangle, CircleAlert, CheckCircle2 } from "lucide-react";
 import { QuadroDeCargos } from "@/components/QuadroDeCargos";
+import { CronogramaEtapas } from "@/components/CronogramaEtapas";
 
 /** O número como sai no documento; capítulo sem número mostra um traço. */
 function Numero({ capitulo }: { capitulo: CapituloResolvido }) {
@@ -202,6 +203,9 @@ function PainelDoCapitulo({
                 */}
                 {selecionado.chave === "quadro_de_cargos" && editalId && (
                   <QuadroDeCargos editalId={editalId} />
+                )}
+                {selecionado.chave === "anexos" && editalId && (
+                  <CronogramaEtapas editalId={editalId} />
                 )}
 
                 <Textarea
