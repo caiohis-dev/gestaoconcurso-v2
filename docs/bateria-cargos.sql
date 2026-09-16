@@ -19,6 +19,25 @@
 -- bateria roda agora em qualquer estado do catálogo. ⚠️ Ao acrescentar caso novo, mantenha
 -- o prefixo — sem ele a pré-condição volta, e ela se manifesta como falha falsa.
 --
+-- 🔴 CONSERTADO EM 2026-09-16 — a bateria estava QUEBRADA e ninguém tinha visto.
+-- Os 3 `ON CONFLICT` do bloco 7 usavam a chave natural ANTIGA
+-- `(edital_id, cpf, cargo_id, n_inscricao)`. Ela mudou para `(edital_id, n_inscricao)`
+-- em 2026-08-01 (cpf e cargo saíram da identidade), e o índice único de hoje é
+-- `candidatos_edital_inscricao_key`. O resultado: o caso 7.3 morria com "there is no
+-- unique or exclusion constraint matching the ON CONFLICT specification", ABORTAVA a
+-- transação, e os casos seguintes nem rodavam — falha que se parecia com ruído no meio
+-- de 500 linhas de saída.
+--
+-- 🔴 E HAVIA UMA SEGUNDA, ATRÁS DA PRIMEIRA: as 2 chamadas de
+-- `trocar_candidatos_do_edital` usavam 3 argumentos. A RPC ganhou o 4º (`p_relatorio`)
+-- em 2026-08-02. É EXATAMENTE o caso que o CLAUDE.md §5 usa como exemplo — e que já
+-- tinha acontecido com `bateria-troca-total-candidatos.sql`. A primeira falha escondia
+-- a segunda: só depois de consertar o ON CONFLICT a execução chegou até aqui.
+--
+-- ⚠️ É o terceiro caso do padrão do CLAUDE.md §5: ninguém verifica a bateria. `npm test`
+-- não a alcança e `docs:conferir` não a lê. Ao mudar chave, assinatura ou constraint,
+-- procure as chamadas em `docs/bateria-*.sql` NO MESMO PASSE.
+--
 -- REGRA DA CASA: toda recusa vem acompanhada do CONTROLE POSITIVO. Provar que passou a
 -- recusar é metade do trabalho; a outra metade é provar que continua aceitando o que deve.
 -- Tudo em transação com ROLLBACK — a bateria não deixa resíduo.
@@ -472,7 +491,7 @@ BEGIN;
   INSERT INTO public.candidatos (edital_id, n_inscricao, nome, cpf, cargo, cargo_id) VALUES
     ('77770000-0000-0000-0000-000000000002', '900010', 'PRIMEIRO NOME', '22940161739', 'BATERIA DOCENTE II', '77771111-0000-0000-0000-000000000002'),
     ('77770000-0000-0000-0000-000000000002', '900011', 'SEM CPF', NULL, 'BATERIA DOCENTE II', '77771111-0000-0000-0000-000000000002')
-  ON CONFLICT (edital_id, cpf, cargo_id, n_inscricao) DO UPDATE SET nome = EXCLUDED.nome;
+  ON CONFLICT (edital_id, n_inscricao) DO UPDATE SET nome = EXCLUDED.nome;
   SELECT count(*) AS apos_1a_carga FROM public.candidatos
    WHERE edital_id = '77770000-0000-0000-0000-000000000002';
 
@@ -481,11 +500,11 @@ BEGIN;
   INSERT INTO public.candidatos (edital_id, n_inscricao, nome, cpf, cargo, cargo_id) VALUES
     ('77770000-0000-0000-0000-000000000002', '900010', 'PRIMEIRO NOME', '22940161739', 'BATERIA DOCENTE II', '77771111-0000-0000-0000-000000000002'),
     ('77770000-0000-0000-0000-000000000002', '900011', 'SEM CPF', NULL, 'BATERIA DOCENTE II', '77771111-0000-0000-0000-000000000002')
-  ON CONFLICT (edital_id, cpf, cargo_id, n_inscricao) DO UPDATE SET nome = EXCLUDED.nome;
+  ON CONFLICT (edital_id, n_inscricao) DO UPDATE SET nome = EXCLUDED.nome;
 
   INSERT INTO public.candidatos (edital_id, n_inscricao, nome, cpf, cargo, cargo_id) VALUES
     ('77770000-0000-0000-0000-000000000002', '900010', 'NOME CORRIGIDO', '22940161739', 'BATERIA DOCENTE II', '77771111-0000-0000-0000-000000000002')
-  ON CONFLICT (edital_id, cpf, cargo_id, n_inscricao) DO UPDATE SET nome = EXCLUDED.nome;
+  ON CONFLICT (edital_id, n_inscricao) DO UPDATE SET nome = EXCLUDED.nome;
 
   SELECT count(*) AS apos_3_cargas FROM public.candidatos
    WHERE edital_id = '77770000-0000-0000-0000-000000000002';
@@ -520,18 +539,31 @@ BEGIN;
     ('77772222-0000-0000-0000-000000000001', '77770000-0000-0000-0000-000000000003',
      '{"n_inscricao":"900020","nome":"INSCRITO ARTE","cpf":"22940161739","cargo":"ARTE","cargo_id":"77771111-0000-0000-0000-00000000000b"}');
 
+  -- ⚠️ 4º parâmetro (`p_relatorio`) desde 2026-08-02. A bateria chamava com 3 e a função
+  -- não existia nessa forma — corrigido em 2026-09-16. `'[]'::jsonb` é relatório vazio,
+  -- que é o que estes casos querem: eles medem a TROCA, não o relatório.
   SELECT * FROM public.trocar_candidatos_do_edital(
-    '77770000-0000-0000-0000-000000000003', '77772222-0000-0000-0000-000000000001', 1);
+    '77770000-0000-0000-0000-000000000003', '77772222-0000-0000-0000-000000000001', 1, '[]'::jsonb);
 
   SELECT count(*) AS deve_ser_1, max(cargo_id::text) AS cargo_final
     FROM public.candidatos WHERE edital_id = '77770000-0000-0000-0000-000000000003';
 ROLLBACK;
 
 \echo ''
-\echo '-- 7.5 ⭐ CONTROLE POSITIVO 1 — a mesma pessoa num SEGUNDO cargo ENTRA.'
-\echo '--     São os 382 casos reais. ⚠️ O QUE ELE GUARDA MUDOU DE DONO: até 29/07 era a'
-\echo '--     estreiteza da condição do trigger; hoje é o ÍNDICE ÚNICO, que continua'
-\echo '--     precisando ter o cargo dentro para não fundir estes dois. Esperado: 2 linhas.'
+\echo '-- 7.5 ⭐ CONTROLE POSITIVO 1 — a mesma PESSOA em DOIS cargos entra (2 inscrições).'
+\echo '--     São os 382 casos reais. Esperado: 2 linhas, mesmo CPF, inscrições diferentes.'
+--
+-- 🔴 CORRIGIDO EM 2026-09-16, e o caso ANTIGO afirmava o contrário do sistema de hoje.
+-- Ele inseria as duas linhas com a MESMA `n_inscricao` e dizia: "mesma inscrição, mesmo
+-- CPF, cargo DIFERENTE → tem de entrar". Era verdade sob a identidade antiga
+-- `(edital_id, cpf, cargo_id, n_inscricao)`. Em 2026-08-01 a chave natural virou
+-- `(edital_id, n_inscricao)` — cpf e cargo SAÍRAM da identidade, por decisão do usuário:
+-- a inscrição é a COLUNA A da planilha e a pessoa é a COLUNA B, e os "382 repetidos" são
+-- repetições da PESSOA, não da inscrição.
+--
+-- Ou seja: o caso não estava quebrado, estava afirmando um mundo que mudou — a armadilha
+-- 8 de testes.md. O que ele guarda continua valendo (a mesma pessoa pode concorrer a dois
+-- cargos); o que mudou é COMO isso se parece no dado: duas inscrições, não uma.
 BEGIN;
   INSERT INTO public.editais (id, nome) VALUES
     ('77770000-0000-0000-0000-000000000004', 'EDITAL BATERIA 382');
@@ -540,11 +572,11 @@ BEGIN;
     ('77771111-0000-0000-0000-00000000000d', 'BATERIA DOCENTE I — HISTÓRIA');
   INSERT INTO public.candidatos (edital_id, n_inscricao, nome, cpf, cargo, cargo_id) VALUES
     ('77770000-0000-0000-0000-000000000004', '213946', 'CASSIA ANDREA', '22940161739', 'BATERIA DOCENTE II', '77771111-0000-0000-0000-00000000000c');
-  -- Mesma inscrição, mesmo CPF, cargo DIFERENTE → tem de entrar.
+  -- Mesma pessoa (mesmo CPF), OUTRA inscrição, cargo diferente → tem de entrar.
   INSERT INTO public.candidatos (edital_id, n_inscricao, nome, cpf, cargo, cargo_id) VALUES
-    ('77770000-0000-0000-0000-000000000004', '213946', 'CASSIA ANDREA', '22940161739', 'BATERIA DOCENTE I — HISTÓRIA', '77771111-0000-0000-0000-00000000000d');
-  SELECT count(*) AS mesma_inscricao_dois_cargos FROM public.candidatos
-   WHERE edital_id = '77770000-0000-0000-0000-000000000004';
+    ('77770000-0000-0000-0000-000000000004', '213947', 'CASSIA ANDREA', '22940161739', 'BATERIA DOCENTE I — HISTÓRIA', '77771111-0000-0000-0000-00000000000d');
+  SELECT count(*) AS pessoa_em_dois_cargos, count(DISTINCT cpf) AS cpfs_distintos
+    FROM public.candidatos WHERE edital_id = '77770000-0000-0000-0000-000000000004';
 ROLLBACK;
 
 \echo ''
@@ -568,7 +600,7 @@ BEGIN;
      '{"n_inscricao":"900030","nome":"SEGUNDO","cpf":"22940161739","cargo":"DOCENTE II","cargo_id":"77771111-0000-0000-0000-00000000000e"}');
 
   SELECT * FROM public.trocar_candidatos_do_edital(
-    '77770000-0000-0000-0000-000000000005', '77772222-0000-0000-0000-000000000002', 2);
+    '77770000-0000-0000-0000-000000000005', '77772222-0000-0000-0000-000000000002', 2, '[]'::jsonb);
 ROLLBACK;
 
 \echo ''
