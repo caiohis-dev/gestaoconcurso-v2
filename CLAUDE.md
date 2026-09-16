@@ -16,6 +16,24 @@
 
 ---
 
+## 🔜 Tema combinado para a próxima sessão (anotado em 2026-09-15)
+
+**Os avisos do Advisor do Supabase, em produção** (`zugigdpuxbpogoepdawm`): Dashboard → **Advisors**, as duas abas — **Security** (tabela sem RLS, policy permissiva, função `SECURITY DEFINER` sem `search_path` fixo) e **Performance** (FK sem índice, índice não usado, policy reavaliada por linha).
+
+Ler a lista é **leitura pura no dashboard e não precisa de `supabase link`** — o repo continua deslinkado (§6).
+
+🔴 **Não saia corrigindo aviso por aviso.** Este repo já rejeitou, com motivo medido, várias recomendações que o Advisor faria — e reabri-las quebra coisa:
+
+- **`SELECT` literal em `user_roles`** em vez de `has_role`: a hierarquia mora dentro da função, e isso **já quebrou 3 vezes**, a última bloqueando o superadmin (§8).
+- **`unaccent()` marcada `IMMUTABLE` à força** para indexar a busca sem acento: é afirmação falsa que o planejador passa a acreditar. A saída escolhida foi `translate` + `lower`, imutáveis de verdade.
+- **Índice em `colab_nome_busca`**: recusado por medição — 771 linhas em 528 kB num banco de 14 MB que cabe no cache, e `ilike '%x%'` não usaria índice btree de qualquer forma.
+
+**A ordem de trabalho, então:** trazer a lista → para cada item, procurar em `my_rules/` se o tema já foi decidido → só então propor. Um aviso do Advisor é **hipótese**, não ordem de serviço; vale a §1 (conferir a premissa no código antes de executar) e o §9 (medir antes de desenhar).
+
+⚠️ **Todo conserto de schema é migration nova + release tagueada** — produção não recebe mudança por fora disso (§3 e §6). E **regra de banco se verifica com bateria SQL**, com controle positivo (§5).
+
+---
+
 ## 0. 🔴 O que NÃO ler por padrão
 
 ```
