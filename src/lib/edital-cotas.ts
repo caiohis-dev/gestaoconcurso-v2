@@ -30,8 +30,20 @@
  * estrutura — assunto da fatia 7.
  */
 
-export const PERCENTUAL_PCD = 0.1;
-export const PERCENTUAL_NEGROS = 0.2;
+/**
+ * 🔵 Os percentuais são PADRÃO, não constante da regra (2026-09-16).
+ *
+ * Até esta data `sugerirCotas` usava 10% e 20% fixos, e o `percentual_reserva` declarado
+ * nos capítulos [8] e [9] era gravado, exibido e **nunca lido pelo cálculo**. O usuário
+ * podia declarar 15% no capítulo Das Vagas e o Quadro I continuava sugerindo 10% — o
+ * edital sairia dizendo uma coisa no texto e outra na tabela. Divergência silenciosa
+ * dentro do mesmo documento, que é a classe de defeito deste módulo.
+ *
+ * Agora os capítulos MANDAM no cálculo, e estes valores só servem quando o edital ainda
+ * não declarou nada.
+ */
+export const PERCENTUAL_PCD_PADRAO = 0.1;
+export const PERCENTUAL_NEGROS_PADRAO = 0.2;
 
 /**
  * Arredondamento COMUM: meio para cima. Em JS, para número positivo, é `Math.round`.
@@ -72,13 +84,23 @@ export interface Cotas {
  * ⚠️ É SUGESTÃO. O usuário pode sobrescrever qualquer uma das três; quem confere a
  * coerência depois é `conferirCotas`.
  */
-export function sugerirCotas(total: number): Cotas {
+export interface PercentuaisDeclarados {
+  /** Em pontos percentuais, como o edital declara: `10`, não `0.1`. */
+  pcd?: number | null;
+  negros?: number | null;
+}
+
+export function sugerirCotas(total: number, declarados?: PercentuaisDeclarados): Cotas {
   if (!Number.isFinite(total) || total <= 0) {
     return { total: Math.max(0, Math.trunc(total) || 0), amplaConcorrencia: 0, pcd: 0, negros: 0 };
   }
   const t = Math.trunc(total);
-  const pcd = meioParaCima(t * PERCENTUAL_PCD);
-  const negros = meioParaCima(t * PERCENTUAL_NEGROS);
+  // ⚠️ `??` e não `||`: percentual 0 é declaração legítima ("este edital não reserva"),
+  // e o `||` a trocaria pelo padrão de 10%.
+  const fracPcd = (declarados?.pcd ?? PERCENTUAL_PCD_PADRAO * 100) / 100;
+  const fracNegros = (declarados?.negros ?? PERCENTUAL_NEGROS_PADRAO * 100) / 100;
+  const pcd = meioParaCima(t * fracPcd);
+  const negros = meioParaCima(t * fracNegros);
   return { total: t, amplaConcorrencia: t - pcd - negros, pcd, negros };
 }
 
@@ -96,7 +118,7 @@ export type AvisoDeCota =
  * quem redige pode ter motivo (e a lei tem exceções que este sistema não conhece). Barrar
  * aqui faria a pessoa contornar o sistema, que é pior do que avisar.
  */
-export function conferirCotas(c: Cotas): AvisoDeCota[] {
+export function conferirCotas(c: Cotas, declarados?: PercentuaisDeclarados): AvisoDeCota[] {
   const avisos: AvisoDeCota[] = [];
   const soma = c.amplaConcorrencia + c.pcd + c.negros;
   if (soma !== c.total) {
@@ -106,7 +128,10 @@ export function conferirCotas(c: Cotas): AvisoDeCota[] {
     });
   }
 
-  const sugerido = sugerirCotas(c.total);
+  // 🔴 Confere contra o percentual DECLARADO no capítulo Das Vagas, não contra 10/20
+  // fixos. Sem isso, um edital que declara 15% teria o Quadro I avisando com base em 10%
+  // — o painel mentiria sobre a própria regra do documento.
+  const sugerido = sugerirCotas(c.total, declarados);
   if (c.pcd < sugerido.pcd) {
     avisos.push({
       tipo: "abaixo-do-minimo",

@@ -125,3 +125,45 @@ describe("conferirCotas — o que a tela avisa", () => {
     expect(conferirCotas({ total: 20, amplaConcorrencia: 10, pcd: 4, negros: 6 })).toEqual([]);
   });
 });
+
+describe("🔴 o percentual DECLARADO manda no cálculo", () => {
+  // Até 2026-09-16 `sugerirCotas` usava 10%/20% fixos e ignorava o `percentual_reserva`
+  // dos capítulos [8] e [9]. O usuário podia declarar 15% no texto e o Quadro I continuava
+  // com números de 10% — o edital diria uma coisa na prosa e outra na tabela.
+
+  it("sem declaração, cai no padrão de 10% e 20%", () => {
+    expect(sugerirCotas(200)).toMatchObject({ pcd: 20, negros: 40 });
+    expect(sugerirCotas(200, {})).toMatchObject({ pcd: 20, negros: 40 });
+    expect(sugerirCotas(200, { pcd: null, negros: null })).toMatchObject({ pcd: 20, negros: 40 });
+  });
+
+  it("com declaração, ela vence o padrão", () => {
+    expect(sugerirCotas(200, { pcd: 15, negros: 25 })).toMatchObject({
+      pcd: 30, negros: 50, amplaConcorrencia: 120,
+    });
+  });
+
+  it("⚠️ percentual ZERO é declaração legítima, e não vira o padrão", () => {
+    // O `||` engoliria o 0 e devolveria 10%. Um edital pode declarar que não reserva.
+    expect(sugerirCotas(200, { pcd: 0, negros: 0 })).toMatchObject({
+      pcd: 0, negros: 0, amplaConcorrencia: 200,
+    });
+  });
+
+  it("a conferência também usa o declarado — senão o painel mente sobre a própria regra", () => {
+    // 200 vagas com 15% declarado: o mínimo é 30. Ter 20 (que seria certo a 10%) acusa.
+    const cotas = { total: 200, amplaConcorrencia: 140, pcd: 20, negros: 40 };
+    expect(conferirCotas(cotas)).toEqual([]); // sem declaração: 10% → 20 está certo
+    const avisos = conferirCotas(cotas, { pcd: 15, negros: 20 });
+    expect(avisos.map((a) => a.tipo)).toEqual(["abaixo-do-minimo"]);
+    expect(avisos[0]).toMatchObject({ reserva: "pcd", sugerido: 30 });
+  });
+
+  it("⭐ CONTROLE: os 22 valores reais continuam batendo com o declarado de 10/20", () => {
+    // Declarar explicitamente o que antes era constante não pode mudar nenhum resultado.
+    for (const [, ac, pd, cn] of REAIS) {
+      const total = ac + pd + cn;
+      expect(sugerirCotas(total, { pcd: 10, negros: 20 })).toEqual(sugerirCotas(total));
+    }
+  });
+});

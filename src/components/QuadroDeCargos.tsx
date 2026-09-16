@@ -19,6 +19,7 @@
 import { useState } from "react";
 import { useCargos } from "@/hooks/useCargos";
 import { useEditalCargos, type EditalCargo } from "@/hooks/useEditalCargos";
+import { useAcoesAfirmativas } from "@/hooks/useAcoesAfirmativas";
 import { sugerirCotas, conferirCotas } from "@/lib/edital-cotas";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +39,14 @@ function numeroOuNulo(v: string): number | null {
 export function QuadroDeCargos({ editalId }: { editalId: string }) {
   const { cargos } = useCargos();
   const { cargosDoEdital, isLoading, salvar, isSalvando, remover } = useEditalCargos(editalId);
+  // 🔴 O percentual vem do capítulo Das Vagas, não de constante. Até 2026-09-16 o cálculo
+  // usava 10%/20% fixos enquanto o capítulo [8] podia declarar outra coisa — o edital
+  // sairia com o texto dizendo um percentual e a tabela com números de outro.
+  const { pcd: regrasPcd, cotas: regrasCotas } = useAcoesAfirmativas(editalId);
+  const declarados = {
+    pcd: regrasPcd?.percentual_reserva ?? null,
+    negros: regrasCotas?.percentual_reserva ?? null,
+  };
   const [novoCargoId, setNovoCargoId] = useState("");
 
   const nomeDoCargo = (id: string) => cargos.find((c) => c.id === id)?.nome ?? "(cargo removido do catálogo)";
@@ -55,7 +64,7 @@ export function QuadroDeCargos({ editalId }: { editalId: string }) {
       salvar({ ...linha, vagas_total: null });
       return;
     }
-    const s = sugerirCotas(total);
+    const s = sugerirCotas(total, declarados);
     salvar({
       ...linha,
       vagas_total: s.total,
@@ -107,12 +116,18 @@ export function QuadroDeCargos({ editalId }: { editalId: string }) {
             <TableHeader>
               <TableRow>
                 <TableHead>Cargo</TableHead>
-                <TableHead className="w-24">Código</TableHead>
-                <TableHead className="w-20">Total</TableHead>
-                <TableHead className="w-16">AC</TableHead>
-                <TableHead className="w-16">PCD</TableHead>
-                <TableHead className="w-16">CN</TableHead>
-                <TableHead className="w-28">Vencimento</TableHead>
+                {/*
+                  ⚠️ As colunas numéricas foram alargadas em 2026-09-16: com `w-16` o
+                  campo cabia o número e não cabia o SPINNER do `type="number"`, que o
+                  navegador desenha por dentro. Resultado: 3 dígitos já roçavam a seta, e
+                  os 155 do Técnico em Enfermagem ficavam ilegíveis ao focar.
+                */}
+                <TableHead className="w-28">Código</TableHead>
+                <TableHead className="w-28">Total</TableHead>
+                <TableHead className="w-24">AC</TableHead>
+                <TableHead className="w-24">PCD</TableHead>
+                <TableHead className="w-24">CN</TableHead>
+                <TableHead className="w-36">Vencimento</TableHead>
                 <TableHead className="w-10"></TableHead>
               </TableRow>
             </TableHeader>
@@ -123,7 +138,7 @@ export function QuadroDeCargos({ editalId }: { editalId: string }) {
                   amplaConcorrencia: Number(linha.vagas_ampla_concorrencia ?? 0),
                   pcd: Number(linha.vagas_pcd ?? 0),
                   negros: Number(linha.vagas_negros ?? 0),
-                });
+                }, declarados);
                 return (
                   <TableRow key={linha.id}>
                     <TableCell className="font-medium">{nomeDoCargo(linha.cargo_id)}</TableCell>
@@ -131,6 +146,7 @@ export function QuadroDeCargos({ editalId }: { editalId: string }) {
                       <Input
                         defaultValue={linha.codigo_inscricao ?? ""}
                         placeholder="MT 22"
+                        className="min-w-[5.5rem]"
                         onBlur={(e) => salvar({ ...linha, codigo_inscricao: e.target.value || null })}
                       />
                     </TableCell>
@@ -138,25 +154,26 @@ export function QuadroDeCargos({ editalId }: { editalId: string }) {
                       <Input
                         type="number"
                         min={0}
+                        className="min-w-[5rem] text-right tabular-nums"
                         defaultValue={linha.vagas_total ?? ""}
                         onBlur={(e) => aoMudarTotal(linha, e.target.value)}
                         aria-label={`Total de vagas de ${nomeDoCargo(linha.cargo_id)}`}
                       />
                     </TableCell>
                     <TableCell>
-                      <Input type="number" min={0} defaultValue={linha.vagas_ampla_concorrencia ?? ""}
+                      <Input type="number" min={0} className="min-w-[4.5rem] text-right tabular-nums" defaultValue={linha.vagas_ampla_concorrencia ?? ""}
                         onBlur={(e) => salvar({ ...linha, vagas_ampla_concorrencia: numeroOuNulo(e.target.value) })} />
                     </TableCell>
                     <TableCell>
-                      <Input type="number" min={0} defaultValue={linha.vagas_pcd ?? ""}
+                      <Input type="number" min={0} className="min-w-[4.5rem] text-right tabular-nums" defaultValue={linha.vagas_pcd ?? ""}
                         onBlur={(e) => salvar({ ...linha, vagas_pcd: numeroOuNulo(e.target.value) })} />
                     </TableCell>
                     <TableCell>
-                      <Input type="number" min={0} defaultValue={linha.vagas_negros ?? ""}
+                      <Input type="number" min={0} className="min-w-[4.5rem] text-right tabular-nums" defaultValue={linha.vagas_negros ?? ""}
                         onBlur={(e) => salvar({ ...linha, vagas_negros: numeroOuNulo(e.target.value) })} />
                     </TableCell>
                     <TableCell>
-                      <Input type="number" step="0.01" min={0} defaultValue={linha.vencimento_base ?? ""}
+                      <Input type="number" step="0.01" min={0} className="min-w-[8rem] text-right tabular-nums" defaultValue={linha.vencimento_base ?? ""}
                         onBlur={(e) => salvar({ ...linha, vencimento_base: numeroOuNulo(e.target.value) })} />
                     </TableCell>
                     <TableCell>
@@ -186,8 +203,10 @@ export function QuadroDeCargos({ editalId }: { editalId: string }) {
       )}
 
       <p className="text-xs text-muted-foreground">
-        Digite o <strong>total</strong> de vagas: o sistema propõe 10% de PCD e 20% de cotas raciais,
-        com arredondamento comum — a regra medida nos Editais 002 e 003. Você pode sobrescrever
+        Digite o <strong>total</strong> de vagas: o sistema propõe a reserva com os percentuais
+        declarados nos capítulos <strong>Das Vagas Reservadas</strong> (
+        {declarados.pcd ?? 10}% de PCD e {declarados.negros ?? 20}% de cotas raciais), com
+        arredondamento comum — a regra medida nos Editais 002 e 003. Você pode sobrescrever
         qualquer coluna; a soma tem de fechar com o total.
       </p>
     </div>

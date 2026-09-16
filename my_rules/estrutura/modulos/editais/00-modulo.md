@@ -121,6 +121,10 @@ Cada grupo de dados descarta uma hipótese: **não é teto** (Arte tem 1 vaga e 
 
 🔴 **Na tela, quem preenche digita o TOTAL** e o sistema propõe as três colunas. Inverter daria 11 de PCD onde o Edital 003 publica 16.
 
+🔵 **Os 10% e 20% são PADRÃO, não constante da regra (corrigido em 2026-09-16).** Até então `sugerirCotas` usava os dois fixos, enquanto o `percentual_reserva` declarado nos capítulos [8] e [9] era gravado, exibido e **nunca lido pelo cálculo**. Um edital podia declarar 15% no texto e publicar o Quadro I com números de 10% — divergência silenciosa dentro do mesmo documento, que é a classe de defeito deste módulo. Hoje o capítulo manda no cálculo, e os valores fixos só valem enquanto nada foi declarado.
+
+⚠️ **E a direção importa: o percentual é a ENTRADA, o número absoluto é a SAÍDA.** Não dá para recuperar um do outro — com 10% declarado, os editais reais produzem 10,32% (Téc. Enfermagem), 12,50% (Ed. Física), 11,76% (Matemática) e 0% (Geografia), porque o arredondamento destrói a informação. Quem propuser derivar o percentual dos números vai publicar "reserva de 0% a 12,5%" onde a lei fixa um número só.
+
 ⚠️ **É a prática da FEVRE medida, não o texto da lei.** Cargo pequeno não reserva vaga nenhuma. Se uma norma exigir piso de 1, muda em `src/lib/edital-cotas.ts` e os 22 valores acusam a diferença.
 
 **As vagas são GRAVADAS, não recalculadas na leitura.** Um edital publica números; recalcular faria um edital antigo mudar sozinho se a regra mudasse. A `CHECK chk_edital_cargo_vagas_somam` garante que o total é a soma das partes — no banco, não só na tela.
