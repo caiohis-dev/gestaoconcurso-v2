@@ -1,0 +1,76 @@
+# Roadmap VIVO — Módulo Editais, fatia 10: conteúdo programático (Anexo I)
+# Criado em 2026-09-16. Leia my_rules/analises/README.md antes de usar como guia.
+# Índice das 12 fatias: my_rules/modulo_editais/00-Plano-v3.md
+
+roadmap:
+  titulo: "Editais fatia 10 — conteúdo programático (Anexo I)"
+  criado: "2026-09-16"
+  status: >
+    ⏳ NÃO INICIADO — 🟡 ESBOÇO. Detalhar antes de executar.
+    ⚠️ Acrescentada em 2026-09-16, junto com as fatias 9 e 11: não estava na primeira
+    divisão do plano e apareceu ao conferir o `Arquitetura de Tabelas…` contra a lista.
+  depende_de: "Fatia 1 (espinha) e fatia 5 (as disciplinas da prova são as mesmas do conteúdo)."
+
+  origem: >
+    O Anexo I de todos os três editais — as ementas por disciplina e por cargo. Seção 7 do
+    `Arquitetura de Tabelas…`, item [18].2 do `Estrutura de Edital.md`. ⚠️ Sem passo
+    correspondente no `UI e UX.md`.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  o_acoplamento_que_define_a_fatia: |
+    🔴 O conteúdo programático e a matriz da prova (fatia 5) falam das MESMAS disciplinas.
+
+    Se as duas guardarem o nome da disciplina por conta própria, vão divergir — e o edital
+    vai publicar uma prova com "Legislação do SUS" e um anexo com "Legislação do S.U.S.",
+    ou pior: uma disciplina na prova sem ementa no anexo, e ninguém percebe.
+
+    Decisão de desenho: `conteudo_programatico` REFERENCIA a disciplina, não a renomeia.
+    Isso empurra a pergunta que a fatia 5 já levanta — catálogo de disciplinas ou texto
+    livre normalizado? Aqui ela deixa de ser opcional.
+
+    ⚠️ E vira regra de linter: disciplina na matriz da prova SEM ementa no anexo é edital
+    incompleto, detectável.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  etapas:
+    - id: 1
+      nome: "Banco — as ementas"
+      status: "⏳ pendente"
+      entrega:
+        - >
+          `conteudo_programatico`: `edital_id`, `cargo_id` (NULLABLE = comum a todos os
+          cargos), a referência à disciplina, `texto_ementa`.
+      armadilha: >
+        ⚠️ Mesma ambiguidade da fatia 8: `cargo_id` nulo significando "vale para todos" é
+        indistinguível de "esqueceram de preencher". Resolver no modelo, não na convenção.
+
+    - id: 2
+      nome: "UI — editor de ementas por disciplina"
+      status: "⏳ pendente"
+      entrega:
+        - "Editor de texto longo por disciplina, agrupado por cargo quando específico."
+        - >
+          🎯 Indicador de cobertura: quais disciplinas da matriz JÁ têm ementa e quais não.
+          É o que impede o anexo sair incompleto.
+
+    - id: 3
+      nome: "Verificação e docs"
+      status: "⏳ pendente"
+      entrega:
+        - "⭐ CONTROLE POSITIVO: reproduzir o Anexo I de um dos três editais e conferir a cobertura."
+        - >
+          ⭐ CONTROLE NEGATIVO: disciplina na prova sem ementa tem de aparecer no linter.
+        - "Bateria SQL · npm test · tsc · lint (baseline 111) · build · docs:conferir"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  riscos: |
+    R1. 🔴 **Divergência silenciosa com a matriz da prova.** É o risco central, e não dá
+        erro: dá um anexo que não cobre a prova.
+
+    R2. **Volume de texto.** Ementas são longas e por cargo — um edital com 20 cargos tem
+        anexo grande. ⚠️ Conferir o teto de 1.000 linhas do PostgREST na listagem, como na
+        fatia 7.
+
+    R3. **Reuso entre editais.** A ementa de Português muda pouco de um certame para outro,
+        e alguém vai querer copiar. Copiar texto é justamente como o erro do COREN nasceu.
+        Se houver reuso, que seja explícito e rastreável — não copia-e-cola.

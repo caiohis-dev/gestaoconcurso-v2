@@ -1,0 +1,121 @@
+# Roadmap VIVO — Módulo Editais, fatia 3: cronograma e prazos
+# Criado em 2026-09-16. Leia my_rules/analises/README.md antes de usar como guia.
+# Índice das 12 fatias: my_rules/modulo_editais/00-Plano-v3.md
+
+roadmap:
+  titulo: "Editais fatia 3 — cronograma e prazos (o motor de datas)"
+  criado: "2026-09-16"
+  status: >
+    ⏳ NÃO INICIADO — 🟡 ESBOÇO. Detalhar antes de executar: falta decidir de onde vem a
+    lista de feriados municipais, e sem ela o cálculo de prazo recursal é chute.
+  depende_de: "Fatia 1 (espinha)."
+
+  origem: >
+    O cronograma consolidado é elemento pós-textual do edital e atravessa quase todos os
+    capítulos — inscrição, isenção, perícia, prova, recursos, resultado. Corresponde ao
+    Passo 8 do `UI e UX.md`, à seção 10 do `Arquitetura de Tabelas…` e ao item [18].1 do
+    `Estrutura de Edital.md`.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  por_que_esta_fatia_importa: |
+    🎯 É AQUI QUE O SEGUNDO DEFEITO DO EDITAL 004 MORRE.
+
+    Os `"dia XX/xx/2026"` publicados nos itens 12.4 e 14.9 eram datas de cronograma nunca
+    preenchidas. Enquanto a data é texto corrido dentro de um parágrafo, "vazio" não é
+    estado — é só uma string que parece preenchida.
+
+    Com as datas vindo desta tabela, campo vazio VIRA ESTADO DETECTÁVEL, e o linter da
+    fatia 1 o acusa antes da publicação. A diferença não é de conveniência: é entre o erro
+    ser pego pelo sistema ou pelo leitor do Diário Oficial.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  a_decidir_antes_de_codificar: |
+    🔴 P1. DE ONDE VEM A LISTA DE FERIADOS MUNICIPAIS DE VOLTA REDONDA?
+        O padrão FEVRE trava o prazo recursal do gabarito em "1 dia útil" após a publicação.
+        "Dia útil" depende de feriado municipal, e não há essa informação em lugar nenhum do
+        sistema hoje. Tabela? Arquivo versionado? Entrada manual por edital?
+        ⚠️ Sem resposta, o cálculo é chute — e prazo recursal errado é vício de edital.
+
+    P2. PRECEDÊNCIA É ALERTA OU TRAVA?
+        Recomendação: ALERTA em tudo, exceto onde a ordem inverta a lógica do certame
+        (prova antes do fim das inscrições, resultado antes da prova). Travar demais faz
+        quem redige contornar o sistema; travar de menos deixa passar o incoerente.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  regras_de_precedencia: |
+    Do `UI e UX.md` Passo 8, A CONFIRMAR contra os três editais reais antes de implementar:
+
+    · A data final de ISENÇÃO tem de ser anterior ao término das INSCRIÇÕES.
+    · O prazo recursal do gabarito é 1 DIA ÚTIL após a publicação (padrão FEVRE) — depende
+      de P1.
+    · ALERTA, não bloqueio, se houver etapa em fim de semana que não seja a aplicação da
+      prova.
+
+    ⚠️ Estas três vieram de um documento de proposta, não de medição. Conferir cada uma nos
+    editais 002, 003 e 004 antes de cravar: é a regra do CLAUDE.md §1 — conferir a premissa
+    no material real antes de executar o item.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  o_que_NAO_muda: |
+    · O cronograma do edital NÃO é o mesmo que a data da prova em `provas.prova_data`.
+      🔴 Esta fatia não pode fazer a prova ler data do edital ao vivo: valeria a mesma
+      fronteira do cabeçalho — o edital SUGERE, a prova é dona do seu valor depois de criada.
+      Ver a seção "Fronteira do módulo" em estrutura/modulos/editais/00-modulo.md.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  etapas:
+    - id: 1
+      nome: "Banco — a tabela de etapas"
+      status: "⏳ pendente"
+      entrega:
+        - >
+          `cronograma_etapas`: `edital_id` (FK RESTRICT), `nome_evento`, `data_inicio`,
+          `data_fim` (nullable), `horario_limite`, `permite_prorrogacao`,
+          `ordem_cronologica`. RLS espelhando `editais`; REVOKE de `anon`.
+      armadilha: >
+        ⚠️ `horario_limite` como texto ("16:00", "23:59") vira ordenação errada no dia em
+        que alguém comparar. Usar `time`, e formatar na exibição.
+
+    - id: 2
+      nome: "As funções puras — precedência e dias úteis"
+      status: "⏳ pendente"
+      entrega:
+        - "`src/lib/edital-cronograma.ts`: validação de precedência entre etapas."
+        - "Contagem de dias úteis, com a fonte de feriados definida em P1."
+      armadilha: >
+        🔴 Contagem de dia útil é o clássico "parece certo e erra na virada". Testar com
+        feriado caindo em segunda, em sexta, e emendado — e com o caso real de cada um dos
+        três editais.
+
+    - id: 3
+      nome: "UI — a timeline e a ligação com o linter"
+      status: "⏳ pendente"
+      entrega:
+        - "Timeline interativa no painel central, com os alertas de precedência ao lado."
+        - >
+          Ligação com o linter da fatia 1: etapa sem data preenchida entra na lista de
+          pendências do painel direito. É o que impede o `XX/xx` de nascer.
+
+    - id: 4
+      nome: "Verificação e docs"
+      status: "⏳ pendente"
+      entrega:
+        - >
+          ⭐ CONTROLE POSITIVO COM DADO REAL: reproduzir o cronograma do Edital 003/2026 e
+          conferir data a data.
+        - >
+          ⭐ CONTROLE NEGATIVO: um edital com data de isenção DEPOIS do fim das inscrições
+          tem de acusar — e acusar essa regra, não outra.
+        - "Bateria SQL da tabela nova · npm test · tsc · lint (baseline 111) · build · docs:conferir"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  riscos: |
+    R1. 🔴 **Sem resolver P1, o prazo recursal sai errado e ninguém percebe** — o número
+        parece plausível. É o formato de defeito que este repo mais teme.
+
+    R2. **Precedência travando demais** faz quem redige preencher datas falsas para avançar,
+        e aí o sistema tem dado errado com aparência de validado.
+
+    R3. **O cronograma é referenciado de dentro de outros capítulos** ("até a data prevista
+        no Anexo…"). Essa referência tem de ser por chave de etapa, não por data copiada —
+        mesmo raciocínio da referência cruzada de capítulo (fatia 1, P3).

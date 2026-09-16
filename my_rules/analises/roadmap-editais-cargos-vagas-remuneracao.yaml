@@ -1,0 +1,150 @@
+# Roadmap VIVO — Módulo Editais, fatia 2: cargos, vagas e remuneração (o Quadro I)
+# Criado em 2026-09-16. Leia my_rules/analises/README.md antes de usar como guia.
+# Índice das 9 fatias e as decisões que valem para todas: my_rules/modulo_editais/00-Plano-v3.md
+
+roadmap:
+  titulo: "Editais fatia 2 — cargos, vagas e remuneração (o Quadro I)"
+  criado: "2026-09-16"
+  status: >
+    ⏳ NÃO INICIADO — 🟡 ESBOÇO. Detalhar antes de executar: há uma pergunta de NORMA
+    (arredondamento das cotas) sem resposta, e ela decide o código.
+  depende_de: "Fatia 1 (espinha). Sem ela não há capítulo onde o Quadro I entrar."
+
+  origem: >
+    O Quadro I é o coração do edital — a tabela oficial de cargos, vagas, escolaridade,
+    carga horária e vencimento, mais o pacote remuneratório. Corresponde aos Passos 2 e 3
+    do `UI e UX.md`, à seção 2 do `Arquitetura de Tabelas…` e aos capítulos [2] e [3] do
+    `Estrutura de Edital.md`.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  decisoes_do_usuario: |
+    D2. 🔴 A TABELA `cargos` QUE JÁ EXISTE É A FONTE DE VERDADE. Decisão literal do usuário
+        em 2026-09-16: "A fonte da verdade é a tabela cargos que já existe. Se precisar,
+        incremente ela."
+        RECUSADO: criar um segundo catálogo de cargos só para o edital. O material de
+        referência propunha uma tabela `cargos` nova, com outra forma — implementada como
+        estava, o sistema passaria a ter DOIS catálogos de cargo, e alguém teria de
+        conciliá-los um dia.
+
+    D_ORTOGONAL. Nenhuma gratificação se esconde por tipo de cargo. ⚠️ O `UI e UX.md`
+        original condicionava a EXIBIÇÃO ("se Docente, exibe Regência; se Saúde, exibe
+        Plantão 12x36"). Isso foi corrigido: tipo de cargo PRÉ-MARCA as usuais, nunca oculta
+        nem desabilita as demais. Esconder opção legítima é como se produz o edital
+        incompleto.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  medido_antes: |
+    Banco local, 2026-09-16:
+
+    · `cargos` HOJE: `id`, `nome`, `nome_chave` (coluna GERADA, `lower(btrim(nome))`, com
+      UNIQUE), `ativo`, `created_at`, `created_by`. Só isso.
+    · Ela tem `cargo_apelidos` pendurada, é a chave da importação de inscritos, tem bateria
+      própria (`docs/bateria-cargos.sql`) e a regra CG001 — que já foi ESTREITADA uma vez
+      em 01/08: só inscrito tranca o cargo, apelido não. A regra larga travava o cargo já
+      no passo 3 do assistente de importação.
+    · `cargos` está com 0 linhas em produção (medido em 16/09): os três catálogos
+      — `cargos`, `cargo_apelidos`, `candidatos` — só se povoam na primeira importação,
+      que é operação de véspera de prova.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  a_decidir_antes_de_codificar: |
+    🔴 P1. QUAL É A REGRA DE ARREDONDAMENTO LEGAL DAS COTAS?
+        A UI deve sugerir 10% para PCD e 20% para negros (Lei Municipal 5.309/2017) ao
+        preencher o total de vagas. Mas arredonda para cima? Para baixo? A partir de quantas
+        vagas a reserva passa a existir?
+        ⚠️ Isso é NORMA, não escolha de implementação — errar produz edital juridicamente
+        frágil. MEDIR nos três editais reais (contar vagas AC/PCD/CN declaradas e inferir a
+        regra) ANTES de escrever a função. Não estimar.
+
+    P2. `codigo_inscricao` (ex. "MT 22") é do cargo ou do par cargo×edital? Nos três editais
+        ele varia por edital — logo mora em `edital_cargos`, não em `cargos`. Confirmar.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  o_que_NAO_muda: |
+    · A CG001 e o comportamento da importação de candidatos. As colunas novas em `cargos`
+      são anuláveis e não participam da identidade (que é `nome_chave`).
+    · `cargo_apelidos` e a memória de apelidos do assistente de importação.
+    · A coluna `nome_chave`, que é GERADA — não se mexe.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  etapas:
+    - id: 0
+      nome: "Linha de base — a bateria de cargos VERDE antes de tocar em qualquer coisa"
+      status: "⏳ pendente"
+      entrega:
+        - >
+          Rodar `docs/bateria-cargos.sql` e registrar o resultado. É a linha de base que
+          diz, depois, se quem quebrou foi esta fatia ou se já estava quebrado.
+      armadilha: >
+        🔴 Não é cerimônia. Em 02/08 uma bateria ficou 2 dias falhando na primeira linha
+        porque uma assinatura mudou e ninguém procurou as chamadas — "ela existe" não é
+        "ela passa". Esta é a única fatia que encosta numa tabela de outro módulo EM
+        PRODUÇÃO, e é por isso que ela tem uma etapa 0.
+
+    - id: 1
+      nome: "Banco — `cargos` incrementada e as tabelas do edital"
+      status: "⏳ pendente"
+      entrega:
+        - >
+          `cargos` ganha, todas anuláveis: `codigo_oficial`, `escolaridade_minima`
+          (MEDIO | TECNICO | SUPERIOR), `conselho_classe_obrigatorio`
+          (NENHUM | COREN | CREF | OAB | CRM | …).
+          ⚠️ NÃO criar `titulo_cargo` — é o `nome` que já existe.
+        - >
+          `edital_cargos`: parametrização do cargo DENTRO de um edital — `codigo_inscricao`,
+          `carga_horaria_valor` + `carga_horaria_unidade` (HORAS_AULA_SEMANAIS |
+          HORAS_SEMANAIS | HORAS_MENSAIS), `regime_plantao_permitido`, `vencimento_base`.
+        - "`cargos_beneficios`: por `edital_cargo_id` — tipo, `forma_calculo` (VALOR_FIXO | PERCENTUAL), valor."
+        - >
+          `vagas_distribuicao`: AC / PCD / CN e `cadastro_reserva`.
+          ⚠️ `unidade_lotacao_id` nasce NULLABLE — só ganha sentido na fatia 7.
+        - "`cargos_atribuicoes`: alimenta o capítulo [3]."
+      armadilha: >
+        ⚠️ Três unidades de carga horária convivendo (horas-aula semanais no 002, horas
+        mensais no 003) é o tipo de campo que vira texto livre por preguiça e depois não
+        soma. O par valor+unidade é obrigatório desde o primeiro dia.
+
+    - id: 2
+      nome: "UI — a tabela editável e o cálculo de cotas"
+      status: "⏳ pendente"
+      entrega:
+        - "Data table editável no painel central do Studio, no capítulo [2]."
+        - >
+          Cálculo de cotas: a UI SUGERE 10% PCD e 20% negros e ALERTA se ficar abaixo do
+          mínimo legal — mas não impede sobrescrever. Função pura, testável (P1).
+        - >
+          Trava de conselho de classe: a UI não oferece conselho incompatível com a
+          escolaridade do cargo. É o primeiro anteparo ao erro do COREN; o definitivo é a
+          fatia 8.
+        - >
+          Gratificações: todas disponíveis para todos os cargos; o tipo de cargo apenas
+          PRÉ-MARCA as usuais (D_ORTOGONAL).
+
+    - id: 3
+      nome: "Verificação e docs"
+      status: "⏳ pendente"
+      entrega:
+        - "Função pura do cálculo de cotas, com os casos de arredondamento — falsificável."
+        - >
+          ⭐ CONTROLE POSITIVO COM DADO REAL: reproduzir o Quadro I do Edital 003/2026 e
+          conferir número a número.
+        - "Bateria SQL das tabelas novas (RLS, RESTRICT, `anon` não lê)."
+        - >
+          🔴 RERRODAR `docs/bateria-cargos.sql` e comparar com a linha de base da etapa 0.
+          Divergência = esta fatia quebrou a importação.
+        - "`db reset` completo: os inscritos do dump continuam importáveis."
+        - "npm test · tsc · lint (baseline 111) · build · docs:conferir"
+        - "Contrato do módulo Candidatos também muda: `cargos` ganhou colunas e passou a ter dois donos."
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  riscos: |
+    R1. 🔴 **Esta fatia mexe numa tabela de produção que outro módulo usa.** A importação de
+        candidatos é operação de véspera de prova: quebrá-la tem custo de calendário, não só
+        de código. Daí a etapa 0 e a rerrodagem da bateria na etapa 3.
+
+    R2. **O arredondamento das cotas errado não dá erro** — dá um edital com reserva legal
+        abaixo do mínimo, descoberto por terceiros. É P1, e não se resolve por palpite.
+
+    R3. **`cargos` passa a ter dois donos** (Candidatos e Editais). Quem mexer nela depois
+        precisa saber dos dois. ⚠️ Os DOIS contratos de módulo têm de dizer isso — se só um
+        disser, o outro vira armadilha.

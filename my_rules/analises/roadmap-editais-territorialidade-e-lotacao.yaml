@@ -1,0 +1,103 @@
+# Roadmap VIVO — Módulo Editais, fatia 7: territorialidade e lotação
+# Criado em 2026-09-16. Leia my_rules/analises/README.md antes de usar como guia.
+# Índice das 12 fatias: my_rules/modulo_editais/00-Plano-v3.md
+
+roadmap:
+  titulo: "Editais fatia 7 — territorialidade e lotação (capítulo condicional)"
+  criado: "2026-09-16"
+  status: >
+    ⏳ NÃO INICIADO — 🟡 ESBOÇO. Detalhar antes de executar: há uma decisão de ARQUITETURA
+    em aberto (`unidades_lotacao` vs. `unidades_prova`) que precisa ser tomada primeiro.
+  depende_de: "Fatia 1 (capítulo condicional) e fatia 2 (a distribuição de vagas por unidade)."
+
+  origem: >
+    O capítulo [5] (distribuição geográfica) e o Anexo II (delimitação rua a rua).
+    Passo 4 do `UI e UX.md`, seção 3 do `Arquitetura de Tabelas…`.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  decisoes_do_usuario: |
+    D_ORTOGONAL. 🔴 LIGÁVEL EM QUALQUER EDITAL.
+        RECUSADO, e estava escrito em DOIS arquivos: o `UI e UX.md` intitulava o passo
+        "(Condicional: ACS)" e o `Arquitetura de Tabelas…` chamava a seção de
+        "(Exclusivo ACS/Polos)". O ACS é o caso conhecido, não uma condição.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  a_decidir_antes_de_codificar: |
+    🔴 P1. `unidades_lotacao` VERSUS `unidades_prova`.
+        `unidades_prova` JÁ EXISTE — é o catálogo de locais de APLICAÇÃO DE PROVA, com
+        `sala_prova` pendurada e 12 linhas em produção. A proposta cria `unidades_lotacao`
+        para locais de TRABALHO (UBS/UBSF).
+
+        São conceitos diferentes que podem apontar para os MESMOS prédios. Reaproveitar,
+        relacionar ou separar é decisão consciente — e o porquê tem de ficar registrado.
+        ⚠️ O que não pode é nascerem dois catálogos de unidade sem ninguém notar; é o tipo
+        de duplicação que só dói seis meses depois, quando alguém renomear uma unidade num
+        só dos dois.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  medido_antes: |
+    🔴 O ANEXO I DO EDITAL 004 TEM 963 LINHAS DE TABELA (medido no arquivo em 16/09).
+       O teto do PostgREST é 1.000 linhas, e ele CORTA SEM ERRO NENHUM.
+
+       Isso já mordeu este repo duas vezes — a listagem de colaboradores (771 linhas, 77%
+       do teto) e o painel de dados. O sintoma aqui seria uma RUA SUMINDO do anexo publicado,
+       sem sinal na tela.
+
+       Consequência obrigatória: qualquer leitura de `territorialidade_abrangencia` nasce
+       com `.range()` ou busca no servidor. NUNCA um select solto confiando que cabe.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  etapas:
+    - id: 0
+      nome: "Decidir P1 e registrar o porquê"
+      status: "⏳ pendente"
+      entrega:
+        - "A decisão sobre `unidades_lotacao` vs. `unidades_prova`, escrita antes do código."
+
+    - id: 1
+      nome: "Banco — unidades, distribuição e abrangência"
+      status: "⏳ pendente"
+      entrega:
+        - "A tabela de unidade de lotação, na forma que P1 definir."
+        - "`vagas_distribuicao.unidade_lotacao_id` deixa de ser nulo quando o capítulo está ligado."
+        - >
+          `territorialidade_abrangencia`: `unidade_lotacao_id`, `tipo_logradouro`
+          (RUA | AVENIDA | SERVIDAO | …), `nome_logradouro`, `numero_inicial`,
+          `numero_final`, `bairro`.
+      armadilha: >
+        ⚠️ Índice por `unidade_lotacao_id` desde o início: a leitura natural é "todas as ruas
+        desta UBSF", e são milhares de linhas no total.
+
+    - id: 2
+      nome: "UI — importador em lote e o accordion"
+      status: "⏳ pendente"
+      entrega:
+        - >
+          Importador de planilha (`Unidade | Bairro | Logradouro | Trecho`), reusando o que
+          a importação de candidatos ensinou: relatório do que entrou E do que foi recusado.
+          🔴 Nada de perda silenciosa — é o formato de erro que este repo mais teme.
+        - "Accordion hierárquico por unidade, com edição manual de logradouro."
+        - "🔴 Toda listagem paginada ou buscada NO SERVIDOR (ver medido_antes)."
+
+    - id: 3
+      nome: "Verificação e docs"
+      status: "⏳ pendente"
+      entrega:
+        - >
+          ⭐ CONTROLE POSITIVO COM DADO REAL, e é o teste que importa: carregar o Anexo I do
+          Edital 004 INTEIRO e conferir a contagem. As 963 linhas têm de voltar 963 — não
+          1.000, não 771.
+        - "Bateria SQL · npm test · tsc · lint (baseline 111) · build · docs:conferir"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  riscos: |
+    R1. 🔴 **O teto de 1.000 do PostgREST.** 963 linhas hoje; o próximo edital passa. E o
+        corte é silencioso. Esta é a fatia com maior risco de perda silenciosa de todo o
+        módulo.
+
+    R2. **Dois catálogos de unidade** (P1). Se a decisão for adiada "por enquanto", ela será
+        tomada por omissão — e a favor da duplicação.
+
+    R3. **A regra de residência é jurídica, não de sistema.** "Residir na área desde a
+        publicação do edital" é condição que a banca confere na posse. ⚠️ O sistema descreve
+        a regra no texto; não a valida. Registrar, ou alguém vai supor validação que não existe.

@@ -1,0 +1,83 @@
+# Roadmap VIVO — Módulo Editais, fatia 12: exportação (PDF / Markdown / JSON)
+# Criado em 2026-09-16. Leia my_rules/analises/README.md antes de usar como guia.
+# Índice das 12 fatias: my_rules/modulo_editais/00-Plano-v3.md
+
+roadmap:
+  titulo: "Editais fatia 12 — exportação (PDF diagramado, Markdown, JSON)"
+  criado: "2026-09-16"
+  status: "⏳ NÃO INICIADO — 🟡 ESBOÇO. É a última fatia: depende de conteúdo para exportar."
+  depende_de: "Fatia 1 (a numeração) e todas as fatias de conteúdo que se queira ver no documento final."
+
+  origem: >
+    Item 3 da seção 3 do `UI e UX.md`. É o que fecha o ciclo: o edital sai do sistema em
+    formato publicável.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  os_tres_formatos: |
+    PDF diagramado ..... publicação no Diário Oficial / Jornal Volta Redonda em Destaque
+    Markdown ........... revisão, versionamento, leitura
+    JSON estruturado ... alimentar a API do portal de inscrições da banca
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  reuso_que_ja_existe: |
+    ⚠️ Conferir o estado destes arquivos NA HORA — doc é snapshot, e esta é a fatia mais
+    distante no tempo de todas:
+
+    · `src/lib/pdf-timbre.ts` — timbre e cabeçalho institucional.
+    · `src/lib/relatorio-importacao-export.ts` — precedente de exportação em DOIS formatos
+      a partir da mesma fonte.
+    · `src/pages/DocumentosImpressao.tsx` — geração de documento para impressão.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  decisoes_de_desenho: |
+    P1. 🔴 EXPORTAR COM ERRO DE LINTER EM ABERTO: bloquear, ou permitir com confirmação
+        explícita?
+        Recomendação: BLOQUEAR, e permitir só com confirmação que nomeie cada pendência.
+        Publicar é irreversível — foi exatamente assim que "dia XX/xx/2026" chegou ao Diário
+        Oficial. Um aviso que se fecha sem ler não é barreira.
+
+    P2. O JSON é contrato com o portal de inscrições — ou seja, com um sistema de fora.
+        ⚠️ Ele passa a ter versão, e mudança nele é quebra de compatibilidade. Tratar como
+        API pública desde o primeiro dia, não como dump interno.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  etapas:
+    - id: 1
+      nome: "Markdown e JSON"
+      status: "⏳ pendente"
+      entrega:
+        - "Serialização do edital montado, com a numeração calculada já resolvida."
+        - "Markdown legível; JSON versionado (P2)."
+
+    - id: 2
+      nome: "PDF diagramado"
+      status: "⏳ pendente"
+      entrega:
+        - "Reuso do timbre existente; paginação, sumário e numeração dos capítulos."
+
+    - id: 3
+      nome: "O portão do linter"
+      status: "⏳ pendente"
+      entrega:
+        - "Implementar P1: exportação recusa (ou exige confirmação nomeada) com pendência em aberto."
+
+    - id: 4
+      nome: "Verificação e docs"
+      status: "⏳ pendente"
+      entrega:
+        - >
+          ⭐ CONTROLE POSITIVO FINAL DO MÓDULO: montar o Edital 002/2026 inteiro no sistema e
+          comparar o PDF gerado com o publicado. É o teste que diz se a v3 cumpriu o que
+          prometeu.
+        - "npm test · tsc · lint (baseline 111) · build · docs:conferir"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  riscos: |
+    R1. 🔴 **O PDF é onde número errado vira defeito público.** Toda a aposta da fatia 1 se
+        paga ou se perde aqui.
+
+    R2. **Exportar sem portão** devolve o sistema ao estado que a v3 existe para consertar.
+
+    R3. **FORA DE ESCOPO, e registrado para não virar expectativa:** o "diff comparativo com
+        edital anterior" (`UI e UX.md` §3, item 1). É conforto, depende de haver dois editais
+        completos no sistema, e nada depende dele.

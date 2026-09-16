@@ -1,0 +1,93 @@
+# Roadmap VIVO — Módulo Editais, fatia 5: matriz da prova objetiva
+# Criado em 2026-09-16. Leia my_rules/analises/README.md antes de usar como guia.
+# Índice das 12 fatias: my_rules/modulo_editais/00-Plano-v3.md
+
+roadmap:
+  titulo: "Editais fatia 5 — matriz da prova objetiva (disciplinas, corte e regras de sala)"
+  criado: "2026-09-16"
+  status: "⏳ NÃO INICIADO — 🟡 ESBOÇO. Detalhar antes de executar."
+  depende_de: >
+    Fatia 1 (espinha). E da fatia 2 se a composição variar por cargo — e varia nos três
+    editais reais.
+
+  origem: >
+    Os capítulos [12] (prova objetiva) e [13] (recursos e vista da folha de respostas).
+    Passo 6 do `UI e UX.md`, seção 6 do `Arquitetura de Tabelas…`.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  medido_antes: |
+    Os três editais dão TRÊS composições diferentes, e o modelo precisa reproduzir as três
+    sem caso especial no código:
+
+      002 ....... 50 questões — Português + Conhecimentos Pedagógicos + Específicos
+      003 ....... 70 questões — 10 Português + 10 Legislação do SUS + 50 Específicos
+      004 ....... 50 questões — 10 Português + 10 MATEMÁTICA + 30 Específicos
+
+    🔴 Se alguma das três exigir um `if` próprio, o modelo está errado. É o teste do desenho,
+    antes de ser teste de código.
+
+    · Nota de corte: 50% do total nos três, SEM zerar nenhuma disciplina. São dois
+      parâmetros distintos, não uma regra só.
+    · Vista presencial da folha: 002 NÃO tem; 003 e 004 têm, com e-mail próprio
+      (visto_fr@fevre.com.br), interstício e termo assinado.
+      ⚠️ PARÂMETRO ORTOGONAL — não é propriedade da carreira.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  etapas:
+    - id: 1
+      nome: "Banco — configuração da prova e disciplinas"
+      status: "⏳ pendente"
+      entrega:
+        - >
+          `fases_concurso`: `edital_cargo_id`, `tipo_fase`, `ordem_fase`, `carater`
+          (ELIMINATORIO_E_CLASSIFICATORIO | APENAS_CLASSIFICATORIO).
+        - >
+          `provas_objetivas_config`: `total_questoes`, `duracao_minutos`,
+          `tempo_minimo_permanencia_minutos`, `tempo_minimo_levar_caderno_minutos`,
+          `nota_corte_percentual`, `permite_zerar_disciplina`.
+        - >
+          `provas_disciplinas`: `nome_disciplina`, `quantidade_questoes`, `peso_por_questao`,
+          `ordem_apresentacao`.
+        - >
+          `regras_vista_prova`: `tipo_procedimento` (APENAS_RECURSO_ONLINE |
+          VISTA_PRESENCIAL_ASSISTIDA), `email_solicitacao`,
+          `intersticio_minimo_horas_agendamento`, `exige_termo_visita_assinado`.
+      armadilha: >
+        ⚠️ `nome_disciplina` como texto livre faz "Língua Portuguesa" e "Portugues"
+        conviverem entre editais, e o desempate da fatia 12 referencia disciplina POR NOME.
+        Decidir cedo: catálogo de disciplinas ou texto livre normalizado. É o mesmo problema
+        que `cargo_apelidos` resolveu do lado dos candidatos.
+
+    - id: 2
+      nome: "UI — o construtor visual de questões"
+      status: "⏳ pendente"
+      entrega:
+        - >
+          🎯 Contador dinâmico: a soma das disciplinas TEM de fechar com o total declarado.
+          É a única validação que o `UI e UX.md` marca como bloqueante, e com razão — prova
+          publicada com soma errada é errata garantida.
+        - "Sliders das regras de sala: duração, permanência mínima, tempo para levar o caderno."
+        - "Toggle da vista presencial, com os campos dependentes aparecendo quando ligada."
+
+    - id: 3
+      nome: "Verificação e docs"
+      status: "⏳ pendente"
+      entrega:
+        - "Função pura da soma e da nota de corte — falsificável."
+        - >
+          ⭐ CONTROLE POSITIVO TRIPLO: reproduzir as composições do 002, 003 e 004. As três,
+          com o mesmo código.
+        - "Bateria SQL · npm test · tsc · lint (baseline 111) · build · docs:conferir"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  riscos: |
+    R1. 🔴 **A soma fechar por acaso.** Se o total for derivado da soma em vez de declarado
+        e conferido, nunca há divergência — e a validação vira decorativa. O total é
+        DECLARADO no cabeçalho do exame e a soma é CONFERIDA contra ele.
+
+    R2. **Disciplina por nome livre** contamina a fatia 12 (desempate por pontuação em
+        disciplina). Ver a armadilha da etapa 1.
+
+    R3. **`permite_zerar_disciplina` é regra de correção, não de edital.** Ela descreve o
+        critério de aprovação, e um dia alguém vai querer que o sistema CORRIJA a prova com
+        base nela. ⚠️ Isso é outro módulo — registrar a fronteira antes que ela se apague.

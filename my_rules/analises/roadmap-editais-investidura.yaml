@@ -1,0 +1,91 @@
+# Roadmap VIVO — Módulo Editais, fatia 8: investidura e posse
+# Criado em 2026-09-16. Leia my_rules/analises/README.md antes de usar como guia.
+# Índice das 12 fatias: my_rules/modulo_editais/00-Plano-v3.md
+
+roadmap:
+  titulo: "Editais fatia 8 — investidura e posse (onde o erro do COREN morre)"
+  criado: "2026-09-16"
+  status: "⏳ NÃO INICIADO — 🟡 ESBOÇO. Detalhar antes de executar."
+  depende_de: >
+    Fatia 1 (espinha) e 🔴 FATIA 2 — a injeção por cargo depende de
+    `cargos.conselho_classe_obrigatorio`, que nasce lá. É por isso que a 2 vem antes desta.
+
+  origem: >
+    O capítulo [16] do `Estrutura de Edital.md`. Passo 9 do `UI e UX.md`, seção 11 do
+    `Arquitetura de Tabelas…`.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  por_que_esta_fatia_importa: |
+    🎯 É AQUI QUE O PRIMEIRO DEFEITO DO EDITAL 004 MORRE.
+
+    O item 15.8, alínea L, do Edital 004 JÁ PUBLICADO exige "Certidão Nada Consta do COREN"
+    para Agente Comunitário de Saúde — cargo de nível médio, sem conselho de classe. É
+    resíduo de copia-e-cola do edital de Enfermagem (003).
+
+    A REGRA QUE IMPEDE: o checklist só oferece documento de conselho de classe quando ALGUM
+    CARGO DO EDITAL exige aquele conselho (`cargos.conselho_classe_obrigatorio`, fatia 2).
+    Num edital só de ACS, o COREN não tem como entrar — não por disciplina de quem redige,
+    mas porque a opção não existe ali.
+
+    ⚠️ A diferença é essa: o material de referência propõe "os documentos do COREN ficam
+    desabilitados ou ocultos". Desabilitado ainda é oferecido. A regra certa é NÃO EXISTIR.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  a_decidir_antes_de_codificar: |
+    P1. `aplica_apenas_sexo` (AMBOS | MASCULINO) merece uma olhada antes de virar coluna.
+        Hoje serve a um caso só: o certificado de reservista. Talvez a modelagem certa seja
+        uma "condição de aplicabilidade" genérica, em vez de um enum de sexo que já nasce
+        estreito.
+        ⚠️ Decidir com o caso na mão, não por antecipação — e não inventar generalidade que
+        ninguém pediu.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  etapas:
+    - id: 1
+      nome: "Banco — o checklist documental"
+      status: "⏳ pendente"
+      entrega:
+        - >
+          `documentos_investidura`: `edital_id` (FK RESTRICT), `cargo_id` (NULLABLE = vale
+          para todos os cargos), `nome_documento`, `obrigatorio`, `aplica_apenas_sexo`
+          (ver P1), `observacao`.
+      armadilha: >
+        ⚠️ `cargo_id` nulo significando "vale para todos" é conveniente e ambíguo: nulo
+        também é o valor de quem esqueceu de preencher. Se o modelo não distinguir os dois,
+        o linter não consegue acusar documento órfão.
+
+    - id: 2
+      nome: "UI — checklist reativo com injeção por cargo"
+      status: "⏳ pendente"
+      entrega:
+        - >
+          Pré-marcação padrão: RG · CPF · PIS/PASEP · título e quitação eleitoral · ASO Apto ·
+          certidão de nascimento/casamento · reservista (quando aplicável) · declaração de bens.
+        - >
+          🎯 Injeção por cargo: se há Enfermeiro no edital, `Registro no COREN` e
+          `Certidão Nada Consta` entram sozinhos. Se não há nenhum cargo que exija COREN,
+          o documento NÃO É OFERECIDO.
+
+    - id: 3
+      nome: "Verificação e docs"
+      status: "⏳ pendente"
+      entrega:
+        - >
+          🔴 O CONTROLE POSITIVO DESTA FATIA É UM PAR, e os dois casos importam:
+          (1) num edital com Enfermeiro, o COREN ENTRA sozinho;
+          (2) num edital só com ACS, o COREN NÃO PODE ENTRAR — nem manualmente.
+          ⚠️ Provar só o (1) não prova nada: é o (2) que guarda o defeito real.
+        - "Bateria SQL · npm test · tsc · lint (baseline 111) · build · docs:conferir"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  riscos: |
+    R1. 🔴 **Testar só o caso feliz.** O teste que interessa é o negativo — e é o que se
+        esquece, porque "num edital de ACS ninguém vai marcar COREN" parece óbvio. Foi
+        exatamente o que aconteceu no 004.
+
+    R2. **Desabilitar em vez de não oferecer.** Campo desabilitado vira campo habilitado no
+        dia em que alguém "melhorar" a UX.
+
+    R3. **Se a fatia 2 não tiver populado `conselho_classe_obrigatorio`**, a regra não tem
+        sobre o que decidir e degrada em silêncio para "oferece tudo". ⚠️ O linter precisa
+        acusar cargo sem conselho definido, em vez de assumir NENHUM.

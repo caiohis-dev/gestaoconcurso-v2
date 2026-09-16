@@ -15,6 +15,12 @@ Hoje, vivos: [`dividas-auth-colaborador.md`](./dividas-auth-colaborador.md), [`r
 
 ➕ [`analise-rate-limit-login.md`](./analise-rate-limit-login.md) (⏳ **não iniciado**, 2026-08-13) — os fluxos de acesso sob a ótica de rate limit: o teto que já existe falha **aberto** e não é atômico (§2), e duas portas públicas não têm teto nenhum, uma delas escrevendo PII e disparando e-mail com o domínio da FEVRE a cada chamada (§3). 🔵 **O passo 0 está completo** (13/08, medido contra produção) e **três hipóteses minhas caíram** — signup já fechado, o login **tem** teto de 30/5 min por IP, e o header do rate limit **não** é forjável. As três estão registradas com a medição que as derrubou, e não apagadas: o raciocínio volta a valer se a plataforma mudar.
 
+➕ **Os 12 roadmaps do módulo EDITAIS** (`roadmap-editais-*.yaml`, ⏳ **nenhum iniciado**, 2026-09-16) — a v3 do módulo, fatiada. **Comece pelo índice**, [`../modulo_editais/00-Plano-v3.md`](../modulo_editais/00-Plano-v3.md): é ele que guarda as 5 decisões transversais e a premissa falsa que o material de referência quase impôs (o mapa carreira → funcionalidade, desmentido pelo usuário — toda peculiaridade é **ortogonal**, ligável em qualquer edital).
+
+🔴 **A fatia 1 é a base de todas as outras** ([`roadmap-editais-espinha-do-documento.yaml`](./roadmap-editais-espinha-do-documento.yaml)): a numeração dos capítulos é **calculada, nunca escrita**, porque capítulo condicional que não entra não ocupa número. Medido: `Estrutura de Edital.md` numera PCD como `[8]`, o Edital 002 publicado numera como `7`, e o 002 já carrega o resíduo disso — uma linha solta *"10. e seus subitens"* dentro do capítulo 7.
+
+⚠️ **Três perguntas abertas travam código** e estão nos roadmaps 2, 3 e 7: a regra de arredondamento legal das cotas (é **norma**, não implementação), a origem dos feriados municipais para contar dia útil, e `unidades_lotacao` vs. o `unidades_prova` que já existe.
+
 ⚠️ **`roadmap-bootstrap-banco-producao.yaml` saiu daqui em 2026-08-10** e está em [`concluidos/`](./concluidos/roadmap-bootstrap-banco-producao.yaml): o banco de produção da v2 está de pé em `zugigdpuxbpogoepdawm` e **provado por login real**. Duas coisas nele merecem cuidado ao ser lido depois:
 
 1. **Um item NÃO fechou junto e não mora mais lá:** o achado A2 — o `.env` da raiz se chama produção e aponta para o Docker local. Ele foi transplantado para o [`../backlog.md`](../backlog.md), porque item aberto em `concluidos/` é item que ninguém lê.

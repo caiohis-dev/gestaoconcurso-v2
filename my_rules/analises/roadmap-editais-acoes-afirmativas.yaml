@@ -1,0 +1,109 @@
+# Roadmap VIVO — Módulo Editais, fatia 4: ações afirmativas e condições especiais
+# Criado em 2026-09-16. Leia my_rules/analises/README.md antes de usar como guia.
+# Índice das 12 fatias: my_rules/modulo_editais/00-Plano-v3.md
+
+roadmap:
+  titulo: "Editais fatia 4 — ações afirmativas e condições especiais (PCD, cotas, lactantes)"
+  criado: "2026-09-16"
+  status: "⏳ NÃO INICIADO — 🟡 ESBOÇO. Detalhar antes de executar."
+  depende_de: >
+    Fatia 1 (espinha). E da fatia 2 para o percentual de reserva incidir sobre vagas reais
+    — antes disso é percentual sem base.
+
+  origem: >
+    Os capítulos [8] (PCD), [9] (cotas raciais) e [11] (condições especiais de prova).
+    Passo 5 do `UI e UX.md`, seção 5 do `Arquitetura de Tabelas…`.
+    É a fatia onde os três editais mais divergem entre si — e a divergência é justamente o
+    que o modelo precisa acomodar sem caso especial.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  decisoes_do_usuario: |
+    D_ORTOGONAL. 🔴 Todo parâmetro desta fatia é ligável em qualquer edital. A tabela abaixo
+        mostra três editais discordando entre si nos MESMOS campos — é a prova de que nada
+        aqui é propriedade de carreira:
+
+          Parâmetro                  | 002            | 003 / 004
+          ---------------------------|----------------|---------------------------
+          Compensação de lactante    | SEM compensação| até 30 min
+          Validade do laudo PCD      | 6 meses        | INDETERMINADA p/ irreversível,
+                                     |                | TEA e Down (só no 004)
+
+        PRESETS RECOMENDADOS, nunca impostos:
+        · Lactante → versão 003/004 (compensação de até 30 min + certidão de idade < 6
+          meses), por ser menos vulnerável a questionamento judicial.
+        · Laudo PCD → versão 004 (Leis Estaduais RJ 9.425/2021 e 10.186/2023).
+        ⚠️ O sistema RECOMENDA; quem redige decide. Nenhum dos dois fica oculto ou travado.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  detalhe_que_vale_preservar: |
+    O Edital 004 separa fisicamente ENVELOPE 01 (concorrer à vaga PCD) de ENVELOPE 02
+    (adaptação logística no dia da prova). É a redação mais didática dos três e resolve a
+    confusão mais comum do capítulo — candidato que entrega laudo achando que pediu ledor,
+    ou o contrário. Vale como padrão do sistema.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  a_decidir_antes_de_codificar: |
+    P1. `data_limite_nascimento_lactente` é DERIVADA da data da prova (6 meses antes) ou
+        digitada?
+        Recomendação: derivar do cronograma (fatia 3) e permitir sobrescrever. Deixar só
+        digitar reintroduz exatamente a classe de erro do `XX/xx` — um campo de data solto
+        que ninguém confere.
+
+    P2. As datas de perícia médica são lista livre ou saem do cronograma? O 002 tem só duas
+        (28/05 e 01/06/2026). Se saírem do cronograma, ganham a validação de precedência de
+        graça.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  etapas:
+    - id: 1
+      nome: "Banco — as três tabelas de regra"
+      status: "⏳ pendente"
+      entrega:
+        - >
+          `regras_pcd`: `percentual_reserva`, `leis_municipais_base`,
+          `aceita_laudo_indeterminado_permanente`, `validade_meses_laudo_temporario`,
+          `obriga_rubrica_todas_folhas`, `local_pericia_presencial`,
+          `datas_pericia_disponiveis`.
+        - >
+          `regras_cotas_negros`: `percentual_reserva`, `lei_municipal_base`,
+          `exige_autodeclaracao_datada_assinada`.
+        - >
+          `regras_lactantes`: `idade_maxima_lactente_meses`,
+          `data_limite_nascimento_lactente`, `permite_compensacao_tempo`,
+          `tempo_maximo_compensacao_minutos`, `intervalos_permitidos`.
+      armadilha: >
+        ⚠️ Uma linha por edital em cada tabela, com FK RESTRICT. Tentação a evitar: achatar
+        as três em colunas de `editais` — o capítulo ficaria sem dono e a fatia 1 não teria
+        o que ligar/desligar.
+
+    - id: 2
+      nome: "UI — os cards de configuração e os presets"
+      status: "⏳ pendente"
+      entrega:
+        - "Cards no painel central, um por capítulo ([8], [9], [11])."
+        - "Presets recomendados visíveis COMO recomendação, com o motivo ao lado."
+        - "Multi-datepicker para as datas de perícia (ver P2)."
+
+    - id: 3
+      nome: "Verificação e docs"
+      status: "⏳ pendente"
+      entrega:
+        - >
+          ⭐ CONTROLE POSITIVO DUPLO, e é o teste central desta fatia: reproduzir o capítulo
+          de PCD do Edital 002 (6 meses) E o do 004 (indeterminado) A PARTIR DOS MESMOS
+          CAMPOS. Se só um dos dois sair certo, o modelo está estreito e a fatia falhou.
+        - "Mesma prova para lactantes: 002 (sem compensação) e 003 (com 30 min)."
+        - "Bateria SQL · npm test · tsc · lint (baseline 111) · build · docs:conferir"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  riscos: |
+    R1. 🔴 **Modelar só o preset recomendado.** É a tentação óbvia: "a versão 003/004 é
+        melhor, então só ela". Mas o 002 existe, é legal, e o sistema precisa conseguir
+        reproduzi-lo. Um modelo que só gera a recomendação não é modelo, é template.
+
+    R2. **Percentual sem base.** Se esta fatia vier antes da 2, o percentual de reserva não
+        incide sobre vaga nenhuma — e o número exibido seria decorativo.
+
+    R3. **`obriga_rubrica_todas_folhas` é regra de PROCEDIMENTO, não de dado.** Ela muda o
+        texto do capítulo, e no 004 gera indeferimento automático. ⚠️ Não confundir com
+        validação de sistema: quem confere rubrica é a banca, não o software.

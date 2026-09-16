@@ -1,0 +1,97 @@
+# Roadmap VIVO — Módulo Editais, fatia 9: inscrição, taxas e isenção
+# Criado em 2026-09-16. Leia my_rules/analises/README.md antes de usar como guia.
+# Índice das 12 fatias: my_rules/modulo_editais/00-Plano-v3.md
+
+roadmap:
+  titulo: "Editais fatia 9 — inscrição, taxas, isenção e canais de atendimento"
+  criado: "2026-09-16"
+  status: >
+    ⏳ NÃO INICIADO — 🟡 ESBOÇO. Detalhar antes de executar.
+    ⚠️ Esta fatia NÃO existia na primeira divisão do plano — apareceu ao conferir o
+    `Arquitetura de Tabelas…` contra a lista de fatias, e foi acrescentada a pedido do
+    usuário em 2026-09-16.
+  depende_de: "Fatia 1 (espinha), fatia 3 (os prazos são do cronograma) e fatia 2 (a taxa varia por nível de escolaridade)."
+
+  origem: >
+    Os capítulos [6] (inscrição e pagamento) e [7] (isenção da taxa). Seções 1 e 4 do
+    `Arquitetura de Tabelas…`. ⚠️ Não tem passo correspondente no `UI e UX.md` — que vai do
+    Passo 1 (identificação) direto ao Passo 2 (cargos). É uma lacuna do material de
+    referência, não uma decisão de escopo.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  por_que_os_canais_moram_aqui: |
+    `edital_canais_atendimento` ATRAVESSA vários capítulos: posto presencial de inscrição
+    [6], envelope de isenção [7], envelope de PCD [8], e-mail de impugnação [17], e-mail de
+    vista da folha [13].
+
+    Decisão: a tabela nasce NESTA fatia, porque é aqui que o primeiro consumidor aparece
+    (o posto presencial). As outras fatias apenas REFERENCIAM o canal, não o recriam.
+    ⚠️ Se a fatia 5 (vista de prova) vier antes desta, ela cria o campo `email_solicitacao`
+    solto — e aí passam a existir dois lugares guardando e-mail de atendimento. Quem
+    executar a 5 primeiro precisa saber disso.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  medido_antes: |
+    Edital 003/2026, as regras de isenção mais detalhadas dos três:
+
+    · CadÚnico atualizado nos últimos 24 MESES.
+    · Declaração REDOME emitida no ANO CORRENTE.
+    · Doador de sangue e prestador de serviço à Justiça Eleitoral também isentam.
+    · 🔴 "Um pedido/envelope POR CARGO" — veda reaproveitar documentação entre inscrições
+      múltiplas. É parâmetro, não constante: o 002 e o 004 podem divergir.
+
+    ⚠️ Os três editais não foram conferidos campo a campo nesta fatia. Fazer isso ANTES de
+    cravar os campos — é a regra do CLAUDE.md §1.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  etapas:
+    - id: 1
+      nome: "Banco — taxas, isenção e canais"
+      status: "⏳ pendente"
+      entrega:
+        - >
+          `taxas_inscricao`: `edital_id`, e o recorte por `nivel_escolaridade` OU por
+          `edital_cargo_id` — decidir qual, medindo nos três editais. `valor_taxa`.
+        - >
+          `regras_isencao`: `tipo_criterio` (CADUNICO | DOADOR_SANGUE | DOADOR_MEDULA_REDOME
+          | SERVICO_ELEITORAL), `lei_referencia`, `meses_atualizacao_cadunico`,
+          `ano_vigente_redome`, `minimo_doacoes_sangue_12m`,
+          `permite_multiplos_cargos_mesmo_envelope`.
+        - >
+          `edital_canais_atendimento`: `tipo_canal` (PORTAL_WEB | EMAIL_IMPUGNACAO |
+          EMAIL_VISTA_PROVA | POSTO_PRESENCIAL), `descricao_endereco`,
+          `horario_funcionamento`.
+      armadilha: >
+        ⚠️ `valor_taxa` em `numeric`, nunca `float`. E o recorte da taxa (por nível ou por
+        cargo) é decisão de modelo que muda a UI inteira do capítulo — medir antes.
+
+    - id: 2
+      nome: "UI — os dois capítulos e o seletor de canais"
+      status: "⏳ pendente"
+      entrega:
+        - "Capítulo [6]: taxas, prazos (vindos do cronograma) e regras de inscrição múltipla."
+        - "Capítulo [7]: os critérios de isenção como toggles independentes, com os parâmetros de cada um."
+        - "Canais cadastrados uma vez e REFERENCIADOS pelos capítulos que os citam."
+
+    - id: 3
+      nome: "Verificação e docs"
+      status: "⏳ pendente"
+      entrega:
+        - "⭐ CONTROLE POSITIVO: reproduzir os capítulos [6] e [7] do Edital 003/2026."
+        - >
+          ⭐ CONTROLE NEGATIVO: edital com isenção cujo prazo final é DEPOIS do fim das
+          inscrições tem de acusar (regra de precedência da fatia 3).
+        - "Bateria SQL · npm test · tsc · lint (baseline 111) · build · docs:conferir"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  riscos: |
+    R1. 🔴 **Canal de atendimento duplicado.** Se outra fatia criar campo de e-mail antes
+        desta, passa a haver dois lugares guardando a mesma informação — e um deles vai
+        envelhecer. Ver `por_que_os_canais_moram_aqui`.
+
+    R2. **Taxa recortada errado.** Se for por nível e o edital cobrar por cargo (ou o
+        inverso), o capítulo inteiro precisa ser remodelado. É medição, não palpite.
+
+    R3. **Isenção é a porta de fraude mais visada de um concurso.** ⚠️ O sistema aqui só
+        DESCREVE a regra no edital; quem defere é a banca. Não deixar o doc sugerir que há
+        validação automática.

@@ -1,0 +1,88 @@
+# Roadmap VIVO — Módulo Editais, fatia 6: prova de títulos
+# Criado em 2026-09-16. Leia my_rules/analises/README.md antes de usar como guia.
+# Índice das 12 fatias: my_rules/modulo_editais/00-Plano-v3.md
+
+roadmap:
+  titulo: "Editais fatia 6 — prova de títulos (capítulo condicional)"
+  criado: "2026-09-16"
+  status: "⏳ NÃO INICIADO — 🟡 ESBOÇO. Detalhar antes de executar."
+  depende_de: "Fatia 1 (é capítulo condicional), fatia 5 (é uma fase do certame) e fatia 3 (o prazo depende do cronograma)."
+
+  origem: >
+    O capítulo [14] do `Estrutura de Edital.md`. Passo 7 do `UI e UX.md`, seção 8 do
+    `Arquitetura de Tabelas…`. Só o Edital 002/2026 tem esta etapa entre os três de
+    referência.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  decisoes_do_usuario: |
+    D_ORTOGONAL. 🔴 LIGÁVEL EM QUALQUER EDITAL.
+        RECUSADO, e estava escrito no material: o `UI e UX.md` intitulava este passo
+        "(Condicional: Magistério)" e o `Peculiaridades` mandava "se Magistério → injetar
+        Prova de Títulos". O Magistério é o caso conhecido, não uma condição. Um edital de
+        ACS pode ter prova de títulos. A carreira, no máximo, pré-marca o toggle.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  medido_antes: |
+    Edital 002/2026, o único dos três com esta etapa:
+
+    · Teto máximo: 12 PONTOS.
+    · Caráter exclusivamente CLASSIFICATÓRIO (não elimina).
+    · Exige histórico escolar junto do diploma, em lato e stricto sensu.
+    · Cursos válidos só se concluídos até 30 DIAS ANTES do fim das inscrições.
+    · Título que serve de requisito de investidura NÃO pontua.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  etapas:
+    - id: 1
+      nome: "Banco — categorias e regras gerais"
+      status: "⏳ pendente"
+      entrega:
+        - >
+          `titulos_categorias`: `edital_cargo_id`, `nivel_titulo` (DOUTORADO |
+          MESTRADO_PROFISSIONAL | MESTRADO_ACADEMICO | ESPECIALIZACAO_LATO_SENSU),
+          `area_exigida`, `carga_horaria_minima_horas`, `pontos_por_item`,
+          `limite_itens_aceitos`, `pontuacao_maxima_categoria`, `exige_historico_anexo`.
+        - >
+          `titulos_regras_gerais`: `edital_id`, `teto_maximo_geral_pontos`,
+          `dias_conclusao_previa_inscricao`, `exige_reconhecimento_mec_cne`.
+      armadilha: >
+        🔴 "Título que serve de requisito de investidura não pontua" CRUZA TABELAS — depende
+        da `escolaridade_minima` do cargo (fatia 2). Se virar barreira, é TRIGGER, não `if`
+        no hook (CLAUDE.md §2). E se ficar só na tela, o doc precisa dizer que é conveniência,
+        não garantia.
+
+    - id: 2
+      nome: "UI — a grade de titulações"
+      status: "⏳ pendente"
+      entrega:
+        - "Toggle do capítulo, ligável em qualquer edital (D_ORTOGONAL)."
+        - "Grade: nível · área · pontos unitários · quantidade máxima · subtotal."
+        - >
+          🎯 Validação aritmética: a soma das `pontuacao_maxima_categoria` tem de ser
+          compatível com o `teto_maximo_geral_pontos`. Mesma natureza da soma de questões
+          da fatia 5 — função pura, testável.
+
+    - id: 3
+      nome: "Verificação e docs"
+      status: "⏳ pendente"
+      entrega:
+        - >
+          ⭐ CONTROLE POSITIVO COM DADO REAL: reproduzir a tabela de títulos do Edital
+          002/2026 e bater o teto de 12 pontos, item a item.
+        - >
+          ⭐ CONTROLE NEGATIVO: soma das categorias acima do teto tem de acusar — e acusar
+          essa regra, não outra.
+        - "Bateria SQL · npm test · tsc · lint (baseline 111) · build · docs:conferir"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  riscos: |
+    R1. **Ressuscitar o acoplamento a Magistério.** Está escrito em dois arquivos de
+        referência e é a leitura natural de quem chegar depois. Os dois já foram anotados,
+        mas a tentação volta quando alguém quiser "simplificar" o toggle.
+
+    R2. 🔴 **Teto compatível não é teto respeitado.** Validar que a soma das categorias cabe
+        no teto NÃO garante que a pontuação final de um candidato respeite o teto — isso é
+        correção de prova, outro módulo. ⚠️ Registrar a fronteira, ou alguém vai supor que o
+        sistema já limita.
+
+    R3. **O prazo de 30 dias depende do cronograma** (fatia 3). Se vier antes, é número solto.

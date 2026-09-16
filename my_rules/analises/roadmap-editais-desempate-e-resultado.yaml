@@ -1,0 +1,80 @@
+# Roadmap VIVO — Módulo Editais, fatia 11: critérios de desempate e resultado final
+# Criado em 2026-09-16. Leia my_rules/analises/README.md antes de usar como guia.
+# Índice das 12 fatias: my_rules/modulo_editais/00-Plano-v3.md
+
+roadmap:
+  titulo: "Editais fatia 11 — critérios de desempate e resultado final"
+  criado: "2026-09-16"
+  status: >
+    ⏳ NÃO INICIADO — 🟡 ESBOÇO. Detalhar antes de executar.
+    ⚠️ Acrescentada em 2026-09-16, junto com as fatias 9 e 10.
+  depende_de: >
+    Fatia 1 (espinha), fatia 5 (o desempate referencia DISCIPLINA) e fatia 6 quando houver
+    títulos (um dos critérios é a pontuação de títulos).
+
+  origem: >
+    O capítulo [15] do `Estrutura de Edital.md`. Seção 9 do `Arquitetura de Tabelas…`.
+    ⚠️ Sem passo correspondente no `UI e UX.md`.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  medido_antes: |
+    A ordem sucessiva descrita no material, a CONFERIR nos três editais antes de cravar:
+
+      1. Idade igual ou superior a 60 anos (Estatuto do Idoso)
+      2. Exercício comprovado da função de jurado (Art. 440 do CPP)
+      3. Maior pontuação por disciplina — e a ORDEM das disciplinas varia por edital
+         (comum: Específicos > Pedagógicos/Legislação SUS > Português > Matemática/Títulos)
+      4. Maior idade cronológica, com desempate por HORA, MINUTO E SEGUNDO da certidão
+      5. Critérios próprios de PCD (Lei Municipal 3.113/94): arrimo de família, maior número
+         de dependentes até 21 anos, ausência de fonte de renda
+
+    🔴 O item 3 é o que amarra esta fatia à 5: o critério aponta para uma DISCIPLINA, e a
+    ordem entre disciplinas é parte do critério. Guardar isso como texto livre torna o
+    desempate impossível de verificar.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  etapas:
+    - id: 1
+      nome: "Banco — as duas listas ordenadas"
+      status: "⏳ pendente"
+      entrega:
+        - >
+          `criterios_desempate`: `edital_cargo_id`, `ordem_prioridade`, `criterio_tipo`
+          (ESTATUTO_IDOSO_60 | FUNCAO_JURADO | PONTUACAO_DISCIPLINA | MAIOR_PONTOS_TITULOS |
+          MAIOR_IDADE_DATA_HORA), `disciplina_referencia_id` (NULLABLE, obrigatório quando o
+          tipo for PONTUACAO_DISCIPLINA).
+        - >
+          `criterios_desempate_pcd`: `edital_id`, `ordem_prioridade`, `criterio_pcd`
+          (ARRIMO_FAMILIA | MAIOR_NUMERO_DEPENDENTES_ATE_21 | AUSENCIA_FONTE_RENDA).
+      armadilha: >
+        🔴 `ordem_prioridade` sem UNIQUE por edital deixa dois critérios empatados na mesma
+        posição — um desempate que empata. UNIQUE (edital_cargo_id, ordem_prioridade).
+        ⚠️ E `disciplina_referencia_id` nulo com tipo PONTUACAO_DISCIPLINA é critério
+        impossível de aplicar: isso é CHECK, não validação de tela.
+
+    - id: 2
+      nome: "UI — lista ordenável"
+      status: "⏳ pendente"
+      entrega:
+        - "Lista arrastável de critérios, com o seletor de disciplina aparecendo só no tipo que o exige."
+        - "Lista separada para os critérios de PCD."
+
+    - id: 3
+      nome: "Verificação e docs"
+      status: "⏳ pendente"
+      entrega:
+        - "⭐ CONTROLE POSITIVO: reproduzir a ordem de desempate do Edital 002 e a do 004 (diferem na disciplina)."
+        - "⭐ CONTROLE NEGATIVO: critério PONTUACAO_DISCIPLINA sem disciplina tem de ser recusado PELO BANCO."
+        - "Bateria SQL · npm test · tsc · lint (baseline 111) · build · docs:conferir"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  riscos: |
+    R1. 🔴 **Desempate é a parte do edital que vira processo judicial.** Critério ambíguo ou
+        ordem mal descrita é vício recorrente. ⚠️ O sistema DESCREVE o critério; quem aplica
+        é a correção. Não deixar o doc sugerir que o sistema desempata.
+
+    R2. **Acoplamento à fatia 5.** Sem disciplina identificável, o critério 3 é texto solto.
+
+    R3. **A hora/minuto/segundo da certidão de nascimento** (critério 4) é dado que o sistema
+        não tem e provavelmente nunca terá. É regra textual do edital — registrar como tal,
+        para ninguém tentar modelar um campo que não se preenche.
