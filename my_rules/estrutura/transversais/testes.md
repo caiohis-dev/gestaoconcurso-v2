@@ -166,7 +166,13 @@ O preço veio em 10/09: o bloco foi lido de boa-fé numa varredura e virou um **
 
 ## O que está coberto (2026-07-27)
 
-**1.483 testes em 79 arquivos** (medido em 2026-09-16, ao fim da **fatia 4 da v3 do módulo Editais — ações afirmativas** — arquivo novo `src/lib/edital-acoes-afirmativas.test.ts` (13 casos).
+**1.496 testes em 80 arquivos** (medido em 2026-09-16, ao fim da **fatia 5 da v3 do módulo Editais — a matriz da prova** — arquivo novo `src/lib/edital-prova.test.ts` (13 casos).
+
+⭐ O controle positivo são as **três composições reais**, e elas saem do mesmo código sem caso especial: 50 = 10+15+25 (002, com Pedagógicos), 70 = 10+10+50 (003, com Legislação do SUS) e 50 = 10+10+30 (004, com Matemática). Três núcleos comuns diferentes, nenhum `if` por carreira.
+
+⚠️ Um caso registra uma FRONTEIRA que nenhum edital real exercita: 50% de total ímpar. Os três dão conta exata (25 e 35), então a linha que decide entre 22 e 23 num total de 45 está escrita mas não testada pelo mundo.
+
+Eram **1.483 em 79** ao fim da fatia 4 do mesmo dia — ações afirmativas** — arquivo novo `src/lib/edital-acoes-afirmativas.test.ts` (13 casos).
 
 🔴 **Ele nasceu de um TERCEIRO defeito achado no material publicado.** O item 10.10 do Edital 003/2026 chama **16/09/2026** de "data de realização da prova" e deriva dali o corte da lactante em 16 de março; o cronograma do mesmo edital marca a prova em **20/09/2026** (16/09 é a data do comprovante de local de prova). Com a prova em 20/09, o corte correto é **20 de março** — uma candidata cujo bebê nasceu em 18/03 seria recusada por engano.
 

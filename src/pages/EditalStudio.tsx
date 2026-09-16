@@ -35,6 +35,7 @@ import { ArrowLeft, Loader2, AlertTriangle, CircleAlert, CheckCircle2 } from "lu
 import { QuadroDeCargos } from "@/components/QuadroDeCargos";
 import { CronogramaEtapas } from "@/components/CronogramaEtapas";
 import { AcoesAfirmativas } from "@/components/AcoesAfirmativas";
+import { MatrizDaProva } from "@/components/MatrizDaProva";
 
 /** O número como sai no documento; capítulo sem número mostra um traço. */
 function Numero({ capitulo }: { capitulo: CapituloResolvido }) {
@@ -142,6 +143,7 @@ function CorpoDoCapitulo({
 function EditorDoCapitulo({ chave, editalId }: { chave: string; editalId: string | undefined }) {
   if (!editalId) return null;
   if (chave === "quadro_de_cargos") return <QuadroDeCargos editalId={editalId} />;
+  if (chave === "prova_objetiva") return <MatrizDaProva editalId={editalId} />;
   // O cronograma sai como elemento pós-textual, junto dos anexos.
   if (chave === "anexos") return <CronogramaEtapas editalId={editalId} />;
   if (["vagas_pcd", "vagas_cotas_raciais", "condicoes_especiais_prova"].includes(chave)) {

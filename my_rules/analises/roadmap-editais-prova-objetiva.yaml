@@ -5,7 +5,12 @@
 roadmap:
   titulo: "Editais fatia 5 — matriz da prova objetiva (disciplinas, corte e regras de sala)"
   criado: "2026-09-16"
-  status: "⏳ NÃO INICIADO — 🟡 ESBOÇO. Detalhar antes de executar."
+  status: >
+    🟢 EXECUTADA em 2026-09-16. Migration 20260916194709, `src/lib/edital-prova.ts`,
+    `MatrizDaProva.tsx` e `docs/bateria-edital-prova-objetiva.sql`. 1.496 testes em 80
+    arquivos, tsc, build, lint 111 (baseline), docs:conferir limpo, db reset completo.
+    ⚠️ Ver `desvios_da_execucao`.
+    🟢 Aguardando merge para ir a concluidos/.
   depende_de: >
     Fatia 1 (espinha). E da fatia 2 se a composição variar por cargo — e varia nos três
     editais reais.
@@ -91,3 +96,27 @@ roadmap:
     R3. **`permite_zerar_disciplina` é regra de correção, não de edital.** Ela descreve o
         critério de aprovação, e um dia alguém vai querer que o sistema CORRIJA a prova com
         base nela. ⚠️ Isso é outro módulo — registrar a fronteira antes que ela se apague.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  desvios_da_execucao: |
+    ➕ A SOMA NÃO VIROU BARREIRA DE BANCO, e o roadmap sugeria que sim. Não dá para
+       expressar agregação de outra tabela numa CHECK, e um trigger recusaria a digitação
+       no meio do caminho — quem monta a matriz preenche uma disciplina por vez, e o
+       estado intermediário é legítimo. Fica no linter, que é onde o `UI e UX.md` já a
+       marcava como bloqueante para AVANÇAR (não para gravar).
+
+    🔴 EU AFIRMEI ERRADO E CORRIGI NO MESMO PASSE: cheguei a dizer que o Edital 004 não
+       tinha a cláusula "sem contudo zerar em qualquer uma das áreas". Era linha truncada
+       no meu grep — os TRÊS têm. `permite_zerar_disciplina` segue sendo parâmetro (é
+       regra que pode variar), mas não há divergência real entre os três hoje.
+
+    🔴 A BATERIA PEGOU UM CASO MEU QUE MENTIA. O CASO 2 afirmava que disciplina repetida
+       com "outra caixa" seria recusada, e usava 'lingua portuguesa' SEM acento como
+       fixture. O índice normaliza caixa e espaço, não acento — então o caso falhava e,
+       pior, afirmava uma proteção inexistente. Corrigido, e o limite virou o CASO 2a,
+       explícito: é o mesmo comportamento de `cargos_nome_chave_key`.
+
+    ⚠️ FRONTEIRA REGISTRADA E NÃO EXERCITADA PELO MUNDO: 50% de total ÍMPAR. Os três
+       editais dão conta exata (25 de 50, 35 de 70). Se a FEVRE publicar prova de total
+       ímpar, é `minimoParaAprovacao` que decide entre 22 e 23 — e ninguém conferiu com a
+       norma.

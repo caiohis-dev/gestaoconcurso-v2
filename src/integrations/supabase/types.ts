@@ -1232,6 +1232,91 @@ export type Database = {
           },
         ]
       }
+      provas_disciplinas: {
+        Row: {
+          created_at: string
+          edital_cargo_id: string
+          id: string
+          nome_disciplina: string
+          ordem: number
+          peso_por_questao: number
+          quantidade_questoes: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          edital_cargo_id: string
+          id?: string
+          nome_disciplina: string
+          ordem?: number
+          peso_por_questao?: number
+          quantidade_questoes: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          edital_cargo_id?: string
+          id?: string
+          nome_disciplina?: string
+          ordem?: number
+          peso_por_questao?: number
+          quantidade_questoes?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "provas_disciplinas_edital_cargo_id_fkey"
+            columns: ["edital_cargo_id"]
+            isOneToOne: false
+            referencedRelation: "edital_cargos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      provas_objetivas_config: {
+        Row: {
+          created_at: string
+          duracao_minutos: number | null
+          edital_cargo_id: string
+          nota_corte_percentual: number | null
+          permite_zerar_disciplina: boolean | null
+          tempo_minimo_levar_caderno_minutos: number | null
+          tempo_minimo_permanencia_minutos: number | null
+          total_questoes: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          duracao_minutos?: number | null
+          edital_cargo_id: string
+          nota_corte_percentual?: number | null
+          permite_zerar_disciplina?: boolean | null
+          tempo_minimo_levar_caderno_minutos?: number | null
+          tempo_minimo_permanencia_minutos?: number | null
+          total_questoes?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          duracao_minutos?: number | null
+          edital_cargo_id?: string
+          nota_corte_percentual?: number | null
+          permite_zerar_disciplina?: boolean | null
+          tempo_minimo_levar_caderno_minutos?: number | null
+          tempo_minimo_permanencia_minutos?: number | null
+          total_questoes?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "provas_objetivas_config_edital_cargo_id_fkey"
+            columns: ["edital_cargo_id"]
+            isOneToOne: true
+            referencedRelation: "edital_cargos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       regras_cotas_raciais: {
         Row: {
           created_at: string
@@ -1345,6 +1430,44 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "regras_pcd_edital_id_fkey"
+            columns: ["edital_id"]
+            isOneToOne: true
+            referencedRelation: "editais"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      regras_vista_prova: {
+        Row: {
+          created_at: string
+          edital_id: string
+          email_solicitacao: string | null
+          exige_termo_visita_assinado: boolean | null
+          intersticio_minimo_horas: number | null
+          tipo_procedimento: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          edital_id: string
+          email_solicitacao?: string | null
+          exige_termo_visita_assinado?: boolean | null
+          intersticio_minimo_horas?: number | null
+          tipo_procedimento?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          edital_id?: string
+          email_solicitacao?: string | null
+          exige_termo_visita_assinado?: boolean | null
+          intersticio_minimo_horas?: number | null
+          tipo_procedimento?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "regras_vista_prova_edital_id_fkey"
             columns: ["edital_id"]
             isOneToOne: true
             referencedRelation: "editais"

@@ -43,6 +43,9 @@ O **edital** é o **documento normativo do certame**, montado por capítulos den
 | `src/lib/edital-cotas.ts` | 🔵 **v3 fatia 2** — função pura: a reserva de PCD e cotas raciais |
 | `src/lib/edital-cronograma.ts` | 🔵 **v3 fatia 3** — função pura: etapas, precedência e fim de semana |
 | `src/lib/edital-acoes-afirmativas.ts` | 🔵 **v3 fatia 4** — função pura: a data de corte DERIVADA |
+| `src/lib/edital-prova.ts` | 🔵 **v3 fatia 5** — função pura: soma das questões e nota de corte |
+| `src/hooks/useProvaObjetiva.tsx` · `src/components/MatrizDaProva.tsx` | 🔵 **v3 fatia 5** |
+| `supabase/migrations/20260916194709_editais_prova_objetiva.sql` | 🔵 **v3 fatia 5** — matriz, disciplinas e vista |
 | `src/hooks/useAcoesAfirmativas.tsx` · `src/components/AcoesAfirmativas.tsx` | 🔵 **v3 fatia 4** |
 | `supabase/migrations/20260916193309_editais_acoes_afirmativas.sql` | 🔵 **v3 fatia 4** — PCD, cotas e lactantes |
 | `src/hooks/useCronograma.tsx` · `src/components/CronogramaEtapas.tsx` | 🔵 **v3 fatia 3** |
@@ -121,6 +124,22 @@ Cada grupo de dados descarta uma hipótese: **não é teto** (Arte tem 1 vaga e 
 ⚠️ **É a prática da FEVRE medida, não o texto da lei.** Cargo pequeno não reserva vaga nenhuma. Se uma norma exigir piso de 1, muda em `src/lib/edital-cotas.ts` e os 22 valores acusam a diferença.
 
 **As vagas são GRAVADAS, não recalculadas na leitura.** Um edital publica números; recalcular faria um edital antigo mudar sozinho se a regra mudasse. A `CHECK chk_edital_cargo_vagas_somam` garante que o total é a soma das partes — no banco, não só na tela.
+
+### 🔵 A matriz da prova é POR CARGO, e a soma tem de fechar (fatia 5)
+
+Os editais dizem *"A Prova Objetiva **para os candidatos às vagas de `<cargo>`** constará de…"*, então a configuração pende de `edital_cargos`. Medido:
+
+| edital | total | composição |
+|---|---|---|
+| 002 Docente I | 50 | 10 Português + 15 Pedagógicos + 25 Específicos |
+| 003 Enfermeiro | 70 | 10 Português + 10 Legislação do SUS + 50 Específicos |
+| 004 ACS | 50 | 10 Português + 10 Matemática + 30 Específicos |
+
+🔴 **A soma das disciplinas × o total declarado NÃO é CHECK**, e é escolha: não dá para expressar agregação de outra tabela numa CHECK, e um trigger recusaria a digitação no meio do caminho — quem monta a matriz preenche uma disciplina por vez. Grava-se sempre; quem barra a **publicação** é o linter.
+
+⚠️ **O índice de disciplina normaliza caixa e espaço, NÃO acento.** `lingua portuguesa` e `Língua Portuguesa` são disciplinas distintas para ele. É o mesmo comportamento de `cargos_nome_chave_key` — dobrar acento aqui seria identidade, não busca, e poderia fundir nomes legitimamente diferentes. Documentado no CASO 2a da bateria, porque a primeira versão do caso **afirmava a proteção que não existe**.
+
+⚠️ Os três editais exigem *"sem contudo zerar em qualquer uma das áreas"* — conferido nos três depois de eu ter afirmado errado que o 004 não tinha a cláusula (era linha truncada num grep). `permite_zerar_disciplina` segue como parâmetro, mas hoje os três concordam.
 
 ### 🔴 A data de corte da lactante é DERIVADA — e o porquê é um defeito real (fatia 4)
 
