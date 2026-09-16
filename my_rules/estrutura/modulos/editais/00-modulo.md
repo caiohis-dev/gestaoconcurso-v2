@@ -42,6 +42,9 @@ O **edital** é o **documento normativo do certame**, montado por capítulos den
 | `src/lib/edital-itens.ts` | 🔵 **v3** — função pura: numeração de ITEM e referência por âncora |
 | `src/lib/edital-cotas.ts` | 🔵 **v3 fatia 2** — função pura: a reserva de PCD e cotas raciais |
 | `src/lib/edital-cronograma.ts` | 🔵 **v3 fatia 3** — função pura: etapas, precedência e fim de semana |
+| `src/lib/edital-acoes-afirmativas.ts` | 🔵 **v3 fatia 4** — função pura: a data de corte DERIVADA |
+| `src/hooks/useAcoesAfirmativas.tsx` · `src/components/AcoesAfirmativas.tsx` | 🔵 **v3 fatia 4** |
+| `supabase/migrations/20260916193309_editais_acoes_afirmativas.sql` | 🔵 **v3 fatia 4** — PCD, cotas e lactantes |
 | `src/hooks/useCronograma.tsx` · `src/components/CronogramaEtapas.tsx` | 🔵 **v3 fatia 3** |
 | `supabase/migrations/20260916191028_editais_cronograma_etapas.sql` | 🔵 **v3 fatia 3** — `cronograma_etapas` |
 | `src/hooks/useEditalCargos.tsx` | 🔵 **v3 fatia 2** — o Quadro I; escreve em `edital_cargos` |
@@ -118,6 +121,22 @@ Cada grupo de dados descarta uma hipótese: **não é teto** (Arte tem 1 vaga e 
 ⚠️ **É a prática da FEVRE medida, não o texto da lei.** Cargo pequeno não reserva vaga nenhuma. Se uma norma exigir piso de 1, muda em `src/lib/edital-cotas.ts` e os 22 valores acusam a diferença.
 
 **As vagas são GRAVADAS, não recalculadas na leitura.** Um edital publica números; recalcular faria um edital antigo mudar sozinho se a regra mudasse. A `CHECK chk_edital_cargo_vagas_somam` garante que o total é a soma das partes — no banco, não só na tela.
+
+### 🔴 A data de corte da lactante é DERIVADA — e o porquê é um defeito real (fatia 4)
+
+O item 10.10 do **Edital 003/2026 publicado** diz:
+
+> *"desde que o lactente tenha nascido a partir do dia 16 de março de 2026, considerando o limite de até 6 (seis) meses de idade na data de realização da prova **(16 de setembro de 2026)**"*
+
+Mas o cronograma do mesmo edital marca a prova em **20/09/2026**. O 16/09 é a data do **comprovante de local de prova**.
+
+🔴 **Com a prova em 20/09, o corte correto é 20 de março.** Uma candidata cujo bebê nasceu em 18/03 seria recusada por engano — e isso se discute em juízo.
+
+Por isso **não existe coluna `data_limite_nascimento`**: guarda-se `idade_maxima_lactente_meses`, e a data sai da etapa `prova_objetiva` do cronograma, na renderização. Mesmo princípio da numeração de capítulo — **o que é derivado não se persiste, senão envelhece em silêncio**.
+
+⚠️ As **datas de perícia** seguem a mesma lógica pelo outro lado: elas moram no cronograma, como etapa do tipo `ALTERNATIVAS`, e não em `regras_pcd`. Duplicá-las criaria duas fontes.
+
+⚠️ Os presets recomendados (compensação de 30 min, laudo indeterminado das Leis RJ) são **aviso**, nunca trava: o Edital 002 não compensa tempo e é válido. O modelo precisa reproduzir os três editais sem caso especial — e a bateria prova isso.
 
 ### 🔵 O cronograma, e as TRÊS formas de data (fatia 3, 2026-09-16)
 

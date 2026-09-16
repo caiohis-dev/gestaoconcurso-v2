@@ -5,7 +5,13 @@
 roadmap:
   titulo: "Editais fatia 4 — ações afirmativas e condições especiais (PCD, cotas, lactantes)"
   criado: "2026-09-16"
-  status: "⏳ NÃO INICIADO — 🟡 ESBOÇO. Detalhar antes de executar."
+  status: >
+    🟢 EXECUTADA em 2026-09-16. Migration 20260916193309, `edital-acoes-afirmativas.ts`,
+    `AcoesAfirmativas.tsx` e `docs/bateria-edital-acoes-afirmativas.sql`. 1.483 testes em
+    79 arquivos, tsc, build, lint 111 (baseline), docs:conferir limpo, db reset completo.
+    ⚠️ Ver `desvios_da_execucao`: um TERCEIRO defeito no material publicado mudou o
+    desenho, e o lint pegou um erro real meu.
+    🟢 Aguardando merge para ir a concluidos/.
   depende_de: >
     Fatia 1 (espinha). E da fatia 2 para o percentual de reserva incidir sobre vagas reais
     — antes disso é percentual sem base.
@@ -107,3 +113,33 @@ roadmap:
     R3. **`obriga_rubrica_todas_folhas` é regra de PROCEDIMENTO, não de dado.** Ela muda o
         texto do capítulo, e no 004 gera indeferimento automático. ⚠️ Não confundir com
         validação de sistema: quem confere rubrica é a banca, não o software.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  desvios_da_execucao: |
+    🔴 UM TERCEIRO DEFEITO NO MATERIAL PUBLICADO, achado ao medir, mudou o desenho.
+       O item 10.10 do Edital 003/2026 chama 16/09/2026 de "data de realização da prova"
+       e deriva dali o corte da lactante em 16 de março. O cronograma do MESMO edital
+       marca a prova em 20/09/2026 — 16/09 é o comprovante de local de prova.
+       Com a prova em 20/09, o corte correto é 20 DE MARÇO. Uma candidata cujo bebê
+       nasceu em 18/03 seria recusada por engano.
+       Consequência: `data_limite_nascimento_lactente` NÃO virou coluna, contra o que
+       este roadmap previa (P1). Guarda-se a idade máxima em meses e deriva-se da etapa
+       `prova_objetiva`. É o mesmo princípio da numeração de capítulo.
+
+    ➕ P2 RESOLVIDA pelo mesmo caminho: as datas de perícia NÃO moram em `regras_pcd`.
+       São uma etapa do tipo ALTERNATIVAS no cronograma (fatia 3). Duplicá-las criaria
+       duas fontes para a mesma informação.
+
+    ➕ CHECK NOVA que o roadmap não previa: `chk_lactante_tempo_coerente` recusa tempo de
+       compensação declarado COM a compensação desligada. É o Edital 002 misturado com o
+       003 — o edital diria "não há compensação" e, adiante, "até 30 minutos".
+
+    🔴 O LINT PEGOU UM ERRO REAL MEU: `react-hooks/rules-of-hooks`. Eu tinha um helper
+       `uma<T>(tabela)` que chamava `useQuery` lá dentro. Funcionava, mas é frágil por
+       construção — basta alguém pôr o helper num `if` ou num `map` e a ordem dos hooks
+       quebra em runtime, sem erro de compilação. As três consultas passaram a ser
+       escritas uma a uma.
+
+    ➕ O despacho do editor por capítulo virou `EditorDoCapitulo` no EditalStudio. É o
+       ponto de crescimento do módulo: cada fatia acrescenta UMA linha ali. Se essa
+       função começar a acumular lógica em vez de despacho, a decisão está no lugar errado.

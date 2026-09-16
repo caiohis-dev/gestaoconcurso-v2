@@ -1232,6 +1232,126 @@ export type Database = {
           },
         ]
       }
+      regras_cotas_raciais: {
+        Row: {
+          created_at: string
+          edital_id: string
+          exige_autodeclaracao_datada_assinada: boolean | null
+          lei_base: string | null
+          percentual_reserva: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          edital_id: string
+          exige_autodeclaracao_datada_assinada?: boolean | null
+          lei_base?: string | null
+          percentual_reserva?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          edital_id?: string
+          exige_autodeclaracao_datada_assinada?: boolean | null
+          lei_base?: string | null
+          percentual_reserva?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "regras_cotas_raciais_edital_id_fkey"
+            columns: ["edital_id"]
+            isOneToOne: true
+            referencedRelation: "editais"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      regras_lactantes: {
+        Row: {
+          created_at: string
+          edital_id: string
+          exige_acompanhante_maior: boolean | null
+          idade_maxima_lactente_meses: number | null
+          intervalos_permitidos: number | null
+          permite_compensacao_tempo: boolean | null
+          tempo_maximo_compensacao_minutos: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          edital_id: string
+          exige_acompanhante_maior?: boolean | null
+          idade_maxima_lactente_meses?: number | null
+          intervalos_permitidos?: number | null
+          permite_compensacao_tempo?: boolean | null
+          tempo_maximo_compensacao_minutos?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          edital_id?: string
+          exige_acompanhante_maior?: boolean | null
+          idade_maxima_lactente_meses?: number | null
+          intervalos_permitidos?: number | null
+          permite_compensacao_tempo?: boolean | null
+          tempo_maximo_compensacao_minutos?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "regras_lactantes_edital_id_fkey"
+            columns: ["edital_id"]
+            isOneToOne: true
+            referencedRelation: "editais"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      regras_pcd: {
+        Row: {
+          aceita_laudo_indeterminado: boolean | null
+          created_at: string
+          edital_id: string
+          leis_base: string | null
+          local_pericia: string | null
+          obriga_rubrica_todas_folhas: boolean | null
+          percentual_reserva: number | null
+          updated_at: string
+          validade_meses_laudo_temporario: number | null
+        }
+        Insert: {
+          aceita_laudo_indeterminado?: boolean | null
+          created_at?: string
+          edital_id: string
+          leis_base?: string | null
+          local_pericia?: string | null
+          obriga_rubrica_todas_folhas?: boolean | null
+          percentual_reserva?: number | null
+          updated_at?: string
+          validade_meses_laudo_temporario?: number | null
+        }
+        Update: {
+          aceita_laudo_indeterminado?: boolean | null
+          created_at?: string
+          edital_id?: string
+          leis_base?: string | null
+          local_pericia?: string | null
+          obriga_rubrica_todas_folhas?: boolean | null
+          percentual_reserva?: number | null
+          updated_at?: string
+          validade_meses_laudo_temporario?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "regras_pcd_edital_id_fkey"
+            columns: ["edital_id"]
+            isOneToOne: true
+            referencedRelation: "editais"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reivindicacao_rate_limit: {
         Row: {
           chave: string

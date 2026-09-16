@@ -34,6 +34,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { ArrowLeft, Loader2, AlertTriangle, CircleAlert, CheckCircle2 } from "lucide-react";
 import { QuadroDeCargos } from "@/components/QuadroDeCargos";
 import { CronogramaEtapas } from "@/components/CronogramaEtapas";
+import { AcoesAfirmativas } from "@/components/AcoesAfirmativas";
 
 /** O número como sai no documento; capítulo sem número mostra um traço. */
 function Numero({ capitulo }: { capitulo: CapituloResolvido }) {
@@ -130,6 +131,25 @@ function CorpoDoCapitulo({
   );
 }
 
+/**
+ * Escolhe o editor estruturado do capítulo, pela CHAVE — nunca por número nem posição,
+ * que mudam conforme os condicionais entram e saem.
+ *
+ * ⚠️ Esta função é o ponto de crescimento do módulo: cada fatia acrescenta UMA linha
+ * aqui e um componente próprio. Se ela começar a acumular lógica em vez de despacho, é
+ * sinal de que a decisão está no lugar errado.
+ */
+function EditorDoCapitulo({ chave, editalId }: { chave: string; editalId: string | undefined }) {
+  if (!editalId) return null;
+  if (chave === "quadro_de_cargos") return <QuadroDeCargos editalId={editalId} />;
+  // O cronograma sai como elemento pós-textual, junto dos anexos.
+  if (chave === "anexos") return <CronogramaEtapas editalId={editalId} />;
+  if (["vagas_pcd", "vagas_cotas_raciais", "condicoes_especiais_prova"].includes(chave)) {
+    return <AcoesAfirmativas editalId={editalId} capitulo={chave} />;
+  }
+  return null;
+}
+
 /** O painel central: o capítulo selecionado, com o editor que ele pedir. */
 function PainelDoCapitulo({
   capitulo,
@@ -201,12 +221,7 @@ function PainelDoCapitulo({
                   ⚠️ A escolha é pela CHAVE do capítulo, no catálogo — não por número nem
                   por posição, que mudam conforme os condicionais entram e saem.
                 */}
-                {selecionado.chave === "quadro_de_cargos" && editalId && (
-                  <QuadroDeCargos editalId={editalId} />
-                )}
-                {selecionado.chave === "anexos" && editalId && (
-                  <CronogramaEtapas editalId={editalId} />
-                )}
+                <EditorDoCapitulo chave={selecionado.chave} editalId={editalId} />
 
                 <Textarea
                   value={rascunho ?? selecionado.texto}

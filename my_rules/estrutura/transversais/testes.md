@@ -166,7 +166,13 @@ O preço veio em 10/09: o bloco foi lido de boa-fé numa varredura e virou um **
 
 ## O que está coberto (2026-07-27)
 
-**1.470 testes em 78 arquivos** (medido em 2026-09-16, ao fim da **fatia 3 da v3 do módulo Editais — o cronograma** — arquivo novo `src/lib/edital-cronograma.test.ts` (18 casos).
+**1.483 testes em 79 arquivos** (medido em 2026-09-16, ao fim da **fatia 4 da v3 do módulo Editais — ações afirmativas** — arquivo novo `src/lib/edital-acoes-afirmativas.test.ts` (13 casos).
+
+🔴 **Ele nasceu de um TERCEIRO defeito achado no material publicado.** O item 10.10 do Edital 003/2026 chama **16/09/2026** de "data de realização da prova" e deriva dali o corte da lactante em 16 de março; o cronograma do mesmo edital marca a prova em **20/09/2026** (16/09 é a data do comprovante de local de prova). Com a prova em 20/09, o corte correto é **20 de março** — uma candidata cujo bebê nasceu em 18/03 seria recusada por engano.
+
+Por isso a data de corte **não é campo**: é derivada da etapa `prova_objetiva` do cronograma. Os casos guardam a derivação e reproduzem o valor errado a partir da data errada, para deixar claro de onde veio.
+
+Eram **1.470 em 78** ao fim da fatia 3 do mesmo dia — o cronograma** — arquivo novo `src/lib/edital-cronograma.test.ts` (18 casos).
 
 ⭐ **O controle positivo é o cronograma REAL do Edital 003/2026**, as 16 etapas como publicadas, e ele tem de passar SEM UM ÚNICO AVISO.
 
