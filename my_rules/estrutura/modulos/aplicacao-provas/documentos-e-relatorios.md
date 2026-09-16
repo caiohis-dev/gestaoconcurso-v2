@@ -61,7 +61,27 @@ Além dos documentos da página acima, `GerenciarProva.tsx` tem três exportaç�
 
 ## `/painel-dados-colaboradores/:provaId` (`PainelDadosColaboradores.tsx`)
 
-Painel read-only dos colaboradores alocados numa prova (nome, e-mail, unidade, último acesso), com busca e ordenação por nome / último acesso. Restrito a `admin` pela rota. Faz fetch manual (`useState`/`useEffect`), não React Query.
+Painel read-only dos colaboradores alocados numa prova (nome, e-mail, unidade, último acesso), com busca e ordenação **pelas quatro colunas**. Restrito a `admin` pela rota. Faz fetch manual (`useState`/`useEffect`), não React Query.
+
+🔵 **As quatro colunas ordenam desde 2026-09-15.** Até então só Nome e Último Acesso ordenavam — Email e Unidade eram cabeçalho morto. ⚠️ Esta linha dizia *"ordenação por nome / último acesso"*.
+
+Três coisas do desenho que valem saber antes de mexer:
+
+- **A ordenação é no CLIENTE**, sobre as linhas já buscadas — diferente de `/colaboradores`, que ordena no servidor. Aqui não há paginação, então ordenar no cliente ordena o conjunto inteiro e não mente. ⚠️ Mas veja o aviso do teto de 1000 abaixo.
+- **Colunas de texto comparam com `localeCompare(…, "pt-BR")`**, o que põe acento junto da letra base (`ÁLVARO` perto de `ALVES`, não no fim). Trocar por `<` parece equivalente e não é: `Á` é U+00C1 e cairia depois de `Z`. Há caso de teste falsificado nisso.
+- **Empate desempata pelo nome, explicitamente.** Sem isso o empate cairia na ordem de chegada da consulta (hoje nome ASC) — daria no mesmo resultado, mas por acidente, e sumiria se alguém mexesse no `.order()` da query.
+
+O cabeçalho ordenável é um **`<button>` dentro do `<th>`**, com `aria-sort` no `th`. Antes o clique vivia num `onClick` do próprio `<th>` com um `<div>` dentro: funcionava a mouse, **não alcançava o teclado** e não havia estado para leitor de tela anunciar. Se acrescentar coluna, use o `ColunaOrdenavel` do próprio arquivo em vez de repetir o markup.
+
+🧪 **`PainelDadosColaboradores.ui.test.tsx` (7 casos), de 2026-09-15** — a primeira cobertura desta página. Afirma a **ordem exata** das linhas nas quatro colunas (o fixture é desenhado para as quatro ordens serem distintas entre si), a inversão no segundo clique, o desempate e os quatro botões com `aria-sort`. ⚠️ A busca dos botões é **escopada ao cabeçalho da tabela**: solta, `/Unidade/i` casa também com "Unidades de Prova" no menu do `Layout` e o teste morre por ambiguidade.
+
+🔵 **O teto de 1000 foi fechado em 2026-09-15, no mesmo tema.** A consulta não usava `.range()`: o PostgREST corta em `max_rows` (1000) **em silêncio**, e uma prova com mais de 1.000 alocações mostraria um painel incompleto como se fosse completo — agora com quatro formas de reordenar o pedaço truncado. Passou a usar [`buscarEmFatias`](../../../../src/lib/buscar-em-fatias.ts), a mesma saída dos três exports de `GerenciarProva` (10/09). Hoje ainda não mordia: a maior prova medida tinha 531 alocações.
+
+⚠️ **O `.order('colab_nome_completo')` virou `.order('id')`, e isso é obrigatório, não preferência.** Sem ordem determinística o banco pode devolver linhas em ordem diferente entre uma fatia e outra, e o laço **repete uma e pula outra** — calado. A ordem da tela não se perde porque ela é decidida no cliente; foi o desempate explícito pelo nome (acima) que tornou essa troca segura.
+
+🔵 **Falha de consulta passou a APARECER.** Era `if (!error && data)`: o erro sumia, a lista ficava vazia e a tela dizia *"Nenhum colaborador encontrado"* — a mesma frase de uma prova sem ninguém alocado. Duas causas, uma mensagem, e a errada indistinguível da normal. ⚠️ **A mensagem do banco chega ao usuário**, e o caminho tem uma armadilha: `buscarEmFatias` faz `throw error` com o objeto **cru** do PostgREST, que **não é um `Error`** — um `e instanceof Error` ali descarta a mensagem e mostra texto genérico. Foi o teste que pegou.
+
+**O achatamento do join mora em `montarLinhas`, fora do componente** — função pura que deduplica por colaborador (quem está em duas unidades da mesma prova volta em duas linhas). Saiu de dentro do `useEffect` porque lá empurrava a complexidade do `fetchData` acima do teto do lint; de brinde, o `as any[]` do laço deixou de existir.
 
 > **Envio de e-mail em massa aposentado na 2D (2026-07-15).** A página tinha um botão "Solicitar Atualização de Dados" que mandava e-mail em lote (`buildEmailHtml` + `send-email`) aos colaboradores com campos pendentes ou sem primeiro acesso. Esse e-mail embutia `colab_codigo_acesso` (morto) e apontava para o login antigo `fevre.online/auth`; na 2D optou-se por **remover a feature inteira** (botão, `buildEmailHtml`, `getCamposFaltantes`, o dialog e a leitura de `email_atualizacao_log`), não reescrevê-la. A tabela `email_atualizacao_log` **fica** (histórico de 232 envios), apenas deixou de ser alimentada. Ver [`../analises/roadmap-auth-colaborador.md`](../../../analises/concluidos/roadmap-auth-colaborador.md).
 

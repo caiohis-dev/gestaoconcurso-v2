@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { buscarEmFatias } from "@/lib/buscar-em-fatias";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,13 +27,53 @@ interface Row {
   ultimo_acesso: string | null;
 }
 
-type SortCol = "nome" | "ultimo_acesso";
+type SortCol = "nome" | "email" | "unidade" | "ultimo_acesso";
+
+/** O que o join aninhado devolve, antes de ser achatado. */
+interface LinhaCrua {
+  colaboradores: {
+    id: string;
+    colab_nome_completo: string | null;
+    colab_email: string | null;
+    colab_ultimo_acesso: string | null;
+  } | null;
+  prova_unidades: {
+    unidades_prova: { unid_nome?: string | null; unid_sigla?: string | null } | null;
+  } | null;
+}
+
+/**
+ * Achata o join e DEDUPLICA por colaborador: quem está alocado em duas unidades da mesma
+ * prova volta em duas linhas de `colaboradores_prova`, e o painel lista PESSOAS.
+ *
+ * ⚠️ Fica fora do componente de propósito — dentro do `useEffect` isto empurrava a
+ * complexidade do `fetchData` acima do teto do lint, e aqui é função pura.
+ */
+function montarLinhas(cruas: LinhaCrua[]): Row[] {
+  const vistos = new Set<string>();
+  const linhas: Row[] = [];
+  for (const cp of cruas) {
+    const c = cp.colaboradores;
+    if (!c || vistos.has(c.id)) continue;
+    vistos.add(c.id);
+    const u = cp.prova_unidades?.unidades_prova;
+    linhas.push({
+      id: c.id,
+      nome: c.colab_nome_completo || "-",
+      email: c.colab_email || "-",
+      unidade: u?.unid_nome || u?.unid_sigla || "-",
+      ultimo_acesso: c.colab_ultimo_acesso,
+    });
+  }
+  return linhas;
+}
 
 export default function PainelDadosColaboradores() {
   const { provaId } = useParams<{ provaId: string }>();
   const { user, loading: authLoading, isAdmin } = useAuth();
   const [rows, setRows] = useState<Row[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [sortCol, setSortCol] = useState<SortCol>("nome");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -41,43 +82,53 @@ export default function PainelDadosColaboradores() {
     async function fetchData() {
       if (!provaId) return;
       setIsLoading(true);
-      const { data, error } = await supabase
-        .from("colaboradores_prova")
-        .select(`
-          colaboradores (
-            id,
-            colab_nome_completo,
-            colab_email,
-            colab_ultimo_acesso
-          ),
-          prova_unidades!inner (
-            prova_id,
-            unidades_prova ( unid_nome )
-          )
-        `)
-        .eq("prova_unidades.prova_id", provaId)
-        .order("colab_nome_completo", { referencedTable: "colaboradores", ascending: true });
+      setErro(null);
+      try {
+        // 🔴 EM FATIAS, não numa consulta só: o PostgREST corta em `max_rows` (1000) SEM
+        // erro nenhum, e o painel mostraria uma lista incompleta como se fosse completa —
+        // agora com quatro formas de reordenar o pedaço truncado. É o mesmo defeito que os
+        // três exports de `GerenciarProva` fecharam em 10/09.
+        //
+        // ⚠️ O `.order('id')` substituiu a ordem por nome e NÃO é cosmético: sem ordem
+        // determinística o banco pode devolver as linhas em ordem diferente de uma fatia
+        // para a outra, e o laço repete uma e pula outra — calado. A ordem da TELA é
+        // decidida no cliente (`filtered`), que já ordena pelas quatro colunas e desempata
+        // pelo nome, então nada se perde ao trocar a ordem da consulta.
+        const data = await buscarEmFatias((de, ate) =>
+          supabase
+            .from("colaboradores_prova")
+            .select(`
+              id,
+              colaboradores (
+                id,
+                colab_nome_completo,
+                colab_email,
+                colab_ultimo_acesso
+              ),
+              prova_unidades!inner (
+                prova_id,
+                unidades_prova ( unid_nome )
+              )
+            `)
+            .eq("prova_unidades.prova_id", provaId)
+            .order("id", { ascending: true })
+            .range(de, ate),
+        );
 
-      if (!error && data) {
-        const seen = new Set<string>();
-        const list: Row[] = [];
-        for (const cp of data as any[]) {
-          const c = cp.colaboradores;
-          if (!c || seen.has(c.id)) continue;
-          seen.add(c.id);
-          const unidade =
-            cp.prova_unidades?.unidades_prova?.unid_nome ||
-            cp.prova_unidades?.unidades_prova?.unid_sigla ||
-            "-";
-          list.push({
-            id: c.id,
-            nome: c.colab_nome_completo || "-",
-            email: c.colab_email || "-",
-            unidade,
-            ultimo_acesso: c.colab_ultimo_acesso,
-          });
-        }
-        setRows(list);
+        setRows(montarLinhas(data as unknown as LinhaCrua[]));
+      } catch (e) {
+        // ⚠️ Falha passou a APARECER. Antes era `if (!error && data)`: erro de consulta
+        // deixava a lista vazia e a tela dizia "Nenhum colaborador encontrado" — a mesma
+        // frase de uma prova sem ninguém alocado. Duas causas, uma única mensagem, e a
+        // errada era indistinguível da normal.
+        setRows([]);
+        // ⚠️ `buscarEmFatias` faz `throw error` com o objeto CRU do PostgREST, que **não é
+        // um `Error`** — só tem `message`. Testar `e instanceof Error` aqui descartaria a
+        // mensagem do banco e mostraria um texto genérico: é a mesma armadilha que deixa o
+        // `CorrigirEmailAcessoDialog` engolir as respostas da Edge Function. Coberto por
+        // teste, que foi quem pegou.
+        const msg = (e as { message?: string } | null)?.message;
+        setErro(msg || "Falha ao carregar os colaboradores.");
       }
       setIsLoading(false);
     }
@@ -94,13 +145,20 @@ export default function PainelDadosColaboradores() {
     );
     return [...f].sort((a, b) => {
       let cmp = 0;
-      if (sortCol === "nome") {
-        cmp = a.nome.localeCompare(b.nome, "pt-BR");
-      } else {
+      if (sortCol === "ultimo_acesso") {
         const da = a.ultimo_acesso ? new Date(a.ultimo_acesso).getTime() : 0;
         const db = b.ultimo_acesso ? new Date(b.ultimo_acesso).getTime() : 0;
         cmp = da - db;
+      } else {
+        // `localeCompare` com "pt-BR" é o que faz acento ordenar junto da letra base
+        // ("Álvaro" perto de "Alves", não no fim da lista). Vale para nome, email e
+        // unidade — os três são texto e ordenam pela mesma regra.
+        cmp = a[sortCol].localeCompare(b[sortCol], "pt-BR");
       }
+      // Desempate explícito pelo nome. Sem ele o empate cairia na ordem de chegada da
+      // consulta (que é nome ASC) — daria no mesmo, mas por acidente: bastaria a
+      // consulta mudar de `.order()` para a ordem virar outra sem ninguém notar.
+      if (cmp === 0 && sortCol !== "nome") cmp = a.nome.localeCompare(b.nome, "pt-BR");
       return sortDir === "asc" ? cmp : -cmp;
     });
   }, [rows, search, sortCol, sortDir]);
@@ -123,6 +181,25 @@ export default function PainelDadosColaboradores() {
     ) : (
       <ArrowUpDown className="h-3 w-3 opacity-50" />
     );
+
+  // O gatilho é um <button>, não um onClick no <th>: assim a ordenação alcança quem
+  // navega por teclado, e o leitor de tela anuncia o estado pelo `aria-sort`. As duas
+  // colunas que já eram ordenáveis passaram a usar isto também — antes o clique vivia
+  // num <div>, invisível para o teclado.
+  const ColunaOrdenavel = ({ col, children }: { col: SortCol; children: React.ReactNode }) => (
+    <TableHead
+      className="font-semibold p-0"
+      aria-sort={sortCol === col ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+    >
+      <button
+        type="button"
+        onClick={() => handleSort(col)}
+        className="flex w-full items-center gap-1 px-4 py-3 text-left font-semibold select-none hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {children} <SortIcon col={col} />
+      </button>
+    </TableHead>
+  );
 
   if (authLoading) {
     return (
@@ -176,6 +253,15 @@ export default function PainelDadosColaboradores() {
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
+            ) : erro ? (
+              <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+                <p className="font-medium">Não foi possível carregar a lista.</p>
+                <p className="mt-1">{erro}</p>
+                <p className="mt-2 text-destructive/80">
+                  A lista abaixo não é exibida porque estaria incompleta. Recarregue a página;
+                  se persistir, avise quem cuida do sistema.
+                </p>
+              </div>
             ) : filtered.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 Nenhum colaborador encontrado.
@@ -185,24 +271,10 @@ export default function PainelDadosColaboradores() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/50">
-                      <TableHead
-                        className="font-semibold cursor-pointer select-none hover:bg-muted"
-                        onClick={() => handleSort("nome")}
-                      >
-                        <div className="flex items-center gap-1">
-                          Nome <SortIcon col="nome" />
-                        </div>
-                      </TableHead>
-                      <TableHead className="font-semibold">Email</TableHead>
-                      <TableHead className="font-semibold">Unidade</TableHead>
-                      <TableHead
-                        className="font-semibold cursor-pointer select-none hover:bg-muted"
-                        onClick={() => handleSort("ultimo_acesso")}
-                      >
-                        <div className="flex items-center gap-1">
-                          Último Acesso <SortIcon col="ultimo_acesso" />
-                        </div>
-                      </TableHead>
+                      <ColunaOrdenavel col="nome">Nome</ColunaOrdenavel>
+                      <ColunaOrdenavel col="email">Email</ColunaOrdenavel>
+                      <ColunaOrdenavel col="unidade">Unidade</ColunaOrdenavel>
+                      <ColunaOrdenavel col="ultimo_acesso">Último Acesso</ColunaOrdenavel>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
