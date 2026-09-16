@@ -83,6 +83,10 @@ const TABELAS = [
   "colaboradores_prova",
   "coordenadores_prova",
   "editais",
+  // ⚠️ Mesma razão de `cargos`: sem ela o EditalStudio recebe `undefined` do mock e
+  // quebra ANTES do guard, e a recusa passaria por acidente — medindo o crash, não a
+  // autorização. Acrescentada em 2026-09-16 com o Edital Studio.
+  "edital_capitulos",
   "funcoes_colaboradores",
   "meta_colaboradores_unidade",
   "ocorrencias_colaborador",
@@ -337,6 +341,15 @@ const PAGINAS: Pagina[] = [
     permitidos: ["admin", "superadmin"],
   },
   {
+    nome: "EditalStudio",
+    path: "/editais/:editalId",
+    rota: "/editais/e-1",
+    mod: () => import("./EditalStudio"),
+    exige: ["admin"],
+    // Mesmo papel de /editais: é a mesma entidade, agora editada como documento.
+    permitidos: ["admin", "superadmin"],
+  },
+  {
     nome: "Candidatos",
     path: "/candidatos",
     rota: "/candidatos",
@@ -523,7 +536,9 @@ describe("guards de página — matriz papel × rota", () => {
     // 19 até 2026-07-26; 21 desde o módulo Candidatos (/candidatos e /candidatos/importar);
     // 22 desde 2026-07-30, com a página de gestão de cargos (/candidatos/cargos);
     // 24 desde 2026-08-04, com o módulo Alocação de Candidatos (as duas rotas).
-    expect(PAGINAS.length).toBe(24);
+    // 25 desde 2026-09-16, com o Edital Studio (/editais/:editalId) — a v3 do módulo
+    //    Editais, em que o edital deixa de ser rótulo e vira o documento do certame.
+    expect(PAGINAS.length).toBe(25);
     expect(new Set(PAGINAS.map((p) => p.nome)).size).toBe(PAGINAS.length);
   });
 

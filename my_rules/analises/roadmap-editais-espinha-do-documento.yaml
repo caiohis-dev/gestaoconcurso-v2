@@ -1,0 +1,269 @@
+# Roadmap VIVO — Módulo Editais, fatia 1: a espinha do documento
+# Criado em 2026-09-16. Leia my_rules/analises/README.md antes de usar como guia.
+# Estado atual do módulo: my_rules/estrutura/modulos/editais/00-modulo.md
+# Índice das 9 fatias e as decisões que valem para todas: my_rules/modulo_editais/00-Plano-v3.md
+
+roadmap:
+  titulo: "Editais fatia 1 — a espinha do documento (capítulos e numeração calculada)"
+  criado: "2026-09-16"
+  status: >
+    🟢 EXECUTADA em 2026-09-16. As 4 etapas entregues: migration 20260916173801
+    (metadados + `edital_capitulos`), as 3 funções puras, o Edital Studio em
+    /editais/:editalId, e a verificação. 1.407 testes em 75 arquivos, tsc, build,
+    lint 111 (baseline), docs:conferir limpo, db reset completo e
+    docs/bateria-edital-capitulos.sql verde.
+    ⚠️ DUAS MUDANÇAS DE DESENHO durante a execução, ambas registradas em
+    `desvios_da_execucao` no fim deste arquivo.
+    🟢 Aguardando merge para ir a concluidos/.
+
+  origem: >
+    Abertura da v3, pedida pelo usuário em 2026-09-16. Hoje o módulo Editais é uma tabela
+    de 5 campos e um CRUD: o edital é um rótulo que sugere o cabeçalho de uma prova. Na v3
+    ele passa a ser o DOCUMENTO NORMATIVO do certame, autorado dentro do sistema.
+    O motivo é concreto e está em my_rules/modulo_editais/Peculiaridades_Editais_FEVRE.md:
+    dois defeitos reais no Edital 004/2026, JÁ PUBLICADO — a exigência de "Certidão Nada
+    Consta do COREN" na posse de Agente Comunitário de Saúde (copia-e-cola do edital de
+    Enfermagem, item 15.8-L) e os placeholders "dia XX/xx/2026" nos itens 12.4 e 14.9.
+    Esta fatia não conserta nenhum dos dois: ela constrói o mecanismo em que os consertos
+    (fatias 3 e 8) se penduram.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  decisoes_do_usuario: |
+    D1. DOCUMENTO PRIMEIRO, DADO JUNTO. O alvo é o edital publicável; a estrutura de dados
+        nasce dele, já pensada para Candidatos e Aplicação de Provas consumirem depois.
+        RECUSADO: "só estruturar o dado" (o documento viria depois, ou nunca) e "só gerar
+        o documento" (o dado ficaria preso no texto).
+
+    D3. LLM NÃO ENTRA AGORA. O texto de cada capítulo sai de template determinístico, e o
+        linter é por regra. Auditável, reproduzível, e não depende de API no dia da
+        publicação. ⚠️ Vale o recorte: o linter que acha `XX/xx` e conselho de classe
+        indevido NÃO precisa de modelo — é regra. O que está adiado é REDIGIR o texto
+        jurídico.
+
+    D5. A PRIMEIRA FATIA É A ESPINHA. Antes de qualquer capítulo com conteúdo, o mecanismo
+        que monta e numera. RECUSADO: começar por "metadados + cronograma" (periférico, e
+        teria de se encaixar depois numa espinha inexistente) e por "cargos e vagas" (maior
+        valor, mas encosta no `cargos` da importação antes de haver onde pendurar).
+
+    D_ORTOGONAL. 🔴 TODA PECULIARIDADE É PARÂMETRO INDEPENDENTE, ligável em qualquer edital.
+        Palavras do usuário: "o edital que hoje é ACS pode ter características que só estão
+        no edital dos enfermeiros. E vice-versa."
+        RECUSADO, e estava escrito no material de referência: o mapa carreira → funcionalidade
+        ("se Magistério, injetar prova de títulos; se Saúde, Legislação do SUS; se Agentes,
+        territorialidade"). A carreira pode SUGERIR um preset na criação — nunca determinar,
+        nunca impedir, nunca esconder. Implementado como estava, viraria rigidez cravada.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  medido_antes: |
+    Material de referência e banco local, 2026-09-16:
+
+    🔴 A NUMERAÇÃO DO MODELO ABSTRATO NÃO BATE COM O EDITAL PUBLICADO. É isto que decide
+       o desenho inteiro desta fatia:
+
+         `Estrutura de Edital.md` numera PCD como .......... capítulo [8]
+         No Edital 002/2026 publicado, PCD é ............... capítulo 7
+         O modelo abstrato tem ............................. 18 capítulos
+         O Edital 002 publicado tem ........................ 16 + Anexo I
+
+       A causa é simples: capítulo condicional que não entra não ocupa número, e todos
+       abaixo sobem. Logo, `numero` NÃO pode ser coluna — tem de ser calculado.
+
+    🔴 O ERRO QUE ISSO PRODUZ JÁ ESTÁ NO EDITAL 002: uma linha solta "10. e seus subitens"
+       dentro do capítulo 7 — referência cruzada que envelheceu quando a numeração mudou.
+       É a prova de que o problema é real e não hipotético.
+
+    · `editais` HOJE tem 5 campos: `nome`, `cabecalho_linha1`, `cabecalho_linha2`,
+      `n_candidatos` (órfã desde 02/08) e os de auditoria. Índice funcional
+      `editais_nome_key` sobre `lower(btrim(nome))` — NÃO trocar por UNIQUE comum.
+    · PRODUÇÃO TEM 3 EDITAIS (medido em 16/09, contra o banco de produção). Nenhum deles
+      tem os metadados novos — por isso toda coluna nova nasce ANULÁVEL.
+    · `src/components/ui/resizable.tsx` já existe: o layout de 3 painéis não precisa de
+      dependência nova.
+    · Os três editais reais são extração de PDF: 002 e 003 não têm um único cabeçalho
+      markdown nem tabela; o 004 tem 963 linhas de tabela. Há erro de OCR no título
+      ("V0LTA REDONDA", com zero). Por isso a decisão D4: eles são REFERÊNCIA, não entrada.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  decisoes_de_desenho: |
+    P1. **O CATÁLOGO DOS 18 CAPÍTULOS VIVE EM CÓDIGO**, não no banco
+        (`src/lib/edital-capitulos.ts`): é versionado, revisável em diff e testável como
+        dado puro. O banco guarda só o que varia POR EDITAL — quais entraram e em que ordem.
+        RECUSADO: catálogo em tabela (ganharia edição em runtime que ninguém pediu, e
+        perderia o diff).
+
+    P2. **`numero` NÃO É COLUNA.** O número sai calculado dos capítulos incluídos, na
+        renderização. Persistir o número é exatamente o defeito que esta fatia existe para
+        eliminar.
+
+    P3. **REFERÊNCIA CRUZADA APONTA PARA A `chave`**, nunca para o número. É o que permite
+        detectar referência para capítulo excluído — e o que impede o resíduo do Edital 002
+        de se repetir.
+
+    P4. **A NAVEGAÇÃO SAI DOS DADOS.** A trilha da esquerda, o formulário do centro e o
+        preview da direita são três projeções da MESMA lista de capítulos.
+        🔴 RECUSADO explicitamente: stepper artesanal com blocos `{passo === n}`.
+        `src/pages/CandidatosImportar.tsx:83` avisa, sobre o dele: "adicionar um passo
+        precisa tocar TRÊS lugares: a trilha, os blocos `{passo === n}` e as transições.
+        Errar um deixa um passo inalcançável, sem erro nenhum na tela." Com 18 capítulos
+        que entram e saem, isso é o mesmo defeito multiplicado por 18.
+
+    P5. **CRIAR EDITAL É RPC EM TRANSAÇÃO.** Criar o edital e semear seus capítulos são
+        vários passos (CLAUDE.md §2). Um edital com capítulos pela metade é estado que não
+        pode existir.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  o_que_NAO_muda: |
+    · A herança edital → prova continua sendo SÓ DE UI. Não nasce trigger, view nem default
+      propagando valor do edital para a prova.
+    · O vínculo prova → edital continua IMUTÁVEL (trigger `check_prova_edital_imutavel`,
+      PE001). ⚠️ Editar o edital não pode alterar PDF de prova já emitida.
+    · O índice funcional `editais_nome_key` e a coluna órfã `n_candidatos` ficam como estão.
+      Dropar `n_candidatos` quebraria o `db reset` (o dump e o `seed.pos.sql` a listam).
+    · A dívida do `provas.prova_edital` (CHAR(30)) não se resolve aqui.
+    · Nenhum capítulo ganha CONTEÚDO nesta fatia. Eles nascem vazios; cada fatia seguinte
+      preenche o seu.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  etapas:
+    - id: 1
+      nome: "Banco — metadados do edital, capítulos e a RPC de criação"
+      status: "⏳ pendente"
+      entrega:
+        - >
+          `editais` ganha os metadados do Passo 1: `numero_edital` (NNN/AAAA), `ano`,
+          `natureza_juridica` (CONCURSO_PUBLICO | PROCESSO_SELETIVO), `orgao_demandante`,
+          `entidade_executora`, `decreto_autorizador`, `regime_trabalho`,
+          `prazo_validade_anos`, `prorrogavel`. TODAS ANULÁVEIS.
+        - >
+          Tabela `edital_capitulos (id, edital_id, chave, ordem, incluido)`, com
+          `UNIQUE (edital_id, chave)` e FK de edital RESTRICT. RLS: leitura para
+          autenticado, escrita só admin — espelhando `editais`. REVOKE explícito de `anon`.
+        - >
+          RPC `criar_edital_com_capitulos` (P5): cria o edital e semeia os capítulos do
+          catálogo numa transação. SECURITY DEFINER com `search_path` fixo, EXECUTE só para
+          authenticated e service_role.
+      armadilha: >
+        🔴 Coluna nova com NOT NULL quebraria o `db reset`: produção tem 3 editais sem esses
+        dados, e o seed carrega DEPOIS das migrations. É a mesma armadilha que deixou
+        `provas.edital_id` nullable. ⚠️ E função nova em `public` nasce com EXECUTE só para
+        `postgres` neste projeto — sem o GRANT explícito, o PostgREST recusa.
+
+    - id: 2
+      nome: "As funções puras — numeração, referência cruzada e linter"
+      status: "⏳ pendente"
+      entrega:
+        - "`src/lib/edital-capitulos.ts`: o catálogo dos 18, com `chave`, `titulo`, `condicional`."
+        - >
+          `src/lib/edital-numeracao.ts`: capítulos incluídos → números (P2), e resolução de
+          referência cruzada por `chave` (P3).
+        - >
+          `src/lib/edital-linter.ts`, regras v1 por REGRA, sem LLM (D3): placeholder
+          esquecido (`XX/xx`, `[...]`, obrigatório vazio) · capítulo incluído e vazio ·
+          referência cruzada apontando para capítulo excluído.
+      armadilha: >
+        ⚠️ É aqui que mora o valor da fatia, e é a camada que a suíte ALCANÇA de verdade —
+        função pura em `src/lib/` com teste próprio é o padrão que mais se paga neste repo
+        (`alocacao.ts`, `salas.ts`, `texto.ts`). Não enterrar essa lógica dentro do componente.
+
+    - id: 3
+      nome: "UI — o Edital Studio de 3 painéis"
+      status: "⏳ pendente"
+      entrega:
+        - >
+          Rota `/editais/:editalId` com `RequireAcesso papeis={["admin"]}` declarado NA ROTA,
+          nunca dentro do arquivo. Segue `/candidatos/importar` e `/candidatos/cargos`.
+        - >
+          `src/pages/EditalStudio.tsx`: três painéis com `src/components/ui/resizable.tsx`
+          (já existe). Esquerda = navegador de capítulos; centro = formulário do capítulo
+          selecionado; direita = preview + painel do linter.
+        - "`src/hooks/useEdital.tsx`: React Query de um edital e seus capítulos."
+        - "Ligar/desligar capítulo condicional renumera tudo abaixo NA HORA, sem recarregar."
+      armadilha: >
+        🔴 As três colunas são projeções da MESMA lista (P4). Se a trilha da esquerda virar
+        uma lista escrita à mão, a fatia falhou no seu ponto central — e o defeito só
+        aparece quando alguém acrescentar o 19º capítulo.
+
+    - id: 4
+      nome: "Verificação e docs"
+      status: "⏳ pendente"
+      entrega:
+        - >
+          `edital-numeracao.test.ts` e `edital-linter.test.ts`: ligar um condicional no meio
+          renumera todos abaixo E atualiza as referências.
+          ⚠️ FALSIFICAR: fixar a numeração tem de derrubar exatamente os casos de
+          renumeração — senão o teste não guarda o que diz guardar (armadilha 8 de testes.md).
+        - >
+          ⭐ CONTROLE POSITIVO COM DADO REAL: montar o esqueleto do Edital 002/2026 (16
+          capítulos, sem territorialidade, com títulos) e conferir que a numeração gerada bate
+          com a do documento publicado. É o que prova que o modelo descreve a realidade.
+        - >
+          `docs/bateria-edital-capitulos.sql`: RLS das tabelas novas (`anon` NÃO lê), a RPC
+          em transação, o `UNIQUE (edital_id, chave)` e o RESTRICT — com controle positivo,
+          nomeando a constraint que barra.
+        - "`npx supabase db reset` completo: os 3 editais de produção continuam carregando."
+        - "npm test · tsc · lint (baseline 111) · build · docs:conferir"
+        - >
+          `estrutura/modulos/editais/00-modulo.md`: a frase "o edital é um MODELO, não uma
+          fonte de verdade operacional" DEIXA DE VALER e precisa de um 🔵 no ponto exato.
+          ⚠️ O que continua valendo e não pode ser apagado junto: a herança é só de UI, o
+          vínculo é imutável (PE001), e PDF de prova emitida não muda retroativamente.
+      armadilha: >
+        ⚠️ Uma bateria só existe quando alguém a executa: `npm test` mocka o Supabase e
+        `docs:conferir` não lê bateria. Rodar antes de confiar.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  riscos: |
+    R1. 🔴 **Persistir o número "só para facilitar" mata a fatia inteira.** É a tentação
+        óbvia na primeira tela que precisar exibir "Capítulo 7". No dia em que um condicional
+        entrar, o documento publica número errado — que é exatamente o defeito de origem.
+        A guarda é o teste falsificado da etapa 4.
+
+    R2. **A tela pode ficar rápida demais para a espinha aparecer.** Com capítulos vazios,
+        é tentador "adiantar" conteúdo de algum capítulo durante esta fatia. Isso mistura
+        escopo e tira a chance de provar a renumeração isolada.
+
+    R3. **`edital_capitulos` nasce sem nenhum consumidor além do Studio.** Se a fatia 2
+        demorar, fica uma tabela com 18 linhas por edital e nenhum conteúdo — parecendo
+        dívida para quem chegar depois. ⚠️ O 00-modulo.md precisa dizer que é a espinha, e
+        que capítulo vazio é estado esperado, não migration pela metade.
+
+    R4. **A rota nova entra na matriz de guards.** `src/pages/guards.test.tsx` cobre
+        rota × papel e o `docs:conferir` confere a matriz do doc contra o `App.tsx`.
+        Esquecer de declarar o papel NA ROTA é o buraco de autorização que já falhou 3 vezes
+        neste repo.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  desvios_da_execucao: |
+    Registrados porque quem ler este roadmap depois vai comparar com o código.
+
+    ❌ A RPC `criar_edital_com_capitulos` NÃO FOI CRIADA (a decisão P5 caiu).
+       O motivo: se a RPC semeasse os capítulos, ela precisaria conhecer a lista — e o
+       catálogo passaria a existir em DOIS lugares, contra a decisão P1. A saída foi
+       tornar a linha de `edital_capitulos` um OVERRIDE: capítulo sem linha vale pelo
+       padrão do catálogo, e a linha nasce por UPSERT quando alguém desliga, reordena ou
+       escreve. Some a semeadura, some a transação de vários passos, some o estado pela
+       metade — e P5 deixa de ter objeto.
+       🔵 Efeito bom não previsto: os 3 editais de produção ganharam estrutura de
+       documento SEM backfill, e capítulo novo no catálogo vale para todos sem migration.
+
+    ➕ O CATÁLOGO TEM 19 ELEMENTOS, 17 NUMERADOS — não 18, como este roadmap dizia.
+       Medido no material: `[0]` preâmbulo e `[18]` anexos não recebem número. A conta
+       fecha nos três editais (17−1=16, 17−2=15, 17−1=16), o que o número errado escondia.
+
+    ➕ CAPÍTULO GANHOU TEXTO NESTA FATIA (decisão do usuário, 2026-09-16). O roadmap
+       previa capítulos vazios; com a coluna `texto`, a fatia 1 já entrega um editor
+       utilizável e o linter de "capítulo vazio" passa a ter o que verificar.
+
+    ➕ TODO CAPÍTULO É DESLIGÁVEL (decisão do usuário), não só os dois condicionais. O
+       catálogo define o padrão; desligar um capítulo padrão gera AVISO do linter.
+
+    🔴 ACHADO na bateria: o caso da FK RESTRICT passava pelo MOTIVO ERRADO. Com um edital
+       existente, quem barrava o DELETE era `provas_edital_id_fkey` — a FK nova não era
+       exercitada e o caso dizia OK. É a armadilha do CLAUDE.md §8 (regra nova ofuscada
+       pela antiga). Corrigido: o caso cria um edital limpo e exige o NOME exato da
+       constraint.
+
+    🔴 ACHADO no lint: o `EditalStudio` nasceu com complexidade 19 (teto 15), subindo a
+       baseline de 111 para 112. Em vez de subir o número, os painéis viraram componentes
+       (`Trilha`, `PreviewELinter`) — o que o próprio desenho das "três projeções" já
+       pedia. Baseline de volta a 111.

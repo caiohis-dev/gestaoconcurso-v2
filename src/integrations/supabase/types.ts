@@ -611,36 +611,107 @@ export type Database = {
       }
       editais: {
         Row: {
+          ano: number | null
           cabecalho_linha1: string | null
           cabecalho_linha2: string | null
           created_at: string | null
           created_by: string | null
+          decreto_autorizador: string | null
+          entidade_executora: string | null
           id: string
           n_candidatos: number | null
+          natureza_juridica: string | null
           nome: string
+          numero_edital: string | null
+          orgao_demandante: string | null
+          prazo_validade_anos: number | null
+          prorrogavel: boolean | null
+          regime_trabalho: string | null
           updated_at: string | null
         }
         Insert: {
+          ano?: number | null
           cabecalho_linha1?: string | null
           cabecalho_linha2?: string | null
           created_at?: string | null
           created_by?: string | null
+          decreto_autorizador?: string | null
+          entidade_executora?: string | null
           id?: string
           n_candidatos?: number | null
+          natureza_juridica?: string | null
           nome: string
+          numero_edital?: string | null
+          orgao_demandante?: string | null
+          prazo_validade_anos?: number | null
+          prorrogavel?: boolean | null
+          regime_trabalho?: string | null
           updated_at?: string | null
         }
         Update: {
+          ano?: number | null
           cabecalho_linha1?: string | null
           cabecalho_linha2?: string | null
           created_at?: string | null
           created_by?: string | null
+          decreto_autorizador?: string | null
+          entidade_executora?: string | null
           id?: string
           n_candidatos?: number | null
+          natureza_juridica?: string | null
           nome?: string
+          numero_edital?: string | null
+          orgao_demandante?: string | null
+          prazo_validade_anos?: number | null
+          prorrogavel?: boolean | null
+          regime_trabalho?: string | null
           updated_at?: string | null
         }
         Relationships: []
+      }
+      edital_capitulos: {
+        Row: {
+          chave: string
+          created_at: string
+          created_by: string | null
+          edital_id: string
+          id: string
+          incluido: boolean
+          ordem: number
+          texto: string | null
+          updated_at: string
+        }
+        Insert: {
+          chave: string
+          created_at?: string
+          created_by?: string | null
+          edital_id: string
+          id?: string
+          incluido: boolean
+          ordem: number
+          texto?: string | null
+          updated_at?: string
+        }
+        Update: {
+          chave?: string
+          created_at?: string
+          created_by?: string | null
+          edital_id?: string
+          id?: string
+          incluido?: boolean
+          ordem?: number
+          texto?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "edital_capitulos_edital_id_fkey"
+            columns: ["edital_id"]
+            isOneToOne: false
+            referencedRelation: "editais"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       email_atualizacao_log: {
         Row: {

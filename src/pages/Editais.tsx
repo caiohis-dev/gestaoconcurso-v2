@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useEditais, Edital, EditalInsert, EditalUpdate } from "@/hooks/useEditais";
 import { EditalDialog } from "@/components/EditalDialog";
@@ -7,7 +8,7 @@ import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PasswordConfirmDialog } from "@/components/PasswordConfirmDialog";
-import { Plus, Loader2, FileText, Pencil, Trash2, Users } from "lucide-react";
+import { Plus, Loader2, FileText, Pencil, Trash2, Users, ScrollText } from "lucide-react";
 
 export default function Editais() {
   const { user, loading: authLoading, isAdmin } = useAuth();
@@ -109,7 +110,16 @@ export default function Editais() {
                         ? `${contagem[edital.id]} inscrito(s) importado(s)`
                         : "Nenhum inscrito importado"}
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
+                    {/* Porta de entrada do Edital Studio (v3): o edital deixou de ser um
+                        rótulo e passou a ser o documento do certame. "Editar" segue
+                        cuidando de nome e cabeçalho, que é o que a prova herda. */}
+                    <Button variant="default" size="sm" className="gap-2" asChild>
+                      <Link to={`/editais/${edital.id}`}>
+                        <ScrollText className="h-4 w-4" />
+                        Abrir documento
+                      </Link>
+                    </Button>
                     <Button variant="outline" size="sm" className="gap-2" onClick={() => handleEdit(edital)}>
                       <Pencil className="h-4 w-4" />
                       Editar
