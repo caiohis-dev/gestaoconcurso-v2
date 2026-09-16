@@ -271,9 +271,11 @@ Sobra para `authenticated` só o DML, que é o mínimo para o PostgREST **chegar
 
 **Ao executar o item "enxugar os grants", a medição derrubou a premissa do próprio item.** Ele afirmava: *"só a RLS impede o estrago: `anon` não tem policy, então cai em default deny"*. **Falso.** As 46 policies de `public` foram criadas **`TO public`** — e no Postgres o papel `public` **inclui `anon`**. Oito delas ainda usavam `USING (true)`, apesar de se chamarem *"Authenticated users can view …"*:
 
-`bancos` · `coordenadores_prova` · `editais` · `funcoes_colaboradores` · `prova_edit_locks` · `prova_unidades` · `provas` · `sala_prova`
+`bancos` · `coordenadores_prova` · `editais` · `funcoes_colaboradores` · `prova_edit_locks` (virou `prova_unidade_edit_locks` em 2026-09-16) · `prova_unidades` · `provas` · `sala_prova`
 
-Medido contra o PostgREST local com a anon key e **sem login**: as sete primeiras devolviam **dado real**. `prova_edit_locks` devolveu `[]` só porque estava vazia — a policy dela era igualmente permissiva.
+Medido contra o PostgREST local com a anon key e **sem login**: as sete primeiras devolviam **dado real**. `prova_edit_locks` devolveu `[]` só porque estava vazia — a policy dela era igualmente permissiva. (Essa tabela virou `prova_unidade_edit_locks` em 2026-09-16.)
+
+> ⚠️ **Nota de 2026-09-16, sobre essa última frase.** Ela estava certa e escondia outra coisa: a tabela estava vazia porque o lock de edição **nunca funcionou** — a tela mandava um id de `prova_unidades` para uma coluna com FK para `provas(id)`, e todo INSERT morria em 23503. Ninguém ligou os pontos na época. A tabela virou `prova_unidade_edit_locks` na migration `20260916100732`; ver [`provas-e-unidades.md`](../modulos/aplicacao-provas/provas-e-unidades.md).
 
 ⚠️ **O nome da policy era a armadilha.** *"Authenticated users can view editais"* descrevia a intenção do autor, não o que a policy fazia. Quem auditasse por leitura de nome passaria batido — e passou, por meses.
 

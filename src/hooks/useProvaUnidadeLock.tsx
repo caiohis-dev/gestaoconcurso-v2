@@ -1,7 +1,24 @@
+/**
+ * Lock de edição exclusiva de uma UNIDADE DE PROVA (`prova_unidades`).
+ *
+ * 🔴 O nome do hook e o do parâmetro são o conserto, não enfeite. Até 2026-09-16 isto
+ * se chamava `useProvaLock` e recebia `provaId` — e `GerenciarColaboradoresProva`
+ * passava ali o `prova_unidades.id` da rota. A coluna do banco referenciava
+ * `provas(id)`, então TODO pedido de lock morria em 23503 desde o commit inicial,
+ * calado: o erro não é `isLocked`, e a tela só barra em `isLocked`. Eram 500+ erros
+ * por dia no log de produção com a proteção simplesmente inexistente.
+ *
+ * 🔴 O hook NÃO recebe mais `userId` nem `userName`: quem é o dono do lock e que nome os
+ * outros veem saem de `auth.uid()` dentro das RPCs (migration 20260916102407). Enquanto
+ * vinham do cliente, dava para liberar o lock alheio e tomar a unidade, ou assinar o
+ * bloqueio com o nome de outra pessoa. Não devolva esses parâmetros.
+ *
+ * Ver `my_rules/estrutura/modulos/aplicacao-provas/provas-e-unidades.md`.
+ */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
-interface ProvaLockState {
+interface ProvaUnidadeLockState {
   isLoading: boolean;
   hasAccess: boolean;
   isLocked: boolean;
@@ -10,17 +27,16 @@ interface ProvaLockState {
   error: string | null;
 }
 
-interface UseProvaLockOptions {
-  provaId: string | undefined;
-  userId: string | undefined;
-  userName: string | undefined;
+interface UseProvaUnidadeLockOptions {
+  provaUnidadeId: string | undefined;
+  /** Mantenha falso enquanto não houver sessão: sem JWT, `auth.uid()` é nulo e a RPC recusa. */
   enabled?: boolean;
 }
 
 const HEARTBEAT_INTERVAL = 30000; // 30 seconds
 
-export function useProvaLock({ provaId, userId, userName, enabled = true }: UseProvaLockOptions): ProvaLockState {
-  const [state, setState] = useState<ProvaLockState>({
+export function useProvaUnidadeLock({ provaUnidadeId, enabled = true }: UseProvaUnidadeLockOptions): ProvaUnidadeLockState {
+  const [state, setState] = useState<ProvaUnidadeLockState>({
     isLoading: true,
     hasAccess: false,
     isLocked: false,
@@ -36,17 +52,14 @@ export function useProvaLock({ provaId, userId, userName, enabled = true }: UseP
   const accessTokenRef = useRef<string | null>(null);
 
   const acquireLock = useCallback(async () => {
-    if (!provaId || !userId || !userName || !enabled) {
+    if (!provaUnidadeId || !enabled) {
       setState(prev => ({ ...prev, isLoading: false }));
       return;
     }
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase.rpc as any)('acquire_prova_lock', {
-        p_prova_id: provaId,
-        p_user_id: userId,
-        p_user_name: userName,
+      const { data, error } = await supabase.rpc('acquire_prova_unidade_lock', {
+        p_prova_unidade_id: provaUnidadeId,
       });
 
       if (error) {
@@ -96,50 +109,46 @@ export function useProvaLock({ provaId, userId, userName, enabled = true }: UseP
         error: 'Erro ao verificar acesso à prova',
       });
     }
-  }, [provaId, userId, userName, enabled]);
+  }, [provaUnidadeId, enabled]);
 
   const updateHeartbeat = useCallback(async () => {
-    if (!provaId || !userId || !hasLockRef.current) return;
+    if (!provaUnidadeId || !hasLockRef.current) return;
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase.rpc as any)('update_prova_lock_activity', {
-        p_prova_id: provaId,
-        p_user_id: userId,
+      await supabase.rpc('update_prova_unidade_lock_activity', {
+        p_prova_unidade_id: provaUnidadeId,
       });
     } catch (err) {
       console.error('Error updating heartbeat:', err);
     }
-  }, [provaId, userId]);
+  }, [provaUnidadeId]);
 
   const releaseLock = useCallback(async () => {
-    if (!provaId || !userId || !hasLockRef.current) return;
+    if (!provaUnidadeId || !hasLockRef.current) return;
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase.rpc as any)('release_prova_lock', {
-        p_prova_id: provaId,
-        p_user_id: userId,
+      await supabase.rpc('release_prova_unidade_lock', {
+        p_prova_unidade_id: provaUnidadeId,
       });
       hasLockRef.current = false;
     } catch (err) {
       console.error('Error releasing lock:', err);
     }
-  }, [provaId, userId]);
+  }, [provaUnidadeId]);
 
   // Acquire lock on mount
   useEffect(() => {
-    if (enabled && provaId && userId && userName) {
+    if (enabled && provaUnidadeId) {
       acquireLock();
     } else {
-      // Sem os parâmetros (ou desabilitado) não há lock a adquirir — mas o estado
+      // Sem `provaUnidadeId` (ou desabilitado) não há lock a adquirir — mas o estado
       // precisa sair de `isLoading`, senão quem renderiza spinner enquanto ele for
       // true (GerenciarColaboradoresProva) fica preso sem erro nem saída. A guarda
       // equivalente dentro de `acquireLock` não resolve isso: ela nunca é alcançada,
       // porque a condição acima já impede a chamada.
       setState(prev => (prev.isLoading ? { ...prev, isLoading: false } : prev));
     }
-  }, [acquireLock, enabled, provaId, userId, userName]);
+  }, [acquireLock, enabled, provaUnidadeId]);
 
   // Setup heartbeat interval
   useEffect(() => {
@@ -188,21 +197,21 @@ export function useProvaLock({ provaId, userId, userName, enabled = true }: UseP
   // Por que `pagehide` e não `beforeunload`: a versão anterior usava
   // `navigator.sendBeacon`, que **não permite definir header nenhum** — a requisição
   // saía sem `apikey` e sem `Authorization`, que o PostgREST exige, então nunca
-  // liberava nada. Quem devolvia a prova era o timeout de 10 minutos. `fetch` com
+  // liberava nada. Quem devolvia a unidade era o timeout de 10 minutos. `fetch` com
   // `keepalive: true` dá a mesma sobrevivência ao unload E aceita headers.
   //
   // `pagehide` cobre tudo que o `beforeunload` cobre e mais: navegador mobile mandando
   // a aba para segundo plano, e navegação que entra no bfcache. Daí ele ser o único.
   useEffect(() => {
     const releaseOnHide = () => {
-      if (!hasLockRef.current || !provaId || !userId) return;
+      if (!hasLockRef.current || !provaUnidadeId) return;
 
       const token = accessTokenRef.current;
       if (!token) return;
 
       hasLockRef.current = false;
 
-      fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/release_prova_lock`, {
+      fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/release_prova_unidade_lock`, {
         method: 'POST',
         keepalive: true,
         headers: {
@@ -210,7 +219,7 @@ export function useProvaLock({ provaId, userId, userName, enabled = true }: UseP
           apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ p_prova_id: provaId, p_user_id: userId }),
+        body: JSON.stringify({ p_prova_unidade_id: provaUnidadeId }),
       }).catch(() => {
         // A aba está indo embora; não há a quem reportar. O timeout de 10 min cobre.
       });
@@ -218,7 +227,7 @@ export function useProvaLock({ provaId, userId, userName, enabled = true }: UseP
 
     // Volta do bfcache: a página foi restaurada, mas o lock já foi liberado acima.
     // Sem readquirir, a tela seguiria editável com o servidor achando que ninguém
-    // tem a prova — e o heartbeat NÃO conserta isso, porque `update_prova_lock_activity`
+    // tem a unidade — e o heartbeat NÃO conserta isso, porque `update_prova_unidade_lock_activity`
     // é um UPDATE que não recria a linha apagada.
     const reacquireOnRestore = (event: PageTransitionEvent) => {
       if (event.persisted) acquireLock();
@@ -230,7 +239,7 @@ export function useProvaLock({ provaId, userId, userName, enabled = true }: UseP
       window.removeEventListener('pagehide', releaseOnHide);
       window.removeEventListener('pageshow', reacquireOnRestore);
     };
-  }, [provaId, userId, acquireLock]);
+  }, [provaUnidadeId, acquireLock]);
 
   return state;
 }

@@ -12,7 +12,7 @@ import { useValoresFuncaoProva } from "@/hooks/useValoresFuncaoProva";
 import { useMetaColaboradoresUnidade } from "@/hooks/useMetaColaboradoresUnidade";
 import { useSalasDoFiscal, avisoFiscalDeSala } from "@/hooks/useSalasDistribuidas";
 import { supabase } from "@/integrations/supabase/client";
-import { useProvaLock } from "@/hooks/useProvaLock";
+import { useProvaUnidadeLock } from "@/hooks/useProvaUnidadeLock";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import Layout from "@/components/Layout";
@@ -132,46 +132,23 @@ export default function GerenciarColaboradoresProva() {
     enabled: !!user && !!provaId,
   });
 
-  // Nome do usuário para o lock
-  const { data: userName = "", isSuccess: userNameCarregado } = useQuery({
-    queryKey: ["user_name_lock", user?.id],
-    queryFn: async () => {
-      if (!user) return "";
-      try {
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("full_name, email")
-          .eq("id", user.id)
-          .maybeSingle();
-        if (error) throw error;
-        return data?.full_name || data?.email || user.email || "Usuário";
-      } catch (err) {
-        // ⚠️ DEGRADAÇÃO DELIBERADA — é o único ponto do arquivo onde o erro NÃO sobe, e
-        // isso é escolha, não descuido. `userName` habilita o lock de edição exclusiva
-        // logo abaixo; deixar a falha virar estado de erro manteria o lock DESLIGADO, e
-        // a unidade ficaria sem proteção contra dois coordenadores editando ao mesmo
-        // tempo. O e-mail identifica o dono do lock igual, só que pior de ler.
-        //
-        // O `try` cobre os DOIS modos de falha, que o `.then(ok, erro)` anterior tratava
-        // junto: o erro do PostgREST (que volta em `error`, sem rejeitar) e a rejeição
-        // de rede. Devolver em vez de relançar também evita o retry do React Query, que
-        // atrasaria o lock sem melhorar nada — o fallback não depende do servidor.
-        console.error("Error fetching user name for lock:", err);
-        return user.email || "Usuário";
-      }
-    },
-    enabled: !!user,
-  });
-
-  // Lock de edição exclusiva para esta unidade
-  const unidadeLock = useProvaLock({
-    provaId: provaUnidadeId,
-    userId: user?.id,
-    userName: userName || undefined,
-    // `userNameCarregado` (o `isSuccess`) no lugar do antigo `!!userName`: diz "o nome já
-    // foi resolvido", que é a condição de verdade, em vez de inferi-la de a string não
-    // estar vazia. O `useProvaLock` ainda se protege sozinho contra nome vazio.
-    enabled: !!provaUnidadeId && !!user && userNameCarregado,
+  // Lock de edição exclusiva para esta unidade.
+  //
+  // 🔴 O parâmetro é `provaUnidadeId` porque o lock é POR UNIDADE. Até 2026-09-16 o
+  // hook se chamava `useProvaLock` e este mesmo valor entrava no campo `provaId`,
+  // indo parar numa coluna com FK para `provas(id)` — 23503 em toda abertura da tela,
+  // 500+ por dia no log, e a proteção nunca existindo. Não troque por `provaId`
+  // achando que conserta: coordenadores de unidades diferentes da MESMA prova
+  // barrariam uns aos outros.
+  //
+  // 🔵 Desde 2026-09-16 o hook não recebe mais `userId` nem `userName`: as RPCs tiram
+  // os dois de `auth.uid()`. Com isso saiu daqui a consulta a `profiles` que existia só
+  // para alimentar o lock — e com ela a corrente `userNameCarregado` → `enabled`, que
+  // foi justamente a que travou esta tela num spinner sem saída em 25/07. O `!!user`
+  // continua: sem sessão, `auth.uid()` é nulo e a RPC recusa.
+  const unidadeLock = useProvaUnidadeLock({
+    provaUnidadeId,
+    enabled: !!provaUnidadeId && !!user,
   });
 
   // Get valores por função da prova
@@ -482,6 +459,26 @@ export default function GerenciarColaboradoresProva() {
   return (
     <Layout>
       <div className="space-y-6">
+        {/*
+          🔴 O erro do lock TEM de aparecer. Ele existia desde sempre no estado do hook e
+          não era renderizado em lugar nenhum: a tela abria igual, e ninguém podia saber
+          que a proteção contra dois editores estava fora do ar. É o formato de defeito
+          que este repo mais teme — não dá erro, só deixa de proteger.
+
+          O aviso NÃO bloqueia, de propósito: o lock é conveniência (a coerência do dado
+          é barrada por trigger no banco), e barrar a tela numa falha transitória tiraria
+          a operação do ar por algo que não corrompe nada.
+        */}
+        {unidadeLock.error && (
+          <div className="flex items-start gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+            <LockOpen className="h-4 w-4 mt-0.5 shrink-0" />
+            <p>
+              <strong>Edição exclusiva indisponível.</strong> Não foi possível reservar esta
+              unidade, então outra pessoa pode estar editando ao mesmo tempo sem que você veja.
+              Detalhe técnico: {unidadeLock.error}
+            </p>
+          </div>
+        )}
         <div className="flex flex-col sm:flex-row sm:items-center gap-4">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="icon" asChild>

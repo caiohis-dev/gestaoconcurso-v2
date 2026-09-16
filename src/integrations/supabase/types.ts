@@ -433,6 +433,7 @@ export type Database = {
           tipo_conta: string | null
           updated_at: string | null
           user_id: string | null
+          colab_nome_busca: string | null
         }
         Insert: {
           agencia?: string | null
@@ -872,12 +873,12 @@ export type Database = {
         }
         Relationships: []
       }
-      prova_edit_locks: {
+      prova_unidade_edit_locks: {
         Row: {
           id: string
           last_activity: string
           locked_at: string
-          prova_id: string
+          prova_unidade_id: string
           user_id: string
           user_name: string
         }
@@ -885,7 +886,7 @@ export type Database = {
           id?: string
           last_activity?: string
           locked_at?: string
-          prova_id: string
+          prova_unidade_id: string
           user_id: string
           user_name: string
         }
@@ -893,16 +894,16 @@ export type Database = {
           id?: string
           last_activity?: string
           locked_at?: string
-          prova_id?: string
+          prova_unidade_id?: string
           user_id?: string
           user_name?: string
         }
         Relationships: [
           {
-            foreignKeyName: "prova_edit_locks_prova_id_fkey"
-            columns: ["prova_id"]
+            foreignKeyName: "prova_unidade_edit_locks_prova_unidade_id_fkey"
+            columns: ["prova_unidade_id"]
             isOneToOne: true
-            referencedRelation: "provas"
+            referencedRelation: "prova_unidades"
             referencedColumns: ["id"]
           },
         ]
@@ -1025,19 +1026,22 @@ export type Database = {
       }
       reivindicacao_rate_limit: {
         Row: {
+          chave: string
           created_at: string
+          escopo: string
           id: number
-          ip: string
         }
         Insert: {
+          chave: string
           created_at?: string
+          escopo: string
           id?: never
-          ip: string
         }
         Update: {
+          chave?: string
           created_at?: string
+          escopo?: string
           id?: never
-          ip?: string
         }
         Relationships: []
       }
@@ -1278,8 +1282,8 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      acquire_prova_lock: {
-        Args: { p_prova_id: string; p_user_id: string; p_user_name: string }
+      acquire_prova_unidade_lock: {
+        Args: { p_prova_unidade_id: string }
         Returns: {
           locked_by_name: string
           locked_since: string
@@ -1308,29 +1312,24 @@ export type Database = {
         Args: { p_pcd: boolean; p_sala_especial: string }
         Returns: string
       }
+      buscar_colaboradores_para_alocacao: {
+        Args: {
+          p_excluir_prova_unidade_id?: string
+          p_limite?: number
+          p_prova_id: string
+          p_termo?: string
+        }
+        Returns: {
+          alocado_prova_unidade_id: string
+          alocado_unid_sigla: string
+          colab_cpf: string
+          colab_nome_completo: string
+          id: string
+        }[]
+      }
       candidato_pede_atendimento_especial: {
         Args: { p_pcd: boolean; p_sala_especial: string }
         Returns: boolean
-      }
-      funcoes_em_uso: {
-        Args: never
-        Returns: string[]
-      }
-      totais_da_prova: {
-        Args: {
-          p_prova_id: string
-          p_prova_unidade_ids?: string[]
-        }
-        Returns: {
-          funcao_id: string
-          funcao_nome: string
-          meta: number
-          ocupadas: number
-          prova_unidade_id: string
-          unid_nome: string
-          unid_sigla: string
-          unidade_finalizada: boolean
-        }[]
       }
       candidatos_da_prova: {
         Args: {
@@ -1371,15 +1370,15 @@ export type Database = {
           total: number
         }[]
       }
-      check_prova_lock: {
-        Args: { p_prova_id: string }
+      colab_nome_busca: {
+        Args: { "": Database["public"]["Tables"]["colaboradores"]["Row"] }
         Returns: {
-          is_expired: boolean
-          is_locked: boolean
-          locked_at: string
-          user_id: string
-          user_name: string
-        }[]
+          error: true
+        } & "the function public.colab_nome_busca with parameter or with a single unnamed json/jsonb parameter, but no matches were found in the schema cache"
+      }
+      conceder_coordenador: {
+        Args: { p_colaborador_prova_id: string }
+        Returns: string
       }
       contar_alocados_por_sala: {
         Args: { p_prova_id: string }
@@ -1396,25 +1395,6 @@ export type Database = {
           total: number
           unidade_id: string
         }[]
-      }
-      buscar_colaboradores_para_alocacao: {
-        Args: {
-          p_prova_id: string
-          p_termo?: string
-          p_excluir_prova_unidade_id?: string | null
-          p_limite?: number
-        }
-        Returns: {
-          id: string
-          colab_nome_completo: string
-          colab_cpf: string | null
-          alocado_prova_unidade_id: string | null
-          alocado_unid_sigla: string | null
-        }[]
-      }
-      conceder_coordenador: {
-        Args: { p_colaborador_prova_id: string }
-        Returns: string
       }
       contar_candidatos_por_edital: {
         Args: never
@@ -1444,14 +1424,12 @@ export type Database = {
           sala_id: string
         }[]
       }
-      finalizar_prova: {
-        Args: { p_prova_id: string }
-        Returns: boolean
-      }
+      finalizar_prova: { Args: { p_prova_id: string }; Returns: boolean }
       finalizar_prova_unidade: {
         Args: { p_prova_unidade_id: string }
         Returns: boolean
       }
+      funcoes_em_uso: { Args: never; Returns: string[] }
       get_coordenador_colaboradores: {
         Args: { p_user_id: string }
         Returns: string[]
@@ -1508,10 +1486,7 @@ export type Database = {
         Returns: boolean
       }
       meu_colaborador_id: { Args: never; Returns: string }
-      reabrir_prova: {
-        Args: { p_prova_id: string }
-        Returns: boolean
-      }
+      reabrir_prova: { Args: { p_prova_id: string }; Returns: boolean }
       reabrir_prova_unidade: {
         Args: { p_prova_unidade_id: string }
         Returns: boolean
@@ -1525,13 +1500,35 @@ export type Database = {
         Returns: undefined
       }
       registrar_batida_saude: { Args: never; Returns: string }
-      release_prova_lock: {
-        Args: { p_prova_id: string; p_user_id: string }
+      registrar_tentativa: {
+        Args: {
+          p_chave: string
+          p_escopo: string
+          p_janela: string
+          p_max: number
+        }
+        Returns: boolean
+      }
+      release_prova_unidade_lock: {
+        Args: { p_prova_unidade_id: string }
         Returns: boolean
       }
       revogar_coordenador: { Args: { p_user_id: string }; Returns: undefined }
       rotulo_do_bloco: { Args: { p_bloco: string }; Returns: string }
       salvar_salas_distribuidas: { Args: { p_salas: Json }; Returns: number }
+      totais_da_prova: {
+        Args: { p_prova_id: string; p_prova_unidade_ids?: string[] }
+        Returns: {
+          funcao_id: string
+          funcao_nome: string
+          meta: number
+          ocupadas: number
+          prova_unidade_id: string
+          unid_nome: string
+          unid_sigla: string
+          unidade_finalizada: boolean
+        }[]
+      }
       trocar_candidatos_do_edital: {
         Args: {
           p_edital_id: string
@@ -1579,8 +1576,8 @@ export type Database = {
         }
         Returns: boolean
       }
-      update_prova_lock_activity: {
-        Args: { p_prova_id: string; p_user_id: string }
+      update_prova_unidade_lock_activity: {
+        Args: { p_prova_unidade_id: string }
         Returns: boolean
       }
       vincular_unidade_a_prova: {

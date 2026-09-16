@@ -16,24 +16,6 @@
 
 ---
 
-## 🔜 Tema combinado para a próxima sessão (anotado em 2026-09-15)
-
-**Os avisos do Advisor do Supabase, em produção** (`zugigdpuxbpogoepdawm`): Dashboard → **Advisors**, as duas abas — **Security** (tabela sem RLS, policy permissiva, função `SECURITY DEFINER` sem `search_path` fixo) e **Performance** (FK sem índice, índice não usado, policy reavaliada por linha).
-
-Ler a lista é **leitura pura no dashboard e não precisa de `supabase link`** — o repo continua deslinkado (§6).
-
-🔴 **Não saia corrigindo aviso por aviso.** Este repo já rejeitou, com motivo medido, várias recomendações que o Advisor faria — e reabri-las quebra coisa:
-
-- **`SELECT` literal em `user_roles`** em vez de `has_role`: a hierarquia mora dentro da função, e isso **já quebrou 3 vezes**, a última bloqueando o superadmin (§8).
-- **`unaccent()` marcada `IMMUTABLE` à força** para indexar a busca sem acento: é afirmação falsa que o planejador passa a acreditar. A saída escolhida foi `translate` + `lower`, imutáveis de verdade.
-- **Índice em `colab_nome_busca`**: recusado por medição — 771 linhas em 528 kB num banco de 14 MB que cabe no cache, e `ilike '%x%'` não usaria índice btree de qualquer forma.
-
-**A ordem de trabalho, então:** trazer a lista → para cada item, procurar em `my_rules/` se o tema já foi decidido → só então propor. Um aviso do Advisor é **hipótese**, não ordem de serviço; vale a §1 (conferir a premissa no código antes de executar) e o §9 (medir antes de desenhar).
-
-⚠️ **Todo conserto de schema é migration nova + release tagueada** — produção não recebe mudança por fora disso (§3 e §6). E **regra de banco se verifica com bateria SQL**, com controle positivo (§5).
-
----
-
 ## 0. 🔴 O que NÃO ler por padrão
 
 ```
@@ -174,7 +156,7 @@ sg docker -c 'npx supabase db reset'    # aplica migrations + os 3 seeds
 **Não há CI.** Nada roda a suíte sozinho; cada tema fechado depende de alguém lembrar. É o item de maior alavancagem do backlog, adiado por decisão do usuário.
 
 ```bash
-npm test                                  # 1364 testes em 72 arquivos
+npm test                                  # 1366 testes em 73 arquivos
 npx tsc --noEmit -p tsconfig.app.json     # tem de sair limpo
 npm run build
 npm run lint                              # baseline 111 (56 erros, 55 avisos)
@@ -274,6 +256,7 @@ Fora de `my_rules/`: **`docs/`** guarda as baterias de teste manual (`bateria-*.
 - ⚠️ **Ao acrescentar filtro a uma tela, revise toda ação que age sobre o conjunto inteiro.** Uma confirmação de "limpar edital" já prometeu remover 12 inscritos e removia 7.416.
 - ⚠️ **CHECK nova pode OFUSCAR CHECK antiga.** Em 03/08 uma CHECK de coerência passou a barrar `sala_numero = -1` antes da CHECK de sinal: a linha seguia recusada, mas por outra regra, e a cobertura da antiga virou fantasma. Quem pegou foi a bateria — porque ela afirma **o NOME de quem barrou**, não só que houve recusa. Vale o padrão: ao apertar uma regra, veja quais casos existentes deixaram de exercitar o que diziam exercitar.
 - 🔴 **Se a TELA precisa antecipar uma recusa do banco, ela tem de reimplementar a regra FIELMENTE — ou não reimplementar.** É o outro lado do §2. Em 05/08 a regra "cada bloco abre sala nova" deixa vagas ociosas nas salas de fronteira; a tela calculava `capacidade − alocados` e ofereceu **152** onde o banco tinha **120**, deixando montar um plano inteiro que morreu no `AL004`. Conta simplificada de regra do banco é promessa que o banco não honra. **Ao escrever a versão da tela, traduza o laço, não o resultado** — e teste com os números do caso real.
+- 🔴 **Id da tabela errada numa coluna com FK é o defeito mais silencioso que já apareceu aqui.** O lock de edição passava um `prova_unidades.id` para uma coluna com FK para `provas(id)`: 23503 em **toda** abertura da tela, 500+/dia no log de produção, **desde o commit inicial** — e nada na tela, porque o erro do hook não era renderizado em lugar nenhum. Três coisas o mantiveram vivo por 8 meses: o **nome** (`useProvaLock`/`provaId` num lock que é por unidade), um **`as any`** que desligava o `tsc` naquela chamada, e a **suíte mockando o Supabase** (o mock aceita qualquer string por uuid). ⚠️ Ausência de reclamação NÃO é evidência de que a proteção não faz falta quando a falha é silenciosa — não havia como notar. Ao mexer em algo assim, **olhe o log do banco**: ele sabia o tempo todo. 🔵 No mesmo passe caiu o irmão dele: as RPCs do lock recebiam `p_user_id`/`p_user_name` do cliente — **parâmetro que o chamador envia não é identidade**, nem sob `SECURITY DEFINER` (§8, e o precedente é `20260912191749`).
 - ⚠️ **`verify_jwt` NÃO é autorização** — a anon key é um JWT válido e público. A mesma falha já apareceu 2× (`send-email`, `create-admin`).
 
 ---

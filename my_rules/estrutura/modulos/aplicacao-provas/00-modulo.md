@@ -107,10 +107,9 @@ colaboradores ─────┬──< colaboradores_prova >──┬── fun
                    └──< ocorrencias_colaborador
 
 provas ──< prova_unidades ──< salas_prova_distribuidas   (snapshot da prova)
-   │            │
-   │            └──< meta_colaboradores_unidade
-   │
-   └── prova_edit_locks
+                │
+                ├──< meta_colaboradores_unidade
+                └─── prova_unidade_edit_locks            (lock de edição, 1 por unidade)
 
 unidades_prova ──< sala_prova                            (template reutilizável)
 
@@ -131,16 +130,16 @@ Todas `SECURITY DEFINER`, chamadas via `supabase.rpc(...)`:
 | `finalizar_prova`, `finalizar_prova_unidade` | ciclo de vida | |
 | `reabrir_prova`, `reabrir_prova_unidade` | ciclo de vida | só superadmin **ou** quem finalizou |
 | `encerrar_ocorrencias_unidade` | `OcorrenciasProva` | **sem RPC simétrica de reabertura** — ver `ocorrencias.md` |
-| `acquire_prova_lock`, `update_prova_lock_activity`, `release_prova_lock` | `useProvaLock` | chamadas com cast `(supabase.rpc as any)` — ⚠️ **o cast é resíduo, não necessidade** (ver abaixo) |
+| `acquire_prova_unidade_lock`, `update_prova_unidade_lock_activity`, `release_prova_unidade_lock` | `useProvaUnidadeLock` | 🔵 **16/09** — por UNIDADE, e funcionando pela primeira vez; **parâmetro único `p_prova_unidade_id`**, identidade por `auth.uid()`; tipadas, sem cast (ver abaixo) |
 | `get_coordenador_colaboradores` | `useColaboradores` | recorte do coordenador |
 | `get_coordenador_prova_unidade_ids` | `useCoordenadorUnidades` | idem |
 | `vincular_unidade_a_prova`, `desvincular_unidade_da_prova` | `useProvaUnidades` | transacionais desde 26/07 — ver `provas-e-unidades.md` |
 | `totais_da_prova` | `ProvaTotaisDialog` | 🔵 **10/09** — soma meta × ocupação NO BANCO, uma linha por (unidade × função). `SECURITY INVOKER`, e o `p_prova_unidade_ids` **não é redundante com a RLS** — ver `provas-e-unidades.md` |
 | `salvar_salas_distribuidas` | `useSalasDistribuidas` | 🔵 **03/08** — o lote de salas numa transação, com renumeração em dois passos; é o que permite **trocar o número de duas salas** |
 
-> 🔵 **Corrigido em 2026-07-31 — o cast das RPCs de lock.** Esta tabela afirmava que as três *"não estão no `types.ts` gerado"*, e era isso que justificava o `(supabase.rpc as any)` em `useProvaLock`. **As três estão** — `acquire_prova_lock` tem `Args` e `Returns` completos na linha ~1137. O `types.ts` foi regerado em algum momento e a justificativa caducou junto.
+> 🔵 **Fechado em 2026-09-16 — o cast das RPCs de lock saiu.** Desde 31/07 esta doc registrava que o `(supabase.rpc as any)` era resíduo (a justificativa original, *"não estão no `types.ts`"*, já era falsa) e que tirá-lo era mudança pequena e não feita. Os três caíram junto com a troca do lock para por-unidade, com o `types.ts` regerado no mesmo passe.
 >
-> ⚠️ **Consequência: o cast virou dívida silenciosa.** Ele desliga a checagem de tipo de três chamadas que hoje poderiam ser verificadas — errar o nome de um parâmetro passa batido no `tsc`. Tirar os três `as any` é mudança pequena e não está feita; **conferir contra os types antes**, porque a assinatura pode ter mudado desde que o cast foi escrito.
+> ⚠️ **E a dívida cobrou o preço previsto antes de ser paga.** O parágrafo antigo avisava: *"errar o nome de um parâmetro passa batido no `tsc`"*. Não era o nome do parâmetro, era o **valor** — a página entregava um `prova_unidades.id` onde o banco exige um `provas.id`, e o cast garantia que nem o compilador nem a suíte dissessem nada. 500+ erros por dia em produção. Ver [`provas-e-unidades.md`](./provas-e-unidades.md).
 
 **As RPCs do perfil do colaborador** (`get_meu_colaborador`, `update_meu_colaborador`, `update_meus_dados_bancarios`) são chamadas de `PerfilColaborador.tsx`, que é **rota transversal**, não deste módulo — ver [`../../transversais/auth-e-permissoes.md`](../../transversais/auth-e-permissoes.md).
 
@@ -149,7 +148,7 @@ Todas `SECURITY DEFINER`, chamadas via `supabase.rpc(...)`:
 | Hook | Área |
 |---|---|
 | `useColaboradores`, `useBancos` | colaboradores |
-| `useProvas`, `useProvaUnidades`, `useUnidadesProva`, `useSalasProva` (+ `useCapacidadeTemplateUnidades`), `useSalasDistribuidas`, `useUnidadeCapacidade`, `useProvaLock` | provas e unidades |
+| `useProvas`, `useProvaUnidades`, `useUnidadesProva`, `useSalasProva` (+ `useCapacidadeTemplateUnidades`), `useSalasDistribuidas`, `useUnidadeCapacidade`, `useProvaUnidadeLock` | provas e unidades |
 | `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useColaboradoresProva`, `useCoordenadoresProva`, `useCoordenadorUnidades` | alocação e funções |
 | `useOcorrencias` | ocorrências |
 
@@ -161,13 +160,13 @@ Ver [`../../transversais/testes.md`](../../transversais/testes.md) para infra e 
 
 | Coberto | Sem cobertura |
 |---|---|
-| **Todos os hooks de dados do módulo** — `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useProvaLock`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas`, `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUnidadesProva`, `useSalasProva` (+ `useCapacidadeTemplateUnidades`), `useUnidadeCapacidade` | — |
+| **Todos os hooks de dados do módulo** — `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useProvaUnidadeLock`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas`, `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUnidadesProva`, `useSalasProva` (+ `useCapacidadeTemplateUnidades`), `useUnidadeCapacidade` | — |
 | Schemas Zod: `ColaboradorDialog`, `UnidadeProvaDialog`, `SalaProvaDialog`, `FuncaoColaboradorDialog`, `ProvaDialog` | UI dos diálogos, exceto `ProvaDialog` |
 | Páginas: `GerenciarProva.ui.test.tsx` (17) · `GerenciarSalasDistribuidas.ui.test.tsx` (13) — **comportamento**, não guard | as demais páginas do módulo |
 
 > ⚠️ **Corrigido em 2026-08-03.** A primeira linha listava `useUnidadesProva`, `useSalasProva` e `useUnidadeCapacidade` como **sem cobertura**: os três têm arquivo de teste, e a camada de hooks fechou em 2026-07-26 (ver [`../../transversais/testes.md`](../../transversais/testes.md)). Doc que subestima cobertura faz alguém reescrever teste que já existe.
 
-Não há mais teste marcado `⚠️ DEFEITO` neste módulo: os dois de `useProvaLock` que afirmavam o `isLoading` preso viraram teste de regressão quando o bug foi corrigido, em 2026-07-25.
+Não há mais teste marcado `⚠️ DEFEITO` neste módulo: os dois de `useProvaUnidadeLock` que afirmavam o `isLoading` preso viraram teste de regressão quando o bug foi corrigido, em 2026-07-25.
 
 ## Componentes de domínio
 
@@ -195,12 +194,13 @@ Fora do módulo, em `src/components/`: `Layout`, `NavLink`, `PasswordConfirmDial
 2. **Template vs. snapshot de sala** — confundir `sala_prova` com `salas_prova_distribuidas` é o erro mais fácil deste módulo. Ver [`provas-e-unidades.md`](./provas-e-unidades.md).
 3. **`valor_pagamento` é congelado na alocação**, não lido ao vivo de `valores_funcao_prova`. Mudar o valor da função não corrige alocações existentes.
 4. **Encerrar ocorrências de uma unidade é irreversível pelo app** — nada devolve `ocorrencias_encerradas` a `FALSE`, nem o `reabrir_prova_unidade`. Ver [`ocorrencias.md`](./ocorrencias.md).
-5. **A liberação do lock ao sair da página passou a funcionar em 2026-07-25** — antes não funcionava, e a armadilha vale registro: era `navigator.sendBeacon`, que **não permite definir header nenhum**, então a requisição saía sem `apikey`/`Authorization` e o PostgREST recusava; quem devolvia a prova era o timeout de 10 min. Agora é `fetch` com `keepalive: true` (sobrevive ao unload **e** aceita headers), no evento **`pagehide`** — que cobre o `beforeunload` e mais: aba mandada para segundo plano no mobile, e navegação que entra no bfcache. **Não volte para `sendBeacon`**, e ao mexer no lock leia o ponto do bfcache em [`provas-e-unidades.md`](./provas-e-unidades.md).
-6. **A rota `/treinamento` não existe mais.** O manual do usuário embutido no app (`Treinamento.tsx`, 1547 linhas de JSX estático) foi **excluído em 2026-07-25**: o conteúdo estava envelhecido demais para valer remendo, e manual errado é pior que manual nenhum, porque parece autoridade. Será reescrito do zero — o item no [`backlog.md`](../../../backlog.md) registra o que a versão nova precisa resolver *além* do conteúdo. Se encontrar referência a `/treinamento` em migration, roadmap ou comentário, é história.
-7. **Guard de página é declarado NA ROTA, não dentro do arquivo.** Envolva o elemento em `<RequireAcesso papeis={[...]}>` no `App.tsx` — são **20 rotas** assim hoje. Nunca escreva o par bounce-por-login + bounce-por-papel à mão na página: é exatamente o que falhou por omissão **três vezes**, e a centralização de 2026-07-26 existe para tornar o esquecimento impossível.
+5. 🔴 **O LOCK INTEIRO só passou a funcionar em 2026-09-16** — a tela mandava um id de `prova_unidades` para uma coluna com FK para `provas`, e todo pedido morria em `23503`, calado, desde o commit inicial (500+/dia no log de produção). Hoje é por unidade: `useProvaUnidadeLock` + `prova_unidade_edit_locks`, e a identidade do dono vem de `auth.uid()` — antes o cliente mandava `p_user_id` e dava para liberar o lock alheio. ⚠️ Leia isso **antes** do item abaixo, que descreve um conserto feito sobre um lock que nunca era adquirido. Ver [`provas-e-unidades.md`](./provas-e-unidades.md).
+6. **A liberação do lock ao sair da página passou a funcionar em 2026-07-25** — antes não funcionava, e a armadilha vale registro: era `navigator.sendBeacon`, que **não permite definir header nenhum**, então a requisição saía sem `apikey`/`Authorization` e o PostgREST recusava; quem devolvia a unidade era o timeout de 10 min. Agora é `fetch` com `keepalive: true` (sobrevive ao unload **e** aceita headers), no evento **`pagehide`** — que cobre o `beforeunload` e mais: aba mandada para segundo plano no mobile, e navegação que entra no bfcache. **Não volte para `sendBeacon`**, e ao mexer no lock leia o ponto do bfcache em [`provas-e-unidades.md`](./provas-e-unidades.md).
+7. **A rota `/treinamento` não existe mais.** O manual do usuário embutido no app (`Treinamento.tsx`, 1547 linhas de JSX estático) foi **excluído em 2026-07-25**: o conteúdo estava envelhecido demais para valer remendo, e manual errado é pior que manual nenhum, porque parece autoridade. Será reescrito do zero — o item no [`backlog.md`](../../../backlog.md) registra o que a versão nova precisa resolver *além* do conteúdo. Se encontrar referência a `/treinamento` em migration, roadmap ou comentário, é história.
+8. **Guard de página é declarado NA ROTA, não dentro do arquivo.** Envolva o elemento em `<RequireAcesso papeis={[...]}>` no `App.tsx` — são **20 rotas** assim hoje. Nunca escreva o par bounce-por-login + bounce-por-papel à mão na página: é exatamente o que falhou por omissão **três vezes**, e a centralização de 2026-07-26 existe para tornar o esquecimento impossível.
 
    > 🔴 **Corrigido em 2026-07-31.** Este item dizia *"guard é escrito à mão, um por arquivo … copie o par completo … `/funcoes-colaboradores` ainda está sem o segundo"*. **Nada disso vale**: os guards foram centralizados em `RequireAcesso` em 26/07, e `/funcoes-colaboradores` tem `papeis={["admin"]}` na rota. O item **ensinava a reintroduzir** o padrão que causou as três falhas.
 
    ⚠️ **Duas páginas ainda têm um `if (!user) return <Navigate to="/auth" />` interno** — `OcorrenciasProva` e `PainelDadosColaboradores`. É redundante com o `RequireAcesso` da rota, não errado; não copie para página nova.
 
-> **Corrigido em 2026-07-25, mantido aqui como aviso de refatoração:** `useProvaLock` deixava `isLoading` preso em `true` quando faltava parâmetro ou `enabled` era falso — a guarda que resolveria o estado vivia *dentro* de `acquireLock`, que o efeito de mount não chamava nesse caso. Travava a tela de alocação num spinner sem saída. O efeito agora resolve o estado no `else`; **não remova esse `else`** achando que a guarda interna de `acquireLock` cobre o caso — ela continua inalcançável pelo mount. Coberto por teste de regressão em `useProvaLock.test.tsx`.
+> **Corrigido em 2026-07-25, mantido aqui como aviso de refatoração:** `useProvaUnidadeLock` (então `useProvaLock`) deixava `isLoading` preso em `true` quando faltava parâmetro ou `enabled` era falso — a guarda que resolveria o estado vivia *dentro* de `acquireLock`, que o efeito de mount não chamava nesse caso. Travava a tela de alocação num spinner sem saída. O efeito agora resolve o estado no `else`; **não remova esse `else`** achando que a guarda interna de `acquireLock` cobre o caso — ela continua inalcançável pelo mount. Coberto por teste de regressão em `useProvaUnidadeLock.test.tsx`.

@@ -51,7 +51,7 @@ Três coisas a preservar em refatoração:
 
 ### ⛔ A prova NÃO pode ser excluída (desde 2026-07-26)
 
-`provas` era a raiz de **sete cascatas**: `prova_unidades` (que por sua vez leva alocações, metas e ocorrências), `valores_funcao_prova`, `coordenadores_prova`, `salas_prova_distribuidas`, `email_atualizacao_log`, `ocorrencias_colaborador` e `prova_edit_locks`. Medido na prova principal: apagá-la levaria **531 alocações, as 19 ocorrências do banco, 17 valores de pagamento, 172 metas, 42 salas e 10 acessos de coordenador**.
+`provas` era a raiz de **sete cascatas**: `prova_unidades` (que por sua vez leva alocações, metas e ocorrências), `valores_funcao_prova`, `coordenadores_prova`, `salas_prova_distribuidas`, `email_atualizacao_log` e `ocorrencias_colaborador` (a sétima era `prova_edit_locks`, que deixou de pendurar em `provas` em 2026-09-16 — hoje é `prova_unidade_edit_locks` e cascateia de `prova_unidades`). Medido na prova principal: apagá-la levaria **531 alocações, as 19 ocorrências do banco, 17 valores de pagamento, 172 metas, 42 salas e 10 acessos de coordenador**.
 
 Havia confirmação por senha (`PasswordConfirmDialog`). A decisão do usuário foi que **nem isso basta** — o registro de uma prova é permanente.
 
@@ -313,25 +313,80 @@ preexistente, preservado de propósito para a refatoração não mudar nada vis�
 
 `GerenciarProva.tsx` filtra a lista de `prova_unidades` visíveis (`filteredProvaUnidades`) usando `useCoordenadorUnidades()` quando o usuário logado é `coordenador` — só vê as unidades daquela prova às quais foi explicitamente vinculado (ver [`auth-e-permissoes.md`](../../transversais/auth-e-permissoes.md)). Essa filtragem é client-side; a proteção real de dados está nas RPCs/policies.
 
-## Lock de edição concorrente (`useProvaLock.tsx`)
+## Lock de edição concorrente (`useProvaUnidadeLock.tsx`)
 
-Lock otimista por prova para evitar duas pessoas editando a mesma prova ao mesmo tempo:
-- Adquire lock via RPC `acquire_prova_lock` (params: `p_prova_id`, `p_user_id`, `p_user_name`).
-- Envia heartbeat a cada 30 segundos (`HEARTBEAT_INTERVAL`) via `update_prova_lock_activity` para manter o lock vivo.
-- Libera com `release_prova_lock` (ao desmontar/sair da tela).
-- Suportado pela tabela `prova_edit_locks`. Timeout confirmado direto na RPC `acquire_prova_lock` (`supabase/migrations/20260122123358_19ffec24-*.sql`): `v_lock_timeout INTERVAL := '10 minutes'`.
-- **Quando não há lock a adquirir** (falta `provaId`/`userId`/`userName`, ou `enabled: false`), o efeito de mount **resolve `isLoading` para `false` no `else`** em vez de chamar a RPC. Isso é contrato, não detalhe: quem consome o hook renderiza spinner enquanto `isLoading`, e sem esse `else` o estado inicial (`isLoading: true`) nunca seria resolvido. A guarda equivalente que existe *dentro* de `acquireLock` **é inalcançável pelo mount** — a condição do efeito já barra a chamada —, então não a tome por suficiente. Corrigido em 2026-07-25, depois de travar a tela de alocação num spinner sem erro nem saída; há teste de regressão para os quatro casos.
+Lock otimista por **unidade de prova**, para não deixar duas pessoas editando a mesma unidade em `/gerenciar-colaboradores-prova/:provaUnidadeId`:
+
+- Adquire via RPC `acquire_prova_unidade_lock` — **parâmetro único: `p_prova_unidade_id`**. Quem é o dono e que nome os outros veem saem de `auth.uid()` dentro da função.
+- Heartbeat a cada 30 segundos (`HEARTBEAT_INTERVAL`) por `update_prova_unidade_lock_activity`.
+- Libera com `release_prova_unidade_lock` (desmonte e saída da página).
+- O hook recebe só `{ provaUnidadeId, enabled }`. **Não devolva `userId`/`userName`** — ver a seção da identidade abaixo.
+- Tabela `prova_unidade_edit_locks`, com `prova_unidade_id` **UNIQUE** e FK para `prova_unidades(id)`. Timeout de 10 minutos dentro da própria RPC (`v_lock_timeout INTERVAL := '10 minutes'`), migration `20260916100732`.
+- **Quando não há lock a adquirir** (falta `provaUnidadeId`/`userId`/`userName`, ou `enabled: false`), o efeito de mount **resolve `isLoading` para `false` no `else`** em vez de chamar a RPC. Isso é contrato, não detalhe: quem consome o hook renderiza spinner enquanto `isLoading`, e sem esse `else` o estado inicial (`isLoading: true`) nunca seria resolvido. A guarda equivalente que existe *dentro* de `acquireLock` **é inalcançável pelo mount** — a condição do efeito já barra a chamada —, então não a tome por suficiente. Corrigido em 2026-07-25, depois de travar a tela de alocação num spinner sem erro nem saída; há teste de regressão para os quatro casos.
+
+### 🔴 O lock NUNCA funcionou, de 2026-01 a 2026-09-16
+
+⚠️ **Até 2026-09-16 esta seção descrevia um mecanismo que não existia.** Ela dizia "lock por prova", com a RPC `acquire_prova_lock` e a tabela `prova_edit_locks` — e tudo isso era verdade *no papel*. O que não era: `GerenciarColaboradoresProva` passava o `prova_unidades.id` da rota no parâmetro `p_prova_id`, e a coluna tinha FK para `provas(id)`. **Todo** pedido de lock morria em `23503`:
+
+```
+insert or update on table "prova_edit_locks" violates foreign key constraint
+"prova_edit_locks_prova_id_fkey"
+Key (prova_id)=(…) is not present in table "provas".
+```
+
+Mais de **500 ocorrências em 24h** no log de produção — uma por abertura da tela. `git log -L` mostra a linha nascendo assim no commit inicial: nunca funcionou, nem local, nem em produção.
+
+**Por que ninguém viu em 8 meses:** falhava calado. No erro o hook devolve `hasAccess:false, isLocked:false, error:"…"`, e o portão da tela testa `isLocked && !hasAccess` — falso. A página abria normalmente, e o campo `error` não era renderizado em lugar nenhum. A ausência de reclamação não era sinal de que ninguém precisava do lock: **não havia como notar**.
+
+**Por que o conserto foi mudar a granularidade, e não o id.** Passar o `provaId` de verdade seria regressão: o coordenador se vincula à prova por uma alocação (`coordenadores_prova.colaborador_prova_id` → `colaboradores_prova`, que pertence a uma `prova_unidade`), então coordenadores diferentes trabalham em **unidades diferentes da mesma prova** e um barraria o outro. As três mensagens da tela já diziam *unidade*.
+
+**O que mudou junto, e por quê:**
+
+| Mudança | Motivo |
+|---|---|
+| `useProvaLock` → `useProvaUnidadeLock`, `provaId` → `provaUnidadeId` | o nome errado é o que permitiu o id errado |
+| tabela e RPCs recriadas com nome `*_prova_unidade_*` | neste repo o **nome mente antes do código**; renomear só a coluna deixaria o resto mentindo |
+| `check_prova_lock` **dropada** | nunca teve um único consumidor |
+| o `error` do lock virou **aviso visível** na tela | era o defeito de verdade: a proteção sumir sem avisar |
+| caíram os três `(supabase.rpc as any)` | o `types.ts` foi regerado no mesmo passe; o cast era resíduo desde 31/07 |
+
+⚠️ **A FK é `ON DELETE CASCADE`, contra a regra geral de RESTRICT do §2.** Um lock não é registro, é estado efêmero de 10 minutos: com RESTRICT, uma aba esquecida bloquearia o desvínculo da unidade.
+
+**O aviso de falha NÃO bloqueia a tela**, de propósito. O lock é conveniência — a coerência do dado é barrada por trigger (`check_colaborador_prova_unique_trigger`) —, e tirar a operação do ar por uma falha transitória custaria mais do que avisa.
+
+**Como se verifica:** `docs/bateria-lock-edicao-unidade.sql`, contra o banco local, em transação com ROLLBACK. Os 22 casos cobrem aquisição, recusa por id de prova (a regressão deste defeito, nomeando a constraint que barrou), **segunda pessoa em outra unidade da mesma prova** (o caso que decidiu o desenho), o nome gravado vindo de `profiles`, expiração aos 11 min com controle positivo aos 9, **release e heartbeat de lock alheio**, ausência de sessão, e o CASCADE. A sessão é simulada com `set_config('request.jwt.claims', …, true)`, como em `bateria-finalizacao-autorizacao.sql`. Falsificada: devolvendo o `release` sem conferir o dono, o CASO 8 reprova. ⚠️ A suíte Vitest **não alcança nada disso** — ela mocka o Supabase, onde qualquer string passa por uuid. O que ela cobre é a **ligação**, em `GerenciarColaboradoresProva.ui.test.tsx`: qual id a página entrega ao hook.
+
+### 🔴 A identidade vem de `auth.uid()`, não do cliente (2026-09-16)
+
+Migration `20260916102407`, no mesmo dia e logo depois da que trouxe o lock por unidade. As três RPCs recebiam `p_user_id uuid` e decidiam **de quem é o lock** sobre um parâmetro que o próprio chamador envia. `SECURITY DEFINER` não cobre isso: o DEFINER garante que a função escreve, não que quem pediu tinha direito. Qualquer usuário autenticado, chamando o PostgREST direto, podia:
+
+- **liberar o lock de outra pessoa** e tomar a unidade;
+- **manter vivo o lock alheio**, impedindo que os 10 minutos expirassem;
+- **adquirir o lock em nome de outra pessoa** — e a tela dos demais culparia o inocente.
+
+É a mesma falha que `20260912191749` fechou nas quatro RPCs de finalização, e o conserto segue aquele padrão de propósito.
+
+⚠️ **`p_user_name` saiu junto, e não é estética.** Ele é o nome que as *outras* pessoas veem ("Fulano está editando esta unidade") e era string livre do cliente: dava para trancar uma unidade assinando com o nome de qualquer um. Identidade exibida é identidade. Agora sai de `profiles` (`full_name` → `email` do perfil → e-mail da conta → `'Usuário'`), pelo `auth.uid()`.
+
+**Os dois parâmetros foram REMOVIDOS da assinatura, não ignorados.** Manter um argumento que parece identificar e não identifica é a armadilha do §8. Quem chamar na forma antiga recebe `42883` — erro barulhento, que é o que se quer.
+
+🔵 **Efeito colateral bem-vindo na tela:** sumiu de `GerenciarColaboradoresProva` a consulta a `profiles` que existia só para alimentar o lock — e com ela a corrente `userNameCarregado` → `enabled`, que foi justamente a que travou esta tela num spinner sem saída em 25/07. O `enabled` continua exigindo `!!user`: sem sessão, `auth.uid()` é nulo e a RPC recusa com `P0002`.
+
+🔴 **`auth.uid()` é NULL fora de uma sessão de usuário.** Conferido em 16/09: as três só são chamadas pelo front, com sessão — nenhuma Edge Function, nenhum script. Se uma automação precisar delas, o caminho é função própria com guarda explícita, **não** devolver o parâmetro. O `acquire` levanta exceção sem sessão; o heartbeat e o release devolvem `false` em silêncio, porque rodam em caminhos (intervalo e `pagehide`) onde não há a quem reportar.
+
+⚠️ **São duas migrations no mesmo dia para o mesmo tema** (`…100732` e `…102407`) porque migration aplicada não se edita (§3) — a primeira já tinha rodado localmente quando a identidade entrou em pauta.
 
 ### Sair da página devolve o lock (corrigido em 2026-07-25)
 
-**A armadilha que existia:** o handler de `beforeunload` liberava o lock com `navigator.sendBeacon`, e o **`sendBeacon` não permite definir header nenhum** — a requisição saía sem `apikey` e sem `Authorization`, que o PostgREST exige. Nunca liberava nada; quem devolvia a prova era o timeout de 10 minutos. O código *parecia* correto, e é por isso que vale o registro: **não volte para `sendBeacon`** em nenhuma limpeza de unload que precise de auth.
+**A armadilha que existia:** o handler de `beforeunload` liberava o lock com `navigator.sendBeacon`, e o **`sendBeacon` não permite definir header nenhum** — a requisição saía sem `apikey` e sem `Authorization`, que o PostgREST exige. Nunca liberava nada; quem devolvia a unidade era o timeout de 10 minutos. O código *parecia* correto, e é por isso que vale o registro: **não volte para `sendBeacon`** em nenhuma limpeza de unload que precise de auth.
+
+⚠️ Note, com o de 2026-09-16 na mão, que este conserto de 25/07 foi feito sobre um lock que **jamais era adquirido**: `hasLockRef` nunca virava `true`, então nem o release nem o heartbeat chegavam a rodar. As três peças abaixo só passaram a valer de verdade em 16/09.
 
 O desenho atual tem três peças que se sustentam mutuamente:
 
 1. **`fetch` com `keepalive: true`**, no lugar do beacon — sobrevive ao unload **e** aceita headers.
-2. **Evento `pagehide`**, no lugar de `beforeunload` — cobre tudo que ele cobria, mais o mobile mandando a aba para segundo plano e a navegação que entra no bfcache. Um `hasLockRef.current = false` no início do handler impede envio duplo.
-3. **`pageshow` com `event.persisted` readquire o lock.** Esta é a peça não óbvia: voltar do bfcache restaura uma tela que *acha* que tem o lock, mas o servidor já não tem a linha. **O heartbeat não conserta** — `update_prova_lock_activity` é um `UPDATE`, e não recria linha apagada. Sem readquirir, dois navegadores editariam a mesma prova achando cada um que é o dono.
+2. **Evento `pagehide`**, no lugar de `beforeunload` — cobre tudo que ele cobria, mais o mobile mandando a aba para segundo plano, e a navegação que entra no bfcache. Um `hasLockRef.current = false` no início do handler impede envio duplo.
+3. **`pageshow` com `event.persisted` readquire o lock.** Esta é a peça não óbvia: voltar do bfcache restaura uma tela que *acha* que tem o lock, mas o servidor já não tem a linha. **O heartbeat não conserta** — `update_prova_unidade_lock_activity` é um `UPDATE`, e não recria linha apagada (CASO 8b da bateria). Sem readquirir, dois navegadores editariam a mesma unidade achando cada um que é o dono.
 
 O token de acesso é espelhado num `accessTokenRef` (alimentado por `getSession` + `onAuthStateChange`) porque o handler de saída é **síncrono**: não dá para esperar um `getSession()` enquanto a aba fecha.
 
-**Detalhe de tipagem:** as três RPCs de lock são chamadas com cast `(supabase.rpc as any)` porque **não constam do `types.ts` gerado**. Regenerar os tipos não é o conserto óbvio — vale checar antes se elas existem no banco de produção ou se são mais um caso do drift schema-vs-migrations.

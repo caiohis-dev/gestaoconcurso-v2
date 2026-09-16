@@ -110,7 +110,7 @@ ROLLBACK;
 --
 --   ANON="sb_publishable_..."
 --   for t in editais provas bancos funcoes_colaboradores prova_unidades \
---            sala_prova coordenadores_prova prova_edit_locks candidatos; do
+--            sala_prova coordenadores_prova prova_unidade_edit_locks candidatos; do
 --     printf "%-24s " "$t"
 --     curl -s "http://127.0.0.1:54321/rest/v1/$t?select=*&limit=1" -H "apikey: $ANON"
 --     echo
@@ -119,6 +119,12 @@ ROLLBACK;
 -- Esperado em TODAS: {"code":"42501", ...}. Antes de 31/07 as sete primeiras
 -- devolviam dado real sem login (`prova_edit_locks` devolvia `[]` só por estar
 -- vazia — a policy dela era igualmente permissiva).
+--
+-- ⚠️ `prova_edit_locks` virou `prova_unidade_edit_locks` em 2026-09-16 (migration
+-- 20260916100732). E a frase acima ganhou um sentido que ninguém viu na época: ela
+-- estava vazia porque o lock NUNCA funcionou — a tela mandava um id de
+-- `prova_unidades` para uma coluna com FK para `provas`, e todo INSERT morria em
+-- 23503. O comportamento do lock em si está em `docs/bateria-lock-edicao-unidade.sql`.
 --
 -- 🔴 CONTROLE POSITIVO, e não pule: repita com um JWT de `authenticated` e as
 -- leituras têm de VOLTAR. "Ninguém lê" é metade da prova; a outra metade é que

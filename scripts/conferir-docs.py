@@ -115,7 +115,7 @@ def add(sev, arq, num, tipo, msg):
 
 RE_ARQ  = re.compile(r"`([A-Za-z0-9_./-]+\.(?:tsx?|sql|json|md|toml))`")
 RE_NUM  = re.compile(r"\*\*(\d{2,4})\*\*\s*(migrations?|testes?|policies|tabelas)", re.I)
-RE_TAB  = re.compile(r"`(candidatos|colaboradores|cargos|cargo_apelidos|editais|provas|user_roles|profiles|bancos|unidades_prova|prova_unidades|sala_prova|salas_prova_distribuidas|colaboradores_prova|coordenadores_prova|funcoes_colaboradores|meta_colaboradores_unidade|valores_funcao_prova|ocorrencias_colaborador|email_atualizacao_log|prova_edit_locks|candidatos_importacao)`")
+RE_TAB  = re.compile(r"`(candidatos|colaboradores|cargos|cargo_apelidos|editais|provas|user_roles|profiles|bancos|unidades_prova|prova_unidades|sala_prova|salas_prova_distribuidas|colaboradores_prova|coordenadores_prova|funcoes_colaboradores|meta_colaboradores_unidade|valores_funcao_prova|ocorrencias_colaborador|email_atualizacao_log|prova_edit_locks|prova_unidade_edit_locks|candidatos_importacao)`")
 RE_COL  = re.compile(r"`(colab_[a-z_]+|cargo_[a-z_]+|n_inscricao|data_nascimento|hora_nascimento|nome_chave|texto_chave|user_id|prova_id|edital_id)`")
 RE_TRG  = re.compile(r"`(check_[a-z_]+|candidatos_[a-z_]+|cargos_[a-z_]+|handle_new_user|generate_codigo_acesso)\b")
 RE_FUNC = re.compile(r"`([a-z_]+)\(\)`")
