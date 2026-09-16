@@ -82,7 +82,13 @@ E o 002 já carrega o resíduo do erro que isso produz: uma linha solta **`"10. 
 
 **95 referências cruzadas, nenhuma para capítulo.** E o resíduo do 002, acima, é uma referência **de item**. Numerar só o capítulo resolveria o caso que não acontece.
 
-Decisão: o capítulo continua sendo **um campo de texto**, escrito como lista, e **o sistema numera os itens** (`7.1`, `7.2.1`, alínea `a)`). Referência por âncora: `{{item:laudo}}`. Sem tabela nova, sem editor de árvore. Entregue na fatia 1.
+Decisão original (fatia 1): o capítulo continua sendo **um campo de texto**, escrito como lista, e **o sistema numera os itens** (`7.1`, `7.2.1`, alínea `a)`). Referência por âncora: `{{item:laudo}}`. Sem tabela nova, sem editor de árvore.
+
+> 🔵 **REVISTA em 2026-09-16, a pedido do usuário** (*"quero que cada artigo seja um input próprio, com uma tabela em que cada artigo seja um registro"*). **A medição acima continua valendo** — é ela que justifica numerar item, e a numeração continua calculada. O que mudou é **onde o artigo mora**: `edital_itens`, um registro por artigo, migration `20260916225307`. As frases *"o capítulo continua sendo um campo de texto"* e *"sem tabela nova"* **deixaram de valer**.
+>
+> O que a mudança comprou, e o texto livre não permitia: âncora única garantida pelo **banco** (era regra de linter, §2), o linter apontando **o artigo** e não o capítulo, e o artigo `tipo = 'quadro'` — que resolveu a pergunta seguinte do usuário, *"alguns artigos têm tabela na formatação final"*.
+>
+> 🔴 **E a resposta a ela foi medida:** das 8 tabelas dos três editais, **nenhuma é de forma livre** — todas são dado que um capítulo estruturado já gera ou vai gerar. O artigo **aponta** para a fonte, nunca a contém. Ver `estrutura/modulos/editais/00-modulo.md`.
 
 ---
 
@@ -104,6 +110,8 @@ Cada uma tem roadmap próprio em [`../analises/`](../analises/), no padrão YAML
 | 10 | Conteúdo programático (Anexo I) | [`roadmap-editais-conteudo-programatico.yaml`](../analises/roadmap-editais-conteudo-programatico.yaml) |
 | 11 | Critérios de desempate e resultado | [`roadmap-editais-desempate-e-resultado.yaml`](../analises/roadmap-editais-desempate-e-resultado.yaml) |
 | 12 | Exportação (PDF / Markdown / JSON) | [`roadmap-editais-exportacao.yaml`](../analises/roadmap-editais-exportacao.yaml) |
+
+🔵 **Uma refatoração atravessou as 12 em 2026-09-16, depois das fatias 1 a 5:** o artigo saiu do texto do capítulo e virou registro próprio ([`roadmap-editais-artigos-por-registro.yaml`](../analises/roadmap-editais-artigos-por-registro.yaml)). Ela é **pré-requisito das fatias 6 a 12** — cada uma passa a ganhar um `quadro_fonte`, e não um bloco de texto.
 
 🔵 **As fatias 9, 10 e 11 nasceram depois**, em 2026-09-16: ao dividir o plano apareceu que três módulos do [`Arquitetura de Tabelas…`](./Arquitetura%20de%20Tabelas%20de%20Banco%20de%20Dados%20para%20Editais.md) não tinham fatia, e o `edital_canais_atendimento` não tinha dono. A exportação, que era a 9, virou a 12.
 

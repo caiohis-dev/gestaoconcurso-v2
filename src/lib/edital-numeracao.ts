@@ -28,14 +28,16 @@ export interface CapituloOverride {
   chave: string;
   ordem?: number | null;
   incluido?: boolean | null;
-  texto?: string | null;
 }
+
+// 🔵 `texto` SAIU daqui em 2026-09-16 junto com a coluna do banco: o conteúdo do
+// capítulo agora são os registros de `edital_itens`, um por artigo. Um capítulo é só
+// posição, inclusão e título — o texto mora um nível abaixo.
 
 /** Um capítulo já resolvido: catálogo + override + número calculado. */
 export interface CapituloResolvido extends CapituloCatalogo {
   ordem: number;
   incluido: boolean;
-  texto: string;
   /** `null` quando o capítulo não é numerado (preâmbulo, anexos) ou está excluído. */
   numero: number | null;
 }
@@ -61,7 +63,6 @@ export function montarDocumento(overrides: readonly CapituloOverride[] = []): Ca
       // engoliria, devolvendo o padrão do catálogo no lugar da escolha do usuário.
       ordem: o?.ordem ?? i,
       incluido: o?.incluido ?? cat.padrao,
-      texto: o?.texto ?? "",
       numero: null as number | null,
     };
   });

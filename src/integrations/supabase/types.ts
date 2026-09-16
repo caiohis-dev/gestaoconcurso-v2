@@ -740,7 +740,6 @@ export type Database = {
           id: string
           incluido: boolean
           ordem: number
-          texto: string | null
           updated_at: string
         }
         Insert: {
@@ -751,7 +750,6 @@ export type Database = {
           id?: string
           incluido: boolean
           ordem: number
-          texto?: string | null
           updated_at?: string
         }
         Update: {
@@ -762,7 +760,6 @@ export type Database = {
           id?: string
           incluido?: boolean
           ordem?: number
-          texto?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -843,6 +840,59 @@ export type Database = {
           },
           {
             foreignKeyName: "edital_cargos_edital_id_fkey"
+            columns: ["edital_id"]
+            isOneToOne: false
+            referencedRelation: "editais"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      edital_itens: {
+        Row: {
+          ancora: string | null
+          capitulo_chave: string
+          created_at: string
+          created_by: string | null
+          edital_id: string
+          id: string
+          nivel: number
+          ordem: number
+          quadro_fonte: string | null
+          texto: string | null
+          tipo: string
+          updated_at: string
+        }
+        Insert: {
+          ancora?: string | null
+          capitulo_chave: string
+          created_at?: string
+          created_by?: string | null
+          edital_id: string
+          id?: string
+          nivel?: number
+          ordem: number
+          quadro_fonte?: string | null
+          texto?: string | null
+          tipo?: string
+          updated_at?: string
+        }
+        Update: {
+          ancora?: string | null
+          capitulo_chave?: string
+          created_at?: string
+          created_by?: string | null
+          edital_id?: string
+          id?: string
+          nivel?: number
+          ordem?: number
+          quadro_fonte?: string | null
+          texto?: string | null
+          tipo?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "edital_itens_edital_id_fkey"
             columns: ["edital_id"]
             isOneToOne: false
             referencedRelation: "editais"
@@ -1963,6 +2013,10 @@ export type Database = {
       release_prova_unidade_lock: {
         Args: { p_prova_unidade_id: string }
         Returns: boolean
+      }
+      reordenar_itens_do_capitulo: {
+        Args: { p_capitulo_chave: string; p_edital_id: string; p_ids: string[] }
+        Returns: undefined
       }
       revogar_coordenador: { Args: { p_user_id: string }; Returns: undefined }
       rotulo_do_bloco: { Args: { p_bloco: string }; Returns: string }

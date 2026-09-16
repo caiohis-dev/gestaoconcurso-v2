@@ -7,37 +7,67 @@
  * ⚠️ Cada caso aqui tem o seu CONTROLE NEGATIVO ao lado: provar que a regra acusa é
  * metade; a outra é provar que ela NÃO acusa o texto legítimo. Sem isso, a saída fácil
  * para "o linter pegou" é afrouxar a regra até ela não pegar mais nada.
+ *
+ * 🔵 Desde 16/09 o conteúdo entra como ARTIGOS (`itens`), não como texto de capítulo. A
+ * regra `ancora-duplicada` saiu daqui: virou o índice único `edital_itens_ancora_key`, e
+ * quem a verifica agora é `docs/bateria-edital-itens.sql`, CASO 2. Testá-la aqui seria
+ * afirmar o comportamento de um laço que não existe mais.
  */
 import { describe, it, expect } from "vitest";
 import { analisarEdital, resumoDoLinter } from "@/lib/edital-linter";
+import { CAPITULOS_CATALOGO } from "@/lib/edital-capitulos";
 import type { CapituloOverride } from "@/lib/edital-numeracao";
+import type { ItemBruto } from "@/lib/edital-itens";
 
-/** Todo capítulo padrão preenchido — para isolar a regra sob teste. */
-const TUDO_PREENCHIDO: CapituloOverride[] = [
-  "preambulo", "disposicoes_preliminares", "quadro_de_cargos", "atribuicoes_dos_cargos",
-  "requisitos_investidura", "inscricao_e_pagamento", "isencao_taxa", "vagas_pcd",
-  "vagas_cotas_raciais", "comprovante_inscricao", "condicoes_especiais_prova",
-  "prova_objetiva", "recursos_prova_objetiva", "desempate_e_resultado",
-  "investidura_e_posse", "disposicoes_gerais", "anexos",
-].map((chave) => ({ chave, texto: "Texto do capítulo, redigido." }));
+let seq = 0;
+const artigo = (capitulo: string, texto: string, extra: Partial<ItemBruto> = {}): ItemBruto => ({
+  id: `a${seq++}`,
+  capitulo_chave: capitulo,
+  ordem: 0,
+  nivel: 0,
+  tipo: "item",
+  texto,
+  ancora: null,
+  quadro_fonte: null,
+  ...extra,
+});
 
-const comTexto = (chave: string, texto: string): CapituloOverride[] =>
-  TUDO_PREENCHIDO.map((c) => (c.chave === chave ? { ...c, texto } : c));
+/**
+ * Um artigo em cada capítulo padrão — para isolar a regra sob teste.
+ *
+ * ⚠️ Sai do CATÁLOGO, não de uma lista copiada: a lista copiada envelhece calada no dia
+ * em que um capítulo padrão entra, e o caso de linha de base passaria a acusar
+ * `capitulo-vazio` por um motivo que nada tem a ver com o teste.
+ */
+const base = (): ItemBruto[] =>
+  CAPITULOS_CATALOGO.filter((c) => c.padrao).map((c) =>
+    artigo(c.chave, "Texto do capítulo, redigido."),
+  );
 
-const regras = (overrides: CapituloOverride[]) =>
-  analisarEdital({ overrides }).map((a) => a.regra);
+/** Troca o conteúdo de um capítulo por estes artigos, na ordem dada. */
+const comArtigos = (chave: string, ...itens: (string | Partial<ItemBruto>)[]): ItemBruto[] => [
+  ...base().filter((i) => i.capitulo_chave !== chave),
+  ...itens.map((it, i) =>
+    typeof it === "string"
+      ? artigo(chave, it, { ordem: i })
+      : artigo(chave, it.texto ?? "", { ...it, ordem: i }),
+  ),
+];
+
+const regras = (itens: ItemBruto[], overrides?: CapituloOverride[]) =>
+  analisarEdital({ itens, overrides }).map((a) => a.regra);
 
 describe("linha de base", () => {
   it("⭐ CONTROLE: edital com todos os capítulos padrão preenchidos não acusa nada", () => {
     // Se este caso acusar, qualquer outro teste deste arquivo vira ruído.
-    expect(analisarEdital({ overrides: TUDO_PREENCHIDO })).toEqual([]);
+    expect(analisarEdital({ itens: base() })).toEqual([]);
   });
 });
 
 describe("placeholder não preenchido — o defeito do Edital 004", () => {
   it("🎯 acusa `dia XX/xx/2026`, que é o texto literal publicado", () => {
     const achados = analisarEdital({
-      overrides: comTexto("prova_objetiva", "A prova será aplicada no dia XX/xx/2026."),
+      itens: comArtigos("prova_objetiva", "A prova será aplicada no dia XX/xx/2026."),
     });
     expect(achados).toHaveLength(1);
     expect(achados[0].regra).toBe("placeholder-nao-preenchido");
@@ -45,46 +75,132 @@ describe("placeholder não preenchido — o defeito do Edital 004", () => {
     expect(achados[0].capitulo).toBe("prova_objetiva");
   });
 
+  it("🔴 a mensagem nomeia o ARTIGO, não o capítulo inteiro", () => {
+    // É o ganho concreto de o artigo ter virado registro: no Edital 004 o defeito está
+    // nos itens 12.4 e 14.9, e a mensagem antiga dizia só "o capítulo Do Cronograma".
+    //
+    // ⚠️ 11.2, e não 12.2: aqui `prova_objetiva` é o capítulo 11, porque os dois
+    // condicionais nascem desligados. No Edital 004 ele é o 12 justamente porque a
+    // territorialidade está ligada — é a renumeração que este módulo existe para fazer.
+    const achados = analisarEdital({
+      itens: comArtigos("prova_objetiva", "Primeiro artigo.", "Aplicada no dia XX/xx/2026."),
+    });
+    expect(achados).toHaveLength(1);
+    expect(achados[0].mensagem).toContain("o item 11.2");
+  });
+
   it("acusa marcador vazio `[...]` e lembrete de redação", () => {
-    expect(regras(comTexto("isencao_taxa", "O prazo é [...]"))).toContain("placeholder-nao-preenchido");
-    expect(regras(comTexto("isencao_taxa", "Valor a definir pela banca"))).toContain("placeholder-nao-preenchido");
+    expect(regras(comArtigos("isencao_taxa", "O prazo é [...]"))).toContain("placeholder-nao-preenchido");
+    expect(regras(comArtigos("isencao_taxa", "Valor a definir pela banca"))).toContain("placeholder-nao-preenchido");
   });
 
   it("⭐ CONTROLE NEGATIVO: um X sozinho NÃO é placeholder", () => {
     // Sem isto a regra pegaria "Raio X", "artigo X" e "Anexo X" — e quem redige
     // aprenderia a ignorar o painel, que é o pior resultado possível.
-    expect(regras(comTexto("prova_objetiva", "exame de Raio X, conforme o artigo X"))).toEqual([]);
+    expect(regras(comArtigos("prova_objetiva", "exame de Raio X, conforme o artigo X"))).toEqual([]);
   });
 
   it("⭐ CONTROLE NEGATIVO: data de verdade não acusa", () => {
-    expect(regras(comTexto("prova_objetiva", "A prova será aplicada em 16/03/2026."))).toEqual([]);
+    expect(regras(comArtigos("prova_objetiva", "A prova será aplicada em 16/03/2026."))).toEqual([]);
   });
 });
 
-describe("capítulo incluído e vazio", () => {
+describe("capítulo incluído e sem artigo", () => {
   it("acusa como ERRO", () => {
-    const achados = analisarEdital({ overrides: comTexto("vagas_pcd", "   ") });
+    const achados = analisarEdital({ itens: comArtigos("vagas_pcd") });
     expect(achados).toHaveLength(1);
     expect(achados[0].regra).toBe("capitulo-vazio");
     expect(achados[0].severidade).toBe("erro");
   });
 
   it("⭐ CONTROLE NEGATIVO: capítulo DESLIGADO e vazio não acusa vazio", () => {
-    // O texto dele não sai no documento. Acusar encheria o painel de pendência sobre
+    // O conteúdo dele não sai no documento. Acusar encheria o painel de pendência sobre
     // conteúdo que ninguém vai publicar.
-    const overrides = TUDO_PREENCHIDO.map((c) =>
-      c.chave === "vagas_pcd" ? { chave: c.chave, incluido: false, texto: "" } : c,
-    );
-    expect(regras(overrides)).not.toContain("capitulo-vazio");
+    expect(
+      regras(comArtigos("vagas_pcd"), [{ chave: "vagas_pcd", incluido: false }]),
+    ).not.toContain("capitulo-vazio");
+  });
+});
+
+describe("artigo vazio", () => {
+  it("🔴 acusa o artigo em branco — o banco o aceita de propósito", () => {
+    // "Adicionar artigo" cria a linha em branco; uma CHECK no banco obrigaria a UI a
+    // inventar um texto-placeholder, que é o inimigo declarado deste módulo.
+    const achados = analisarEdital({ itens: comArtigos("vagas_pcd", "Tem texto.", "   ") });
+    expect(achados.map((a) => a.regra)).toEqual(["artigo-vazio"]);
+    expect(achados[0].mensagem).toContain("o item 7.2");
+  });
+
+  it("⭐ CONTROLE NEGATIVO: artigo do tipo quadro não precisa de texto", () => {
+    // A legenda é opcional; o conteúdo dele vem do dado estruturado.
+    expect(
+      regras(comArtigos("quadro_de_cargos", { tipo: "quadro", quadro_fonte: "cargos", texto: "" })),
+    ).toEqual([]);
+  });
+});
+
+describe("subitem sem item acima", () => {
+  it("é AVISO: o subitem sairia como 7.0.1", () => {
+    const achados = analisarEdital({
+      itens: comArtigos("vagas_pcd", { texto: "Subitem órfão.", nivel: 1 }, "Item."),
+    });
+    expect(achados.map((a) => a.regra)).toEqual(["subitem-sem-item"]);
+    expect(achados[0].severidade).toBe("aviso");
+    expect(achados[0].mensagem).toContain("7.0.1");
+  });
+
+  it("🔴 CONTROLE NEGATIVO MEDIDO: alínea DIRETO sob o item é normal, e não avisa", () => {
+    // Medido nos três editais reais em 2026-09-16: de 64 a 74 alíneas por edital, e o
+    // item 6.1 do Edital 002 tem "A) B) C)" logo abaixo, sem subitem no meio. A primeira
+    // versão desta regra acusava todo nível que pulasse e teria enchido o painel de
+    // aviso falso em TODO edital — que é o começo de ninguém mais olhar o painel.
+    expect(
+      regras(
+        comArtigos(
+          "vagas_pcd",
+          "O candidato poderá requerer a Isenção, desde que atenda a um dos requisitos:",
+          { texto: "Estar inscrito no CadÚnico;", nivel: 2 },
+          { texto: "Ser doador regular de sangue;", nivel: 2 },
+          { texto: "Ter prestado serviço eleitoral.", nivel: 2 },
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it("⭐ CONTROLE NEGATIVO: subitem DEPOIS de um item não avisa", () => {
+    expect(regras(comArtigos("vagas_pcd", "Item.", { texto: "Subitem.", nivel: 1 }))).toEqual([]);
+  });
+});
+
+describe("quadro sem dado", () => {
+  const comQuadro = comArtigos("quadro_de_cargos", {
+    tipo: "quadro",
+    quadro_fonte: "cargos",
+    texto: "QUADRO I: DOS CARGOS",
+  });
+
+  it("🎯 acusa quadro cuja fonte não tem nenhuma linha — sairia tabela vazia", () => {
+    const achados = analisarEdital({ itens: comQuadro, linhasPorFonte: { cargos: 0 } });
+    expect(achados.map((a) => a.regra)).toEqual(["quadro-sem-dado"]);
+    expect(achados[0].severidade).toBe("erro");
+  });
+
+  it("⭐ CONTROLE NEGATIVO: com linhas na fonte, não acusa", () => {
+    expect(regras(comQuadro).length).toBe(0);
+    expect(analisarEdital({ itens: comQuadro, linhasPorFonte: { cargos: 3 } })).toEqual([]);
+  });
+
+  it("⭐ CONTROLE: fonte NÃO MEDIDA não acusa — melhor calar que acusar por ignorância", () => {
+    expect(analisarEdital({ itens: comQuadro, linhasPorFonte: {} })).toEqual([]);
   });
 });
 
 describe("capítulo padrão desligado", () => {
   it("é AVISO, não erro — desligar é permitido", () => {
-    const overrides = TUDO_PREENCHIDO.map((c) =>
-      c.chave === "disposicoes_gerais" ? { ...c, incluido: false } : c,
-    );
-    const achados = analisarEdital({ overrides });
+    const achados = analisarEdital({
+      itens: base(),
+      overrides: [{ chave: "disposicoes_gerais", incluido: false }],
+    });
     expect(achados).toHaveLength(1);
     expect(achados[0].regra).toBe("capitulo-padrao-desligado");
     expect(achados[0].severidade).toBe("aviso");
@@ -93,83 +209,76 @@ describe("capítulo padrão desligado", () => {
   it("⭐ CONTROLE NEGATIVO: condicional desligado é o padrão dele — não avisa", () => {
     // Territorialidade e títulos nascem desligados. Avisar sobre eles faria todo edital
     // comum abrir com dois avisos falsos.
-    expect(regras(TUDO_PREENCHIDO)).toEqual([]);
+    expect(regras(base())).toEqual([]);
   });
 });
 
-describe("referência cruzada", () => {
+describe("referência cruzada de capítulo", () => {
   it("acusa referência a capítulo DESLIGADO neste edital", () => {
-    const achados = analisarEdital({
-      overrides: comTexto("prova_objetiva", "na forma do {{cap:prova_de_titulos}}"),
-    });
-    expect(achados.map((a) => a.regra)).toEqual(["referencia-a-capitulo-excluido"]);
+    expect(regras(comArtigos("prova_objetiva", "na forma do {{cap:prova_de_titulos}}"))).toEqual([
+      "referencia-a-capitulo-excluido",
+    ]);
   });
 
   it("acusa referência a capítulo que não existe no catálogo", () => {
-    const achados = analisarEdital({
-      overrides: comTexto("prova_objetiva", "ver {{cap:capitulo_inventado}}"),
-    });
-    expect(achados.map((a) => a.regra)).toEqual(["referencia-desconhecida"]);
+    expect(regras(comArtigos("prova_objetiva", "ver {{cap:capitulo_inventado}}"))).toEqual([
+      "referencia-desconhecida",
+    ]);
   });
 
   it("⭐ CONTROLE NEGATIVO: referência que resolve não acusa", () => {
-    expect(regras(comTexto("prova_objetiva", "ver {{cap:vagas_pcd}}"))).toEqual([]);
+    expect(regras(comArtigos("prova_objetiva", "ver {{cap:vagas_pcd}}"))).toEqual([]);
   });
 
   it("🔴 a MESMA referência deixa de acusar quando o capítulo é ligado", () => {
     // É o par que prova que a regra olha o estado do edital, e não uma lista fixa.
-    const texto = "na forma do {{cap:prova_de_titulos}}";
-    expect(regras(comTexto("prova_objetiva", texto))).toEqual(["referencia-a-capitulo-excluido"]);
+    const itens = comArtigos("prova_objetiva", "na forma do {{cap:prova_de_titulos}}");
+    expect(regras(itens)).toEqual(["referencia-a-capitulo-excluido"]);
 
-    const comTitulos = comTexto("prova_objetiva", texto).concat({
-      chave: "prova_de_titulos",
-      incluido: true,
-      texto: "Da prova de títulos.",
-    });
-    expect(regras(comTitulos)).toEqual([]);
+    expect(
+      regras([...itens, artigo("prova_de_titulos", "Da prova de títulos.")], [
+        { chave: "prova_de_titulos", incluido: true },
+      ]),
+    ).toEqual([]);
   });
 });
 
-describe("resumoDoLinter", () => {
-  it("separa erro de aviso", () => {
-    const overrides = comTexto("prova_objetiva", "no dia XX/xx/2026").map((c) =>
-      c.chave === "disposicoes_gerais" ? { ...c, incluido: false } : c,
-    );
-    expect(resumoDoLinter(analisarEdital({ overrides }))).toEqual({ erros: 1, avisos: 1 });
-  });
-});
-
-describe("referência a ITEM — a granularidade que os editais reais usam", () => {
-  it("acusa âncora duplicada", () => {
-    const achados = analisarEdital({
-      overrides: comTexto("vagas_pcd", "- {#laudo} um\n- {#laudo} dois"),
-    });
-    expect(achados.map((a) => a.regra)).toEqual(["ancora-duplicada"]);
-  });
-
-  it("acusa referência a item que não existe", () => {
-    const achados = analisarEdital({
-      overrides: comTexto("prova_objetiva", "nos termos do {{item:nao_existe}}"),
-    });
-    expect(achados.map((a) => a.regra)).toEqual(["referencia-de-item-quebrada"]);
+describe("referência a ARTIGO — a granularidade que os editais reais usam", () => {
+  it("acusa referência a artigo que não existe", () => {
+    expect(regras(comArtigos("prova_objetiva", "nos termos do {{item:nao_existe}}"))).toEqual([
+      "referencia-de-item-quebrada",
+    ]);
   });
 
   it("⭐ CONTROLE NEGATIVO: referência que resolve não acusa", () => {
-    const overrides = comTexto("vagas_pcd", "- {#laudo} do laudo").map((c) =>
-      c.chave === "prova_objetiva" ? { ...c, texto: "ver {{item:laudo}}" } : c,
+    const itens = comArtigos("vagas_pcd", { texto: "do laudo", ancora: "laudo" }).filter(
+      (i) => i.capitulo_chave !== "prova_objetiva",
     );
-    expect(regras(overrides)).toEqual([]);
+    expect(regras([...itens, artigo("prova_objetiva", "ver {{item:laudo}}")])).toEqual([]);
   });
 
   it("🔴 desligar o capítulo da âncora QUEBRA a referência, e o linter acusa", () => {
     // O par que prova que a regra olha o estado do edital: a mesma referência passa e
     // depois falha, sem ninguém tocar no texto que a contém.
-    const base = comTexto("vagas_pcd", "- {#laudo} do laudo").map((c) =>
-      c.chave === "prova_objetiva" ? { ...c, texto: "ver {{item:laudo}}" } : c,
+    const itens = [
+      ...comArtigos("vagas_pcd", { texto: "do laudo", ancora: "laudo" }).filter(
+        (i) => i.capitulo_chave !== "prova_objetiva",
+      ),
+      artigo("prova_objetiva", "ver {{item:laudo}}"),
+    ];
+    expect(regras(itens)).toEqual([]);
+    expect(regras(itens, [{ chave: "vagas_pcd", incluido: false }])).toContain(
+      "referencia-de-item-quebrada",
     );
-    expect(regras(base)).toEqual([]);
+  });
+});
 
-    const semPcd = base.map((c) => (c.chave === "vagas_pcd" ? { ...c, incluido: false } : c));
-    expect(regras(semPcd)).toContain("referencia-de-item-quebrada");
+describe("resumoDoLinter", () => {
+  it("separa erro de aviso", () => {
+    const achados = analisarEdital({
+      itens: comArtigos("prova_objetiva", "no dia XX/xx/2026"),
+      overrides: [{ chave: "disposicoes_gerais", incluido: false }],
+    });
+    expect(resumoDoLinter(achados)).toEqual({ erros: 1, avisos: 1 });
   });
 });

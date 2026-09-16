@@ -166,7 +166,26 @@ O preço veio em 10/09: o bloco foi lido de boa-fé numa varredura e virou um **
 
 ## O que está coberto (2026-07-27)
 
-**1.496 testes em 80 arquivos** (medido em 2026-09-16, ao fim da **fatia 5 da v3 do módulo Editais — a matriz da prova** — arquivo novo `src/lib/edital-prova.test.ts` (13 casos).
+**1.547 testes em 82 arquivos** (medido em 2026-09-16, ao fim da refatoração **o ARTIGO vira registro próprio** no módulo Editais) — dois arquivos novos: `src/lib/edital-texto.test.ts` (9 casos) e `src/components/ArtigosDoCapitulo.ui.test.tsx` (15).
+
+🔴 **A bateria de UI existe pela mesma razão que a do lock, e é a distinção que este arquivo mais repete:** `edital-itens.test.ts` prova que `numerarItens` numera certo; nada ali prova que a TELA mostra esse número, que ele é read-only, ou que "subir" do primeiro artigo está desabilitado. Falsificada três vezes, cada uma derrubando exatamente o que guarda: trocar o número calculado pela `ordem` crua derruba 6 casos, `primeiro={false}` derruba 1, e ignorar `travado` num botão derruba 1.
+
+🔴 **DUAS ASSERÇÕES MINHAS CAÍRAM CONTRA O DADO REAL, e as duas são armadilha 8 ao contrário** — teste verde que não guardava nada, e regra que acusaria o mundo inteiro:
+
+- *"A âncora resolve mesmo com os registros fora de ordem"* usava três artigos com a âncora **no meio**. Invertida, ela caía no mesmo `7.2`: o caso passava com ou **sem** a ordenação. Quatro artigos, com a âncora fora do centro, e a falsificação passou a derrubá-lo.
+- A regra `nivel-fora-de-sequencia` do linter acusaria a **alínea direto sob o item** — que é a forma NORMAL, com **64 a 74 ocorrências por edital** (o item 6.1 do Edital 002 tem `A) B) C)` logo abaixo). Teria enchido o painel de aviso falso em todo edital, que é o começo de ninguém mais olhar o painel. Virou `subitem-sem-item`, que acusa só o caso de saída quebrada (`7.0.1`).
+
+⭐ **O controle positivo é o capítulo 6 do Edital 002 publicado** (Da Isenção da Taxa), escolhido porque exercita os três tipos de linha de uma vez: 17 itens, alíneas em letra sob o 6.1 e o 6.6, e um parágrafo **sem número** entre o 6.6 e o 6.7. Se a prosa consumisse número, as 32 referências cruzadas daquele edital passariam todas a apontar para o artigo errado.
+
+⚠️ **A metade que a suíte NÃO alcança é `docs/bateria-edital-itens.sql`** (29 casos): as 7 CHECKs, o índice único **parcial** da âncora, a RLS, a FK RESTRICT e a RPC de reordenação com `EI001`/`EI002`. Nela, o CASO 12 (não-admin reordena) na primeira versão passava o array **na ordem em que os artigos já estavam** — no-op mesmo com a permissão aberta, ou seja, guardava nada. Passou a pedir a inversão, e a falsificação confirmou que o mesmo pedido feito por admin move o artigo.
+
+⚠️ **Uma regra SAIU dos testes porque virou barreira de banco:** `ancora-duplicada`. Enquanto era laço no linter, valia só para quem passasse pela tela; hoje é `edital_itens_ancora_key`, e quem a verifica é a bateria SQL. Testá-la aqui seria afirmar o comportamento de um código que não existe mais.
+
+Eram **1.501 em 80** no tema anterior do mesmo dia (os 5 últimos entraram no ajuste que ligou o percentual declarado ao cálculo do Quadro I — ver o contrato do módulo.
+
+⚠️ Esse mesmo ajuste foi pego por `dialogos-acessibilidade.test.ts`: o `SheetContent` da prévia nasceu sem `SheetDescription`. É a "invariante estática" descrita mais abaixo funcionando — ela vale para os 31 diálogos de uma vez, e nenhum teste de página teria alcançado um componente recém-criado.
+
+Eram **1.496** ao fim da **fatia 5 da v3 do módulo Editais — a matriz da prova** — arquivo novo `src/lib/edital-prova.test.ts` (13 casos).
 
 ⭐ O controle positivo são as **três composições reais**, e elas saem do mesmo código sem caso especial: 50 = 10+15+25 (002, com Pedagógicos), 70 = 10+10+50 (003, com Legislação do SUS) e 50 = 10+10+30 (004, com Matemática). Três núcleos comuns diferentes, nenhum `if` por carreira.
 

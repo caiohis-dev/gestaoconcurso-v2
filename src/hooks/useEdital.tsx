@@ -8,6 +8,10 @@
  * novo no catálogo valer para todos eles sem migration de dados.
  *
  * Consequência prática: gravar capítulo é sempre UPSERT por `(edital_id, chave)`.
+ *
+ * ⚠️ O CONTEÚDO não está aqui. Cada artigo é um registro em `edital_itens`, servido por
+ * `useEditalItens` — e apagar a linha de capítulo NÃO leva os artigos junto, de
+ * propósito: desligar um capítulo não pode destruir texto redigido.
  */
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -54,7 +58,7 @@ export function useEdital(editalId: string | undefined) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("edital_capitulos")
-        .select("chave, ordem, incluido, texto")
+        .select("chave, ordem, incluido")
         .eq("edital_id", editalId!);
       if (error) throw error;
       return (data ?? []) as CapituloOverride[];
@@ -73,6 +77,10 @@ export function useEdital(editalId: string | undefined) {
    * ⚠️ O upsert precisa de `ordem` e `incluido` porque as duas são NOT NULL no banco —
    * e o valor certo para uma linha que ainda não existe é o do CATÁLOGO, não um default
    * inventado aqui. Por isso o chamador passa o capítulo já resolvido.
+   *
+   * 🔵 Desde 16/09 ele NÃO grava texto: o conteúdo do capítulo são os registros de
+   * `edital_itens` (ver `useEditalItens`). Aqui sobrou o que é do capítulo — se ele
+   * entra no documento e em que posição.
    */
   const gravar = useMutation({
     mutationFn: async (cap: CapituloResolvido) => {
@@ -83,7 +91,6 @@ export function useEdital(editalId: string | undefined) {
           chave: cap.chave,
           ordem: cap.ordem,
           incluido: cap.incluido,
-          texto: cap.texto,
           created_by: userData.user?.id,
         },
         { onConflict: "edital_id,chave" },

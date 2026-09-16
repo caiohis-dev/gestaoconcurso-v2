@@ -75,8 +75,12 @@ BEGIN
   RAISE NOTICE 'CASO 1 (edital SEM capítulo é estado válido) linhas=%  %',
     v_n, CASE WHEN v_n = 0 THEN 'OK — a linha é override, não registro obrigatório' ELSE 'ATENÇÃO: já havia linhas' END;
 
-  INSERT INTO public.edital_capitulos (edital_id, chave, ordem, incluido, texto)
-  VALUES (v_edital, 'prova_de_titulos', 14, true, 'Da prova de títulos.')
+  -- 🔵 A coluna `texto` SAIU em 20260916225307: o texto do capítulo virou registro em
+  -- `edital_itens`, um por artigo. Este INSERT a nomeava e teria quebrado a bateria
+  -- inteira na primeira linha — o mesmo apodrecimento silencioso que deixou
+  -- `bateria-troca-total-candidatos.sql` verde e morta por dois dias em 02/08.
+  INSERT INTO public.edital_capitulos (edital_id, chave, ordem, incluido)
+  VALUES (v_edital, 'prova_de_titulos', 14, true)
   RETURNING id INTO v_cap;
   RAISE NOTICE 'CASO 1b (insere capítulo) %', CASE WHEN v_cap IS NOT NULL THEN 'OK' ELSE '🔴 FALHOU' END;
 

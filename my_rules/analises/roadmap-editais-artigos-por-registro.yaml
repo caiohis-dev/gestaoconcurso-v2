@@ -1,0 +1,190 @@
+# Roadmap VIVO — Módulo Editais: o ARTIGO vira registro próprio
+# Criado em 2026-09-16. Leia my_rules/analises/README.md antes de usar como guia.
+# Índice das 12 fatias: my_rules/modulo_editais/00-Plano-v3.md
+
+roadmap:
+  titulo: "Editais — refatoração: cada artigo é um input próprio e um registro no banco"
+  criado: "2026-09-16"
+  status: >
+    🟢 EXECUTADA em 2026-09-16. Migration 20260916225307, `src/lib/edital-itens.ts`
+    (reescrito), `src/lib/edital-texto.ts`, `useEditalItens`, `useQuadrosDoEdital`,
+    `ArtigosDoCapitulo.tsx`, `QuadroDoArtigo.tsx` e `docs/bateria-edital-itens.sql`
+    (29 casos, todos verdes). 1.547 testes em 82 arquivos, tsc, build, lint 111
+    (baseline), docs:conferir limpo, db reset completo.
+    ⚠️ Ver `desvios_da_execucao` — duas asserções minhas caíram contra o dado real.
+    🟢 Aguardando merge para ir a concluidos/.
+  depende_de: >
+    Fatia 1 (espinha do documento). É PRÉ-REQUISITO das fatias 6 a 12: cada fatia nova
+    ganha um `quadro_fonte` em vez de um bloco de texto.
+
+  origem: >
+    Pedido do usuário em 2026-09-16, depois de as fatias 1 a 5 estarem entregues:
+    "Os artigos ainda continuam dentro do texto do capítulo. Quero que cada artigo seja
+    um input próprio. Com uma tabela em que cada artigo seja um registro no supabase."
+    E, antes de decidir: "Alguns artigos têm tabela na formatação final."
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  medido_antes: |
+    🔴 AS TABELAS DOS EDITAIS REAIS — a medição que decidiu o desenho.
+
+    O usuário levantou o problema das tabelas ANTES de responder às perguntas, e a
+    resposta saiu do levantamento de TODAS elas nos três editais:
+
+      Quadro I  (cargos/vagas/habilitação/CH/vencimento) .. 002,003,004 → edital_cargos
+      Quadro II de provas (composição da prova) ........... 002,004     → provas_disciplinas
+      Quadros III e IV (títulos por cargo) ................ 002         → fatia 6
+      Quadros II e III (vagas ACS/ACE por UBSF) ........... 004         → fatia 7
+      Anexo II (963 linhas de ruas por área) .............. 004         → fatia 7
+      Cronograma .......................................... os três     → cronograma_etapas
+      Anexo I (conteúdo programático) ..................... os três     → fatia 10
+
+    NENHUMA de forma livre. E o Edital 002 mostra a FORMA: o item 2.1 é
+    "QUADRO I: DOS CARGOS, N.º DE VAGAS…" — a tabela OCUPA A POSIÇÃO DE UM ARTIGO
+    NUMERADO, e os outros a referenciam por nome ("conforme estabelecido no Quadro II").
+
+    ➜ Decisão: o artigo não CONTÉM tabela, ele APONTA (`tipo='quadro'` + `quadro_fonte`).
+      Grade digitável reintroduziria o defeito do COREN, que é copia-e-cola de tabela.
+
+    CUSTO DE MIGRAÇÃO DE DADO: ZERO.
+      · produção está na v2.5.0 e não tem NENHUMA tabela da v3;
+      · o banco local tem 1 linha em `edital_capitulos`, com 0 textos;
+      · `edital_capitulos` não aparece no dump (`supabase/seed.local.sql`).
+      ➜ o DROP COLUMN dispensa a cirurgia posicional do §3. A prova é o `db reset`.
+
+    FORMATAÇÃO: 265 marcadores de **negrito** no Edital 004, e NENHUM outro recurso nos
+    três. ➜ só negrito, em coluna TEXT. Editor rico traria sanitização e lixo do Word.
+
+    VOLUME: 270 a 330 artigos por edital. ➜ colar em lote é obrigatório, não conforto.
+
+    CONSUMIDORES DO PARSER (antes de mexer): só `edital-linter.ts` e `EditalStudio.tsx`.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  decisoes:
+    - id: D1
+      decisao: "Artigo `tipo='quadro'` APONTA para o dado; não existe tabela digitável"
+      porque: >
+        Medido acima: nenhuma tabela dos três editais é de forma livre. Domínio fechado
+        na CHECK `chk_edital_item_quadro_fonte`, para valer também fora da tela.
+    - id: D2
+      decisao: "Só `**negrito**`, guardado como TEXT e renderizado como SEGMENTOS"
+      porque: >
+        Devolver HTML obrigaria `dangerouslySetInnerHTML` e sanitização — barreira que
+        só existe enquanto ninguém a esquece. Com segmentos, o React escapa sozinho.
+    - id: D3
+      decisao: "Reordenar por botões ↑ ↓ → ←, não por arrasto"
+      porque: >
+        Arrastar para MUDAR DE NÍVEL é a parte difícil, e a memória do repo registra 4
+        armadilhas silenciosas no @dnd-kit 6.3.1. Botões funcionam pelo teclado.
+    - id: D4
+      decisao: "`capitulo_chave` é TEXT, não FK composta"
+      porque: >
+        A linha de `edital_capitulos` é um OVERRIDE OPCIONAL, e a FK forçaria sua
+        existência — desfazendo em silêncio a escolha que dispensou semeadura e backfill.
+        Guardado pelo CASO 1d da bateria.
+    - id: D5
+      decisao: "O botão 'Salvar capítulo' fica onde está, gravando todos os artigos sujos"
+      porque: >
+        Autosave no `blur` seria mais natural com 300 artigos, mas desfaria uma decisão
+        de UI que o usuário tomou dois pedidos antes. Fica como ajuste posterior.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  etapas:
+    - id: 1
+      nome: "Banco — `edital_itens`, a RPC de reordenação e o DROP COLUMN"
+      status: "🟢 feita"
+      entrega: >
+        Migration 20260916225307. Tabela com 7 CHECKs, índice único PARCIAL da âncora,
+        RLS espelhando `edital_capitulos`, RPC `reordenar_itens_do_capitulo`
+        (SECURITY INVOKER, EI001/EI002) e `edital_capitulos DROP COLUMN texto`.
+      verificacao: >
+        `docs/bateria-edital-itens.sql`, 29 casos verdes, cada recusa NOMEANDO a
+        constraint. `db reset` completo passa — é ele que prova o DROP COLUMN.
+
+    - id: 2
+      nome: "Núcleo — a numeração passa a ter um dono só"
+      status: "🟢 feita"
+      entrega: >
+        `edital-itens.ts` reescrito: `numerarItens` é a ÚNICA autoridade de numeração,
+        `ordenarItens` dá o desempate estável, `parsearCapitulo` DEIXOU DE NUMERAR e
+        virou só o importador de colagem. `edital-texto.ts` novo para o negrito.
+      verificacao: >
+        29 + 9 casos. Falsificado: fixar o número derruba 9; tirar o reinício de contador
+        derruba 1; tirar a ordenação derruba 1.
+
+    - id: 3
+      nome: "Linter — as regras passam a apontar o ARTIGO"
+      status: "🟢 feita"
+      entrega: >
+        `placeholder-nao-preenchido` nomeia o item ("o item 11.2"). Entraram
+        `artigo-vazio`, `subitem-sem-item` e `quadro-sem-dado`. SAIU `ancora-duplicada`:
+        virou índice único, e regra que o banco garante não se testa em laço de cliente.
+      verificacao: "26 casos, cada um com o seu controle negativo ao lado."
+
+    - id: 4
+      nome: "UI — um input por artigo"
+      status: "🟢 feita"
+      entrega: >
+        `ArtigosDoCapitulo.tsx` (fora de `EditalStudio.tsx`, que já tinha 447 linhas),
+        `QuadroDoArtigo.tsx` para as tabelas geradas, `useEditalItens` e
+        `useQuadrosDoEdital`. Número read-only à esquerda, botões com `aria-label`,
+        diálogo de colagem em lote.
+      verificacao: >
+        `ArtigosDoCapitulo.ui.test.tsx`, 15 casos, falsificado 3 vezes (número da `ordem`
+        crua derruba 6; `primeiro={false}` derruba 1; ignorar `travado` derruba 1).
+        tsc, build, lint 111 (baseline). ⚠️ Subiu para 113 e voltou por EXTRAÇÃO de
+        componente — nunca por elevar o baseline.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  fora_de_escopo:
+    - "Editor rico, tabela digitável e arrasta-e-solta — as três alternativas recusadas."
+    - "Autosave no `blur`."
+    - "Importar os editais 002/003/004 (D4 do plano) e qualquer LLM (D3 do plano)."
+    - >
+      Teste de interação da PÁGINA `EditalStudio` inteira — ela é a casca. O que ganhou
+      bateria é `ArtigosDoCapitulo` (15 casos), que é onde mora a fiação: props puras,
+      sem Supabase para mockar. Mesma escolha de `GerenciarProva`.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  desvios_da_execucao: |
+    🔴 UMA REGRA MINHA DO LINTER ESTAVA ERRADA, E O DADO REAL A DERRUBOU.
+       Escrevi `nivel-fora-de-sequencia`: avisar sempre que um artigo pulasse nível. Ao
+       montar o controle positivo com o capítulo 6 do Edital 002, o item 6.1 tem
+       "A) B) C)" pendurados DIRETO nele, sem subitem no meio. Medido: 64 a 74 alíneas
+       por edital, a maioria assim. A regra teria enchido o painel de aviso falso em TODO
+       edital — que é o começo de ninguém mais olhar o painel.
+       ➜ virou `subitem-sem-item`, que acusa só o caso de saída realmente quebrada: um
+         subitem antes de qualquer item de topo, que renderiza "7.0.1".
+
+    🔴 UM TESTE MEU NÃO GUARDAVA NADA. "A âncora resolve mesmo com os registros fora de
+       ordem" usava três artigos com a âncora NO MEIO: invertida, ela caía no mesmo 7.2 e
+       o caso passava com ou sem a ordenação. Corrigido para quatro artigos com a âncora
+       fora do centro, e falsificado — tirar `ordenarItens` agora derruba exatamente ele.
+
+    🔴 UM CASO DA BATERIA TAMBÉM NÃO GUARDAVA NADA. O CASO 12 (não-admin reordena) passava
+       o array NA ORDEM EM QUE OS ARTIGOS JÁ ESTAVAM: a reordenação seria no-op mesmo com
+       a permissão aberta. Passou a pedir a INVERSÃO, e a falsificação confirmou — o mesmo
+       pedido feito por admin move o artigo de 0 para 1.
+       ⚠️ E a RPC NÃO levanta erro para o não-admin: ele LÊ (a policy de SELECT é aberta),
+         então EI001/EI002 passam; é o UPDATE que a RLS recusa em silêncio, alcançando
+         zero linhas. Esperar exceção ali seria esperar a coisa errada.
+
+    ⚠️ QUATRO ASSERÇÕES DA BATERIA FALHARAM NA PRIMEIRA EXECUÇÃO POR ARITMÉTICA MINHA:
+       contei cinco artigos em `quadro_de_cargos` e são quatro (o CASO 3d insere noutro
+       capítulo). Nenhuma era defeito do banco. O mesmo tipo de erro no teste do capítulo
+       6 (procurei o item 6.6 em `porItem[8]`, está em [5]) — corrigido indexando pelo
+       NÚMERO do item, não pela posição.
+
+    ➕ `docs/bateria-edital-capitulos.sql` FOI CORRIGIDA NO MESMO PASSE. O CASO 1b nomeava
+       a coluna `texto` num INSERT e teria quebrado o arquivo inteiro na primeira linha —
+       o mesmo apodrecimento silencioso que deixou `bateria-troca-total-candidatos.sql`
+       verde e morta por dois dias em 02/08. Procurar as chamadas afetadas ao mudar
+       assinatura ou schema é obrigatório, e desta vez foi feito.
+
+    ➕ O PREVIEW RENDERIZA AS TABELAS DE VERDADE (cargos, disciplinas, cronograma),
+       reusando as chaves de React Query dos editores — então abrir a prévia não gera
+       tráfego novo. As fontes das fatias 6 e 7 renderizam um BLOCO VISÍVEL, nunca um
+       espaço em branco: sumir calado é o formato de defeito que este repo mais teme.
+
+    ⚠️ MUDANÇA DE COMPORTAMENTO ACEITA: o índice único da âncora é por EDITAL, enquanto o
+       linter só olhava capítulos INCLUÍDOS. Repetir a âncora entre um capítulo ligado e
+       um desligado passa a ser recusado pelo banco.

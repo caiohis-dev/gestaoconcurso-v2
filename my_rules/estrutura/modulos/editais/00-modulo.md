@@ -87,22 +87,49 @@ O Edital 002 publicado carrega o resíduo de numerar à mão: uma linha solta **
 
 Volume: ~270 a 330 itens por edital, em até 3 níveis, mais alíneas em letra.
 
-**Como se escreve.** O capítulo continua sendo **um campo de texto**; quem redige **não digita número**:
+🔵 **MUDOU em 2026-09-16 (migration `20260916225307`).** Este trecho dizia: *"o capítulo continua sendo **um campo de texto**, escrito como lista… sem tabela nova, sem editor de árvore"*. **Cada artigo virou um registro em `edital_itens`**, com input próprio na tela. A medição acima **continua valendo** — é ela que justifica numerar item — e a numeração continua calculada. Mudou só **onde o artigo mora**, e com isso três coisas que o texto corrido não permitia:
 
-```
-Parágrafo de abertura, sem numeração.
-- Primeiro item do capítulo.
-- Segundo item.
-  - Subitem do segundo.
-    - alínea do subitem
-- {#laudo} Item com âncora, para ser referenciado.
-```
+| | |
+|---|---|
+| **O banco garante** | âncora única por edital (`edital_itens_ancora_key`), em vez de uma regra de linter que valia só para quem passasse pela tela |
+| **O linter aponta o ARTIGO** | *"o item 12.4 tem data não preenchida"*, e não *"o capítulo Do Cronograma tem…"* — que é exatamente onde o defeito do Edital 004 está |
+| **A tabela cabe no documento** | um artigo `tipo = 'quadro'` aponta para o dado estruturado que renderiza ali (ver a seção própria abaixo) |
 
-Num capítulo 7 isso vira `7.1`, `7.2`, `7.2.1`, alínea `a)`, `7.3`. **Inserir item no meio renumera tudo abaixo sozinho** — e a referência `{{item:laudo}}` acompanha, porque aponta para a âncora, não para o número.
+**Como se escreve.** Um input por artigo; quem redige **não digita número**. Os botões `↑ ↓ → ←` movem e aninham. Num capítulo 7 a lista vira `7.1`, `7.2`, `7.2.1`, alínea `a)`, `7.3`. **Inserir artigo no meio renumera tudo abaixo sozinho** — e a referência `{{item:laudo}}` acompanha, porque aponta para a âncora, não para o número.
 
-⚠️ **A indentação é tolerante** (3 espaços contam como 1 nível), de propósito: perder um item por um espaço a mais seria pior que o nível errado, que o preview mostra na hora.
+Três tipos de artigo, e os três existem nos editais reais:
 
-**As duas resoluções de referência convivem:** `{{cap:chave}}` para capítulo e `{{item:ancora}}` para item. As duas viram marcador visível (`[?…]`) quando não resolvem — nunca somem, nunca inventam número. Ver `src/lib/edital-itens.ts`.
+| `tipo` | | numerado? |
+|---|---|---|
+| `item` | o artigo comum | ✅ |
+| `prosa` | parágrafo sem número — o Edital 002 tem um entre o 6.6 e o 6.7 | ❌ |
+| `quadro` | a tabela gerada; `texto` é só a legenda | ✅ (o Quadro I é o item **2.1** no Edital 002) |
+
+⚠️ **Só `**negrito**` é formatação.** Medido: 265 marcadores no Edital 004 e **nenhum outro recurso** nos três. `src/lib/edital-texto.ts` devolve **segmentos**, não HTML — assim o React escapa tudo e não há sanitização para alguém esquecer.
+
+⚠️ **Colar vários artigos de uma vez** existe porque um edital real tem de 270 a 330 artigos. O parser de sempre (`parsearCapitulo`) deixou de numerar e virou só essa porta de entrada — a numeração passou a ter um dono só, `numerarItens`.
+
+⚠️ **A indentação da colagem é tolerante** (3 espaços contam como 1 nível), de propósito: perder um artigo por um espaço a mais seria pior que o nível errado, que a lista mostra na hora.
+
+**As duas resoluções de referência convivem:** `{{cap:chave}}` para capítulo e `{{item:ancora}}` para artigo. As duas viram marcador visível (`[?…]`) quando não resolvem — nunca somem, nunca inventam número. Ver `src/lib/edital-itens.ts`.
+
+### 🔴 Nenhuma tabela se digita — e isso foi medido
+
+Levantadas **todas** as tabelas dos três editais de referência em 2026-09-16:
+
+| Tabela | Onde | Dono estruturado |
+|---|---|---|
+| **Quadro I** — cargos, vagas, habilitação, CH, vencimento | 002, 003, 004 | `edital_cargos` (fatia 2) |
+| **Quadro II** de provas — composição da prova | 002, 004 | `provas_disciplinas` (fatia 5) |
+| **Quadros III/IV** — títulos por cargo | 002 | fatia 6 |
+| **Quadros II/III** — vagas ACS/ACE por UBSF | 004 | fatia 7 |
+| **Anexo II** — 963 linhas de ruas por área | 004 | fatia 7 |
+| Cronograma | os três | `cronograma_etapas` (fatia 3) |
+| Anexo I — conteúdo programático | os três | fatia 10 |
+
+**Nenhuma é de forma livre.** Por isso o artigo `tipo = 'quadro'` só **aponta** (`quadro_fonte`), e a CHECK `chk_edital_item_quadro_fonte` fecha o domínio no banco. Uma grade digitável reintroduziria a classe de defeito que o módulo existe para matar: a *"Certidão Nada Consta do COREN"* exigida de Agente Comunitário de Saúde no Edital 004 é copia-e-cola de tabela.
+
+⚠️ **Tabela nova exige FATIA nova.** `titulos` e `vagas_por_area` já estão no domínio, e o artigo que as referencia pode ser escrito hoje — o linter acusa `quadro-sem-dado` até a fatia existir, e a prévia mostra um bloco visível, nunca um espaço em branco.
 
 ### 🔵 O Quadro I, e a regra de cotas que foi MEDIDA (fatia 2, 2026-09-16)
 
@@ -197,7 +224,7 @@ Desde a migration `20260916184254`, **só a troca do NOME tranca** — que é o 
 
 🔵 **Decidido na implementação, contra o roadmap.** Ele previa uma RPC `criar_edital_com_capitulos` que semeasse os 19 capítulos em transação. Se a RPC também conhecesse a lista, o catálogo existiria em **dois lugares** — e divergiriam no dia em que um capítulo novo entrasse.
 
-Então: **capítulo sem linha vale pelo padrão do catálogo.** A linha só nasce quando alguém desliga, reordena ou escreve texto — um UPSERT, operação de um passo. Sumiu a semeadura, sumiu a transação de vários passos, sumiu o estado pela metade.
+Então: **capítulo sem linha vale pelo padrão do catálogo.** A linha só nasce quando alguém desliga ou reordena o capítulo — um UPSERT, operação de um passo. (🔵 Até 16/09 escrever texto também a criava; hoje o texto são os artigos, que têm tabela própria.) Sumiu a semeadura, sumiu a transação de vários passos, sumiu o estado pela metade.
 
 Dois efeitos que valem registro: os **3 editais de produção ganharam estrutura de documento sem backfill**, e capítulo novo no catálogo vale para todos eles **sem migration de dados**.
 
@@ -211,7 +238,15 @@ O preço combinado: desligar um capítulo **padrão** gera **aviso** do linter �
 
 **Cobertura de testes** (ver [`../../transversais/testes.md`](../../transversais/testes.md)): o módulo é o mais bem coberto do sistema. `useEditais.test.tsx` (14) cobre a listagem, as traduções de `23505`/`23503` e a invalidação dupla; `EditalDialog.test.ts` (8) o schema isolado; `EditalDialog.ui.test.tsx` (11) a interação. O lado da prova está em `ProvaDialog.ui.test.tsx` (10), que guarda a herança e o bloqueio sem edital. E o **guard da rota** está em `pages/guards.test.tsx`: `/editais` recusa deslogado, colaborador e coordenador — foi justamente quebrando este guard de propósito que a bateria foi falsificada antes de ser aceita.
 
-🔵 **A v3 trouxe 34 casos de LÓGICA PURA (2026-09-16):** `edital-numeracao.test.ts` (20) e `edital-linter.test.ts` (14). ⭐ O controle positivo deles são **os três editais reais**, que dão três numerações diferentes a partir do mesmo catálogo. Falsificado: fixar a numeração derruba exatamente 7 casos — e ⚠️ **o Edital 004 sobrevive ao defeito**, que é por que três fixtures valem mais que uma. O banco é `docs/bateria-edital-capitulos.sql`; ⚠️ nele, o caso da FK RESTRICT precisou de um edital **criado na hora**, porque com um edital existente quem barrava era `provas_edital_id_fkey` — o caso passava sem exercitar a regra nova.
+🔵 **A v3 trouxe 159 casos de LÓGICA PURA (2026-09-16),** em oito arquivos: `edital-cotas` (31) · `edital-itens` (29) · `edital-linter` (26) · `edital-numeracao` (20) · `edital-cronograma` (18) · `edital-acoes-afirmativas` (13) · `edital-prova` (13) · `edital-texto` (9).
+
+⭐ **O controle positivo são os editais REAIS**, não fixtures inventadas: os três dão três numerações de capítulo diferentes a partir do mesmo catálogo, e o **capítulo 6 do Edital 002** (Da Isenção) exercita os três tipos de linha de uma vez — 17 itens, alíneas em letra sob o 6.1 e o 6.6, e o parágrafo sem número do envelope entre o 6.6 e o 6.7.
+
+Falsificações que passaram: fixar a numeração de capítulo derruba 7 casos (⚠️ e **o Edital 004 sobrevive ao defeito** — é por isso que três fixtures valem mais que uma); fixar a de artigo derruba 9; tirar o reinício de contador ao descer de nível derruba 1; tirar a ordenação de `ancorasDoDocumento` derruba 1.
+
+⚠️ **Duas asserções minhas estavam erradas e o dado real as corrigiu:** o teste de "âncora fora de ordem" usava três artigos com a âncora **no meio**, e passava com ou sem a ordenação; e a primeira regra `nivel-fora-de-sequencia` acusaria a **alínea direto sob o item** — que é a forma normal, com 64 a 74 ocorrências por edital. Ela virou `subitem-sem-item`, que acusa só o caso que gera saída quebrada (`7.0.1`).
+
+O banco é `docs/bateria-edital-capitulos.sql` e `docs/bateria-edital-itens.sql` (29 casos). ⚠️ Em ambos, o caso da FK RESTRICT precisou de um edital **criado na hora**: com um edital existente quem barrava era `provas_edital_id_fkey`, e o caso passava sem exercitar a regra nova.
 
 🔵 **A PÁGINA ganhou bateria própria em 2026-08-02** (`pages/Editais.ui.test.tsx`, 5 casos), e a razão é a mudança do card: o número exibido deixou de ser um campo da linha e passou a vir da contagem real de inscritos, que é de **outro módulo**. Ela guarda os três textos (contando · nenhum importado · N importados), que a contagem case com o **edital certo** quando há mais de um na tela, e que **"0" nunca apareça**. Falsificada: com o card voltando a `?? 0`, caem exatamente os dois casos que tratam de ausência de lista.
 
@@ -243,14 +278,37 @@ edital_capitulos                       -- 🔵 v3 fatia 1
   chave             text       -- slug do catálogo; é por ela que a referência aponta
   ordem             integer    -- CHECK >= 0
   incluido          boolean
-  texto             text       -- redação livre nesta fatia
   UNIQUE (edital_id, chave)
+  -- 🔵 A coluna `texto` foi DROPADA em 20260916225307: o conteúdo virou um registro por
+  -- artigo em `edital_itens`. Um capítulo é só posição, inclusão e título.
   -- 🔴 NÃO há coluna `numero`. O número é calculado — ver a seção do documento acima.
+
+edital_itens                           -- 🔵 um registro por ARTIGO (20260916225307)
+  id                uuid PK
+  edital_id         uuid → editais(id) ON DELETE RESTRICT
+  capitulo_chave    text       -- 🔴 TEXT, NÃO FK: ver abaixo
+  ordem             integer    -- CHECK >= 0; sem UNIQUE, desempate por created_at
+  nivel             smallint   -- CHECK 0..2: item · subitem · alínea
+  tipo              text       -- CHECK: item | prosa | quadro
+  texto             text       -- ⚠️ pode ser VAZIO: artigo vazio é achado do LINTER
+  ancora            text       -- CHECK ^[a-z0-9_]+$
+  quadro_fonte      text       -- CHECK: cargos|disciplinas|titulos|vagas_por_area|cronograma
+  CHECK ((tipo = 'quadro') = (quadro_fonte IS NOT NULL))
+  UNIQUE (edital_id, ancora) WHERE ancora IS NOT NULL   -- índice PARCIAL
+  -- 🔴 NÃO há coluna `numero`, nem aqui nem no capítulo.
 ```
+
+🔴 **`edital_itens.capitulo_chave` é TEXT e não FK, e isso é escolha.** Uma FK composta para `edital_capitulos(edital_id, chave)` **forçaria a linha de capítulo a existir** — e ela é um override opcional (ver a seção abaixo). O CASO 1d de `docs/bateria-edital-itens.sql` é o que guarda isso: artigo em capítulo sem linha de override.
+
+🔴 **O índice da âncora é PARCIAL** (`WHERE ancora IS NOT NULL`), e o CASO 2c da bateria é o que guarda: a esmagadora maioria dos artigos não tem âncora, e um índice íntegro quebraria o uso normal, não o excepcional. ⚠️ Ele aposentou a regra `ancora-duplicada` do linter — deixou de ser detectada porque deixou de ser possível.
+
+⚠️ **Reordenar vai pela RPC `reordenar_itens_do_capitulo`**, nunca por `update` solto: reescrever a ordem é operação de vários passos (§2). Ela é `SECURITY INVOKER` — a autorização são as policies, e um `DEFINER` criaria uma segunda cópia da regra. Recusa com `EI001` (id de outro capítulo) e `EI002` (lista incompleta, que deixaria buraco).
+
+⚠️ **Apagar a linha de capítulo NÃO leva os artigos junto** (CASO 14 da bateria). Não há FK entre eles de propósito: desligar um capítulo não pode destruir texto redigido.
 
 ⚠️ **`numero_edital` é `text` sem CHECK de formato, de propósito.** Este repo removeu 4 CHECKs de formato em 2026-08-01 ("dado inválido entra cru; valide na leitura"), e o formato varia no mundo real — o próprio Edital 002 se chama `002/2026-SMA`. Quem valida é a tela e o linter.
 
-🔴 **A FK de `edital_capitulos` é RESTRICT, não CASCADE** (§2). O capítulo carrega **texto redigido**: é conteúdo com valor próprio, não anotação descartável. É o **terceiro** dependente RESTRICT de `editais`, junto de `provas` e `candidatos`.
+🔴 **As FKs de `edital_capitulos` e `edital_itens` são RESTRICT, não CASCADE** (§2). O artigo carrega **texto redigido**: é conteúdo com valor próprio, não anotação descartável. São o **terceiro e o quarto** dependentes RESTRICT de `editais`, junto de `provas` e `candidatos`.
 
 **Unicidade do nome:** `CREATE UNIQUE INDEX editais_nome_key ON editais (lower(btrim(nome)))` — índice **funcional**, mesmo padrão de `colab_email`. Isso aposentou de propósito o antigo `CHAR(30)`, cujo *padding* de espaços era a origem dos ~15 `.trim()` espalhados pelo front. Não troque por um `UNIQUE (nome)` comum: voltariam a conviver `Edital 001` e `edital 001 `.
 
