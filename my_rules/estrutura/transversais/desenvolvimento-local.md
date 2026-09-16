@@ -49,9 +49,33 @@ O `seed.sql` versionado não popula `colaboradores`, `provas`, `unidades_prova` 
 
 ## `seed.local.sql` — dump de produção (não versionado)
 
-`[db.seed]` no `config.toml` carrega, além do `seed.sql`, um segundo arquivo: `supabase/seed.local.sql`. Ele é o dump completo da produção, gerado uma única vez em 2026-07-12 pela Edge Function `export-seed`, e existe para permitir desenvolver contra dados reais — 771 colaboradores, 2 provas, alocações, metas, ocorrências.
+`[db.seed]` no `config.toml` carrega, além do `seed.sql`, um segundo arquivo: `supabase/seed.local.sql`. Ele é o dump da produção, e existe para permitir desenvolver contra dados reais.
 
-A `export-seed` **não existe mais** no projeto: era um canal de exfiltração da base inteira e foi aposentada assim que cumpriu o papel. O código dela está guardado em [`../historico/export-seed/`](../../historico/export-seed/), com as instruções de como ressuscitá-la caso um dump novo seja necessário.
+🔵 **TROCADO em 2026-09-16, e a origem mudou.** Antes ele vinha da Edge Function `export-seed`, de **2026-07-12** — anterior ao próprio bootstrap de produção, portanto um retrato do banco *antigo*. Hoje ele é gerado por `supabase db dump` **da produção de verdade**, e as contagens batem com ela (conferido em 15 tabelas). Números atuais: **821 colaboradores** (eram 771), 977 alocações, 3 provas, 3 editais, 58 contas no Auth.
+
+> ⚠️ **As três correções manuais descritas abaixo NÃO precisam mais ser reaplicadas.** Produção foi carregada, no bootstrap de 08/08, a partir do dump **já corrigido** — e o schema de lá nunca teve `colab_codigo_acesso`. Um dump tirado de produção **herda as três**. Elas ficam documentadas porque explicam por que o dado é como é, não como tarefa.
+
+### Como gerar um `seed.local.sql` novo (2026-09-16)
+
+O caminho antigo — ressuscitar a `export-seed` — **não é mais necessário**. O dump sai do próprio CLI, sem `link`:
+
+```bash
+U='postgresql://postgres.<ref>:SENHA@aws-1-us-west-2.pooler.supabase.com:5432/postgres'
+npx supabase db dump --db-url "$U" --data-only -f data.sql
+```
+
+🔴 **Três coisas que o `db reset` reprova, e todas foram descobertas na marra:**
+
+1. **`--use-copy` NÃO serve para seed.** O carregador de seed do CLI faz parse statement a statement, e as linhas de dados de um `COPY ... FROM stdin` não são SQL. Erro: `trailing junk after numeric literal`. Para o seed, use `--data-only` **sem** `--use-copy` (gera `INSERT` multi-linha, um por tabela).
+2. **Tire as tabelas de sessão do `auth`.** O Auth de produção costuma estar à frente do local: `auth.one_time_tokens` ganhou coluna lá e o reset morre com `column "expires_at" does not exist`. Mantenha só **`auth.users` e `auth.identities`** (que é o que faz o login real funcionar local) e descarte `sessions`, `refresh_tokens`, `mfa_amr_claims`, `one_time_tokens`. Pelo mesmo motivo, 4 tabelas novas do Auth (`scim_*`, `mfa_recovery_*`) nem existem local — todas vazias, sem perda.
+3. **Todo `INSERT` precisa de `ON CONFLICT DO NOTHING`.** Migrations populam `bancos` e `funcoes_colaboradores` **antes** do seed; sem isso o reset morre com `duplicate key value violates unique constraint "bancos_pkey"`. O `pg_dump` não emite isso — é pós-processamento:
+   ```bash
+   awk '/^INSERT INTO /{i=1} i && /\);[[:space:]]*$/{sub(/;[[:space:]]*$/," ON CONFLICT DO NOTHING;");i=0} {print}' data.sql > seed.local.sql
+   ```
+
+O `SET session_replication_role = replica;` no topo **o próprio CLI já põe** — é ele que desliga `on_auth_user_created` e evita `profiles`/`user_roles` duplicados.
+
+A `export-seed` **não existe mais** no projeto: era um canal de exfiltração da base inteira e foi aposentada assim que cumpriu o papel. O código dela está guardado em [`../historico/export-seed/`](../../historico/export-seed/). ⚠️ **Não a ressuscite para gerar dump** — desde 16/09 o caminho é o `supabase db dump` descrito acima, que não expõe nada.
 
 **Ele é `.gitignore`d e deve continuar assim.** Contém CPF, PIS, endereço, conta bancária e chave PIX de colaboradores reais, além dos hashes de senha de `auth.users`. Commitá-lo põe a base inteira no histórico do git, de onde não sai. O `.gitignore` cobre tanto `supabase/seed.local.sql` quanto o padrão `seed_*.sql` (nome com que a `export-seed` entrega o arquivo por e-mail).
 

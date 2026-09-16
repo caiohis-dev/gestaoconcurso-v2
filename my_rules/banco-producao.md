@@ -92,7 +92,28 @@ Ficam **documentadas, não mitigadas** (decisão do usuário em 2026-08-08). Nã
   ⚠️ **Restore não é instantâneo, e a ordem importa.** Medido em 08/09: o **DNS voltou em ~4min15**; o Auth só respondeu 200 aos **90s** seguintes (antes, 502) e o PostgREST aos **150s** (521 → 404 com o schema cache carregando → 401). Ou seja: ver o DNS voltar **não** é ver o sistema voltar. Espere os serviços.
 
   🔴 **A armadilha que sobra depois do restore: cache negativo de DNS.** O SOA de `supabase.co` publica TTL negativo de **30s**, então resolvedores que respeitam o padrão se curam sozinhos em meio minuto — mas **roteadores domésticos frequentemente ignoram o TTL**. Em 08/09 o roteador do usuário segurou o NXDOMAIN muito além disso, e o site seguiu quebrado **só para ele** enquanto já funcionava para o resto. Diagnóstico: comparar `dig @1.1.1.1 <ref>.supabase.co` com `dig @<ip-do-roteador> …`. Conserto: trocar o DNS da máquina, ou reiniciar o roteador.
-- **Não há backup nenhum** — nem diário, nem PITR, nem download. Isso tensiona a regra "produção passa a ser a dona dos dados": o `seed.local.sql` cobre só o estado de 03/08, e tudo cadastrado depois existe em um lugar só. ⚠️ E este é um banco onde `DELETE` em massa é operação **normal** de negócio (a importação de candidatos é troca total). Se um dia entrar no escopo, a saída é `pg_dump` periódico — mas um dump novo nasce sem as três correções manuais, então a rotina precisa ser desenhada, não improvisada.
+- **O Free não tem backup automático** — nem diário, nem PITR, nem download. Isso tensiona a regra "produção passa a ser a dona dos dados".
+
+  🔵 **Corrigido em parte em 2026-09-16: existe um backup manual, e ele foi verificado.** Esta linha dizia que o `seed.local.sql` cobria só 03/08 e que tudo cadastrado depois existia num lugar só — era verdade, e era pior do que soava: **o dump de 03/08 é anterior ao próprio bootstrap de produção** (08 a 10/08), então não era um backup desatualizado, era o retrato do banco antigo. Não havia absolutamente de onde restaurar.
+
+  **O que existe agora:** `~/backups/gestaoconcurso/2026-09-16/`, fora do repositório, com `~/backups/gestaoconcurso/2026-09-16/01-roles.sql`, `~/backups/gestaoconcurso/2026-09-16/02-schema.sql`, `~/backups/gestaoconcurso/2026-09-16/03-data.sql` (COPY, para restaurar com `psql`) e `~/backups/gestaoconcurso/2026-09-16/04-seed-local-pronto.sql` (INSERTs, o formato que o `[db.seed]` aceita). Conferido por **15 contagens idênticas** contra produção.
+
+  ⚠️ **É pontual, não é proteção contínua.** Envelhece a partir do dia seguinte. Antes de qualquer operação destrutiva, olhe a data do backup mais recente.
+
+  **Como tirar outro** (leitura pura; **não precisa de `link`**, e o repo continua deslinkado):
+
+  ```bash
+  U='postgresql://postgres.<ref>:SENHA@aws-1-us-west-2.pooler.supabase.com:5432/postgres'
+  D=~/backups/gestaoconcurso/$(date +%F); mkdir -p "$D"
+  npx supabase db dump --db-url "$U" --role-only -f "$D/01-roles.sql"
+  npx supabase db dump --db-url "$U"             -f "$D/02-schema.sql"
+  npx supabase db dump --db-url "$U" --data-only --use-copy -f "$D/03-data.sql"
+  ```
+
+  🔴 **Três armadilhas medidas em 16/09, todas custaram tentativa:**
+  - A conexão **direta** (`db.<ref>.supabase.co`) é **IPv6-only** e recusou conexão. Use o **Shared Pooler em session mode, porta 5432** — a 6543 é transaction mode e não serve para `pg_dump`.
+  - O host do pooler é **`aws-1-us-west-2`** neste projeto, não `aws-0`. Host errado responde `ENOTFOUND tenant/user ... not found`, que **parece erro de usuário e é de host**. Copie do Dashboard → Connect; não monte à mão.
+  - Usuário muda com o host: `postgres` na direta, **`postgres.<ref>`** no pooler.
 
 ⚠️ **O Free admite 2 projetos ativos por organização.** Antes de criar o projeto da v2, confira o que ocupa as vagas (o projeto do Lovable e o criado em 2026-07-12) e apague o que não serve — senão a criação é recusada no meio do roteiro. 🔴 **Não apague o projeto do Lovable antes de confirmar que o dump abre**: ele não é versionado e passa a ser a única cópia dos dados de 771 colaboradores com PII real.
 
