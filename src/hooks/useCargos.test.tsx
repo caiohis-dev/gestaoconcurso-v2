@@ -60,6 +60,11 @@ const cargo = (id: string, nome: string): Cargo => ({
   id,
   nome,
   nome_chave: nome.trim().toLowerCase(),
+  // 🔵 Entraram em 2026-09-17 com a fatia 8. `null` aqui é "não declarado", que é o
+  // estado em que todo cargo do banco está hoje — e é justamente o que o linter do
+  // edital acusa, para que a regra do conselho não degrade em silêncio.
+  escolaridade_minima: null,
+  conselho_classe_obrigatorio: null,
   ativo: true,
   created_at: "2026-07-27T00:00:00Z",
   updated_at: "2026-07-27T00:00:00Z",

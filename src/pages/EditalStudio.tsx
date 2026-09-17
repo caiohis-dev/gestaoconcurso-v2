@@ -47,6 +47,12 @@ import { QuadroDeCargos } from "@/components/QuadroDeCargos";
 import { CronogramaEtapas } from "@/components/CronogramaEtapas";
 import { AcoesAfirmativas } from "@/components/AcoesAfirmativas";
 import { MatrizDaProva } from "@/components/MatrizDaProva";
+import { QuadroDeTitulos } from "@/components/QuadroDeTitulos";
+import { TerritorialidadeELotacao } from "@/components/TerritorialidadeELotacao";
+import { ChecklistDeInvestidura } from "@/components/ChecklistDeInvestidura";
+import { InscricaoTaxasEIsencao } from "@/components/InscricaoTaxasEIsencao";
+import { ConteudoProgramatico } from "@/components/ConteudoProgramatico";
+import { CriteriosDeDesempate } from "@/components/CriteriosDeDesempate";
 
 /** Os artigos de um capítulo, já ordenados. */
 type PorCapitulo = ReadonlyMap<string, ItemBruto[]>;
@@ -165,8 +171,23 @@ function EditorDoCapitulo({ chave, editalId }: { chave: string; editalId: string
   if (!editalId) return null;
   if (chave === "quadro_de_cargos") return <QuadroDeCargos editalId={editalId} />;
   if (chave === "prova_objetiva") return <MatrizDaProva editalId={editalId} />;
-  // O cronograma sai como elemento pós-textual, junto dos anexos.
-  if (chave === "anexos") return <CronogramaEtapas editalId={editalId} />;
+  if (chave === "prova_de_titulos") return <QuadroDeTitulos editalId={editalId} />;
+  if (chave === "distribuicao_geografica") return <TerritorialidadeELotacao editalId={editalId} />;
+  if (chave === "investidura_e_posse") return <ChecklistDeInvestidura editalId={editalId} />;
+  if (chave === "desempate_e_resultado") return <CriteriosDeDesempate editalId={editalId} />;
+  if (["inscricao_e_pagamento", "isencao_taxa"].includes(chave)) {
+    return <InscricaoTaxasEIsencao editalId={editalId} />;
+  }
+  // Os pós-textuais: o cronograma e o anexo de conteúdo programático saem juntos, que é
+  // como os três editais os publicam — depois do corpo, sem número de capítulo.
+  if (chave === "anexos") {
+    return (
+      <div className="space-y-4">
+        <CronogramaEtapas editalId={editalId} />
+        <ConteudoProgramatico editalId={editalId} />
+      </div>
+    );
+  }
   if (["vagas_pcd", "vagas_cotas_raciais", "condicoes_especiais_prova"].includes(chave)) {
     return <AcoesAfirmativas editalId={editalId} capitulo={chave} />;
   }

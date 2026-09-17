@@ -121,15 +121,17 @@ Levantadas **todas** as tabelas dos três editais de referência em 2026-09-16:
 |---|---|---|
 | **Quadro I** — cargos, vagas, habilitação, CH, vencimento | 002, 003, 004 | `edital_cargos` (fatia 2) |
 | **Quadro II** de provas — composição da prova | 002, 004 | `provas_disciplinas` (fatia 5) |
-| **Quadros III/IV** — títulos por cargo | 002 | fatia 6 |
-| **Quadros II/III** — vagas ACS/ACE por UBSF | 004 | fatia 7 |
-| **Anexo II** — 963 linhas de ruas por área | 004 | fatia 7 |
+| **Quadros III/IV** — títulos por cargo | 002 | `titulos_itens` (fatia 6) |
+| **Quadro II** — vagas de ACS por UBSF | 004 | `edital_cargo_unidades` (fatia 7) |
+| **Anexo I do 004** — 843 logradouros por unidade | 004 | `territorialidade_abrangencia` (fatia 7) |
 | Cronograma | os três | `cronograma_etapas` (fatia 3) |
-| Anexo I — conteúdo programático | os três | fatia 10 |
+| Conteúdo programático (Anexo I no 002/003, **Anexo II no 004**) | os três | fatia 10 |
 
 **Nenhuma é de forma livre.** Por isso o artigo `tipo = 'quadro'` só **aponta** (`quadro_fonte`), e a CHECK `chk_edital_item_quadro_fonte` fecha o domínio no banco. Uma grade digitável reintroduziria a classe de defeito que o módulo existe para matar: a *"Certidão Nada Consta do COREN"* exigida de Agente Comunitário de Saúde no Edital 004 é copia-e-cola de tabela.
 
-⚠️ **Tabela nova exige FATIA nova.** `titulos` e `vagas_por_area` já estão no domínio, e o artigo que as referencia pode ser escrito hoje — o linter acusa `quadro-sem-dado` até a fatia existir, e a prévia mostra um bloco visível, nunca um espaço em branco.
+🔵 **Desde 17/09 as CINCO fontes têm capítulo que as parametriza** — não há mais fonte pendente, e o campo `pronto` de `QUADRO_FONTES` saiu por ter virado constante `true`. ⚠️ **Tabela nova continua exigindo fatia nova:** acrescentar um valor ao domínio de `chk_edital_item_quadro_fonte` sem renderizá-lo faz o artigo cair no ramo "fonte desconhecida", que **diz isso na cara** em vez de devolver espaço em branco.
+
+⚠️ **E eu tinha trocado os anexos nesta tabela, até 17/09.** Ela dizia *"Anexo II — 963 linhas de ruas"* e *"Anexo I — conteúdo programático"*. No Edital 004 é o **inverso** do 002 e do 003: Anexo I são as áreas de abrangência, Anexo II é o conteúdo programático. E são **843** logradouros, não 963. Foi essa inversão entre editais que produziu o engano — conferir o anexo pelo número, sem abrir, não vale.
 
 ### 🔵 O Quadro I, e a regra de cotas que foi MEDIDA (fatia 2, 2026-09-16)
 
@@ -152,7 +154,19 @@ Cada grupo de dados descarta uma hipótese: **não é teto** (Arte tem 1 vaga e 
 
 ⚠️ **E a direção importa: o percentual é a ENTRADA, o número absoluto é a SAÍDA.** Não dá para recuperar um do outro — com 10% declarado, os editais reais produzem 10,32% (Téc. Enfermagem), 12,50% (Ed. Física), 11,76% (Matemática) e 0% (Geografia), porque o arredondamento destrói a informação. Quem propuser derivar o percentual dos números vai publicar "reserva de 0% a 12,5%" onde a lei fixa um número só.
 
-⚠️ **É a prática da FEVRE medida, não o texto da lei.** Cargo pequeno não reserva vaga nenhuma. Se uma norma exigir piso de 1, muda em `src/lib/edital-cotas.ts` e os 22 valores acusam a diferença.
+🔴 **CORRIGIDA em 2026-09-17, e a correção é o melhor exemplo de "medir muda o desenho" deste módulo.** A regra acima saiu de **22 valores** dos Editais 002 e 003 e estava certa para os 22 — mas **nenhum cargo daqueles dois editais tem 3 vagas**, então aqueles dados não podiam decidir esse caso. O **Quadro II do Edital 004** distribui as 80 vagas de ACS por 39 UBSF e trouxe 5 totais distintos, inclusive o 3:
+
+| total | unidades | publicado (AC, PD, CN) | arredondamento comum |
+|---|---|---|---|
+| 1 | 20 | (1, 0, 0) | ✅ igual |
+| 2 | 7 | (2, 0, 0) | ✅ igual |
+| **3** | **4** | **(3, 0, 0)** | 🔴 dava (2, 0, 1) |
+| 4 | 7 | (3, 0, 1) | ✅ igual |
+| 6 | 1 | (4, 1, 1) | ✅ igual |
+
+As 4 unidades de 3 vagas concordam **entre si**, então é regra da FEVRE, não erro de digitação. Daí `MINIMO_DE_VAGAS_PARA_COTA_RACIAL = 4`: **abaixo de 4 vagas não se reserva para cotas raciais.** O efeito prático era real — antes disso, um cargo de 3 vagas recebia a sugestão `(2, 0, 1)`, um split que a FEVRE nunca publicou. ⚠️ E nenhum dos 31 testes de cotas cobria o caso, que é o próprio sintoma: dado que não existe não vira teste.
+
+⚠️ **É a prática da FEVRE medida, não o texto da lei** — a Lei 12.990/2014 manda reservar a partir de **3** vagas, e o município não o faz. Cargo pequeno não reserva vaga nenhuma. Se uma norma passar a valer, muda em `src/lib/edital-cotas.ts` e os **61** valores medidos acusam a diferença.
 
 **As vagas são GRAVADAS, não recalculadas na leitura.** Um edital publica números; recalcular faria um edital antigo mudar sozinho se a regra mudasse. A `CHECK chk_edital_cargo_vagas_somam` garante que o total é a soma das partes — no banco, não só na tela.
 
@@ -172,6 +186,238 @@ Os editais dizem *"A Prova Objetiva **para os candidatos às vagas de `<cargo>`*
 
 ⚠️ Os três editais exigem *"sem contudo zerar em qualquer uma das áreas"* — conferido nos três depois de eu ter afirmado errado que o 004 não tinha a cláusula (era linha truncada num grep). `permite_zerar_disciplina` segue como parâmetro, mas hoje os três concordam.
 
+### 🔵 O desempate — uma lista ordenada, e o sistema NÃO desempata (fatia 11, 2026-09-17)
+
+🔴 **A fronteira vem primeiro, e está escrita na tela:** o capítulo descreve a ordem que sai publicada; **quem compara candidatos é a correção da prova**, que é outro módulo e não existe. Desempate é a parte do edital que mais vira processo judicial.
+
+As três ordens publicadas, medidas — e elas **diferem de verdade**:
+
+| | 002 (Docente I e II) | 003 (Enf. e Téc.) | 004 (ACS e ACE) |
+|---|---|---|---|
+| 1º | Conh. Específicos | Conh. Específicos | Conh. Específicos |
+| 2º | Conh. Pedagógicos | Legislação do SUS | Língua Portuguesa |
+| 3º | Língua Portuguesa | Língua Portuguesa | Matemática |
+| 4º | **Prova de Títulos** | Maior Idade | Maior Idade |
+| 5º | Maior Idade | — | — |
+
+Antes da lista, os três trazem as mesmas duas preferências legais: **idade ≥ 60 anos** (Lei 10.741/2003) e **função de jurado** (CPP art. 440). Depois, uma lista separada só para **PCD**, idêntica nos três (Leis Municipais 3.113/94 e 3.221/95): arrimo de família · mais dependentes até 21 anos · nenhuma fonte de renda.
+
+#### 🔴 UMA tabela com discriminador, não duas
+
+O esboço propunha `criterios_desempate` e `criterios_desempate_pcd`. São a mesma coisa — **uma lista ordenada de critérios** —, e duas tabelas duplicariam RLS, índices, a regra de ordem e a tela. A única diferença real é *quais tipos cada lista admite*, e isso a CHECK `chk_desempate_tipo_da_lista` expressa melhor que um nome de tabela.
+
+⚠️ **E o item 14.8 do Edital 002 mostra que as duas se encadeiam:** *"esgotados os critérios estabelecidos para as pessoas com deficiência, serão adotados os mesmos critérios para os candidatos à ampla concorrência"*. São dois trechos de um mesmo procedimento.
+
+🔴 **"Arrimo de família" na lista geral seria a regra de PCD aplicada a todo mundo** — e ninguém notaria, porque as duas saem em parágrafos diferentes do mesmo capítulo. É o que aquela CHECK impede.
+
+#### As duas armadilhas do roadmap, atendidas no banco
+
+| | como |
+|---|---|
+| Dois critérios na mesma posição — *um desempate que empata* | **dois** índices únicos parciais. Um `UNIQUE` comum deixaria passar: nos três editais `cargo_id` é nulo, e nulos são distintos em Postgres |
+| Critério "maior pontuação em ___" sem a disciplina | `chk_desempate_disciplina`, **bicondicional** — disciplina num critério que não a usa também é recusada |
+
+⚠️ **O que o banco NÃO garante, e o linter pega:** a ordem com **buraco**. O índice impede duas na mesma posição, não impede `1º, 2º, 4º` — e um degrau na ordem publicada faz quem lê supor que um critério foi omitido.
+
+#### ⚠️ A hora de nascimento NÃO é modelada, e é decisão
+
+Os três têm a mesma regra de último recurso: quem não apresentar a certidão *"terá considerada como hora de nascimento, 23 horas 59 minutos e 59 segundos"*. Não virou coluna porque **o dado o sistema não tem e não vai ter**, e o parâmetro é **idêntico nos três** — coluna que ninguém varia é coluna em que alguém confia sem motivo. Fica como artigo do capítulo, escrito à mão.
+
+⚠️ **E mover um critério troca DUAS posições**, em três passos com uma posição temporária alta: trocar A(1)↔B(2) direto falharia no índice único. **Não virou RPC** — a lista tem 4 a 7 itens e a troca é entre dois vizinhos; uma falha no meio deixa um critério na posição 9999, visível na tela. Na fatia 1 eram 300 artigos e a reescrita era da lista inteira, o que justificava a transação.
+
+### 🎯 O conteúdo programático, e o SEGUNDO defeito publicado que o módulo acha (fatia 10, 2026-09-17)
+
+No **Edital 003/2026**:
+
+| onde | como está escrito | ocorrências |
+|---|---|---|
+| corpo (itens 11.2, 11.3, 13.5.1) | `Legislação do SUS` | 3 |
+| Anexo I | `LESGISLAÇÃO DO SUS` | 2 |
+
+**A prova cobra uma disciplina e o anexo descreve outra, de nome diferente.** E o erro aparece **duas** vezes no anexo porque o bloco foi copiado de um cargo para o outro — o mesmo mecanismo do COREN na fatia 8, agora num nome de disciplina.
+
+🔴 **Por isso a regra central é o cruzamento com `provas_disciplinas`, nas duas direções.** Disciplina na prova sem ementa e ementa sem disciplina na prova aparecem em **par**, e o par é a assinatura do erro de digitação.
+
+⚠️ **A comparação ignora acento, caixa e espaço.** Se comparasse cru, o `LESGISLAÇÃO` ainda seria pego — a letra a mais sobrevive a qualquer normalização —, mas `Legislação` × `LEGISLACAO`, que é a divergência mais comum entre corpo e anexo de um PDF, encheria o painel de falso positivo. ⚠️ É o oposto da escolha dos índices do banco, onde a normalização é só de caixa e espaço: **lá é identidade, aqui é busca.**
+
+#### Por que `nome_disciplina` é TEXTO e não FK
+
+`provas_disciplinas` pende de `edital_cargo_id` — cada cargo tem a sua linha de "Língua Portuguesa". Uma FK obrigaria toda ementa a pertencer a um cargo, e **a ementa comum não pertence a nenhum**: o Edital 002 escreve no título *"LÍNGUA PORTUGUESA (COMUM A TODOS OS CARGOS)"*. Um catálogo de disciplinas resolveria, ao custo de migrar a fatia 5 — mesmo cálculo do e-mail duplicado da fatia 9, mesma conclusão. O CASO 5 da bateria prova que o banco **aceita** o nome divergente.
+
+#### A repetição do 003 é redundância, não conteúdo
+
+Medido: Língua Portuguesa e Legislação do SUS são **idênticas byte a byte** entre os dois cargos (1.049 e 619 caracteres). Só Conhecimentos Específicos difere. **Os 6 blocos publicados são 4 informações** — e foi a repetição que propagou o `LESGISLAÇÃO` duas vezes.
+
+Os dois editais dizem o mesmo de formas diferentes: o **002** escreve uma vez e rotula *"comum a todos"*; o **003** repete o texto idêntico sob cada cargo. `aplica_a_todos_os_cargos` cobre os dois.
+
+⚠️ **E o anexo não tem o mesmo número nos três:** é o Anexo I no 002 e no 003, e o **Anexo II no 004** — que inverte, porque lá o Anexo I são as áreas de abrangência.
+
+#### 🔴 Aqui NÃO há paginação, e é medição — não descuido
+
+O roadmap mandava conferir o teto de 1.000 linhas do PostgREST *"como na fatia 7"*. Medido: **~11 ementas** no Anexo I do 002, **6** no do 003 — duas ordens de grandeza abaixo do teto. Ementas são **poucas e longas**, não muitas e curtas. O contraste com a fatia 7 (843 logradouros, 84% do teto) é o que mostra que a regra é **medir**, não aplicar o padrão por reflexo.
+
+⚠️ **Ementa vazia é recusada pelo banco**, e isso difere da fatia 1 de propósito: lá o artigo em branco é aceito porque "Adicionar artigo" cria a linha. Aqui, uma disciplina no anexo sem ementa é uma seção com título e nada embaixo — o candidato não tem o que estudar.
+
+### 🔵 A taxa é por CARGO, e a correlação com o nível é SUGESTÃO (fatia 9, 2026-09-17)
+
+Os 6 valores publicados, medidos:
+
+| | R$ 100,00 | R$ 80,00 |
+|---|---|---|
+| **002** | Docente I | Docente II |
+| **003** | Enfermeiro | Técnico em Enfermagem |
+| **004** | — | ACS e ACE |
+
+A correlação com a escolaridade é **perfeita** — 100 para superior, 80 para médio/técnico —, inclusive no caso que quase a derruba: o Docente II, cuja habilitação mínima é *"Curso Normal de Nível **Médio**"*.
+
+🔴 **Mesmo assim o recorte não é por nível.** São 6 pontos com 2 valores distintos: correlação observada, não regra declarada. Os três publicam uma **lista nominal por cargo** (*"A) Docente I – R$ 100,00"*). Modelar por escolaridade obrigaria o edital a obedecer a uma regra que nunca escreveu, e quebraria no dia em que dois cargos superiores tivessem taxas diferentes.
+
+➜ A correlação virou **sugestão** (botão *"sugerir R$ 100"*) e **aviso** (taxas divergentes no mesmo nível), no mesmo desenho de `sugerirCotas`. O CASO 2 da bateria prova que o banco **não** impõe a correlação.
+
+🔵 **E é COLUNA em `edital_cargos`, não tabela.** A relação é 1:1 com o cargo do edital, que já carrega `vencimento_base` e as vagas — uma `taxas_inscricao` de duas colunas seria uma junção a mais para sempre. ⚠️ `NUMERIC(10,2)`, nunca `float`: é dinheiro, e `float` não representa 0,10 exatamente.
+
+#### Os critérios de isenção são TRÊS, e os três editais os escrevem iguais
+
+| | critério | lei |
+|---|---|---|
+| A | CadÚnico + família de baixa renda | Lei 8.112/90 art. 11; Dec. 6.593/2008 e 11.016/2022 |
+| B | Doador regular de sangue **ou** cadastrado no REDOME | Lei Municipal 5.989/2022 |
+| C | Prestou serviço à Justiça Eleitoral | Lei Municipal 6.359/2024 |
+
+⚠️ **O item B junta as duas situações numa alínea só.** O esboço do roadmap propunha quatro critérios, separando sangue de medula; o 003 chega a escrever *"de acordo com sua opção (REDOME ou Doador de Sangue)"*. Separá-los publicaria uma alínea que o documento não tem, e daria a mesma lei a dois critérios.
+
+**O que varia de verdade entre os três:** a carteira do REDOME *"emitida no ano vigente"* (003 e 004 exigem; **002 não**), e se a documentação de isenção vale para um cargo só (003 e 004 exigem procedimentos independentes; **002 não tem a cláusula**). O mínimo de **3 doações em 12 meses** é igual nos três.
+
+⚠️ **E `meses_atualizacao_cadunico` NÃO existe.** O roadmap afirmava *"CadÚnico atualizado nos últimos 24 meses"*; `"24 meses"` tem **zero** ocorrências nos três editais. É a quarta coluna proposta que a medição derruba nesta v3.
+
+🔴 **Nada aqui defere isenção.** O capítulo descreve a regra que sai no edital; quem analisa o pedido do candidato é a banca. Isenção é a porta de fraude mais visada de um concurso, e não há validação automática nenhuma neste módulo.
+
+#### O canal é o MEIO, e a finalidade é texto
+
+Medido: **um** endereço presencial (a sede da FEVRE, Rua 154 nº 783) e **dois** e-mails, em três editais. O endereço se repete **quatro vezes só no Edital 002** — entrega de isenção, de laudo PCD, de autodeclaração e de títulos. É duplicação real no documento publicado, e é ela que paga a tabela.
+
+⚠️ **`tipo_canal` é `PORTAL_WEB | EMAIL | TELEFONE | POSTO_PRESENCIAL`.** O esboço propunha `EMAIL_IMPUGNACAO` e `EMAIL_VISTA_PROVA`, misturando meio com finalidade — e o dado mostra por que não dá: o mesmo posto serve a quatro finalidades. A finalidade vai em `rotulo`.
+
+⚠️ **A repetição continua permitida** (CASO 5b). O ganho não é impedir que o endereço apareça duas vezes: é que seja **uma linha referenciada** em vez de quatro textos digitados à mão que podem divergir.
+
+🔴 **O risco do canal duplicado se materializou, e está mitigado, não resolvido.** O roadmap avisava que, se a fatia 5 viesse antes desta, criaria `regras_vista_prova.email_solicitacao` solto. Veio, e criou. A coluna **não foi migrada** — ela tem CHECK própria, e remodelar tabela entregue custa mais que a duplicação de um campo. A regra `email-da-vista-fora-dos-canais` torna a divergência **visível** em vez de silenciosa.
+
+### 🎯 O checklist de investidura — onde o defeito de abertura do módulo morre (fatia 8, 2026-09-17)
+
+O item **15.8-L do Edital 004 publicado** exige *"Certidão Nada Consta do COREN"* de Agente Comunitário de Saúde, cargo de nível médio sem conselho de classe. É o defeito que abre este documento.
+
+🔴 **E a medição fechou o diagnóstico.** O Edital 003 (Enfermagem) tem **dois** documentos de COREN — `K) Registro Ativo…` e `N) Certidão Nada Consta…` — e o 004 herdou **só o segundo**, com o mesmo texto entre parênteses. Não é erro sistemático de geração: é uma linha copiada à mão de um documento para o outro.
+
+**A defesa é em duas camadas, e a ordem importa (§2):**
+
+| | onde | o que alcança |
+|---|---|---|
+| 1 | trigger **`IN001`** em `documentos_investidura` | `conselho_exigido` que nenhum cargo do edital exige. Exato, e vale por psql, PostgREST e script |
+| 2 | `conferirInvestidura` | a sigla escrita no **texto livre**, que o trigger não vê |
+
+⚠️ **A camada 2 é heurística de propósito.** Nome de documento varia demais (`COREN`, `Coren-RJ`, `Conselho Regional de Enfermagem`) para virar barreira de banco sem recusar o legítimo. Ela **acusa**; quem **impede** é a camada 1. O CASO 3e da bateria prova que o banco aceita o texto livre, para que ninguém tome a brecha por descuido.
+
+🔴 **O trigger vale para o admin também** (CASO 8b): é `SECURITY INVOKER` e roda depois da RLS. Papel não é salvo-conduto para publicar um edital incoerente.
+
+⚠️ **Na tela, o botão do conselho NÃO EXISTE quando nenhum cargo o exige.** O material de referência propunha *"desabilitados ou ocultos"* — desabilitado ainda é oferecido, e vira habilitado no dia em que alguém "melhorar" a UX.
+
+#### 🔴 Três estados, não dois — e foi uma coluna ÓRFÃ até 17/09
+
+`cargos.conselho_classe_obrigatorio` distingue:
+
+| valor | significa | o linter |
+|---|---|---|
+| `null` | **não declarado** | acusa `cargo-sem-conselho-declarado` |
+| `'NENHUM'` | declarado: o cargo não exige | silêncio — é resposta válida |
+| `'COREN'`… | exige | o documento do conselho passa a ser oferecido |
+
+⚠️ **A coluna existia desde 16/09 e era órfã:** nenhuma tela a escrevia, nenhum código a lia, e o cabeçalho do `QuadroDeCargos` afirmava haver ali uma *"trava de conselho de classe"* que não existia. A fatia 8 pagou essa dívida — os campos entraram no `CargoDialog`, que é o catálogo global, e não no editor do edital, porque escolaridade e conselho são propriedades do **cargo**.
+
+🔴 **Ler `null` como "não exige" faria a regra degradar em silêncio:** o documento do conselho nunca seria oferecido, e quem redige descobriria com o edital já publicado sem ele.
+
+#### O que o checklist pré-preenche, e o que NÃO pré-preenche
+
+Dez documentos, medidos como comuns aos três editais. ⚠️ **Ficam de fora, de propósito:** o **ASO**, que é documento só no 002 (nos outros dois está na frase de abertura, *"julgado APTO no exame médico admissional"*), e o **diploma**, que os três escrevem diferente — *"do Curso exigido para o cargo a que concorre"* (002), um por cargo (003), *"do Ensino Médio"* (004). Pré-marcar qualquer um seria pôr na boca do edital o que ele não diz.
+
+⚠️ **E não existe coluna `aplica_apenas_sexo`.** O reservista é o único item condicionado a sexo nos três — mas não é o único condicional: *"de filhos menores de 14 anos"* e *"caso declare"* estão na mesma lista, e os três editais exprimem **todas** as condições dentro do texto do documento. Uma coluna de sexo serviria a 1 linha de 12 e deixaria as outras duas em texto.
+
+🔴 **`aplica_a_todos_os_cargos` existe para desambiguar o nulo.** Sem ele, *"vale para todos"* e *"esqueci de escolher"* seriam o mesmo estado, e o linter não conseguiria acusar documento órfão. A CHECK `chk_doc_inv_escopo` (`(cargo_id IS NULL) = aplica_a_todos_os_cargos`) obriga a escolha explícita.
+
+### 🔵 Territorialidade — a opção de inscrição É a unidade (fatia 7, 2026-09-17)
+
+Só o **Edital 004** é territorializado, e nem ele por inteiro. Medido:
+
+| | vagas | forma |
+|---|---|---|
+| **ACS** (Quadro II) | 80 | **39 unidades**, cota calculada em cada uma, código próprio (DN-1 a DN-39) |
+| **ACE** (Quadro III) | 143 | linha única — **não é territorializado** |
+
+🔴 **Os dois convivem no mesmo documento, e é isso que prova que a territorialização é parâmetro do CARGO, não do edital.** O material de referência intitulava este passo *"(Exclusivo ACS/Polos)"* em dois arquivos; foi recusado pelo mesmo motivo do Magistério na fatia 6 — o ACS é o caso conhecido, não uma condição.
+
+🔴 **O candidato não se inscreve para "ACS": inscreve-se para "ACS na UBSF Belmonte".** Cada unidade tem código de inscrição próprio, e por isso a cota é calculada **por unidade** — foi essa medição que corrigiu a regra de cotas da fatia 2 (ver a seção do Quadro I).
+
+⚠️ **O Quadro I do 004 NÃO TEM coluna de vagas** — publica só cargo, habilitação, carga horária e vencimento, e o item 2.2 manda ao Quadro II. Num edital territorializado o total do cargo é **derivado** da distribuição, e não há número declarado para conferir contra. Por isso `conferirDistribuicao` só acusa divergência quando os **dois** existem: cobrar a igualdade contra um `null` acusaria todo edital desse tipo.
+
+#### 🔴 P1 respondida: catálogo separado de `unidades_prova`
+
+A pergunta do roadmap supunha que os dois catálogos podem apontar para os mesmos prédios. **Medido: a interseção é zero** — 12 escolas, faculdade e a sede da FEVRE de um lado; 39 UBS/UBSF do outro. Somado a isso, `unidades_prova` tem só nome e sigla (nem endereço) e carrega `sala_prova`, que não significa nada para um posto de saúde.
+
+⚠️ **O risco original não sumiu, encolheu:** se um prédio um dia servir às duas coisas, serão duas linhas, e quem renomear renomeia nas duas. É mais barato que um discriminador `tipo` que toda consulta teria de filtrar para sempre.
+
+#### 🔴 A abrangência é por EDITAL; a unidade, do município
+
+`unidades_lotacao` é catálogo global — o posto existe. `territorialidade_abrangencia` tem `edital_id` porque **limite territorial muda com o tempo**, e guardá-lo no catálogo faria um edital novo reescrever, em silêncio, o anexo de um edital já publicado. É o mesmo corte de `cargos` e `edital_cargos`.
+
+#### ⚠️ O logradouro entra CRU, e isso foi medido
+
+O Anexo I lista nome de logradouro e nada mais. Das 843 linhas, 104 têm algo que *parece* faixa — e cada uma é de um tipo diferente: `ALAMEDAS 1 A 7`, `KM 7501 A 8500`, `DO N 03 ATÉ O N 9201`, `RUA 1, 2, 3 e 4 (CONDOMÍNIO VISTA BELA)`, `RUA 552`. Quebrar isso em `numero_inicial`/`numero_final` seria adivinhar. Vale a decisão de 01/08: **dado inválido entra cru; valide na leitura**.
+
+⚠️ **A estrutura do anexo é irregular:** das 28 seções, 12 listam as ruas direto sob a unidade e as outras desdobram por bairro. Por isso `bairro` é anulável, e `agruparPorBairro` mantém a seção nula **onde ela apareceu** — jogá-la num balde no fim mudaria a ordem do documento publicado.
+
+⚠️ **A cobertura é parcial:** 39 unidades no Quadro II, **14** com lista publicada. A tela diz isso — ausência que não se explica parece carregamento pela metade.
+
+🔴 **843 linhas são 84% do teto de 1.000 do PostgREST, que corta sem erro.** Toda leitura completa passa por `buscar-em-fatias`, com ordem estável (`ordem`, depois `id`). Sem o desempate único, o laço repete uma linha e pula outra — também calado. O sintoma seria uma rua sumindo do anexo publicado.
+
+### 🔵 A prova de títulos, e a única tabela do módulo que NÃO reproduz o publicado (fatia 6, 2026-09-17)
+
+Só o **Edital 002** tem esta etapa entre os três. Os Quadros III e IV dele, medidos item a item:
+
+| | Quadro III — Docente I | Quadro IV — Docente II |
+|---|---|---|
+| Mestrado Profissional | Área do Componente Curricular — **5** | Docência na Educação Básica — **5** |
+| Lato sensu, 360h | Tecnologias Digitais na Educação — **4** | Alfabetização e Letramento — **4** |
+| Lato sensu, 360h | Educação Inclusiva — **3** | Educação Inclusiva — **3** |
+| | **12** | **12** |
+
+🔴 **A configuração se divide em DUAS chaves, e isso difere da fatia 5 de propósito.** Lá cada edital diz *"a Prova Objetiva **para os candidatos às vagas de `<cargo>`**…"* e tudo pende do cargo. Aqui o item 13.4 declara o teto **uma vez**, para os dois quadros: `titulos_config` é por **edital**, `titulos_itens` é por **cargo**.
+
+🔵 **A aplicabilidade não tem coluna, e é de propósito.** O item 13.2 restringe os títulos a Docente I e Docente II, e é o que acontece sozinho quando um cargo não tem nenhuma linha em `titulos_itens`. Um campo `tem_titulos` seria um segundo lugar dizendo a mesma coisa, livre para divergir do primeiro.
+
+🔴 **O prazo de conclusão é DERIVADO, e não há campo para digitá-lo.** O item 13.17 diz *"concluídos até 30 dias antes do prazo previsto no subitem 5.4"*, e o 5.4 é o fim das inscrições (08/06/2026) — logo, 09/05/2026. Guarda-se o **intervalo**; a data sai de `dataLimiteDeConclusao(fimDasInscricoes, dias)`. Gravar a data resolvida criaria a segunda cópia que envelhece calada quando o cronograma muda — que é o `"dia XX/xx/2026"` do Edital 004 em outra roupa.
+
+⚠️ **As DUAS colunas de pontuação são do documento**, não invenção: o quadro publica *"Pontuação Mínima por Título"* e *"Pontuação Máxima por Título"* lado a lado. **Nos 6 itens reais elas são iguais**, então a diferença entre as duas não é exercitada por dado nenhum que temos — a tela edita as duas com um campo só, e o banco as guarda separadas para o dia em que um edital as diferencie (CASO 3b da bateria).
+
+⚠️ **O que o esboço previa e a medição derrubou:** `pontos_por_item` e `limite_itens_aceitos`. Não há conceito de quantidade de títulos por categoria no Edital 002 — cada um vale um valor fixo e conta uma vez. Campo que ninguém preenche vira, com o tempo, campo em que alguém confia.
+
+#### 🔴 O quadro gerado NÃO agrupa cargos — e isso vale para dois quadros, não um
+
+O Quadro III junta os 8 cargos de Docente I numa linha só (*"Docente I (Arte, Ciências, …)"*); o gerado lista **um cargo por linha**. É **decisão do usuário em 2026-09-16**, tomada com a medição na mão — não descuido. As duas alternativas recusadas estão em [`roadmap-editais-prova-de-titulos.yaml`](../../../analises/roadmap-editais-prova-de-titulos.yaml), para que ninguém as reabra achando que são novas.
+
+⚠️ **E o mesmo vale para o Quadro II de provas (fatia 5), que eu havia afirmado o contrário.** Medido em 2026-09-17: o Quadro II publicado do Edital 002 tem **2 linhas** (`Docente I`, `Docente II`) para **9 cargos**, e as disciplinas são **colunas**; o `MatrizGerada` renderiza **uma linha por cargo × disciplina**, com as disciplinas em linhas. Os dois quadros gerados, então, divergem da forma publicada da mesma maneira — não há exceção, há um padrão:
+
+| | publicado no 002 | gerado hoje |
+|---|---|---|
+| Quadro II (provas) | 2 linhas, disciplinas em colunas | 1 linha por cargo × disciplina |
+| Quadros III/IV (títulos) | 2 tabelas, 8 cargos numa linha | 1 linha por cargo × título |
+
+🔵 O Edital 003 **não** agrupa (1 linha por cargo, e são 2 cargos), então o gerado o reproduz exatamente. O agrupamento do 002 é rótulo de família de cargo escrito à mão por quem redigiu — não é derivável da configuração, porque no 002 as duas famílias têm **números idênticos** (50 = 10+15+25 nas duas) e mesmo assim são linhas separadas. É por isso que derivar o agrupamento foi recusado, e declará-lo ficou fora de escopo.
+
+🔴 **FRONTEIRA: conferir o teto NÃO é respeitar o teto.** Validar que a soma das categorias cabe nos 12 pontos não garante que a pontuação de um candidato os respeite. Isso é **correção de prova**, que é outro módulo e não existe. Sem esta linha alguém vai supor que o sistema já limita a nota de alguém.
+
+⚠️ **Uma regra que quase entrou e não entrou:** *"lato sensu tem de declarar carga horária"*. Nos 4 itens lato sensu reais ela está sempre lá (360h) e o mestrado nunca a declara — mas 4 casos do mesmo edital são costume da FEVRE, não regra. Ela acusaria o primeiro edital que fizesse diferente, e é assim que um painel perde a confiança de quem o lê.
+
+⚠️ **NÃO implementado, e registrado para que ninguém suponha a garantia:** *"título que serve de requisito de investidura não pontua"*. Cruza tabelas (depende da escolaridade exigida do cargo, fatia 2) e, como barreira, seria **trigger** — nunca um `if` no hook (§2).
+
 ### 🔴 A data de corte da lactante é DERIVADA — e o porquê é um defeito real (fatia 4)
 
 O item 10.10 do **Edital 003/2026 publicado** diz:
@@ -189,6 +435,8 @@ Por isso **não existe coluna `data_limite_nascimento`**: guarda-se `idade_maxim
 ⚠️ Os presets recomendados (compensação de 30 min, laudo indeterminado das Leis RJ) são **aviso**, nunca trava: o Edital 002 não compensa tempo e é válido. O modelo precisa reproduzir os três editais sem caso especial — e a bateria prova isso.
 
 ### 🔵 O cronograma, e as TRÊS formas de data (fatia 3, 2026-09-16)
+
+🔵 **Três etapas entraram com a fatia 6, em 2026-09-17:** `entrega_titulos`, `resultado_titulos` e `recurso_titulos`. Faltavam, e a falta era concreta — o Edital 002 publica as três, e sem o fim das inscrições ligado a elas o prazo do item 13.17 não tinha de onde ser derivado. ⚠️ A entrega é **ALTERNATIVAS**, não INTERVALO: *"no dia 22/07/2026 ou no dia 23/07/2026"* são dois dias à escolha do candidato; como intervalo, o documento passaria a dizer "de 22 a 23", que é outra coisa.
 
 🎯 **É aqui que o `"dia XX/xx/2026"` do Edital 004 deixa de ser possível.** Enquanto a data é texto corrido, "vazio" não é estado. Vinda de `cronograma_etapas`, etapa sem data aparece no painel antes de alguém publicar.
 
@@ -238,7 +486,9 @@ O preço combinado: desligar um capítulo **padrão** gera **aviso** do linter �
 
 **Cobertura de testes** (ver [`../../transversais/testes.md`](../../transversais/testes.md)): o módulo é o mais bem coberto do sistema. `useEditais.test.tsx` (14) cobre a listagem, as traduções de `23505`/`23503` e a invalidação dupla; `EditalDialog.test.ts` (8) o schema isolado; `EditalDialog.ui.test.tsx` (11) a interação. O lado da prova está em `ProvaDialog.ui.test.tsx` (10), que guarda a herança e o bloqueio sem edital. E o **guard da rota** está em `pages/guards.test.tsx`: `/editais` recusa deslogado, colaborador e coordenador — foi justamente quebrando este guard de propósito que a bateria foi falsificada antes de ser aceita.
 
-🔵 **A v3 trouxe 159 casos de LÓGICA PURA (2026-09-16),** em oito arquivos: `edital-cotas` (31) · `edital-itens` (29) · `edital-linter` (26) · `edital-numeracao` (20) · `edital-cronograma` (18) · `edital-acoes-afirmativas` (13) · `edital-prova` (13) · `edital-texto` (9).
+🔵 **A v3 trouxe 276 casos de LÓGICA PURA (2026-09-16 e 17),** em 14 arquivos: `edital-cotas` (36) · `edital-itens` (29) · `edital-linter` (26) · `edital-territorialidade` (24) · `edital-inscricao` (22) · `edital-numeracao` (20) · `edital-investidura` (19) · `edital-cronograma` (18) · `edital-desempate` (17) · `edital-conteudo` (15) · `edital-titulos` (15) · `edital-acoes-afirmativas` (13) · `edital-prova` (13) · `edital-texto` (9). Mais **15 de interação** em `ArtigosDoCapitulo.ui.test.tsx`.
+
+⚠️ **E 12 baterias SQL**, que é onde mora tudo que a suíte não alcança: `edital-capitulos` · `edital-itens` · `edital-cargos` · `edital-cronograma` · `edital-acoes-afirmativas` · `edital-prova-objetiva` · `edital-titulos` · `edital-territorialidade` · `edital-investidura` · `edital-inscricao` · `edital-conteudo` · `edital-desempate`. Nenhuma é alcançada por `npm test` nem por `npm run docs:conferir` — **rodá-las é passo manual**, e uma delas já apodreceu verde neste módulo (ver abaixo).
 
 ⭐ **O controle positivo são os editais REAIS**, não fixtures inventadas: os três dão três numerações de capítulo diferentes a partir do mesmo catálogo, e o **capítulo 6 do Edital 002** (Da Isenção) exercita os três tipos de linha de uma vez — 17 itens, alíneas em letra sob o 6.1 e o 6.6, e o parágrafo sem número do envelope entre o 6.6 e o 6.7.
 
@@ -305,6 +555,153 @@ edital_itens                           -- 🔵 um registro por ARTIGO (202609162
 ⚠️ **Reordenar vai pela RPC `reordenar_itens_do_capitulo`**, nunca por `update` solto: reescrever a ordem é operação de vários passos (§2). Ela é `SECURITY INVOKER` — a autorização são as policies, e um `DEFINER` criaria uma segunda cópia da regra. Recusa com `EI001` (id de outro capítulo) e `EI002` (lista incompleta, que deixaria buraco).
 
 ⚠️ **Apagar a linha de capítulo NÃO leva os artigos junto** (CASO 14 da bateria). Não há FK entre eles de propósito: desligar um capítulo não pode destruir texto redigido.
+
+```
+titulos_config                         -- 🔵 v3 fatia 6 (20260916234302)
+  edital_id         uuid PK → editais(id) ON DELETE RESTRICT
+  teto_maximo_pontos             numeric(6,2)  -- CHECK > 0
+  carater_classificatorio        boolean       -- 13.1: é PARÂMETRO, não constante
+  exige_historico_escolar        boolean       -- 13.5
+  exige_reconhecimento_mec_cne   boolean       -- 13.7
+  exige_traducao_juramentada     boolean       -- 13.11
+  exige_revalidacao_diploma_estrangeiro boolean -- 13.10
+  dias_conclusao_antes_fim_inscricoes integer  -- 13.17; CHECK >= 0
+  -- 🔴 INTERVALO, nunca data: a data deriva do fim das inscrições (fatia 3).
+
+titulos_itens                          -- 🔵 um título aferível por linha, por CARGO
+  id                uuid PK
+  edital_cargo_id   uuid → edital_cargos(id) ON DELETE RESTRICT
+  ordem             integer    -- CHECK >= 0
+  nivel             text       -- CHECK: DOUTORADO | MESTRADO_ACADEMICO
+                               --      | MESTRADO_PROFISSIONAL | ESPECIALIZACAO_LATO_SENSU
+  descricao         text       -- a coluna "Títulos Aferíveis" do quadro; CHECK não-vazia
+  area_exigida      text
+  carga_horaria_minima_horas integer  -- CHECK > 0; NULL é legítimo (mestrado não declara)
+  pontos_minimo     numeric(6,2)  -- as DUAS colunas do quadro publicado
+  pontos_maximo     numeric(6,2)  -- CHECK ambos > 0 e minimo <= maximo
+```
+
+```
+unidades_lotacao                       -- 🔵 v3 fatia 7 (20260917082732). GLOBAL, sem edital_id
+  id                uuid PK
+  nome              text NOT NULL   -- UNIQUE funcional lower(btrim()); CHECK não-vazio
+  sigla / endereco / bairro  text
+  -- 🔴 Separada de `unidades_prova`: a interseção medida entre as duas é ZERO.
+
+edital_cargo_unidades                  -- 🔵 o Quadro II: vagas por unidade
+  id                uuid PK
+  edital_cargo_id   uuid → edital_cargos(id) ON DELETE RESTRICT
+  unidade_lotacao_id uuid → unidades_lotacao(id) ON DELETE RESTRICT
+  codigo_inscricao  text       -- ⚠️ SEM índice único: ver abaixo
+  ordem             integer    -- CHECK >= 0
+  vagas_ampla_concorrencia / vagas_pcd / vagas_negros  integer  -- CHECK >= 0
+  UNIQUE (edital_cargo_id, unidade_lotacao_id)
+
+territorialidade_abrangencia           -- 🔵 o Anexo I do Edital 004
+  id                uuid PK
+  edital_id         uuid → editais(id) ON DELETE RESTRICT
+  unidade_lotacao_id uuid → unidades_lotacao(id) ON DELETE RESTRICT
+  bairro            text       -- ANULÁVEL: 12 das 28 seções não desdobram por bairro
+  logradouro        text NOT NULL  -- COMO PUBLICADO, sem parsing; CHECK não-vazio
+  ordem             integer    -- CHECK >= 0
+  INDEX (edital_id, unidade_lotacao_id, ordem)
+```
+
+```
+documentos_investidura                 -- 🔵 v3 fatia 8 (20260917093000)
+  id                uuid PK
+  edital_id         uuid → editais(id) ON DELETE RESTRICT
+  cargo_id          uuid → cargos(id) ON DELETE RESTRICT   -- NULL = todos os cargos
+  aplica_a_todos_os_cargos  boolean NOT NULL
+  nome_documento    text NOT NULL   -- CHECK não-vazio
+  conselho_exigido  text       -- CHECK: o domínio de cargos, SEM 'NENHUM'
+  obrigatorio       boolean NOT NULL DEFAULT true
+  observacao        text
+  ordem             integer    -- CHECK >= 0
+  CHECK ((cargo_id IS NULL) = aplica_a_todos_os_cargos)   -- chk_doc_inv_escopo
+  TRIGGER check_documento_conselho  -- IN001, em INSERT e UPDATE
+```
+
+```
+edital_cargos.taxa_inscricao           -- 🔵 v3 fatia 9: COLUNA, não tabela
+  numeric(10,2)   -- CHECK >= 0 (taxa zero é concurso sem taxa, decisão legítima)
+
+regras_isencao                         -- 🔵 v3 fatia 9 (20260917104500)
+  id, edital_id → editais(id) RESTRICT
+  tipo_criterio   text  -- CHECK: CADUNICO | DOADOR_SANGUE_OU_MEDULA | SERVICO_ELEITORAL
+  lei_referencia  text
+  minimo_doacoes_sangue_12m  integer   -- CHECK > 0; nulo nos outros dois critérios
+  redome_exige_ano_vigente   boolean   -- o parâmetro que mais varia entre os três
+  UNIQUE (edital_id, tipo_criterio)
+
+inscricao_config                       -- 🔵 parâmetros do EDITAL
+  edital_id uuid PK → editais(id) RESTRICT
+  documentacao_isencao_vale_para_um_cargo  boolean
+  limite_envelopes_por_candidato           integer  -- CHECK > 0
+
+edital_canais_atendimento              -- 🔵 um canal, citado por vários capítulos
+  id, edital_id → editais(id) RESTRICT
+  tipo_canal  text  -- CHECK: PORTAL_WEB | EMAIL | TELEFONE | POSTO_PRESENCIAL (o MEIO)
+  rotulo      text NOT NULL   -- a FINALIDADE, texto livre; CHECK não-vazio
+  endereco / horario_funcionamento / observacao  text
+  ordem       integer  -- CHECK >= 0
+```
+
+```
+conteudo_programatico                  -- 🔵 v3 fatia 10 (20260917115000)
+  id, edital_id → editais(id) RESTRICT
+  cargo_id      uuid → cargos(id) RESTRICT   -- NULL = comum a todos
+  aplica_a_todos_os_cargos  boolean NOT NULL
+  nome_disciplina  text NOT NULL   -- TEXTO, não FK; CHECK não-vazio
+  texto_ementa     text NOT NULL   -- 🔴 CHECK não-vazio, diferente do artigo da fatia 1
+  ordem            integer         -- CHECK >= 0
+  CHECK ((cargo_id IS NULL) = aplica_a_todos_os_cargos)
+
+  UNIQUE (edital_id, lower(btrim(nome_disciplina)))            WHERE cargo_id IS NULL
+  UNIQUE (edital_id, cargo_id, lower(btrim(nome_disciplina)))  WHERE cargo_id IS NOT NULL
+```
+
+```
+criterios_desempate                    -- 🔵 v3 fatia 11 (20260917130000)
+  id, edital_id → editais(id) RESTRICT
+  cargo_id  uuid → cargos(id) RESTRICT   -- NULL = todos (é o caso dos três editais)
+  aplica_a_todos_os_cargos  boolean NOT NULL
+  lista             text     -- CHECK: GERAL | PCD
+  ordem_prioridade  integer  -- CHECK >= 1
+  criterio_tipo     text     -- CHECK: o tipo tem de pertencer à lista
+  disciplina_referencia  text  -- TEXTO, não FK
+  CHECK ((cargo_id IS NULL) = aplica_a_todos_os_cargos)
+  CHECK ((criterio_tipo = 'PONTUACAO_DISCIPLINA') = (disciplina_referencia IS NOT NULL))
+
+  UNIQUE (edital_id, lista, ordem_prioridade)            WHERE cargo_id IS NULL
+  UNIQUE (edital_id, lista, cargo_id, ordem_prioridade)  WHERE cargo_id IS NOT NULL
+```
+
+Tipos de `GERAL`: `IDADE_60_MAIS` · `FUNCAO_JURADO` · `PONTUACAO_DISCIPLINA` · `MAIOR_PONTOS_TITULOS` · `MAIOR_IDADE`. De `PCD`: `ARRIMO_FAMILIA` · `MAIS_DEPENDENTES_ATE_21` · `SEM_FONTE_DE_RENDA`.
+
+⚠️ **`disciplina_referencia` é texto pela mesma razão da fatia 10:** `provas_disciplinas` pende de `edital_cargo_id`, e o critério vale para todos os cargos. O CASO 6 prova que o banco aceita nome fora da matriz; quem acusa é o linter.
+
+🔴 **Dois índices parciais, não um.** Em Postgres nulos são **distintos**, então um `UNIQUE (edital_id, cargo_id, nome)` deixaria passar duas ementas de "Língua Portuguesa" marcadas como comuns — que é o caso mais provável de digitação duplicada. Mesmo padrão do índice de âncora de `edital_itens`.
+
+⚠️ **Comum e específica com o MESMO nome convivem** (CASO 2d), e é legítimo: o Edital 002 tem *"LÍNGUA PORTUGUESA (comum a todos)"* e também *"DOCENTE I – LÍNGUA PORTUGUESA"*, que é a específica daquele cargo.
+
+⚠️ **`endereco` não tem CHECK de formato, nem para e-mail.** É a decisão de 01/08 (*"dado inválido entra cru; valide na leitura"*), que removeu 4 CHECKs de formato deste repo. O CASO 5e prova que o banco aceita `'isto nao e um email'`; quem acusa é o linter.
+
+🔴 **`IN001` cruza três tabelas** (`documentos_investidura` → `edital_cargos` → `cargos`), e por isso é trigger e não CHECK — CHECK não enxerga outra tabela (§2). ⚠️ Ele cobre **INSERT e UPDATE**: validar só o INSERT deixaria aberto o caminho óbvio de inserir com a coluna nula e preenchê-la depois (CASO 3b).
+
+⚠️ **Ele pergunta sobre o EDITAL, não sobre a linha.** Um edital com Enfermeiro e ACS pode exigir o COREN num documento que vale para todos — é o que o 003 faz, listando o registro uma vez para os dois cargos de enfermagem.
+
+⚠️ **`chk_doc_inv_conselho` é quase inalcançável, e não é redundante.** Para chegar nela, o valor precisa passar pelo trigger — isto é, algum cargo do edital tem de declará-lo — e `cargos` só admite o mesmo domínio mais `'NENHUM'`. O **único** valor que a exercita é `'NENHUM'`, e é ela que o segura. (É o §8 outra vez: regra nova ofusca regra antiga, e a primeira versão do CASO 6 da bateria afirmava o contrário.)
+
+🔴 **`edital_cargo_unidades` é um nível ABAIXO do cargo, e TEM de ser:** `edital_cargos` tem `UNIQUE (edital_id, cargo_id)`, então o ACS só cabe uma vez lá — as 39 unidades não caberiam como 39 linhas de cargo.
+
+⚠️ **`codigo_inscricao` NÃO tem índice único, de propósito.** Metade dos 39 códigos fica `NULL` enquanto se digita, e um índice barraria o meio do caminho. Quem acusa repetição é `edital-territorialidade.ts`, e o **CASO 2c da bateria prova a ausência**: o banco aceita. Se alguém puser o índice um dia, aquele caso avisa. (⚠️ E o próprio Edital 004 é incoerente aqui: o ACE tem código `AE 4` no Quadro I e `AE 66` no Quadro III.)
+
+⚠️ **A mesma rua pode estar em DUAS unidades** — o item 5.1.5 do Edital 004 fala em áreas limítrofes de propósito. Um índice único por `(edital, logradouro)` impediria o que o documento prevê; o CASO 6b guarda isso.
+
+⚠️ **`DOUTORADO` e `MESTRADO_ACADEMICO` não aparecem em nenhum dos três editais.** Entram no domínio porque recusá-los barraria título corriqueiro, e o custo de um valor a mais é zero. O CASO 4b da bateria é o que guarda isso: sem ele, alguém estreitaria o domínio aos 2 valores medidos e o primeiro edital com doutorado bateria num muro.
+
+⚠️ **A soma dos pontos contra o teto NÃO é CHECK**, pela mesma razão da fatia 5: agregação de outra tabela não cabe numa CHECK, e um trigger recusaria a digitação no meio do caminho — 5 pontos num teto de 12 é estado intermediário legítimo. O **CASO 9 da bateria prova a ausência**: a soma acima do teto entra no banco. Se alguém puser um trigger para "resolver" isso, aquele caso acusa.
 
 ⚠️ **`numero_edital` é `text` sem CHECK de formato, de propósito.** Este repo removeu 4 CHECKs de formato em 2026-08-01 ("dado inválido entra cru; valide na leitura"), e o formato varia no mundo real — o próprio Edital 002 se chama `002/2026-SMA`. Quem valida é a tela e o linter.
 

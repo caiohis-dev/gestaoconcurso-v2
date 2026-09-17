@@ -46,6 +46,15 @@ export const PERCENTUAL_PCD_PADRAO = 0.1;
 export const PERCENTUAL_NEGROS_PADRAO = 0.2;
 
 /**
+ * Abaixo de 4 vagas, a FEVRE não reserva nenhuma para cotas raciais.
+ *
+ * 🔴 MEDIDO, não suposto: as 4 unidades de 3 vagas do Quadro II do Edital 004 publicam
+ * todas `(AC 3, PD 0, CN 0)`, onde 20% arredondado daria 1. As 7 unidades de 4 vagas
+ * publicam `(3, 0, 1)`. O corte está entre 3 e 4.
+ */
+export const MINIMO_DE_VAGAS_PARA_COTA_RACIAL = 4;
+
+/**
  * Arredondamento COMUM: meio para cima. Em JS, para número positivo, é `Math.round`.
  *
  * 🔵 **A primeira versão disto era mais elaborada** — escalava por 1e6 antes, com o
@@ -100,7 +109,17 @@ export function sugerirCotas(total: number, declarados?: PercentuaisDeclarados):
   const fracPcd = (declarados?.pcd ?? PERCENTUAL_PCD_PADRAO * 100) / 100;
   const fracNegros = (declarados?.negros ?? PERCENTUAL_NEGROS_PADRAO * 100) / 100;
   const pcd = meioParaCima(t * fracPcd);
-  const negros = meioParaCima(t * fracNegros);
+  // 🔴 CORRIGIDO em 2026-09-17, e a correção veio de dado NOVO, não de opinião.
+  //
+  // A regra original saiu de 22 valores dos Editais 002 e 003 — e nenhum deles tem cargo
+  // com 3 vagas, então aqueles 22 não podiam decidir este caso. O Quadro II do Edital 004
+  // trouxe 39 valores por UBSF e o decidiu: as 4 unidades com 3 vagas publicam (3,0,0),
+  // e não o (2,0,1) que o arredondamento comum dava. As 4 concordam entre si, então é
+  // regra, não erro de digitação do edital — e as outras 35 seguem batendo.
+  //
+  // ⚠️ É prática MEDIDA da FEVRE, não a Lei 12.990/2014 — que manda reservar a partir de
+  // 3 vagas. Se uma norma passar a valer, muda aqui e os 61 valores acusam a diferença.
+  const negros = t < MINIMO_DE_VAGAS_PARA_COTA_RACIAL ? 0 : meioParaCima(t * fracNegros);
   return { total: t, amplaConcorrencia: t - pcd - negros, pcd, negros };
 }
 

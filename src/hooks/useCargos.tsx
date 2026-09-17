@@ -23,6 +23,16 @@ export interface Cargo {
   /** `lower(btrim(nome))`, coluna GERADA pelo banco. Nunca escrever pelo app. */
   nome_chave: string | null;
   ativo: boolean;
+  /**
+   * 🔵 Os dois entraram no SELECT em 2026-09-17, com a fatia 8. As colunas existiam desde
+   * 16/09 e eram ÓRFÃS — nenhuma tela as escrevia e nenhum código as lia.
+   *
+   * 🔴 `conselho_classe_obrigatorio` distingue três estados, e a distinção é a regra:
+   * `null` = não declarado · `'NENHUM'` = declarado, não exige · sigla = exige.
+   * Ler o nulo como "não exige" faria o checklist de investidura degradar em silêncio.
+   */
+  escolaridade_minima: string | null;
+  conselho_classe_obrigatorio: string | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -123,7 +133,7 @@ export function useCargos() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("cargos")
-        .select("id, nome, nome_chave, ativo, created_at, updated_at")
+        .select("id, nome, nome_chave, ativo, escolaridade_minima, conselho_classe_obrigatorio, created_at, updated_at")
         .order("nome", { ascending: true });
 
       if (error) throw error;
@@ -210,7 +220,7 @@ export function useCriarCargo() {
           { nome: nomeLimpo, created_by: userData.user?.id ?? null },
           { onConflict: "nome_chave", ignoreDuplicates: true },
         )
-        .select("id, nome, nome_chave, ativo, created_at, updated_at");
+        .select("id, nome, nome_chave, ativo, escolaridade_minima, conselho_classe_obrigatorio, created_at, updated_at");
 
       if (error) throw error;
 
@@ -220,7 +230,7 @@ export function useCriarCargo() {
       // Chegou aqui: o cargo já existia. Busca o dono do nome, que é quem o usuário quis.
       const { data: existente, error: erroBusca } = await supabase
         .from("cargos")
-        .select("id, nome, nome_chave, ativo, created_at, updated_at")
+        .select("id, nome, nome_chave, ativo, escolaridade_minima, conselho_classe_obrigatorio, created_at, updated_at")
         .eq("nome_chave", nomeLimpo.toLowerCase())
         .maybeSingle();
 
@@ -325,8 +335,25 @@ export function useAtualizarCargo() {
   const { toast } = useToast();
 
   const mutation = useMutation({
-    mutationFn: async ({ id, nome }: { id: string; nome: string }): Promise<void> => {
-      const { error } = await supabase.from("cargos").update({ nome: nome.trim() }).eq("id", id);
+    mutationFn: async ({
+      id, nome, escolaridade_minima, conselho_classe_obrigatorio,
+    }: {
+      id: string;
+      nome: string;
+      // 🔵 Os dois entraram em 2026-09-17 (fatia 8) e são OPCIONAIS na assinatura de
+      // propósito: `criarCargo` segue recebendo só o nome, porque a importação de
+      // candidatos o chama assim para 481 cargos e não tem esses dados.
+      escolaridade_minima?: string | null;
+      conselho_classe_obrigatorio?: string | null;
+    }): Promise<void> => {
+      const campos: Record<string, unknown> = { nome: nome.trim() };
+      // ⚠️ `undefined` é "não mexer" e `null` é "apagar a declaração" — os dois precisam
+      // ser distinguíveis, senão editar o nome de um cargo apagaria o conselho dele.
+      if (escolaridade_minima !== undefined) campos.escolaridade_minima = escolaridade_minima;
+      if (conselho_classe_obrigatorio !== undefined) {
+        campos.conselho_classe_obrigatorio = conselho_classe_obrigatorio;
+      }
+      const { error } = await supabase.from("cargos").update(campos).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {

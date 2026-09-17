@@ -6,7 +6,14 @@ roadmap:
   titulo: "Editais fatia 10 — conteúdo programático (Anexo I)"
   criado: "2026-09-16"
   status: >
-    ⏳ NÃO INICIADO — 🟡 ESBOÇO. Detalhar antes de executar.
+    🟢 EXECUTADA em 2026-09-17. Migration 20260917115000 (`conteudo_programatico` + os dois
+    índices únicos PARCIAIS), `src/lib/edital-conteudo.ts`, `useConteudoProgramatico`,
+    `ConteudoProgramatico.tsx` e `docs/bateria-edital-conteudo.sql` (16 casos, todos
+    verdes). 1.647 testes em 87 arquivos, tsc, build, lint 111 (baseline), docs:conferir
+    limpo, db reset completo.
+    🎯 E ELA ACHOU UM DEFEITO PUBLICADO — ver `o_defeito_que_esta_fatia_acha`.
+    ⚠️ O R2 NÃO SE CONFIRMOU; as duas perguntas abertas foram respondidas por medição.
+    🟢 Aguardando merge para ir a concluidos/.
     ⚠️ Acrescentada em 2026-09-16, junto com as fatias 9 e 11: não estava na primeira
     divisão do plano e apareceu ao conferir o `Arquitetura de Tabelas…` contra a lista.
   depende_de: "Fatia 1 (espinha) e fatia 5 (as disciplinas da prova são as mesmas do conteúdo)."
@@ -45,18 +52,23 @@ roadmap:
   etapas:
     - id: 1
       nome: "Banco — as ementas"
-      status: "⏳ pendente"
-      entrega:
-        - >
-          `conteudo_programatico`: `edital_id`, `cargo_id` (NULLABLE = comum a todos os
-          cargos), a referência à disciplina, `texto_ementa`.
-      armadilha: >
-        ⚠️ Mesma ambiguidade da fatia 8: `cargo_id` nulo significando "vale para todos" é
-        indistinguível de "esqueceram de preencher". Resolver no modelo, não na convenção.
+      status: "🟢 feita"
+      entrega: >
+        `conteudo_programatico` com `edital_id`, `cargo_id`, `aplica_a_todos_os_cargos`,
+        `nome_disciplina` (TEXTO, não FK — ver `por_que_texto_e_nao_fk`), `texto_ementa`
+        e `ordem`. Mais DOIS índices únicos parciais.
+      armadilha_atendida: >
+        ✅ Resolvida no MODELO, como o aviso pedia: a CHECK `chk_conteudo_escopo`
+        (`(cargo_id IS NULL) = aplica_a_todos_os_cargos`) torna "esqueci de escolher" um
+        estado impossível. Mesmo padrão da fatia 8. Guardado pelos CASOS 3 e 3b.
+      o_que_o_esboco_nao_previu: >
+        🔴 DOIS índices parciais, não um. Em Postgres nulos são DISTINTOS, então
+        `UNIQUE (edital_id, cargo_id, nome)` deixaria passar DUAS ementas comuns da mesma
+        disciplina — que é o caso mais provável de digitação duplicada. CASO 2.
 
     - id: 2
       nome: "UI — editor de ementas por disciplina"
-      status: "⏳ pendente"
+      status: "🟢 feita"
       entrega:
         - "Editor de texto longo por disciplina, agrupado por cargo quando específico."
         - >
@@ -65,7 +77,7 @@ roadmap:
 
     - id: 3
       nome: "Verificação e docs"
-      status: "⏳ pendente"
+      status: "🟢 feita"
       entrega:
         - "⭐ CONTROLE POSITIVO: reproduzir o Anexo I de um dos três editais e conferir a cobertura."
         - >
@@ -84,3 +96,97 @@ roadmap:
     R3. **Reuso entre editais.** A ementa de Português muda pouco de um certame para outro,
         e alguém vai querer copiar. Copiar texto é justamente como o erro do COREN nasceu.
         Se houver reuso, que seja explícito e rastreável — não copia-e-cola.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  o_defeito_que_esta_fatia_acha: |
+    🎯 O R1 NÃO ERA HIPÓTESE — o defeito já está publicado, e a medição o encontrou.
+
+    No Edital 003/2026:
+
+        corpo (itens 11.2, 11.3 e 13.5.1) .... "Legislação do SUS"      3 ocorrências
+        Anexo I .............................. "LESGISLAÇÃO DO SUS"     2 ocorrências
+
+    A prova cobra uma disciplina e o anexo descreve outra, de nome diferente. E o erro
+    aparece DUAS vezes no anexo porque o bloco foi copiado de um cargo para o outro — é o
+    mesmo mecanismo do COREN na fatia 8, agora num nome de disciplina.
+
+    ➜ Daí a regra central: o cruzamento com `provas_disciplinas`, nas DUAS direções.
+      Disciplina na prova sem ementa + ementa sem disciplina na prova aparecem em PAR, e o
+      par é a assinatura do erro de digitação.
+
+    ⚠️ E a comparação ignora ACENTO, caixa e espaço. Se comparasse cru, o "LESGISLAÇÃO"
+    ainda seria pego (a letra a mais sobrevive a qualquer normalização), mas
+    "Legislação" × "LEGISLACAO" — a divergência mais comum entre corpo e anexo de um PDF —
+    encheria o painel de falso positivo.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  perguntas_abertas_respondidas: |
+    ✅ `o_acoplamento_que_define_a_fatia` perguntava: catálogo de disciplinas ou texto
+       normalizado? → **TEXTO, com o linter cruzando.** Ver `por_que_texto_e_nao_fk`.
+
+    ✅ `o_que_a_fatia_1_ja_resolveu` perguntava: a ementa usa o mecanismo de ITENS da
+       fatia 1 ou vira campo próprio? → **CAMPO DE TEXTO SIMPLES.** Medido nos três: a
+       ementa é texto corrido em PARÁGRAFOS, não lista numerada. O aviso do roadmap ("não
+       invente uma segunda sintaxe de lista") foi atendido não inventando sintaxe nenhuma.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  por_que_texto_e_nao_fk: |
+    O roadmap pedia que a ementa "REFERENCIE a disciplina, não a renomeie". Uma FK para
+    `provas_disciplinas` não serve, e a razão é do dado:
+
+      · `provas_disciplinas` pende de `edital_cargo_id` — cada cargo tem a SUA linha de
+        "Língua Portuguesa". Uma FK obrigaria toda ementa a pertencer a um cargo;
+      · e a ementa comum NÃO pertence a cargo nenhum: o Edital 002 escreve, no próprio
+        título da seção, "LÍNGUA PORTUGUESA (COMUM A TODOS OS CARGOS)".
+
+    Criar um catálogo de disciplinas por edital resolveria — ao custo de migrar a fatia 5,
+    que já está entregue. É o mesmo cálculo do R1 da fatia 9, e a mesma conclusão.
+    ⚠️ O CASO 5 da bateria prova que o banco ACEITA o nome divergente, de propósito. Se
+    alguém puser a FK um dia, aquele caso avisa.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  medido_na_execucao: |
+    A ESTRUTURA DOS TRÊS ANEXOS, e ela não é a mesma:
+
+      002 — Anexo I. Organiza por DISCIPLINA, marcando o escopo no título:
+            "LÍNGUA PORTUGUESA (COMUM A TODOS OS CARGOS)", "CONHECIMENTOS PEDAGÓGICOS
+            (COMUM A TODOS)", e depois 9 blocos "DOCENTE I – <componente>".
+      003 — Anexo I. Organiza por CARGO, repetindo as disciplinas em cada um.
+      004 — Anexo II. ⚠️ INVERTIDO: lá o Anexo I são as áreas de abrangência.
+
+    🔴 E A MEDIÇÃO QUE DECIDIU O MODELO: no Edital 003, Língua Portuguesa e Legislação do
+    SUS são IDÊNTICAS BYTE A BYTE entre os dois cargos (1.049 e 619 caracteres). Só
+    Conhecimentos Específicos difere (5.036 vs 5.584). Ou seja: os 6 blocos publicados são
+    4 informações. A repetição é redundância do documento, não conteúdo — e é exatamente
+    ela que propagou o "LESGISLAÇÃO" duas vezes.
+
+    ⚠️ E os dois editais dizem a MESMA coisa de formas diferentes: o 002 escreve uma vez e
+    rotula "comum a todos"; o 003 repete o texto idêntico sob cada cargo. O modelo com
+    `aplica_a_todos_os_cargos` cobre os dois.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  desvios_da_execucao: |
+    🔴 O R2 NÃO SE CONFIRMOU. Ele mandava "conferir o teto de 1.000 linhas do PostgREST na
+       listagem, como na fatia 7". Medido: as ementas são POUCAS e LONGAS, não muitas e
+       curtas — ~11 no Anexo I do 002, 6 no do 003. Duas ordens de grandeza abaixo do teto.
+       NÃO há `buscar-em-fatias` aqui, e acrescentá-lo seria cerimônia sobre um risco que o
+       dado não sustenta. ⚠️ O contraste com a fatia 7 (843 logradouros, 84% do teto) é o
+       que mostra que a regra é medir, não aplicar o padrão por reflexo.
+
+    ➕ EMENTA VAZIA É RECUSADA PELO BANCO, e aqui a decisão difere da fatia 1 DE PROPÓSITO.
+       Lá o artigo em branco é aceito porque "Adicionar artigo" cria a linha vazia. Aqui
+       uma disciplina no anexo sem ementa é uma seção com título e nada embaixo, e o
+       candidato não tem o que estudar. A tela cria a linha com uma frase-instrução ("Descreva
+       aqui o programa desta disciplina"), que diz o que fazer em vez de fingir conteúdo.
+
+    ➕ `conferirConteudo` NASCEU COM COMPLEXIDADE 16 e o lint subiu para 112. Extraída em
+       três funções e voltou a 111. Terceira vez nesta v3 que a saída é extrair.
+
+    ⚠️ O ANEXO DE CONTEÚDO SAI JUNTO DO CRONOGRAMA, no capítulo `anexos`. É como os três
+       editais publicam — pós-textual, sem número de capítulo —, e evita criar uma chave de
+       catálogo nova só para ele.
+
+    ⚠️ R3 (reuso entre editais) NÃO FOI IMPLEMENTADO, e fica registrado como não-feito: não
+       há como copiar ementa de um edital para outro pela tela. O risco que o roadmap
+       apontava — "copiar texto é como o erro do COREN nasceu" — continua existindo por
+       copia-e-cola manual, e o linter só o pega se o nome da disciplina divergir.

@@ -12,9 +12,15 @@
  *    regra saiu de 22 valores reais. Inverter (pedir o AC) daria números errados em cargo
  *    grande: no Técnico em Enfermagem daria 11 de PCD onde o edital publica 16.
  *
- * 2. **A trava de conselho de classe** é o primeiro anteparo ao erro do Edital 004, que
- *    exigiu "Certidão Nada Consta do COREN" de Agente Comunitário de Saúde. Aqui ela é
- *    conveniência; o anteparo de verdade é a fatia 8, no checklist de investidura.
+ * 2. 🔵 **CORRIGIDO em 2026-09-17.** Este item dizia: *"a trava de conselho de classe é o
+ *    primeiro anteparo ao erro do Edital 004… aqui ela é conveniência"*. **Não havia trava
+ *    nenhuma aqui** — `conselho_classe_obrigatorio` era coluna órfã, sem leitor nem
+ *    escritor em todo o código. O comentário afirmava uma proteção inexistente, que é
+ *    justamente o padrão do §8 do CLAUDE.md.
+ *
+ *    Hoje o campo é declarado no CATÁLOGO (`CargoDialog`, em `/candidatos/cargos`), porque
+ *    é propriedade do cargo e não deste edital. O anteparo de verdade está na fatia 8: o
+ *    trigger `IN001` em `documentos_investidura`.
  */
 import { useState } from "react";
 import { useCargos } from "@/hooks/useCargos";

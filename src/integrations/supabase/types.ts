@@ -573,6 +573,57 @@ export type Database = {
           },
         ]
       }
+      conteudo_programatico: {
+        Row: {
+          aplica_a_todos_os_cargos: boolean
+          cargo_id: string | null
+          created_at: string
+          edital_id: string
+          id: string
+          nome_disciplina: string
+          ordem: number
+          texto_ementa: string
+          updated_at: string
+        }
+        Insert: {
+          aplica_a_todos_os_cargos?: boolean
+          cargo_id?: string | null
+          created_at?: string
+          edital_id: string
+          id?: string
+          nome_disciplina: string
+          ordem?: number
+          texto_ementa: string
+          updated_at?: string
+        }
+        Update: {
+          aplica_a_todos_os_cargos?: boolean
+          cargo_id?: string | null
+          created_at?: string
+          edital_id?: string
+          id?: string
+          nome_disciplina?: string
+          ordem?: number
+          texto_ementa?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conteudo_programatico_cargo_id_fkey"
+            columns: ["cargo_id"]
+            isOneToOne: false
+            referencedRelation: "cargos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conteudo_programatico_edital_id_fkey"
+            columns: ["edital_id"]
+            isOneToOne: false
+            referencedRelation: "editais"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       coordenadores_prova: {
         Row: {
           colaborador_prova_id: string
@@ -611,6 +662,63 @@ export type Database = {
             columns: ["prova_id"]
             isOneToOne: false
             referencedRelation: "provas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      criterios_desempate: {
+        Row: {
+          aplica_a_todos_os_cargos: boolean
+          cargo_id: string | null
+          created_at: string
+          criterio_tipo: string
+          disciplina_referencia: string | null
+          edital_id: string
+          id: string
+          lista: string
+          observacao: string | null
+          ordem_prioridade: number
+          updated_at: string
+        }
+        Insert: {
+          aplica_a_todos_os_cargos?: boolean
+          cargo_id?: string | null
+          created_at?: string
+          criterio_tipo: string
+          disciplina_referencia?: string | null
+          edital_id: string
+          id?: string
+          lista: string
+          observacao?: string | null
+          ordem_prioridade: number
+          updated_at?: string
+        }
+        Update: {
+          aplica_a_todos_os_cargos?: boolean
+          cargo_id?: string | null
+          created_at?: string
+          criterio_tipo?: string
+          disciplina_referencia?: string | null
+          edital_id?: string
+          id?: string
+          lista?: string
+          observacao?: string | null
+          ordem_prioridade?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "criterios_desempate_cargo_id_fkey"
+            columns: ["cargo_id"]
+            isOneToOne: false
+            referencedRelation: "cargos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "criterios_desempate_edital_id_fkey"
+            columns: ["edital_id"]
+            isOneToOne: false
+            referencedRelation: "editais"
             referencedColumns: ["id"]
           },
         ]
@@ -664,6 +772,63 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "cronograma_etapas_edital_id_fkey"
+            columns: ["edital_id"]
+            isOneToOne: false
+            referencedRelation: "editais"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      documentos_investidura: {
+        Row: {
+          aplica_a_todos_os_cargos: boolean
+          cargo_id: string | null
+          conselho_exigido: string | null
+          created_at: string
+          edital_id: string
+          id: string
+          nome_documento: string
+          obrigatorio: boolean
+          observacao: string | null
+          ordem: number
+          updated_at: string
+        }
+        Insert: {
+          aplica_a_todos_os_cargos?: boolean
+          cargo_id?: string | null
+          conselho_exigido?: string | null
+          created_at?: string
+          edital_id: string
+          id?: string
+          nome_documento: string
+          obrigatorio?: boolean
+          observacao?: string | null
+          ordem?: number
+          updated_at?: string
+        }
+        Update: {
+          aplica_a_todos_os_cargos?: boolean
+          cargo_id?: string | null
+          conselho_exigido?: string | null
+          created_at?: string
+          edital_id?: string
+          id?: string
+          nome_documento?: string
+          obrigatorio?: boolean
+          observacao?: string | null
+          ordem?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "documentos_investidura_cargo_id_fkey"
+            columns: ["cargo_id"]
+            isOneToOne: false
+            referencedRelation: "cargos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documentos_investidura_edital_id_fkey"
             columns: ["edital_id"]
             isOneToOne: false
             referencedRelation: "editais"
@@ -731,6 +896,53 @@ export type Database = {
         }
         Relationships: []
       }
+      edital_canais_atendimento: {
+        Row: {
+          created_at: string
+          edital_id: string
+          endereco: string | null
+          horario_funcionamento: string | null
+          id: string
+          observacao: string | null
+          ordem: number
+          rotulo: string
+          tipo_canal: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          edital_id: string
+          endereco?: string | null
+          horario_funcionamento?: string | null
+          id?: string
+          observacao?: string | null
+          ordem?: number
+          rotulo: string
+          tipo_canal: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          edital_id?: string
+          endereco?: string | null
+          horario_funcionamento?: string | null
+          id?: string
+          observacao?: string | null
+          ordem?: number
+          rotulo?: string
+          tipo_canal?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "edital_canais_atendimento_edital_id_fkey"
+            columns: ["edital_id"]
+            isOneToOne: false
+            referencedRelation: "editais"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       edital_capitulos: {
         Row: {
           chave: string
@@ -772,6 +984,60 @@ export type Database = {
           },
         ]
       }
+      edital_cargo_unidades: {
+        Row: {
+          codigo_inscricao: string | null
+          created_at: string
+          edital_cargo_id: string
+          id: string
+          ordem: number
+          unidade_lotacao_id: string
+          updated_at: string
+          vagas_ampla_concorrencia: number
+          vagas_negros: number
+          vagas_pcd: number
+        }
+        Insert: {
+          codigo_inscricao?: string | null
+          created_at?: string
+          edital_cargo_id: string
+          id?: string
+          ordem?: number
+          unidade_lotacao_id: string
+          updated_at?: string
+          vagas_ampla_concorrencia?: number
+          vagas_negros?: number
+          vagas_pcd?: number
+        }
+        Update: {
+          codigo_inscricao?: string | null
+          created_at?: string
+          edital_cargo_id?: string
+          id?: string
+          ordem?: number
+          unidade_lotacao_id?: string
+          updated_at?: string
+          vagas_ampla_concorrencia?: number
+          vagas_negros?: number
+          vagas_pcd?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "edital_cargo_unidades_edital_cargo_id_fkey"
+            columns: ["edital_cargo_id"]
+            isOneToOne: false
+            referencedRelation: "edital_cargos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "edital_cargo_unidades_unidade_lotacao_id_fkey"
+            columns: ["unidade_lotacao_id"]
+            isOneToOne: false
+            referencedRelation: "unidades_lotacao"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       edital_cargos: {
         Row: {
           cadastro_reserva: boolean | null
@@ -785,6 +1051,7 @@ export type Database = {
           habilitacao: string | null
           id: string
           regime_plantao_permitido: boolean | null
+          taxa_inscricao: number | null
           updated_at: string
           vagas_ampla_concorrencia: number | null
           vagas_negros: number | null
@@ -804,6 +1071,7 @@ export type Database = {
           habilitacao?: string | null
           id?: string
           regime_plantao_permitido?: boolean | null
+          taxa_inscricao?: number | null
           updated_at?: string
           vagas_ampla_concorrencia?: number | null
           vagas_negros?: number | null
@@ -823,6 +1091,7 @@ export type Database = {
           habilitacao?: string | null
           id?: string
           regime_plantao_permitido?: boolean | null
+          taxa_inscricao?: number | null
           updated_at?: string
           vagas_ampla_concorrencia?: number | null
           vagas_negros?: number | null
@@ -980,6 +1249,38 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      inscricao_config: {
+        Row: {
+          created_at: string
+          documentacao_isencao_vale_para_um_cargo: boolean | null
+          edital_id: string
+          limite_envelopes_por_candidato: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          documentacao_isencao_vale_para_um_cargo?: boolean | null
+          edital_id: string
+          limite_envelopes_por_candidato?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          documentacao_isencao_vale_para_um_cargo?: boolean | null
+          edital_id?: string
+          limite_envelopes_por_candidato?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inscricao_config_edital_id_fkey"
+            columns: ["edital_id"]
+            isOneToOne: true
+            referencedRelation: "editais"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       meta_colaboradores_unidade: {
         Row: {
@@ -1402,6 +1703,53 @@ export type Database = {
           },
         ]
       }
+      regras_isencao: {
+        Row: {
+          created_at: string
+          edital_id: string
+          id: string
+          lei_referencia: string | null
+          minimo_doacoes_sangue_12m: number | null
+          observacao: string | null
+          ordem: number
+          redome_exige_ano_vigente: boolean | null
+          tipo_criterio: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          edital_id: string
+          id?: string
+          lei_referencia?: string | null
+          minimo_doacoes_sangue_12m?: number | null
+          observacao?: string | null
+          ordem?: number
+          redome_exige_ano_vigente?: boolean | null
+          tipo_criterio: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          edital_id?: string
+          id?: string
+          lei_referencia?: string | null
+          minimo_doacoes_sangue_12m?: number | null
+          observacao?: string | null
+          ordem?: number
+          redome_exige_ano_vigente?: boolean | null
+          tipo_criterio?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "regras_isencao_edital_id_fkey"
+            columns: ["edital_id"]
+            isOneToOne: false
+            referencedRelation: "editais"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       regras_lactantes: {
         Row: {
           created_at: string
@@ -1682,6 +2030,184 @@ export type Database = {
           dia?: string
           primeira_batida?: string
           ultima_batida?: string
+        }
+        Relationships: []
+      }
+      territorialidade_abrangencia: {
+        Row: {
+          bairro: string | null
+          created_at: string
+          edital_id: string
+          id: string
+          logradouro: string
+          ordem: number
+          unidade_lotacao_id: string
+          updated_at: string
+        }
+        Insert: {
+          bairro?: string | null
+          created_at?: string
+          edital_id: string
+          id?: string
+          logradouro: string
+          ordem?: number
+          unidade_lotacao_id: string
+          updated_at?: string
+        }
+        Update: {
+          bairro?: string | null
+          created_at?: string
+          edital_id?: string
+          id?: string
+          logradouro?: string
+          ordem?: number
+          unidade_lotacao_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "territorialidade_abrangencia_edital_id_fkey"
+            columns: ["edital_id"]
+            isOneToOne: false
+            referencedRelation: "editais"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "territorialidade_abrangencia_unidade_lotacao_id_fkey"
+            columns: ["unidade_lotacao_id"]
+            isOneToOne: false
+            referencedRelation: "unidades_lotacao"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      titulos_config: {
+        Row: {
+          carater_classificatorio: boolean | null
+          created_at: string
+          dias_conclusao_antes_fim_inscricoes: number | null
+          edital_id: string
+          exige_historico_escolar: boolean | null
+          exige_reconhecimento_mec_cne: boolean | null
+          exige_revalidacao_diploma_estrangeiro: boolean | null
+          exige_traducao_juramentada: boolean | null
+          teto_maximo_pontos: number | null
+          updated_at: string
+        }
+        Insert: {
+          carater_classificatorio?: boolean | null
+          created_at?: string
+          dias_conclusao_antes_fim_inscricoes?: number | null
+          edital_id: string
+          exige_historico_escolar?: boolean | null
+          exige_reconhecimento_mec_cne?: boolean | null
+          exige_revalidacao_diploma_estrangeiro?: boolean | null
+          exige_traducao_juramentada?: boolean | null
+          teto_maximo_pontos?: number | null
+          updated_at?: string
+        }
+        Update: {
+          carater_classificatorio?: boolean | null
+          created_at?: string
+          dias_conclusao_antes_fim_inscricoes?: number | null
+          edital_id?: string
+          exige_historico_escolar?: boolean | null
+          exige_reconhecimento_mec_cne?: boolean | null
+          exige_revalidacao_diploma_estrangeiro?: boolean | null
+          exige_traducao_juramentada?: boolean | null
+          teto_maximo_pontos?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "titulos_config_edital_id_fkey"
+            columns: ["edital_id"]
+            isOneToOne: true
+            referencedRelation: "editais"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      titulos_itens: {
+        Row: {
+          area_exigida: string | null
+          carga_horaria_minima_horas: number | null
+          created_at: string
+          descricao: string
+          edital_cargo_id: string
+          id: string
+          nivel: string
+          ordem: number
+          pontos_maximo: number
+          pontos_minimo: number
+          updated_at: string
+        }
+        Insert: {
+          area_exigida?: string | null
+          carga_horaria_minima_horas?: number | null
+          created_at?: string
+          descricao: string
+          edital_cargo_id: string
+          id?: string
+          nivel: string
+          ordem?: number
+          pontos_maximo: number
+          pontos_minimo: number
+          updated_at?: string
+        }
+        Update: {
+          area_exigida?: string | null
+          carga_horaria_minima_horas?: number | null
+          created_at?: string
+          descricao?: string
+          edital_cargo_id?: string
+          id?: string
+          nivel?: string
+          ordem?: number
+          pontos_maximo?: number
+          pontos_minimo?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "titulos_itens_edital_cargo_id_fkey"
+            columns: ["edital_cargo_id"]
+            isOneToOne: false
+            referencedRelation: "edital_cargos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      unidades_lotacao: {
+        Row: {
+          bairro: string | null
+          created_at: string
+          created_by: string | null
+          endereco: string | null
+          id: string
+          nome: string
+          sigla: string | null
+          updated_at: string
+        }
+        Insert: {
+          bairro?: string | null
+          created_at?: string
+          created_by?: string | null
+          endereco?: string | null
+          id?: string
+          nome: string
+          sigla?: string | null
+          updated_at?: string
+        }
+        Update: {
+          bairro?: string | null
+          created_at?: string
+          created_by?: string | null
+          endereco?: string | null
+          id?: string
+          nome?: string
+          sigla?: string | null
+          updated_at?: string
         }
         Relationships: []
       }

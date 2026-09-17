@@ -101,7 +101,6 @@ function CorpoDoArtigo({
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Table2 className="h-3.5 w-3.5" />
           Tabela gerada de: <strong>{fonte?.rotulo ?? item.quadro_fonte}</strong>
-          {fonte && !fonte.pronto && " — capítulo ainda não parametrizado"}
         </p>
       </>
     );
@@ -293,7 +292,6 @@ function BotaoDeQuadro({ onAdicionar }: { onAdicionar: (f: QuadroFonte) => void 
           {QUADRO_FONTES.map((f) => (
             <SelectItem key={f.fonte} value={f.fonte}>
               {f.rotulo}
-              {!f.pronto && " (fatia pendente)"}
             </SelectItem>
           ))}
         </SelectContent>

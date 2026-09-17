@@ -5,7 +5,16 @@
 roadmap:
   titulo: "Editais fatia 8 — investidura e posse (onde o erro do COREN morre)"
   criado: "2026-09-16"
-  status: "⏳ NÃO INICIADO — 🟡 ESBOÇO. Detalhar antes de executar."
+  status: >
+    🟢 EXECUTADA em 2026-09-17. Migration 20260917093000 (`documentos_investidura` + o
+    trigger IN001), `src/lib/edital-investidura.ts`, `useInvestidura`,
+    `ChecklistDeInvestidura.tsx` e `docs/bateria-edital-investidura.sql` (20 casos, todos
+    verdes). 1.610 testes em 85 arquivos, tsc, build, lint 111 (baseline), docs:conferir
+    limpo, db reset completo.
+    ✅ P1 RESPONDIDA POR MEDIÇÃO, e a resposta é NÃO CRIAR A COLUNA — ver `p1_respondida`.
+    🔴 ⚠️ E a execução achou que `conselho_classe_obrigatorio` era COLUNA ÓRFÃ — ver
+    `a_divida_da_fatia_2_que_esta_fatia_pagou`.
+    🟢 Aguardando merge para ir a concluidos/.
   depende_de: >
     Fatia 1 (espinha) e 🔴 FATIA 2 — a injeção por cargo depende de
     `cargos.conselho_classe_obrigatorio`, que nasce lá. É por isso que a 2 vem antes desta.
@@ -31,44 +40,60 @@ roadmap:
     desabilitados ou ocultos". Desabilitado ainda é oferecido. A regra certa é NÃO EXISTIR.
 
   # ═══════════════════════════════════════════════════════════════════════════
-  a_decidir_antes_de_codificar: |
-    P1. `aplica_apenas_sexo` (AMBOS | MASCULINO) merece uma olhada antes de virar coluna.
-        Hoje serve a um caso só: o certificado de reservista. Talvez a modelagem certa seja
-        uma "condição de aplicabilidade" genérica, em vez de um enum de sexo que já nasce
-        estreito.
-        ⚠️ Decidir com o caso na mão, não por antecipação — e não inventar generalidade que
-        ninguém pediu.
+  p1_respondida: |
+    ✅ DECIDIDO em 2026-09-17: **NÃO CRIAR `aplica_apenas_sexo`**, nem a versão genérica.
+
+    Medido nos três checklists: o reservista é de fato o ÚNICO item condicionado a sexo.
+    Mas ele NÃO é o único condicional — a mesma lista tem "Certidão de Nascimento de
+    filhos menores de 14 anos" e "declaração de Imposto de Renda, caso declare". E os três
+    editais exprimem TODAS as condições do mesmo jeito: dentro do texto do documento.
+
+        J) Certificado de Reservista (homem). (original e fotocópia)
+        G) Certidão de Nascimento de filhos menores de 14 anos
+        K) Cópia (…) da última declaração de Imposto de Renda, caso declare
+
+    Uma coluna de sexo serviria a 1 linha de ~12 e deixaria as outras duas em texto — ou
+    seja, dois mecanismos para a mesma coisa. E a "condição de aplicabilidade genérica" que
+    o esboço aventava é generalidade que ninguém pediu, pelo próprio critério do esboço.
+
+    ➜ É a TERCEIRA coluna proposta que a medição derruba nesta v3, depois de
+      `limite_itens_aceitos` (fatia 6) e `numero_inicial`/`numero_final` (fatia 7). O
+      padrão é o mesmo: o esboço antecipa uma estrutura que o documento real não tem.
 
   # ═══════════════════════════════════════════════════════════════════════════
   etapas:
     - id: 1
       nome: "Banco — o checklist documental"
-      status: "⏳ pendente"
-      entrega:
-        - >
-          `documentos_investidura`: `edital_id` (FK RESTRICT), `cargo_id` (NULLABLE = vale
-          para todos os cargos), `nome_documento`, `obrigatorio`, `aplica_apenas_sexo`
-          (ver P1), `observacao`.
-      armadilha: >
-        ⚠️ `cargo_id` nulo significando "vale para todos" é conveniente e ambíguo: nulo
-        também é o valor de quem esqueceu de preencher. Se o modelo não distinguir os dois,
-        o linter não consegue acusar documento órfão.
+      status: "🟢 feita"
+      entrega: >
+        `documentos_investidura` com `edital_id` (FK RESTRICT), `cargo_id`,
+        `aplica_a_todos_os_cargos`, `nome_documento`, `conselho_exigido`, `obrigatorio`,
+        `observacao` e `ordem` — mais o trigger `IN001`.
+        ⚠️ SEM `aplica_apenas_sexo`: ver `p1_respondida`.
+      armadilha_resolvida: >
+        ✅ A armadilha do `cargo_id` nulo ambíguo foi resolvida como a CHECK
+        `chk_doc_inv_escopo`: `(cargo_id IS NULL) = aplica_a_todos_os_cargos`. "Vale para
+        todos" passou a ser escolha EXPLÍCITA, e o banco recusa a linha sem ela — então
+        "esqueci de escolher" deixou de ser um estado possível. Guardado pelos CASOS 4 e 4b.
 
     - id: 2
       nome: "UI — checklist reativo com injeção por cargo"
-      status: "⏳ pendente"
+      status: "🟢 feita"
       entrega:
         - >
-          Pré-marcação padrão: RG · CPF · PIS/PASEP · título e quitação eleitoral · ASO Apto ·
-          certidão de nascimento/casamento · reservista (quando aplicável) · declaração de bens.
+          Pré-preenchimento com os 10 documentos MEDIDOS como comuns aos três editais.
+          ⚠️ A lista que este esboço trazia foi corrigida pela medição: ASO e "declaração
+          de bens" saíram (o ASO é documento só no 002; declaração de bens não aparece em
+          nenhum dos três), e o diploma ficou de fora por ser escrito de três formas
+          diferentes. Ver `medido_na_execucao`.
         - >
-          🎯 Injeção por cargo: se há Enfermeiro no edital, `Registro no COREN` e
-          `Certidão Nada Consta` entram sozinhos. Se não há nenhum cargo que exija COREN,
-          o documento NÃO É OFERECIDO.
+          🎯 Injeção por cargo: com Enfermeiro no edital, um botão acrescenta os DOIS
+          documentos do COREN. Sem nenhum cargo que o exija, o botão NÃO EXISTE — não
+          existe botão desabilitado esperando alguém habilitá-lo (R2).
 
     - id: 3
       nome: "Verificação e docs"
-      status: "⏳ pendente"
+      status: "🟢 feita"
       entrega:
         - >
           🔴 O CONTROLE POSITIVO DESTA FATIA É UM PAR, e os dois casos importam:
@@ -89,3 +114,101 @@ roadmap:
     R3. **Se a fatia 2 não tiver populado `conselho_classe_obrigatorio`**, a regra não tem
         sobre o que decidir e degrada em silêncio para "oferece tudo". ⚠️ O linter precisa
         acusar cargo sem conselho definido, em vez de assumir NENHUM.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  medido_na_execucao: |
+    🔴 DE ONDE VEIO O ERRO DO COREN — e a medição fecha o diagnóstico. O Edital 003
+    (Enfermagem) tem DOIS documentos de conselho:
+
+        K) Registro Ativo e regular com anuidade paga no COREN
+        N) Certidão Nada Consta do COREN (Certidão Única Atualizada)
+
+    O Edital 004 herdou SÓ O SEGUNDO, com o mesmo texto entre parênteses. Não é erro
+    sistemático de geração: é uma linha copiada à mão de um documento para o outro.
+
+    NÚCLEO COMUM AOS TRÊS (10 documentos): comprovante de votação · identificação com foto
+    · comprovante de residência (3 meses) · CPF · PIS/PASEP · certidão de nascimento ou
+    casamento · certidão de nascimento de filhos menores de 14 anos · foto 3x4 ·
+    certificado de reservista (homem) · declaração de IR, caso declare.
+
+    ⚠️ O QUE NÃO ENTROU no pré-preenchimento, e por quê:
+      · ASO — é documento só no 002; nos outros dois está na frase de abertura
+        ("julgado APTO no exame médico admissional");
+      · DIPLOMA — é por cargo, e os três o escrevem diferente: "do Curso exigido para o
+        cargo a que concorre" (002), um por cargo (003), "do Ensino Médio" (004).
+      Pré-marcar qualquer um seria pôr na boca do edital o que ele não diz.
+
+    ⚠️ E a quantidade de fotos varia: o 002 pede uma, o 003 e o 004 pedem duas.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  a_divida_da_fatia_2_que_esta_fatia_pagou: |
+    🔴 `cargos.conselho_classe_obrigatorio` ERA COLUNA ÓRFÃ, e o R3 estava certo em
+    desconfiar — mas o problema era pior do que ele previa.
+
+    O R3 supunha que a coluna poderia estar NÃO POPULADA. Medido: além de vazia (0 cargos
+    no banco), ela **não era lida nem escrita por nenhum código**. O único lugar que a
+    mencionava era um comentário no cabeçalho do `QuadroDeCargos.tsx` afirmando que "a
+    trava de conselho de classe é o primeiro anteparo ao erro do Edital 004" — e não havia
+    trava nenhuma. É o padrão do §8 do CLAUDE.md: o NOME (aqui, o comentário) mente antes
+    do código.
+
+    ➜ Esta fatia pagou a dívida: `escolaridade_minima` e `conselho_classe_obrigatorio`
+      ganharam campo no `CargoDialog`, entraram no SELECT e na interface `Cargo`, e
+      `atualizarCargo` passou a aceitá-los.
+
+    ⚠️ A distinção de três estados é o que faz a regra funcionar, e ela já estava no
+    domínio do banco desde 16/09 — só não tinha quem a usasse:
+
+        null       não declarado  → o linter ACUSA
+        'NENHUM'   declarado, não exige  → silêncio, é resposta válida
+        'COREN'    exige  → o documento do conselho passa a ser oferecido
+
+    🔴 `criarCargo` NÃO mudou de assinatura, e é decisão: a importação de candidatos o
+    chama com só o nome, em lote, e não tem esses dados. A tela de cargos faz dois passos
+    na criação, e só quando há algo a declarar. Se o segundo falhar, o cargo existe sem a
+    declaração — estado incompleto e VISÍVEL (o linter acusa), não perda silenciosa.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  a_defesa_em_duas_camadas: |
+    | | onde | o que alcança |
+    |---|---|---|
+    | 1 | trigger `IN001` | `conselho_exigido` que nenhum cargo do edital exige — exato, e vale por psql, PostgREST e script |
+    | 2 | `conferirInvestidura` | a sigla escrita no TEXTO LIVRE, que o trigger não vê |
+
+    🔴 A camada 2 é heurística DE PROPÓSITO. Nome de documento varia demais ("COREN",
+    "Coren-RJ", "Conselho Regional de Enfermagem") para virar barreira de banco sem recusar
+    o legítimo. Ela ACUSA; quem IMPEDE é a camada 1. O CASO 3e da bateria prova que o banco
+    aceita o texto livre, para que ninguém tome a brecha por descuido.
+
+    ⚠️ E a regra vale PARA O ADMIN também (CASO 8b): o trigger é `SECURITY INVOKER` e roda
+    depois da RLS. Papel não é salvo-conduto para publicar um edital incoerente.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  desvios_da_execucao: |
+    🔴 UM TESTE MEU PASSOU VERDE SEM GUARDAR NADA, e a falsificação o pegou. O caso "CRM
+    não casa dentro de CRMV" dizia guardar a FRONTEIRA DE PALAVRA da sigla — e não
+    guardava: a ordenação por tamanho (siglas maiores primeiro) já resolvia CRMV/CRM
+    sozinha, então trocar a regex por `includes` mantinha os 18 casos verdes. Entrou um
+    caso que exercita de verdade: "MICROEMPREENDEDOR" contém "CRO", e sem a fronteira um
+    checklist que peça declaração de MEI seria acusado de exigir registro no conselho de
+    odontologia. Armadilha 8 na forma mais pura — teste verde afirmando uma proteção.
+
+    ➕ E O MESMO DEFEITO DE SUBSTRING apareceu noutro teste meu, na mesma sessão: a
+    asserção "o padrão não inclui ASO" falhava porque "ASO" casa dentro de "caso declare".
+    Duas ocorrências do mesmo engano em arquivos diferentes — vale como padrão a vigiar,
+    não como acidente.
+
+    🔴 O CASO 6 DA BATERIA NÃO EXERCITAVA O QUE DIZIA. Ele afirmava que conselho fora do
+    domínio era barrado por `chk_doc_inv_conselho`; quem barra é o TRIGGER, que é BEFORE e
+    roda antes das CHECKs. É o §8 de novo: regra nova ofusca regra antiga.
+    ⚠️ A consequência vale registrar: `chk_doc_inv_conselho` é quase inalcançável — para
+    chegar nela o valor precisa passar pelo trigger, isto é, algum cargo tem de declará-lo,
+    e `cargos` só admite o mesmo domínio mais 'NENHUM'. O ÚNICO valor que a exercita é
+    'NENHUM' (CASO 6b). Ela não é redundante: é ela que segura exatamente esse caso.
+
+    🔴 O CASO 10 TAMBÉM NÃO. Usava o Enfermeiro, que está em `edital_cargos`, então a
+    recusa vinha de `edital_cargos_cargo_id_fkey` — passava "verde" sem tocar na FK deste
+    módulo. Passou a criar um cargo solto. Mesmo defeito que a bateria de capítulos teve.
+
+    ➕ O TRIGGER COBRE UPDATE, não só INSERT (CASO 3b). Validar só o INSERT deixaria o
+    caminho óbvio aberto: inserir com a coluna nula e preenchê-la depois.

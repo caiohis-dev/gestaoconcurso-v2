@@ -6,8 +6,17 @@ roadmap:
   titulo: "Editais fatia 7 — territorialidade e lotação (capítulo condicional)"
   criado: "2026-09-16"
   status: >
-    ⏳ NÃO INICIADO — 🟡 ESBOÇO. Detalhar antes de executar: há uma decisão de ARQUITETURA
-    em aberto (`unidades_lotacao` vs. `unidades_prova`) que precisa ser tomada primeiro.
+    🟢 EXECUTADA em 2026-09-17. Migration 20260917082732 (`unidades_lotacao`,
+    `edital_cargo_unidades`, `territorialidade_abrangencia`),
+    `src/lib/edital-territorialidade.ts`, `useTerritorialidade`,
+    `TerritorialidadeELotacao.tsx` e `docs/bateria-edital-territorialidade.sql` (21 casos,
+    todos verdes). 1.591 testes em 84 arquivos, tsc, build, lint 111 (baseline),
+    docs:conferir limpo, db reset completo.
+    ✅ P1 RESPONDIDA POR MEDIÇÃO (ver `p1_respondida`): zero sobreposição, tabelas
+    separadas. ➕ A medição também CORRIGIU A REGRA DE COTAS da fatia 2 — ver
+    `achado_que_mudou_outra_fatia`.
+    ⚠️ DUAS PREMISSAS DESTE PRÓPRIO ROADMAP CAÍRAM — ver `medido_antes`.
+    🟢 Aguardando merge para ir a concluidos/.
   depende_de: "Fatia 1 (capítulo condicional) e fatia 2 (a distribuição de vagas por unidade)."
 
   origem: >
@@ -22,41 +31,89 @@ roadmap:
         "(Exclusivo ACS/Polos)". O ACS é o caso conhecido, não uma condição.
 
   # ═══════════════════════════════════════════════════════════════════════════
-  a_decidir_antes_de_codificar: |
-    🔴 P1. `unidades_lotacao` VERSUS `unidades_prova`.
-        `unidades_prova` JÁ EXISTE — é o catálogo de locais de APLICAÇÃO DE PROVA, com
-        `sala_prova` pendurada e 12 linhas em produção. A proposta cria `unidades_lotacao`
-        para locais de TRABALHO (UBS/UBSF).
+  p1_respondida: |
+    ✅ DECIDIDO em 2026-09-17: **TABELAS SEPARADAS**, e a decisão saiu da medição, não do
+    gosto. A pergunta supunha que os dois catálogos "podem apontar para os MESMOS
+    prédios" — e no dado real isso é FALSO.
 
-        São conceitos diferentes que podem apontar para os MESMOS prédios. Reaproveitar,
-        relacionar ou separar é decisão consciente — e o porquê tem de ficar registrado.
-        ⚠️ O que não pode é nascerem dois catálogos de unidade sem ninguém notar; é o tipo
-        de duplicação que só dói seis meses depois, quando alguém renomear uma unidade num
-        só dos dois.
+      `unidades_prova`, 12 linhas em produção, TODAS locais de aplicação de prova:
+        CENTRO UNIV. GERALDO DI BIASE · COLÉGIO GETÚLIO VARGAS · COLÉGIO JOÃO XXIII ·
+        COLÉGIO PROF. DELCE H. DELGADO · ESC. DE ENG. IND. METALÚRGICA ·
+        I. E. PROFESSOR MANUEL MARINHO · INSTITUTO DE CULTURA TÉCNICA ·
+        PROFª GLÓRIA ROUSSIM G. PINTO · SEDE ADMINISTRATIVA · UGB Blocos II, III e IV
+
+      Quadro II do Edital 004, 39 linhas, TODAS unidades de saúde:
+        UBSF Açude I · UBSF Belmonte · UBS Caieiras · UBSF Eucaliptal · … (39)
+
+      🔴 INTERSEÇÃO: ZERO. Escolas e faculdade de um lado, UBS e UBSF do outro.
+
+    Os três motivos, em ordem de peso:
+
+      1. **Zero sobreposição medida.** Reaproveitar resolveria uma duplicação que não
+         existe, e cobraria o preço em todo lugar.
+      2. **`unidades_prova` tem só `unid_nome` e `unid_sigla`** — nem endereço tem. Uma
+         unidade de LOTAÇÃO precisa de endereço e de abrangência territorial. Acrescentar
+         essas colunas lá deixaria 12 linhas com tudo nulo para sempre.
+      3. **`sala_prova` pende de `unidades_prova`** — salas, capacidade, andares. Nada
+         disso significa coisa alguma para uma UBSF, e um discriminador `tipo` obrigaria
+         toda consulta das duas famílias a filtrar, para sempre, sob pena de misturar.
+
+    ⚠️ O QUE FICA REGISTRADO CONTRA O RISCO ORIGINAL: se um dia um prédio servir às duas
+    coisas, ele será DUAS linhas, uma em cada catálogo. É aceito, e é mais barato que o
+    discriminador — mas quem renomear terá de renomear nos dois. O risco não sumiu;
+    ele encolheu para um caso que hoje não ocorre nenhuma vez.
 
   # ═══════════════════════════════════════════════════════════════════════════
   medido_antes: |
-    🔴 O ANEXO I DO EDITAL 004 TEM 963 LINHAS DE TABELA (medido no arquivo em 16/09).
-       O teto do PostgREST é 1.000 linhas, e ele CORTA SEM ERRO NENHUM.
+    🔴 O TETO DO POSTGREST CONTINUA SENDO O RISCO CENTRAL. 843 logradouros num edital só,
+       84% do `max_rows` de 1000 — e ele CORTA SEM ERRO NENHUM. Já mordeu este repo duas
+       vezes (colaboradores, 771 linhas, 77%; e o painel de dados). O sintoma aqui seria
+       uma RUA SUMINDO do anexo publicado, sem sinal na tela.
 
-       Isso já mordeu este repo duas vezes — a listagem de colaboradores (771 linhas, 77%
-       do teto) e o painel de dados. O sintoma aqui seria uma RUA SUMINDO do anexo publicado,
-       sem sinal na tela.
+       Consequência obrigatória, e cumprida: a leitura passa por `buscar-em-fatias`, com
+       ordem estável (`ordem`, depois `id`). NUNCA um select solto confiando que cabe.
 
-       Consequência obrigatória: qualquer leitura de `territorialidade_abrangencia` nasce
-       com `.range()` ou busca no servidor. NUNCA um select solto confiando que cabe.
+    🔴 ⚠️ DUAS PREMISSAS ESCRITAS AQUI ESTAVAM ERRADAS, e as duas eram do tipo que só cai
+       quando alguém abre o documento. Ficam registradas, não apagadas:
+
+       1. "O ANEXO II do 004 tem 963 linhas de ruas". ERRADO NAS DUAS PONTAS.
+          · No Edital 004 as ruas estão no **ANEXO I**; o Anexo II é conteúdo
+            programático. É o INVERSO do 002 e do 003, onde o Anexo I é o conteúdo — e foi
+            justamente essa inversão que produziu o engano.
+          · São **843** logradouros, não 963.
+
+       2. "`numero_inicial`, `numero_final`". NÃO EXISTEM. O Anexo I lista nome de
+          logradouro e nada mais. Das 843 linhas, 104 têm algo que PARECE faixa, e cada
+          uma é de um tipo diferente:
+
+            TRAV. VISCONDE DO RIO BRANCO (ALAMEDAS 1 A 7)       alamedas, não porta
+            RODOVIA LÚCIO MEIRA KM 7501 A 8500                  quilometragem
+            RUA VEREADOR ACACIO DA ROCHA (DO N 03 ATÉ O N 9201) aí sim, número de porta
+            RUA 1, 2, 3 e 4 (CONDOMÍNIO VISTA BELA)             quatro ruas numa linha
+            RUA 552                                             só o nome da rua
+
+          ➜ `logradouro` é TEXT e guarda o publicado. É a mesma decisão de 01/08 ("dado
+            inválido entra cru; valide na leitura"), que removeu 4 CHECKs de formato.
+
+    ⚠️ A ESTRUTURA DO ANEXO I É IRREGULAR, e o modelo teve de acomodar isso: das 28 seções,
+       12 listam as ruas DIRETO sob a unidade e as outras desdobram por bairro. Por isso
+       `bairro` é anulável, e `agruparPorBairro` mantém a seção nula ONDE ela apareceu.
+
+    ⚠️ E A COBERTURA É PARCIAL: 39 unidades no Quadro II, **14** com lista publicada no
+       Anexo I. A tela diz isso na cara — ausência que não se explica parece carregamento
+       pela metade.
 
   # ═══════════════════════════════════════════════════════════════════════════
   etapas:
     - id: 0
       nome: "Decidir P1 e registrar o porquê"
-      status: "⏳ pendente"
+      status: "🟢 feita"
       entrega:
-        - "A decisão sobre `unidades_lotacao` vs. `unidades_prova`, escrita antes do código."
+        - "✅ `p1_respondida` acima: tabelas separadas, com a medição que sustenta."
 
     - id: 1
       nome: "Banco — unidades, distribuição e abrangência"
-      status: "⏳ pendente"
+      status: "🟢 feita"
       entrega:
         - "A tabela de unidade de lotação, na forma que P1 definir."
         - "`vagas_distribuicao.unidade_lotacao_id` deixa de ser nulo quando o capítulo está ligado."
@@ -70,7 +127,7 @@ roadmap:
 
     - id: 2
       nome: "UI — importador em lote e o accordion"
-      status: "⏳ pendente"
+      status: "🟢 feita"
       entrega:
         - >
           Importador de planilha (`Unidade | Bairro | Logradouro | Trecho`), reusando o que
@@ -81,7 +138,7 @@ roadmap:
 
     - id: 3
       nome: "Verificação e docs"
-      status: "⏳ pendente"
+      status: "🟢 feita"
       entrega:
         - >
           ⭐ CONTROLE POSITIVO COM DADO REAL, e é o teste que importa: carregar o Anexo I do
@@ -101,3 +158,104 @@ roadmap:
     R3. **A regra de residência é jurídica, não de sistema.** "Residir na área desde a
         publicação do edital" é condição que a banca confere na posse. ⚠️ O sistema descreve
         a regra no texto; não a valida. Registrar, ou alguém vai supor validação que não existe.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  medido_na_etapa_0: |
+    🔴 O QUADRO II DO EDITAL 004 TEM A MESMA FORMA DO QUADRO I — e isso muda o desenho.
+
+      | UNIDADE BÁSICA DE SAÚDE | Código da Inscrição | VAGAS AC | VAGAS PD | VAGAS CN |
+      | UBSF Belmonte           | DN-3                | 3        |          | 1        |
+
+    São 39 linhas, 80 vagas de ACS distribuídas. Cada unidade tem **código de inscrição
+    próprio** (DN-1 a DN-39) e o **mesmo trio AC/PD/CN** do Quadro I. Ou seja: para o ACS,
+    a opção de inscrição É a unidade, e a cota é calculada POR UNIDADE.
+
+    Consequência para o modelo: a distribuição é um nível ABAIXO do cargo, como
+    `provas_disciplinas` e `titulos_itens` — uma tabela com FK para `edital_cargos` e para
+    a unidade, carregando `codigo_inscricao` e os três números.
+
+    ⚠️ E NÃO pode ser `edital_cargos` com uma linha por unidade: existe
+    `UNIQUE (edital_id, cargo_id)`, então o ACS só cabe uma vez ali. Confirmado no banco.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  achado_que_mudou_outra_fatia: |
+    🔴 A MEDIÇÃO DO QUADRO II CORRIGIU A REGRA DE COTAS DA FATIA 2, e vale registrar como
+    o erro sobreviveu: ele não era um descuido, era um caso que o dado antigo não podia
+    decidir.
+
+    A regra saiu de 22 valores dos Editais 002 e 003 e estava certa para os 22. Mas
+    **nenhum cargo daqueles dois editais tem 3 vagas** — conferido um a um. O Quadro II
+    trouxe 39 valores novos, com 5 totais distintos, inclusive o 3:
+
+      total=1  20 unidades  (1,0,0)  ✅ igual ao arredondamento comum
+      total=2   7 unidades  (2,0,0)  ✅
+      total=3   4 unidades  (3,0,0)  🔴 o arredondamento dava (2,0,1)
+      total=4   7 unidades  (3,0,1)  ✅
+      total=6   1 unidade   (4,1,1)  ✅
+
+    As 4 unidades de 3 vagas concordam ENTRE SI, então é regra da FEVRE e não erro de
+    digitação do edital. Entrou `MINIMO_DE_VAGAS_PARA_COTA_RACIAL = 4` em
+    `src/lib/edital-cotas.ts`, com o Quadro II inteiro como controle positivo novo.
+
+    ⚠️ É prática MEDIDA, não a Lei 12.990/2014 — que manda reservar a partir de 3 vagas.
+    A divergência fica registrada; se uma norma passar a valer, muda a constante e os 61
+    valores acusam a diferença.
+
+    🔴 E o efeito prático era real: antes disso, um cargo de 3 vagas recebia a sugestão
+    (2 AC, 0 PD, 1 CN) — um split que a FEVRE nunca publicou. Nenhum dos 31 testes de
+    cotas cobria o caso, o que é o próprio sintoma: dado que não existe não vira teste.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  o_quadro_i_do_004_nao_tem_vagas: |
+    🔴 ACHADO QUE MUDOU O QUE DÁ PARA VALIDAR. O Quadro I do Edital 004 publica só
+    "DO CARGO, HABILITAÇÃO, CARGA HORÁRIA E VENCIMENTOS" — **sem coluna de vagas**. O item
+    2.2 manda ao Quadro II. Compare com o 002, cujo Quadro I é "DOS CARGOS, N.º DE VAGAS,
+    HABILITAÇÃO…".
+
+    Então, num edital territorializado, o total do cargo é DERIVADO da distribuição: não
+    existe número declarado para conferir contra. `conferirDistribuicao` só acusa
+    divergência quando os DOIS existem — cobrar a igualdade contra um `null` acusaria todo
+    edital do tipo 004.
+
+    E os dois cargos do 004 provam que a territorialização é do CARGO, não do edital:
+
+      ACS  — Quadro II ....  80 vagas em 39 UBSF, cota calculada em cada uma
+      ACE  — Quadro III ... 143 vagas numa linha só, sem unidade nenhuma
+
+    ⚠️ A regra de cotas bate EXATA nas 143 do ACE (100 AC / 14 PD / 29 CN), o que a
+    confirma num total grande — os outros controles eram todos de cargos pequenos.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  desvios_da_execucao: |
+    🔴 AS DUAS PREMISSAS ERRADAS DO ROADMAP (Anexo II→I, 963→843, e as faixas que não
+       existem) estão em `medido_antes`. São o quinto caso do padrão que o CLAUDE.md §1
+       descreve: item de plano com premissa que ninguém conferiu.
+
+    ➕ O CÓDIGO DE INSCRIÇÃO FICOU SEM ÍNDICE ÚNICO, e é decisão: metade dos 39 códigos
+       fica NULL enquanto se digita, e um índice barraria o meio do caminho. Quem acusa
+       repetição é o linter, e o CASO 2c da bateria prova que o banco ACEITA — se alguém
+       puser o índice um dia, aquele caso avisa.
+
+    ➕ `lerColagemDoAnexo` NASCEU DENTRO DO COMPONENTE e foi movida para a lib no mesmo
+       passe: o lint acusou `react-refresh/only-export-components` (112, de 111). A saída
+       deste repo é EXTRAIR, nunca elevar o baseline — e a função ficou testável de
+       quebra, com 8 casos próprios.
+
+    ➕ O CAMPO `pronto` DE `QUADRO_FONTES` FOI REMOVIDO. Ele marcava fonte cujo capítulo
+       ainda não existia; com a fatia 7 as cinco passaram a ter, e ele virou constante
+       `true`. Flag que nunca é falsa é flag em que alguém confia sem motivo.
+
+    🔴 UM CASO DE TESTE MUDOU DUAS VEZES EM DOIS DIAS, e as duas por motivo legítimo.
+       `ArtigosDoCapitulo.ui.test.tsx` afirmava que `titulos` era fonte PENDENTE; a fatia 6
+       a tornou pronta e ele caiu, foi reapontado para `vagas_por_area` com a anotação de
+       que cairia de novo aqui — e caiu. Agora guarda o que SOBREVIVE das duas versões: a
+       linha do artigo diz de ONDE a tabela vem. É armadilha 8 acontecendo à vista.
+
+    ⚠️ INCOERÊNCIA NO PRÓPRIO EDITAL 004, registrada e não "corrigida": o ACE tem código
+       "AE 4" no Quadro I e "AE 66" no Quadro III. Não é o sistema que erra — é o documento
+       publicado. Fica como exemplo de por que o código de inscrição é texto livre.
+
+    ⚠️ PERCALÇO DE FERRAMENTA, não de código: `npx supabase migration new` travou e ficou
+       19 minutos pendurado, criando o arquivo VAZIO e impedindo o resto do comando. O
+       processo foi encerrado e a migration escrita direto. Se repetir, suspeitar da CLI
+       antes de suspeitar do banco.

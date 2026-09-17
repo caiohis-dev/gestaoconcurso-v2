@@ -166,7 +166,55 @@ O preço veio em 10/09: o bloco foi lido de boa-fé numa varredura e virou um **
 
 ## O que está coberto (2026-07-27)
 
-**1.547 testes em 82 arquivos** (medido em 2026-09-16, ao fim da refatoração **o ARTIGO vira registro próprio** no módulo Editais) — dois arquivos novos: `src/lib/edital-texto.test.ts` (9 casos) e `src/components/ArtigosDoCapitulo.ui.test.tsx` (15).
+**1.664 testes em 88 arquivos** (medido em 2026-09-17, ao fim da **fatia 11 da v3 do módulo Editais — critérios de desempate**) — arquivo novo `src/lib/edital-desempate.test.ts` (17 casos).
+
+⭐ **O controle positivo são as TRÊS ordens publicadas, e elas diferem de verdade** — o 002 tem 5 critérios (com títulos), o 003 e o 004 têm 4, e a 2ª e 3ª posições mudam em cada um. 🔴 Um dos casos afirma justamente que **as três diferem**: sem ele, "as três saem do mesmo código" poderia estar comparando a mesma lista três vezes. Falsificado 3 vezes: numerar as duas listas juntas derruba 4; tirar a normalização de acento derruba 2; cobrar critério final também na lista de PCD derruba 1.
+
+Eram **1.647 em 87** no tema anterior do mesmo dia, a **fatia 10 — conteúdo programático** — arquivo novo `src/lib/edital-conteudo.test.ts` (15 casos).
+
+🎯 **O controle desta bateria é um defeito PUBLICADO, não inventado:** o Anexo I do Edital 003 escreve `LESGISLAÇÃO DO SUS` enquanto o corpo cobra `Legislação do SUS` — e o erro aparece duas vezes no anexo porque o bloco foi copiado de um cargo para o outro. Os casos afirmam que o linter o pega **nas duas direções**, e que o par (disciplina sem ementa + ementa sem disciplina) é a assinatura do defeito.
+
+🔴 **E o controle negativo importa tanto quanto:** `Legislação` × `LEGISLACAO` **não** pode acusar. É a divergência mais comum entre corpo e anexo de um PDF, e acusá-la encheria o painel de falso positivo — enquanto o `LESGISLAÇÃO` continua sendo pego, porque a letra a mais sobrevive a qualquer normalização. Falsificado 3 vezes: tirar a normalização de acento derruba 2; deixar a ementa de um cargo cobrir o outro derruba 2; acusar numa direção só derruba 2.
+
+Eram **1.632 em 86** no tema anterior do mesmo dia, a **fatia 9 — inscrição, taxas e isenção** — arquivo novo `src/lib/edital-inscricao.test.ts` (22 casos).
+
+⭐ O controle positivo são os capítulos [6] e [7] dos **três** editais, que no caso da isenção são idênticos palavra por palavra, e no caso da taxa dão os 6 valores que decidiram o recorte do modelo. Falsificado 3 vezes: sugerir um valor para nível não medido derruba 1; comparar e-mail sensível a caixa derruba 1; tratar taxa **zero** como ausente derruba 1 — e essa última é a que guarda que concurso sem taxa é decisão legítima, não campo em branco.
+
+⚠️ **A metade que a suíte NÃO alcança é `docs/bateria-edital-inscricao.sql`** (24 casos). 🔴 Dois provam AUSÊNCIAS deliberadas: o **CASO 2** (o banco aceita dois cargos de mesmo nível com taxas diferentes — a correlação é sugestão, não regra) e o **CASO 5e** (e-mail malformado entra cru). E o **CASO 1b** guarda que `numeric` devolve os centavos exatos, que é a razão de não ser `float`.
+
+Eram **1.610 em 85** no tema anterior do mesmo dia, a **fatia 8 — investidura e posse** — arquivo novo `src/lib/edital-investidura.test.ts` (19 casos).
+
+🎯 **O controle positivo desta bateria é um PAR, e provar metade não prova nada:** (1) num edital com Enfermeiro, o documento do COREN é legítimo e não acusa; (2) num edital só de Agente Comunitário de Saúde, o **mesmo** documento acusa. O risco declarado no roadmap era "testar só o caso feliz" — que é literalmente o que aconteceu no Edital 004/2026.
+
+🔴 **UM TESTE MEU PASSOU VERDE SEM GUARDAR NADA, e só a falsificação o pegou.** O caso *"CRM não casa dentro de CRMV"* dizia guardar a **fronteira de palavra** da sigla — e não guardava: a ordenação por tamanho (siglas maiores primeiro) já resolvia CRMV/CRM sozinha, então trocar a regex por `includes` mantinha os 18 casos verdes. Entrou um caso que exercita de verdade: **"MICROEMPREENDEDOR" contém "CRO"**, e sem a fronteira um checklist que peça declaração de MEI seria acusado de exigir registro no conselho de odontologia.
+
+⚠️ **E o mesmo defeito de substring apareceu noutro teste meu, na mesma sessão:** a asserção *"o padrão não inclui ASO"* falhava porque "ASO" casa dentro de **"caso declare"**. Duas ocorrências do mesmo engano em arquivos diferentes, no mesmo dia — vale como padrão a vigiar, não como acidente: **`toContain` em texto é quase sempre a asserção errada; a fronteira de palavra é a certa.**
+
+⚠️ **A metade que a suíte NÃO alcança é `docs/bateria-edital-investidura.sql`** (20 casos), e aqui ela alcança o que mais importa: o trigger `IN001`. 🔴 O **CASO 3e prova uma AUSÊNCIA deliberada** — o mesmo texto com a coluna vazia é ACEITO pelo banco, porque barrar texto livre recusaria documento legítimo; quem varre o texto é o linter. E o **CASO 8b** prova que o trigger vale **para o admin também**.
+
+🔴 **Dois casos da bateria não exercitavam o que diziam**, os dois pelo §8 (regra nova ofusca a antiga): o CASO 6 era barrado pelo TRIGGER e não pela CHECK que ele nomeava, e o CASO 10 caía em `edital_cargos_cargo_id_fkey` em vez da FK deste módulo. Corrigidos — o segundo é o mesmo defeito que a bateria de capítulos já teve.
+
+Eram **1.591 em 84** no tema anterior do mesmo dia, a **fatia 7 — territorialidade e lotação** — arquivo novo `src/lib/edital-territorialidade.test.ts` (24 casos).
+
+⭐ O controle positivo é o **Edital 004 inteiro**: o Quadro II (ACS, 80 vagas em 39 UBSF) e o Quadro III (ACE, 143 numa linha só). Os dois convivem no mesmo documento, e é isso que prova que a territorialização é parâmetro do **cargo**, não do edital.
+
+🔴 **8 dos 24 casos guardam uma AUSÊNCIA DE PERDA SILENCIOSA**, que é o formato de defeito que este repo mais teme. Quem cola 843 linhas do Anexo I não confere de cabeça: toda linha recusada sai **nomeada** na tela, não contada. Falsificado: silenciar as recusadas derruba 1; guardar a numeração do PDF em vez de descartá-la derruba 4.
+
+🔴 **UM CASO MUDOU DUAS VEZES EM DOIS DIAS, e as duas por motivo legítimo** — é armadilha 8 acontecendo à vista, e vale mais que qualquer explicação dela. O caso de `ArtigosDoCapitulo.ui.test.tsx` afirmava que `titulos` era fonte de quadro PENDENTE; a fatia 6 a tornou pronta e ele caiu; foi reapontado para `vagas_por_area` **com a anotação de que cairia de novo na fatia 7** — e caiu. Hoje guarda o que sobreviveu das duas versões: a linha do artigo diz de **onde** a tabela vem. ⚠️ Consertar um caso assim sem perguntar *por que* ele caiu é como se perde a cobertura de uma regra inteira.
+
+⚠️ **A metade que a suíte NÃO alcança é `docs/bateria-edital-territorialidade.sql`** (21 casos). 🔴 Dois deles provam AUSÊNCIAS deliberadas: o **CASO 2c** (código de inscrição repetido é aceito — quem acusa é o linter, porque um índice barraria a digitação no meio do caminho) e o **CASO 6b** (a mesma rua em duas unidades entra, porque áreas limítrofes são previstas pelo edital). E o **CASO 9** carrega as 843 linhas reais, para que o volume do Anexo I seja exercitado e não estimado.
+
+Eram **1.567 em 83** no tema anterior do mesmo dia, a **fatia 6 — a prova de títulos** — arquivo novo `src/lib/edital-titulos.test.ts` (15 casos).
+
+⭐ O controle positivo são os **Quadros III e IV do Edital 002**, o único dos três com esta etapa: os dois somam exatamente os 12 pontos publicados, e saem do mesmo código sem caso especial por cargo. Falsificado 3 vezes: somar pelo mínimo em vez do máximo derruba **1** — e só 1, porque nos 6 títulos reais mínimo e máximo são iguais e nenhum outro caso distingue os dois; tirar o meio-dia do cálculo da data derruba **3** (é o bug de fuso em que `new Date('2026-06-08')` volta um dia); tornar o teto inatingível um erro em vez de aviso derruba **1**.
+
+🔴 **Um caso de OUTRO arquivo caiu, e caiu certo.** `ArtigosDoCapitulo.ui.test.tsx` usava `titulos` como exemplo de fonte de quadro PENDENTE. A fatia 6 a tornou pronta e o caso quebrou — **o contrato mudou, o teste não estava errado** (armadilha 8). Foi reapontado para `vagas_por_area`, a última fonte pendente, com a anotação de que cairá de novo quando a fatia 7 entrar. ⚠️ Consertar um caso assim sem perguntar *por que* ele caiu é como se perde a cobertura de uma regra inteira.
+
+🔴 **E 5 casos entraram em `edital-cotas.test.ts` por um achado da etapa 0 da fatia 7** — o melhor exemplo de armadilha 8 por AUSÊNCIA deste arquivo. A regra de cotas estava errada para cargo de 3 vagas, e **nenhum dos 31 testes cobria o caso, porque nenhum dos 22 valores medidos tinha 3 vagas**. Dado que não existe não vira teste, e teste que não existe não acusa. O Quadro II do Edital 004 trouxe 39 valores novos e o caso apareceu. Falsificado: desfazer o corte derruba 4 dos 5.
+
+⚠️ **A metade que a suíte NÃO alcança é `docs/bateria-edital-titulos.sql`** (22 casos): as 8 CHECKs, as duas FKs RESTRICT, a PK por edital e a RLS. 🔴 O **CASO 9 prova uma AUSÊNCIA** — a soma acima do teto é aceita pelo banco, porque quem confere é o linter. Sem ele, alguém acrescentaria um trigger e ninguém notaria que a digitação título-a-título deixou de ser possível.
+
+Eram **1.547 em 82** no tema anterior, a refatoração **o ARTIGO vira registro próprio** no módulo Editais — dois arquivos novos: `src/lib/edital-texto.test.ts` (9 casos) e `src/components/ArtigosDoCapitulo.ui.test.tsx` (15).
 
 🔴 **A bateria de UI existe pela mesma razão que a do lock, e é a distinção que este arquivo mais repete:** `edital-itens.test.ts` prova que `numerarItens` numera certo; nada ali prova que a TELA mostra esse número, que ele é read-only, ou que "subir" do primeiro artigo está desabilitado. Falsificada três vezes, cada uma derrubando exatamente o que guarda: trocar o número calculado pela `ordem` crua derruba 6 casos, `primeiro={false}` derruba 1, e ignorar `travado` num botão derruba 1.
 

@@ -13,6 +13,8 @@
  */
 import { useEditalCargos } from "@/hooks/useEditalCargos";
 import { useCronograma } from "@/hooks/useCronograma";
+import { useTitulos } from "@/hooks/useTitulos";
+import { useTerritorialidade, useUnidadesLotacao } from "@/hooks/useTerritorialidade";
 import { useProvaObjetiva } from "@/hooks/useProvaObjetiva";
 import { useCargos } from "@/hooks/useCargos";
 import { diaDaSemana } from "@/lib/edital-cronograma";
@@ -114,6 +116,111 @@ function MatrizGerada({ editalId }: { editalId: string }) {
   );
 }
 
+/**
+ * Os Quadros III e IV do edital, gerados de `titulos_itens`.
+ *
+ * ⚠️ **UMA LINHA POR CARGO, e isso diverge do publicado por ESCOLHA.** O Quadro III do
+ * Edital 002 junta os 8 cargos de Docente I numa linha só, com o rótulo "Docente I
+ * (Arte, Ciências, …)". Perguntado em 2026-09-16, o usuário decidiu não agrupar: a
+ * tabela gerada lista cargo a cargo. Não é descuido — está registrado no doc do módulo.
+ *
+ * As colunas reproduzem as do documento, inclusive as DUAS de pontuação.
+ */
+function QuadroDeTitulosGerado({ editalId }: { editalId: string }) {
+  const { cargosDoEdital } = useEditalCargos(editalId);
+  const { cargos } = useCargos();
+  const { itens } = useTitulos(editalId, cargosDoEdital.map((c) => c.id));
+  const nome = (cargoId: string) => cargos.find((c) => c.id === cargoId)?.nome ?? "(cargo)";
+
+  if (itens.length === 0) {
+    return <QuadroPendente motivo="Nenhum título parametrizado — a tabela sairia vazia." />;
+  }
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Cargos</TableHead>
+          <TableHead>Títulos aferíveis</TableHead>
+          <TableHead className="text-right">Pontuação mínima</TableHead>
+          <TableHead className="text-right">Pontuação máxima</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {cargosDoEdital.flatMap((ec) =>
+          itens
+            .filter((t) => t.edital_cargo_id === ec.id)
+            .map((t) => (
+              <TableRow key={t.id}>
+                <TableCell className="font-medium">{nome(ec.cargo_id)}</TableCell>
+                <TableCell>
+                  {t.descricao}
+                  {t.area_exigida && <> — <strong>{t.area_exigida}</strong></>}
+                  {t.carga_horaria_minima_horas && <>, carga horária mínima de {t.carga_horaria_minima_horas} horas</>}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">{t.pontos_minimo}</TableCell>
+                <TableCell className="text-right tabular-nums">{t.pontos_maximo}</TableCell>
+              </TableRow>
+            )),
+        )}
+      </TableBody>
+    </Table>
+  );
+}
+
+/**
+ * O Quadro II do Edital 004: vagas de ACS por UBSF, geradas de `edital_cargo_unidades`.
+ *
+ * ⚠️ Uma linha por (cargo, unidade), como o documento — aqui NÃO há a divergência de
+ * agrupamento dos outros dois quadros: o Quadro II publicado já é uma linha por unidade.
+ */
+function VagasPorAreaGerado({ editalId }: { editalId: string }) {
+  const { cargosDoEdital } = useEditalCargos(editalId);
+  const { cargos } = useCargos();
+  const { unidades } = useUnidadesLotacao();
+  const { distribuicao } = useTerritorialidade(editalId, cargosDoEdital.map((c) => c.id));
+  const nomeCargo = (id: string) => cargos.find((c) => c.id === id)?.nome ?? "(cargo)";
+  const nomeUnidade = (id: string) => unidades.find((u) => u.id === id)?.nome ?? "(unidade)";
+
+  if (distribuicao.length === 0) {
+    return <QuadroPendente motivo="Nenhuma vaga distribuída por unidade — a tabela sairia vazia." />;
+  }
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Unidade</TableHead>
+          <TableHead>Código da inscrição</TableHead>
+          <TableHead className="text-right">Vagas AC</TableHead>
+          <TableHead className="text-right">Vagas PD</TableHead>
+          <TableHead className="text-right">Vagas CN</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {cargosDoEdital.flatMap((ec) =>
+          distribuicao
+            .filter((v) => v.edital_cargo_id === ec.id)
+            .map((v) => (
+              <TableRow key={v.id}>
+                <TableCell className="font-medium">
+                  {nomeUnidade(v.unidade_lotacao_id)}
+                  {cargosDoEdital.length > 1 && (
+                    <span className="text-muted-foreground"> — {nomeCargo(ec.cargo_id)}</span>
+                  )}
+                </TableCell>
+                <TableCell>{v.codigo_inscricao ?? "—"}</TableCell>
+                <TableCell className="text-right tabular-nums">{v.vagas_ampla_concorrencia}</TableCell>
+                <TableCell className="text-right tabular-nums">{v.vagas_pcd || ""}</TableCell>
+                <TableCell className="text-right tabular-nums">{v.vagas_negros || ""}</TableCell>
+              </TableRow>
+            )),
+        )}
+      </TableBody>
+    </Table>
+  );
+}
+
 function CronogramaGerado({ editalId }: { editalId: string }) {
   const { etapas } = useCronograma(editalId);
 
@@ -152,15 +259,11 @@ export function QuadroDoArtigo({ fonte, editalId }: { fonte: QuadroFonte; edital
   if (fonte === "cargos") return <QuadroDeCargosGerado editalId={editalId} />;
   if (fonte === "disciplinas") return <MatrizGerada editalId={editalId} />;
   if (fonte === "cronograma") return <CronogramaGerado editalId={editalId} />;
-  // `titulos` (fatia 6) e `vagas_por_area` (fatia 7) ainda não têm capítulo que as
-  // parametrize. O artigo pode ser escrito antes; o linter acusa até a fatia existir.
-  return (
-    <QuadroPendente
-      motivo={
-        fonte === "titulos"
-          ? "Quadro de títulos — o capítulo que o parametriza ainda não existe (fatia 6)."
-          : "Vagas por área de abrangência — o capítulo que as parametriza ainda não existe (fatia 7)."
-      }
-    />
-  );
+  if (fonte === "titulos") return <QuadroDeTitulosGerado editalId={editalId} />;
+  if (fonte === "vagas_por_area") return <VagasPorAreaGerado editalId={editalId} />;
+  // 🔵 Não há mais fonte pendente: as cinco têm capítulo que as parametriza desde a
+  // fatia 7. Este ramo só é alcançável se alguém acrescentar um valor ao domínio da CHECK
+  // `chk_edital_item_quadro_fonte` e esquecer de renderizá-lo — e aí dizer isso na cara é
+  // melhor que devolver `null`, que sairia como espaço em branco no documento.
+  return <QuadroPendente motivo={`Fonte de quadro desconhecida: ${fonte}.`} />;
 }

@@ -22,6 +22,9 @@ export interface EditalCargo {
   carga_horaria_unidade: string | null;
   regime_plantao_permitido: boolean | null;
   vencimento_base: number | null;
+  /** 🔵 v3 fatia 9: o valor do boleto, POR CARGO. Medido — os três editais publicam
+   *  uma lista nominal por cargo, não por nível de escolaridade. */
+  taxa_inscricao: number | null;
   vagas_total: number | null;
   vagas_ampla_concorrencia: number | null;
   vagas_pcd: number | null;
@@ -30,7 +33,7 @@ export interface EditalCargo {
 }
 
 const CAMPOS =
-  "id, cargo_id, codigo_inscricao, habilitacao, carga_horaria_valor, carga_horaria_unidade, regime_plantao_permitido, vencimento_base, vagas_total, vagas_ampla_concorrencia, vagas_pcd, vagas_negros, cadastro_reserva";
+  "id, cargo_id, codigo_inscricao, habilitacao, carga_horaria_valor, carga_horaria_unidade, regime_plantao_permitido, vencimento_base, vagas_total, vagas_ampla_concorrencia, vagas_pcd, vagas_negros, cadastro_reserva, taxa_inscricao";
 
 export function useEditalCargos(editalId: string | undefined) {
   const queryClient = useQueryClient();

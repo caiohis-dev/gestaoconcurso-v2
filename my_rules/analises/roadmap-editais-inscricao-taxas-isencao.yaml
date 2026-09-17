@@ -6,11 +6,22 @@ roadmap:
   titulo: "Editais fatia 9 — inscrição, taxas, isenção e canais de atendimento"
   criado: "2026-09-16"
   status: >
-    ⏳ NÃO INICIADO — 🟡 ESBOÇO. Detalhar antes de executar.
+    🟢 EXECUTADA em 2026-09-17. Migration 20260917104500 (`edital_cargos.taxa_inscricao`,
+    `regras_isencao`, `inscricao_config`, `edital_canais_atendimento`),
+    `src/lib/edital-inscricao.ts`, `useInscricao`, `InscricaoTaxasEIsencao.tsx` e
+    `docs/bateria-edital-inscricao.sql` (24 casos, todos verdes). 1.632 testes em 86
+    arquivos, tsc, build, lint 111 (baseline), docs:conferir limpo, db reset completo.
+    ✅ R2 RESPONDIDO POR MEDIÇÃO: a taxa é por CARGO — ver `r2_respondido`.
+    🔴 R1 SE MATERIALIZOU, como o próprio roadmap previa — ver `r1_materializou`.
+    ⚠️ E DUAS PREMISSAS DO `medido_antes` CAÍRAM — ver `desvios_da_execucao`.
+    🟢 Aguardando merge para ir a concluidos/.
     ⚠️ Esta fatia NÃO existia na primeira divisão do plano — apareceu ao conferir o
     `Arquitetura de Tabelas…` contra a lista de fatias, e foi acrescentada a pedido do
     usuário em 2026-09-16.
-  depende_de: "Fatia 1 (espinha), fatia 3 (os prazos são do cronograma) e fatia 2 (a taxa varia por nível de escolaridade)."
+  depende_de: >
+    Fatia 1 (espinha), fatia 3 (os prazos são do cronograma) e fatia 2 (a taxa pende de
+    `edital_cargos`). ⚠️ Esta linha dizia "a taxa varia por nível de escolaridade" — e a
+    medição mostrou que ela varia por CARGO; o nível só se correlaciona. Ver `r2_respondido`.
 
   origem: >
     Os capítulos [6] (inscrição e pagamento) e [7] (isenção da taxa). Seções 1 e 4 do
@@ -32,55 +43,74 @@ roadmap:
 
   # ═══════════════════════════════════════════════════════════════════════════
   medido_antes: |
-    Edital 003/2026, as regras de isenção mais detalhadas dos três:
+    ⚠️ ESTE BLOCO ESTAVA ERRADO EM DOIS PONTOS, e ele mesmo avisava por quê: "os três
+    editais não foram conferidos campo a campo nesta fatia". Fica registrado, corrigido,
+    porque é o quinto caso do padrão que o CLAUDE.md §1 descreve.
 
-    · CadÚnico atualizado nos últimos 24 MESES.
-    · Declaração REDOME emitida no ANO CORRENTE.
-    · Doador de sangue e prestador de serviço à Justiça Eleitoral também isentam.
-    · 🔴 "Um pedido/envelope POR CARGO" — veda reaproveitar documentação entre inscrições
-      múltiplas. É parâmetro, não constante: o 002 e o 004 podem divergir.
+    ❌ "CadÚnico atualizado nos últimos 24 MESES" — **NÃO EXISTE**. "24 meses" tem ZERO
+       ocorrências nos três editais, e nenhum deles exige prazo de atualização do CadÚnico.
+       A coluna `meses_atualizacao_cadunico` não foi criada.
 
-    ⚠️ Os três editais não foram conferidos campo a campo nesta fatia. Fazer isso ANTES de
-    cravar os campos — é a regra do CLAUDE.md §1.
+    ❌ "Um pedido/envelope POR CARGO" — os três dizem "um envelope por **CANDIDATO**".
+       A regra que de fato existe é outra, e está no item 6.10 do 003: "a documentação
+       apresentada para o pedido de isenção é válida para apenas um cargo… procedimentos
+       independentes… envelopes distintos". ✅ O 003 e o 004 a têm; o **002 NÃO**. É
+       parâmetro de verdade, e virou `documentacao_isencao_vale_para_um_cargo`.
+
+    ✅ "Declaração REDOME emitida no ANO CORRENTE" — confirmado, e é o parâmetro que mais
+       varia: o 003 e o 004 exigem; o 002 não.
+
+    ✅ 3 doações em 12 meses — IGUAL nos três.
+
+    🔵 E A MEDIÇÃO QUE FALTAVA: os TRÊS editais publicam os critérios de isenção PALAVRA
+       POR PALAVRA IGUAIS — CadÚnico (A), doador de sangue ou REDOME (B), serviço eleitoral
+       (C). São TRÊS alíneas, não quatro.
 
   # ═══════════════════════════════════════════════════════════════════════════
   etapas:
     - id: 1
       nome: "Banco — taxas, isenção e canais"
-      status: "⏳ pendente"
+      status: "🟢 feita"
       entrega:
         - >
-          `taxas_inscricao`: `edital_id`, e o recorte por `nivel_escolaridade` OU por
-          `edital_cargo_id` — decidir qual, medindo nos três editais. `valor_taxa`.
+          ⚠️ SEM `taxas_inscricao`: a taxa virou a COLUNA `edital_cargos.taxa_inscricao`,
+          porque a relação é 1:1 com o cargo do edital. Ver `r2_respondido`.
         - >
-          `regras_isencao`: `tipo_criterio` (CADUNICO | DOADOR_SANGUE | DOADOR_MEDULA_REDOME
-          | SERVICO_ELEITORAL), `lei_referencia`, `meses_atualizacao_cadunico`,
-          `ano_vigente_redome`, `minimo_doacoes_sangue_12m`,
-          `permite_multiplos_cargos_mesmo_envelope`.
+          `regras_isencao`: `tipo_criterio` (CADUNICO | DOADOR_SANGUE_OU_MEDULA |
+          SERVICO_ELEITORAL — são TRÊS, não quatro), `lei_referencia`,
+          `minimo_doacoes_sangue_12m`, `redome_exige_ano_vigente`.
+          ⚠️ SEM `meses_atualizacao_cadunico`: não existe nos editais.
         - >
-          `edital_canais_atendimento`: `tipo_canal` (PORTAL_WEB | EMAIL_IMPUGNACAO |
-          EMAIL_VISTA_PROVA | POSTO_PRESENCIAL), `descricao_endereco`,
-          `horario_funcionamento`.
-      armadilha: >
-        ⚠️ `valor_taxa` em `numeric`, nunca `float`. E o recorte da taxa (por nível ou por
-        cargo) é decisão de modelo que muda a UI inteira do capítulo — medir antes.
+          `inscricao_config`: `documentacao_isencao_vale_para_um_cargo` (o parâmetro que
+          o esboço chamava errado de "envelope por cargo") e `limite_envelopes_por_candidato`.
+        - >
+          `edital_canais_atendimento`: `tipo_canal` é o MEIO (PORTAL_WEB | EMAIL | TELEFONE
+          | POSTO_PRESENCIAL), nunca a finalidade — que vai em `rotulo`.
+      armadilha_atendida: >
+        ✅ `taxa_inscricao` é `NUMERIC(10,2)`, nunca `float` — o CASO 1b da bateria guarda
+        que os centavos voltam exatos. E o recorte foi MEDIDO antes de cravar, que era a
+        outra metade do aviso.
 
     - id: 2
       nome: "UI — os dois capítulos e o seletor de canais"
-      status: "⏳ pendente"
+      status: "🟢 feita"
       entrega:
-        - "Capítulo [6]: taxas, prazos (vindos do cronograma) e regras de inscrição múltipla."
-        - "Capítulo [7]: os critérios de isenção como toggles independentes, com os parâmetros de cada um."
-        - "Canais cadastrados uma vez e REFERENCIADOS pelos capítulos que os citam."
+        - "Capítulo [6]: taxa por cargo, com botão de SUGERIR pelo nível, e a config de envelopes."
+        - "Capítulo [7]: os três critérios como toggles independentes, com os parâmetros de cada um."
+        - >
+          Canais cadastrados uma vez. ⚠️ A tela NÃO impede o mesmo endereço em dois canais
+          — no Edital 002 a mesma sede serve a quatro finalidades (CASO 5b).
 
     - id: 3
       nome: "Verificação e docs"
-      status: "⏳ pendente"
+      status: "🟢 feita"
       entrega:
         - "⭐ CONTROLE POSITIVO: reproduzir os capítulos [6] e [7] do Edital 003/2026."
         - >
-          ⭐ CONTROLE NEGATIVO: edital com isenção cujo prazo final é DEPOIS do fim das
-          inscrições tem de acusar (regra de precedência da fatia 3).
+          ⚠️ NÃO FEITO: o controle de "prazo de isenção depois do fim das inscrições". A
+          precedência entre etapas já é de `conferirCronograma` (fatia 3), e duplicá-la
+          aqui criaria duas regras para a mesma coisa. Fica registrado como não-feito para
+          que ninguém suponha a cobertura.
         - "Bateria SQL · npm test · tsc · lint (baseline 111) · build · docs:conferir"
 
   # ═══════════════════════════════════════════════════════════════════════════
@@ -95,3 +125,90 @@ roadmap:
     R3. **Isenção é a porta de fraude mais visada de um concurso.** ⚠️ O sistema aqui só
         DESCREVE a regra no edital; quem defere é a banca. Não deixar o doc sugerir que há
         validação automática.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  r2_respondido: |
+    ✅ A TAXA É POR CARGO, e virou COLUNA em `edital_cargos`, não tabela.
+
+    Os 6 valores publicados:
+
+        002  Docente I ........... R$ 100,00      003  Enfermeiro .......... R$ 100,00
+        002  Docente II .........  R$  80,00      003  Téc. em Enfermagem .  R$  80,00
+        004  Agente Comunitário .  R$  80,00      004  Agente de Endemias .  R$  80,00
+
+    Os três publicam uma LISTA NOMINAL por cargo ("A) Docente I – R$ 100,00").
+
+    ⚠️ Existe correlação perfeita com a escolaridade — 100 para superior, 80 para
+    médio/técnico —, inclusive no caso que quase a derruba: o Docente II, cuja habilitação
+    mínima é "Curso Normal de Nível MÉDIO". Mesmo assim o recorte NÃO é por escolaridade:
+      · o documento publica por cargo, nas 6 linhas;
+      · são 6 pontos com 2 valores distintos — correlação observada, não regra declarada;
+      · modelar por nível obrigaria o edital a obedecer a uma regra que nunca escreveu, e
+        quebraria no dia em que dois cargos superiores tivessem taxas diferentes.
+
+    ➜ A correlação virou SUGESTÃO (botão "sugerir R$ 100") e AVISO (taxas divergentes no
+      mesmo nível), no desenho de `sugerirCotas`. O CASO 2 da bateria prova que o banco
+      NÃO impõe a correlação.
+
+    🔵 E é COLUNA, não tabela: a relação é 1:1 com `edital_cargos`, que já carrega
+      `vencimento_base` e as vagas. Uma `taxas_inscricao` de duas colunas seria uma junção
+      a mais para sempre.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  r1_materializou: |
+    🔴 O RISCO R1 DEIXOU DE SER RISCO: a fatia 5 veio antes desta e criou
+    `regras_vista_prova.email_solicitacao` solto, exatamente como o bloco
+    `por_que_os_canais_moram_aqui` previa.
+
+    DECISÃO: a coluna **não foi migrada** para `edital_canais_atendimento`.
+      · ela tem CHECK própria (`chk_vista_presencial_tem_email`), que garante e-mail quando
+        o rito é presencial — movê-la exigiria converter essa CHECK em trigger;
+      · é tabela já entregue, e remodelá-la custa mais do que a duplicação de um campo.
+
+    MITIGAÇÃO: a regra `email-da-vista-fora-dos-canais` acusa quando o e-mail declarado na
+    fatia 5 não está entre os canais do edital. A duplicação passa a ser VISÍVEL em vez de
+    silenciosa — que era o desfecho que o R1 temia ("um deles vai envelhecer").
+
+    🔴 E AQUI O TEMA FECHA, POR DECISÃO DO USUÁRIO EM 2026-09-17: "não é para recusar a
+    divergência, só aviso basta". A alternativa foi apresentada com o custo na mão (FK de
+    `regras_vista_prova` para o canal + a CHECK `chk_vista_presencial_tem_email` virando
+    trigger + caso de bateria) e RECUSADA.
+
+    ⚠️ NÃO REABRIR como se fosse dívida técnica esquecida. É escolha, e estas são as
+    consequências aceitas, escritas para que ninguém as descubra como surpresa:
+      · divergência entre os dois e-mails É POSSÍVEL e não impede a publicação;
+      · o aviso aparece só na tela do capítulo de inscrição — quem editar apenas o
+        capítulo da vista de prova não o vê;
+      · por psql, PostgREST ou script, a divergência entra sem nada acusar.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  desvios_da_execucao: |
+    🔴 DUAS PREMISSAS DO PRÓPRIO `medido_antes` CAÍRAM (24 meses do CadÚnico; "envelope por
+       cargo"). Estão corrigidas lá em cima, não apagadas. É o quinto caso do padrão do §1.
+
+    🔴 E UMA TERCEIRA COLUNA PROPOSTA CAIU, a quarta da v3: `meses_atualizacao_cadunico`.
+       Depois de `limite_itens_aceitos` (fatia 6), `numero_inicial`/`numero_final` (fatia 7)
+       e `aplica_apenas_sexo` (fatia 8). O padrão é constante: o esboço antecipa uma
+       estrutura que o documento real não tem.
+
+    🔴 E O ESBOÇO PROPUNHA QUATRO CRITÉRIOS DE ISENÇÃO. São TRÊS: o item B junta doador de
+       sangue e REDOME sob UMA lei municipal e UM requerimento — o 003 chega a escrever "de
+       acordo com sua opção (REDOME ou Doador de Sangue)". Separá-los publicaria uma alínea
+       que o documento não tem, e daria a mesma `lei_referencia` a dois critérios.
+
+    ➕ O `tipo_canal` VIROU O MEIO, não a finalidade. O esboço propunha
+       `EMAIL_IMPUGNACAO | EMAIL_VISTA_PROVA | POSTO_PRESENCIAL | PORTAL_WEB`, misturando as
+       duas coisas — e o dado mostra por que não dá: no Edital 002 o MESMO posto da FEVRE
+       serve a quatro finalidades (isenção, laudo PCD, autodeclaração, títulos). A
+       finalidade foi para `rotulo`, texto livre.
+       ⚠️ E o CASO 5b guarda que a repetição é PERMITIDA: o ganho da tabela não é impedir
+       que o mesmo endereço apareça duas vezes, é que seja UMA linha referenciada em vez de
+       quatro textos digitados à mão.
+
+    ➕ `conferirInscricao` NASCEU COM COMPLEXIDADE 25 e o lint subiu para 112. Extraído em
+       três funções (`conferirTaxas`, `conferirCriterios`, `conferirCanais`) e voltou a 111.
+       Extrair é a saída deste repo; elevar o baseline não é.
+
+    ⚠️ FRONTEIRA REGISTRADA: nada nesta fatia DEFERE isenção. O capítulo descreve a regra
+       que sai no edital; quem analisa o pedido é a banca. É o R3, e está escrito no
+       cabeçalho de `edital-inscricao.ts` para que ninguém suponha validação automática.

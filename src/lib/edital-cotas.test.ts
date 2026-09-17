@@ -167,3 +167,79 @@ describe("🔴 o percentual DECLARADO manda no cálculo", () => {
     }
   });
 });
+
+/**
+ * ⭐ CONTROLE POSITIVO NOVO — o QUADRO II do Edital 004/2026, 39 unidades.
+ *
+ * 🔴 **Ele corrigiu a regra, e é o melhor exemplo do que "medir muda o desenho" quer
+ * dizer neste repo.** A regra original saiu de 22 valores dos Editais 002 e 003, e ela
+ * estava certa para os 22 — mas **nenhum daqueles cargos tem 3 vagas**, então aqueles
+ * dados não podiam decidir esse caso. O Quadro II do 004 distribui as 80 vagas de ACS por
+ * 39 UBSF e traz 5 totais distintos, inclusive o 3.
+ *
+ * Resultado da conferência, unidade a unidade:
+ *
+ * | total | unidades | publicado (AC,PD,CN) | arredondamento comum |
+ * |---|---|---|---|
+ * | 1 | 20 | (1,0,0) | ✅ igual |
+ * | 2 | 7 | (2,0,0) | ✅ igual |
+ * | **3** | **4** | **(3,0,0)** | 🔴 dava (2,0,1) |
+ * | 4 | 7 | (3,0,1) | ✅ igual |
+ * | 6 | 1 | (4,1,1) | ✅ igual |
+ *
+ * As 4 unidades de 3 vagas concordam **entre si**, então é regra e não erro de digitação
+ * do edital. Daí `MINIMO_DE_VAGAS_PARA_COTA_RACIAL`.
+ */
+describe("⭐ o Quadro II do Edital 004 — 39 unidades, e o caso que faltava", () => {
+  const QUADRO_II: ReadonlyArray<[total: number, unidades: number, ac: number, pd: number, cn: number]> = [
+    [1, 20, 1, 0, 0],
+    [2, 7, 2, 0, 0],
+    [3, 4, 3, 0, 0],
+    [4, 7, 3, 0, 1],
+    [6, 1, 4, 1, 1],
+  ];
+
+  it("🎯 os 5 totais distintos saem exatos, e cobrem as 39 unidades", () => {
+    expect(QUADRO_II.reduce((n, [, u]) => n + u, 0)).toBe(39);
+    for (const [total, , ac, pd, cn] of QUADRO_II) {
+      expect(sugerirCotas(total)).toEqual({ total, amplaConcorrencia: ac, pcd: pd, negros: cn });
+    }
+  });
+
+  it("🔴 e a soma das 80 vagas de ACS bate com o publicado", () => {
+    const soma = QUADRO_II.reduce(
+      (s, [total, u]) => {
+        const c = sugerirCotas(total);
+        return { ac: s.ac + c.amplaConcorrencia * u, pd: s.pd + c.pcd * u, cn: s.cn + c.negros * u };
+      },
+      { ac: 0, pd: 0, cn: 0 },
+    );
+    expect(soma).toEqual({ ac: 71, pd: 1, cn: 8 });
+  });
+
+  it("🔴 CONTROLE NEGATIVO: a cota NÃO é calculada sobre o total do cargo", () => {
+    // Se alguém "simplificar" aplicando os 20% às 80 vagas de ACS de uma vez, saem 16
+    // vagas de cota racial onde o edital publica 8 — o dobro. A distribuição é POR
+    // UNIDADE, e o arredondamento para baixo em 27 unidades pequenas é o que faz a
+    // diferença. Este caso existe para que a simplificação não passe calada.
+    expect(sugerirCotas(80).negros).toBe(16);
+    expect(sugerirCotas(80).negros).not.toBe(8);
+  });
+
+  it("⭐ CONTROLE: o corte está entre 3 e 4, e não em outro lugar", () => {
+    expect(sugerirCotas(3).negros).toBe(0);
+    expect(sugerirCotas(4).negros).toBe(1);
+    // ⚠️ E não mexeu no PCD: 10% de 3 já era 0 por arredondamento, não pelo corte.
+    expect(sugerirCotas(3).pcd).toBe(0);
+    expect(sugerirCotas(5).pcd).toBe(1);
+  });
+
+  it("⚠️ o corte NÃO se aplica a percentual DECLARADO alto", () => {
+    // Fronteira registrada: com 3 vagas e 20% declarados, segue zero. É o mesmo corte —
+    // ele é sobre o número de vagas, não sobre o percentual. Se um dia um edital declarar
+    // reserva a partir de 3, é `MINIMO_DE_VAGAS_PARA_COTA_RACIAL` que muda, e este caso
+    // cai junto para avisar.
+    expect(sugerirCotas(3, { pcd: null, negros: 50 }).negros).toBe(0);
+    expect(sugerirCotas(4, { pcd: null, negros: 50 }).negros).toBe(2);
+  });
+});

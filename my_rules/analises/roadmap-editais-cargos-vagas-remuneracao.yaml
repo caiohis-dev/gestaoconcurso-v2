@@ -1,12 +1,14 @@
 # Roadmap VIVO — Módulo Editais, fatia 2: cargos, vagas e remuneração (o Quadro I)
 # Criado em 2026-09-16. Leia my_rules/analises/README.md antes de usar como guia.
-# Índice das 9 fatias e as decisões que valem para todas: my_rules/modulo_editais/00-Plano-v3.md
+# Índice das 12 fatias e as decisões que valem para todas: my_rules/modulo_editais/00-Plano-v3.md
 
 roadmap:
   titulo: "Editais fatia 2 — cargos, vagas e remuneração (o Quadro I)"
   criado: "2026-09-16"
   status: >
-    🟡 EM EXECUÇÃO desde 2026-09-16. ✅ ETAPA 0 CONCLUÍDA — e ela achou a bateria de
+    🟢 EXECUTADA em 2026-09-16. ⚠️ Esta linha dizia "🟡 EM EXECUÇÃO" e as 4 etapas abaixo
+    seguiam "⏳ pendente" enquanto o próprio texto já declarava as etapas 0 a 3 concluídas
+    — corrigido em 2026-09-17. ✅ ETAPA 0 CONCLUÍDA — e ela achou a bateria de
     cargos QUEBRADA há seis semanas, em três pontos (ver `etapa_0_o_que_ela_achou`).
     ✅ P1 RESPONDIDA POR MEDIÇÃO, não por norma externa: 22 de 22 valores nos editais
     002 e 003 batem com arredondamento comum sobre o TOTAL (ver `regra_das_cotas`).
@@ -138,7 +140,7 @@ roadmap:
   etapas:
     - id: 0
       nome: "Linha de base — a bateria de cargos VERDE antes de tocar em qualquer coisa"
-      status: "⏳ pendente"
+      status: "🟢 feita"
       entrega:
         - >
           Rodar `docs/bateria-cargos.sql` e registrar o resultado. É a linha de base que
@@ -151,7 +153,7 @@ roadmap:
 
     - id: 1
       nome: "Banco — `cargos` incrementada e as tabelas do edital"
-      status: "⏳ pendente"
+      status: "🟢 feita"
       entrega:
         - >
           `cargos` ganha, todas anuláveis: `codigo_oficial`, `escolaridade_minima`
@@ -174,7 +176,7 @@ roadmap:
 
     - id: 2
       nome: "UI — a tabela editável e o cálculo de cotas"
-      status: "⏳ pendente"
+      status: "🟢 feita"
       entrega:
         - "Data table editável no painel central do Studio, no capítulo [2]."
         - >
@@ -190,7 +192,7 @@ roadmap:
 
     - id: 3
       nome: "Verificação e docs"
-      status: "⏳ pendente"
+      status: "🟢 feita"
       entrega:
         - "Função pura do cálculo de cotas, com os casos de arredondamento — falsificável."
         - >

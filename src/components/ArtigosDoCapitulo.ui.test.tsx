@@ -163,9 +163,21 @@ describe("o artigo do tipo QUADRO", () => {
     expect(screen.queryByLabelText(/^Texto do item/)).not.toBeInTheDocument();
   });
 
-  it("⚠️ fonte de fatia pendente é dita na cara, não escondida", () => {
-    montar({ itens: [item("q", { tipo: "quadro", quadro_fonte: "titulos", texto: "" })] });
-    expect(screen.getByText(/ainda não parametrizado/)).toBeInTheDocument();
+  it("🔵 TODA fonte nomeia a origem do dado — não há mais fonte pendente", () => {
+    // 🔴 Este caso mudou DUAS VEZES em dois dias, e as duas por motivo legítimo — é
+    // armadilha 8 acontecendo à vista:
+    //   · nasceu afirmando que `titulos` era fonte PENDENTE. A fatia 6 a tornou pronta e
+    //     o caso caiu; foi reapontado para `vagas_por_area`, com a anotação de que cairia
+    //     de novo na fatia 7.
+    //   · a fatia 7 entrou, e ele caiu de novo. Não existe mais fonte pendente, então a
+    //     afirmação original deixou de ter objeto: o campo `pronto` saiu de
+    //     `QUADRO_FONTES` por ser constante `true`.
+    //
+    // O que SOBREVIVE das duas versões, e é o que este caso guarda agora: a linha do
+    // artigo diz de ONDE a tabela vem. Sem isso o artigo aparece como um campo de legenda
+    // solto, e quem edita não sabe o que será publicado ali.
+    montar({ itens: [item("q", { tipo: "quadro", quadro_fonte: "vagas_por_area", texto: "" })] });
+    expect(screen.getByText("Vagas por área de abrangência")).toBeInTheDocument();
   });
 
   it("é numerado como artigo — no Edital 002 o Quadro I é o item 2.1", () => {

@@ -5,8 +5,18 @@
 roadmap:
   titulo: "Editais fatia 6 — prova de títulos (capítulo condicional)"
   criado: "2026-09-16"
-  status: "⏳ NÃO INICIADO — 🟡 ESBOÇO. Detalhar antes de executar."
-  depende_de: "Fatia 1 (é capítulo condicional), fatia 5 (é uma fase do certame) e fatia 3 (o prazo depende do cronograma)."
+  status: >
+    🟢 EXECUTADA em 2026-09-17. Migration 20260916234302, `src/lib/edital-titulos.ts`,
+    `useTitulos`, `QuadroDeTitulos.tsx`, o quadro gerado do artigo e
+    `docs/bateria-edital-titulos.sql` (22 casos, todos verdes). 1.562 testes em 83
+    arquivos, tsc, build, lint 111 (baseline), docs:conferir limpo, db reset completo.
+    ⚠️ Ver `desvios_da_execucao`: a medição derrubou duas colunas do próprio esboço, e
+    o usuário decidiu contra o formato publicado num ponto.
+    🟢 Aguardando merge para ir a concluidos/.
+  depende_de: >
+    Fatia 1 (é capítulo condicional), fatia 2 (os títulos pendem de `edital_cargos`),
+    fatia 3 (o prazo de conclusão deriva do fim das inscrições) e a refatoração
+    `roadmap-editais-artigos-por-registro.yaml` (o quadro é um artigo `tipo='quadro'`).
 
   origem: >
     O capítulo [14] do `Estrutura de Edital.md`. Passo 7 do `UI e UX.md`, seção 8 do
@@ -20,69 +30,152 @@ roadmap:
         "(Condicional: Magistério)" e o `Peculiaridades` mandava "se Magistério → injetar
         Prova de Títulos". O Magistério é o caso conhecido, não uma condição. Um edital de
         ACS pode ter prova de títulos. A carreira, no máximo, pré-marca o toggle.
+        ✅ ENTREGUE ASSIM: o capítulo `prova_de_titulos` nasce desligado no catálogo e
+        qualquer edital pode ligá-lo. Não há nenhuma leitura de carreira no código.
+
+    D_AGRUPAMENTO. 🔴 UMA LINHA POR CARGO NO QUADRO GERADO — decisão de 2026-09-16,
+        perguntada com a medição na mão e respondida "deixar uma linha por cargo".
+        ⚠️ ISTO DIVERGE DO DOCUMENTO PUBLICADO, e a divergência é escolhida: o Quadro III
+        do Edital 002 junta os 8 cargos de Docente I numa linha só, rotulada "Docente I
+        (Arte, Ciências, Educação Física, Geografia, História, Língua Inglesa, Língua
+        Portuguesa e Matemática)". O gerado lista cargo a cargo.
+        As duas alternativas recusadas, para que ninguém as reabra achando que são novas:
+          · coluna `familia` em `edital_cargos`, agrupando por rótulo declarado;
+          · entidade `edital_cargo_grupos`, com a configuração pendendo do grupo — que
+            exigiria migrar `provas_objetivas_config` e `provas_disciplinas` da fatia 5.
 
   # ═══════════════════════════════════════════════════════════════════════════
   medido_antes: |
-    Edital 002/2026, o único dos três com esta etapa:
+    🔴 OS QUADROS III E IV DO EDITAL 002, ITEM A ITEM. Só ele tem esta etapa.
 
-    · Teto máximo: 12 PONTOS.
-    · Caráter exclusivamente CLASSIFICATÓRIO (não elimina).
-    · Exige histórico escolar junto do diploma, em lato e stricto sensu.
-    · Cursos válidos só se concluídos até 30 DIAS ANTES do fim das inscrições.
-    · Título que serve de requisito de investidura NÃO pontua.
+      QUADRO III — Docente I (8 cargos)        min / max
+        Mestrado Profissional,
+          Área do Componente Curricular .......  5 / 5
+        Lato sensu, Tecnologias Digitais
+          na Educação, 360h ...................  4 / 4
+        Lato sensu, Educação Inclusiva, 360h .  3 / 3
+                                        TOTAL  12 / 12
+
+      QUADRO IV — Docente II (1 cargo)
+        Mestrado Profissional,
+          Docência na Educação Básica .........  5 / 5
+        Lato sensu, Alfabetização e Letramento
+          em Educação Infantil, 360h ..........  4 / 4
+        Lato sensu, Educação Inclusiva, 360h .  3 / 3
+                                        TOTAL  12 / 12
+
+    · Teto de 12 pontos, declarado UMA vez (13.4) para os dois quadros.
+    · Caráter exclusivamente CLASSIFICATÓRIO (13.1).
+    · Histórico escolar obrigatório, com carga horária (13.5); CNE/MEC (13.7);
+      diploma estrangeiro revalidado (13.10); tradução juramentada (13.11).
+    · Cursos concluídos até 30 dias antes do prazo do subitem 5.4 (13.17) — e o 5.4 é o
+      fim das inscrições, 08/06/2026. A data-limite é, portanto, 09/05/2026.
+    · Aplicabilidade: só Docente I e Docente II, entre os 9 cargos (13.2).
+
+    🔴 AS DUAS COLUNAS DE PONTOS SÃO DO DOCUMENTO. A tabela publica "Pontuação Mínima por
+      Título" e "Pontuação Máxima por Título" lado a lado. ⚠️ Nos 6 itens reais elas são
+      IGUAIS — a diferença entre as duas NÃO é exercitada por dado nenhum que temos.
+
+    CRONOGRAMA: o Edital 002 publica TRÊS datas de títulos que a fatia 3 não previa —
+      entrega em 22 OU 23/07/2026, resultado em 12/08, recurso em 13/08. Sem elas o
+      prazo do 13.17 não tinha de onde ser derivado.
 
   # ═══════════════════════════════════════════════════════════════════════════
   etapas:
     - id: 1
-      nome: "Banco — categorias e regras gerais"
-      status: "⏳ pendente"
-      entrega:
-        - >
-          `titulos_categorias`: `edital_cargo_id`, `nivel_titulo` (DOUTORADO |
-          MESTRADO_PROFISSIONAL | MESTRADO_ACADEMICO | ESPECIALIZACAO_LATO_SENSU),
-          `area_exigida`, `carga_horaria_minima_horas`, `pontos_por_item`,
-          `limite_itens_aceitos`, `pontuacao_maxima_categoria`, `exige_historico_anexo`.
-        - >
-          `titulos_regras_gerais`: `edital_id`, `teto_maximo_geral_pontos`,
-          `dias_conclusao_previa_inscricao`, `exige_reconhecimento_mec_cne`.
-      armadilha: >
-        🔴 "Título que serve de requisito de investidura não pontua" CRUZA TABELAS — depende
-        da `escolaridade_minima` do cargo (fatia 2). Se virar barreira, é TRIGGER, não `if`
-        no hook (CLAUDE.md §2). E se ficar só na tela, o doc precisa dizer que é conveniência,
-        não garantia.
+      nome: "Banco — as regras gerais e os títulos aferíveis"
+      status: "🟢 feita"
+      entrega: >
+        Migration 20260916234302. `titulos_config` (por EDITAL, PK em `edital_id`) e
+        `titulos_itens` (por CARGO, FK RESTRICT para `edital_cargos`), com 8 CHECKs.
+      verificacao: >
+        `docs/bateria-edital-titulos.sql`, 22 casos verdes, cada recusa NOMEANDO a
+        constraint. O CASO 9 prova a AUSÊNCIA: a soma acima do teto é aceita pelo banco.
 
     - id: 2
-      nome: "UI — a grade de titulações"
-      status: "⏳ pendente"
-      entrega:
-        - "Toggle do capítulo, ligável em qualquer edital (D_ORTOGONAL)."
-        - "Grade: nível · área · pontos unitários · quantidade máxima · subtotal."
-        - >
-          🎯 Validação aritmética: a soma das `pontuacao_maxima_categoria` tem de ser
-          compatível com o `teto_maximo_geral_pontos`. Mesma natureza da soma de questões
-          da fatia 5 — função pura, testável.
+      nome: "Núcleo e UI — o contador contra o teto e a data derivada"
+      status: "🟢 feita"
+      entrega: >
+        `src/lib/edital-titulos.ts` (`somaDosPontos`, `conferirTitulos`,
+        `dataLimiteDeConclusao`), `useTitulos` e `QuadroDeTitulos.tsx`. As três etapas de
+        títulos entraram em `ETAPAS_SUGERIDAS` do cronograma.
+      verificacao: >
+        15 casos. Falsificado 3 vezes: somar pelo mínimo derruba 1 (e só 1 — é o único
+        que guarda essa escolha); tirar o meio-dia da data derruba 3; tornar o teto
+        inatingível um erro derruba 1.
 
     - id: 3
-      nome: "Verificação e docs"
-      status: "⏳ pendente"
-      entrega:
-        - >
-          ⭐ CONTROLE POSITIVO COM DADO REAL: reproduzir a tabela de títulos do Edital
-          002/2026 e bater o teto de 12 pontos, item a item.
-        - >
-          ⭐ CONTROLE NEGATIVO: soma das categorias acima do teto tem de acusar — e acusar
-          essa regra, não outra.
-        - "Bateria SQL · npm test · tsc · lint (baseline 111) · build · docs:conferir"
+      nome: "O quadro no documento"
+      status: "🟢 feita"
+      entrega: >
+        `quadro_fonte = 'titulos'` deixou de ser pendência e passou a renderizar os
+        Quadros III e IV, com as colunas do documento. `useQuadrosDoEdital` conta as
+        linhas de verdade, então o linter para de acusar `quadro-sem-dado` à toa.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  fora_de_escopo:
+    - >
+      🔴 CORREÇÃO DE PROVA. Conferir que a soma das categorias cabe no teto NÃO garante
+      que a pontuação de um candidato o respeite — isso é outro módulo, que não existe.
+      A fronteira está escrita no cabeçalho de `src/lib/edital-titulos.ts`.
+    - "Agrupar cargos no quadro publicado (D_AGRUPAMENTO)."
+    - "Regra 'título que é requisito de investidura não pontua' — ver `riscos`."
 
   # ═══════════════════════════════════════════════════════════════════════════
   riscos: |
     R1. **Ressuscitar o acoplamento a Magistério.** Está escrito em dois arquivos de
-        referência e é a leitura natural de quem chegar depois. Os dois já foram anotados,
-        mas a tentação volta quando alguém quiser "simplificar" o toggle.
+        referência e é a leitura natural de quem chegar depois. A tentação volta quando
+        alguém quiser "simplificar" o toggle.
 
-    R2. 🔴 **Teto compatível não é teto respeitado.** Validar que a soma das categorias cabe
-        no teto NÃO garante que a pontuação final de um candidato respeite o teto — isso é
-        correção de prova, outro módulo. ⚠️ Registrar a fronteira, ou alguém vai supor que o
-        sistema já limita.
+    R2. 🔴 **Teto compatível não é teto respeitado.** Registrado acima e no código.
 
-    R3. **O prazo de 30 dias depende do cronograma** (fatia 3). Se vier antes, é número solto.
+    R3. ✅ RESOLVIDO. O prazo de 30 dias pende do cronograma, e o cronograma agora tem as
+        etapas de títulos. `dataLimiteDeConclusao` DERIVA a data; não há campo para
+        digitá-la, justamente para não criar a segunda cópia que envelhece calada.
+
+    R4. ⚠️ **"Título que serve de requisito de investidura não pontua" (13.x) NÃO foi
+        implementado.** Ele cruza tabelas — depende da escolaridade exigida do cargo, que
+        é da fatia 2 — e vira barreira só como TRIGGER, nunca como `if` no hook. Fica
+        registrado aqui como não-feito, para que ninguém suponha a garantia.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  desvios_da_execucao: |
+    🔴 A MEDIÇÃO DERRUBOU DUAS COLUNAS DO PRÓPRIO ESBOÇO. Ele previa `pontos_por_item` e
+       `limite_itens_aceitos` — e nenhum dos dois existe no documento. Não há conceito de
+       quantidade de títulos por categoria no Edital 002: cada título vale um valor fixo e
+       conta uma vez. O que a tabela publica é o par mínimo/máximo, e é ele que o modelo
+       guarda. Todo campo que ninguém preenche vira, com o tempo, um campo em que alguém
+       confia.
+
+    ➕ E O ESBOÇO PREVIA `exige_historico_anexo` POR CATEGORIA. No documento a exigência é
+       geral (13.5), não por título — foi para `titulos_config`. Por categoria, seria uma
+       chave que os 6 itens reais preencheriam com o mesmo valor.
+
+    🔴 EU ESCREVI UM PADRÃO QUE O BANCO RECUSARIA. A primeira versão de `useTitulos`
+       inseria título novo com `pontos_minimo: 0, pontos_maximo: 0` — e `chk_titulo_pontos_
+       positivos` recusa zero, então TODO título novo morreria. A saída fácil era mandar
+       `1`; ela é pior, porque um título que vale 1 ponto sem ninguém ter escolhido é o
+       placeholder inventado que este módulo existe para matar. Os pontos viraram
+       obrigatórios na assinatura, e o botão só habilita quando há valor.
+
+    🔴 UM TESTE DE OUTRA FATIA CAIU, E CAIU CERTO. `ArtigosDoCapitulo.ui.test.tsx` tinha um
+       caso usando `titulos` como exemplo de fonte PENDENTE. A fatia 6 a tornou pronta e o
+       caso quebrou — o contrato mudou, o teste não estava errado (armadilha 8). Foi
+       reapontado para `vagas_por_area`, a última pendente, com a anotação de que cairá de
+       novo quando a fatia 7 entrar.
+
+    ➕ TRÊS ETAPAS NOVAS NO CRONOGRAMA (fatia 3), que faltavam: `entrega_titulos`,
+       `resultado_titulos` e `recurso_titulos`. ⚠️ A entrega é ALTERNATIVAS, não INTERVALO:
+       o Edital 002 diz "no dia 22/07/2026 ou no dia 23/07/2026", dois dias à escolha do
+       candidato. Como intervalo, o documento passaria a dizer "de 22 a 23", que é outra
+       coisa.
+
+    ⚠️ UMA REGRA QUE EU QUASE ESCREVI E NÃO ESCREVI: "lato sensu tem de declarar carga
+       horária". Nos 4 itens lato sensu reais ela está sempre lá (360h) e o mestrado nunca
+       a declara — mas 4 casos do mesmo edital são um costume da FEVRE, não uma regra. Ela
+       acusaria o primeiro edital que fizesse diferente, e é assim que um painel perde a
+       confiança de quem o lê. Está registrada como não-regra no código.
+
+    ⚠️ FRONTEIRA REGISTRADA E NÃO EXERCITADA PELO MUNDO: `pontos_minimo < pontos_maximo`.
+       O banco permite (CASO 3b) e a soma conta pelo MÁXIMO (é o pior caso para o teto),
+       mas nenhum edital real usa a faixa — a tela edita os dois com um campo só.

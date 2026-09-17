@@ -6,7 +6,15 @@ roadmap:
   titulo: "Editais fatia 11 — critérios de desempate e resultado final"
   criado: "2026-09-16"
   status: >
-    ⏳ NÃO INICIADO — 🟡 ESBOÇO. Detalhar antes de executar.
+    🟢 EXECUTADA em 2026-09-17. Migration 20260917130000 (`criterios_desempate`, UMA
+    tabela com discriminador), `src/lib/edital-desempate.ts`, `useDesempate`,
+    `CriteriosDeDesempate.tsx` e `docs/bateria-edital-desempate.sql` (19 casos, todos
+    verdes). 1.664 testes em 88 arquivos, tsc, build, lint 111 (baseline), docs:conferir
+    limpo, db reset completo.
+    ✅ As três ordens foram MEDIDAS e diferem de verdade — ver `medido_na_execucao`.
+    ⚠️ Duas decisões contra o esboço: UMA tabela em vez de duas, e a hora de nascimento
+    NÃO modelada (R3 atendido). Ver `desvios_da_execucao`.
+    🟢 Aguardando merge para ir a concluidos/.
     ⚠️ Acrescentada em 2026-09-16, junto com as fatias 9 e 10.
   depende_de: >
     Fatia 1 (espinha), fatia 5 (o desempate referencia DISCIPLINA) e fatia 6 quando houver
@@ -36,32 +44,38 @@ roadmap:
   etapas:
     - id: 1
       nome: "Banco — as duas listas ordenadas"
-      status: "⏳ pendente"
-      entrega:
-        - >
-          `criterios_desempate`: `edital_cargo_id`, `ordem_prioridade`, `criterio_tipo`
-          (ESTATUTO_IDOSO_60 | FUNCAO_JURADO | PONTUACAO_DISCIPLINA | MAIOR_PONTOS_TITULOS |
-          MAIOR_IDADE_DATA_HORA), `disciplina_referencia_id` (NULLABLE, obrigatório quando o
-          tipo for PONTUACAO_DISCIPLINA).
-        - >
-          `criterios_desempate_pcd`: `edital_id`, `ordem_prioridade`, `criterio_pcd`
-          (ARRIMO_FAMILIA | MAIOR_NUMERO_DEPENDENTES_ATE_21 | AUSENCIA_FONTE_RENDA).
-      armadilha: >
-        🔴 `ordem_prioridade` sem UNIQUE por edital deixa dois critérios empatados na mesma
-        posição — um desempate que empata. UNIQUE (edital_cargo_id, ordem_prioridade).
-        ⚠️ E `disciplina_referencia_id` nulo com tipo PONTUACAO_DISCIPLINA é critério
-        impossível de aplicar: isso é CHECK, não validação de tela.
+      status: "🟢 feita"
+      entrega: >
+        UMA tabela `criterios_desempate` com discriminador `lista` (GERAL | PCD) — não
+        duas. Ver `desvios_da_execucao`. Colunas: `edital_id`, `cargo_id` +
+        `aplica_a_todos_os_cargos`, `lista`, `ordem_prioridade`, `criterio_tipo`,
+        `disciplina_referencia` (TEXTO, não FK), `observacao`.
+      armadilha_atendida: >
+        ✅ AS DUAS. A posição repetida é barrada por DOIS índices únicos parciais (o
+        comum, `UNIQUE (edital_id, lista, ordem)` com `cargo_id IS NULL`, é o que vale
+        para os três editais reais — com um índice comum os nulos seriam DISTINTOS e
+        deixariam passar). CASO 2.
+        ✅ E a disciplina obrigatória é CHECK, `chk_desempate_disciplina` — BICONDICIONAL,
+        então disciplina num critério que não a usa também é recusada. CASOS 4 e 4b.
+      o_que_o_esboco_nao_previu: >
+        🔴 A CHECK `chk_desempate_tipo_da_lista`: "arrimo de família" na lista GERAL seria
+        a regra de PCD aplicada a todo mundo, e ninguém notaria — as duas saem em
+        parágrafos diferentes do mesmo capítulo. CASOS 5 e 5b.
 
     - id: 2
       nome: "UI — lista ordenável"
-      status: "⏳ pendente"
+      status: "🟢 feita"
       entrega:
-        - "Lista arrastável de critérios, com o seletor de disciplina aparecendo só no tipo que o exige."
-        - "Lista separada para os critérios de PCD."
+        - >
+          ⚠️ Botões ↑ ↓, NÃO arrasto — mesma decisão da fatia 1: a lista tem 4 a 7 itens,
+          os botões funcionam pelo teclado, e a memória do repo registra 4 armadilhas
+          silenciosas no @dnd-kit 6.3.1.
+        - "Seletor de disciplina só no tipo que o exige, e só com os nomes da matriz."
+        - "As duas listas na mesma tela, cada uma numerando a partir de 1º."
 
     - id: 3
       nome: "Verificação e docs"
-      status: "⏳ pendente"
+      status: "🟢 feita"
       entrega:
         - "⭐ CONTROLE POSITIVO: reproduzir a ordem de desempate do Edital 002 e a do 004 (diferem na disciplina)."
         - "⭐ CONTROLE NEGATIVO: critério PONTUACAO_DISCIPLINA sem disciplina tem de ser recusado PELO BANCO."
@@ -78,3 +92,67 @@ roadmap:
     R3. **A hora/minuto/segundo da certidão de nascimento** (critério 4) é dado que o sistema
         não tem e provavelmente nunca terá. É regra textual do edital — registrar como tal,
         para ninguém tentar modelar um campo que não se preenche.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  medido_na_execucao: |
+    AS TRÊS ORDENS PUBLICADAS, e elas DIFEREM de verdade:
+
+                        002 (Docente I e II)   003 (Enf. e Téc.)     004 (ACS e ACE)
+      1º   Conhecimentos Específicos   Conhecimentos Específicos   Conh. Específicos
+      2º   Conhecimentos Pedagógicos   Legislação do SUS           Língua Portuguesa
+      3º   Língua Portuguesa           Língua Portuguesa           Matemática
+      4º   Prova de Títulos            Maior Idade                 Maior Idade
+      5º   Maior Idade                 —                           —
+
+    ⚠️ É isso que faz o controle positivo valer: se as três fossem iguais, reproduzi-las
+    não provaria que o modelo cabe em mais de um formato.
+
+    E ANTES da lista, os três têm as MESMAS duas preferências legais (itens 14.2/14.3 no
+    002 e no 004; 13.2/13.4 no 003): idade ≥ 60 anos (Lei 10.741/2003, art. 27 § único) e
+    exercício da função de jurado (CPP, art. 440).
+
+    E DEPOIS, a lista de PCD, IDÊNTICA nos três (Leis Municipais 3.113/94 e 3.221/95):
+    arrimo de família · mais dependentes até 21 anos · nenhuma fonte de renda.
+
+    🔴 A LISTA É POR EDITAL, não por cargo. Os três escrevem "Candidatos aos cargos de
+    <A> e <B>" — uma lista cobrindo todos os cargos. ⚠️ Mas a numeração do documento
+    (14.5.**1**) antecipa um 14.5.2, então `cargo_id` anulável entrou pelo padrão já
+    estabelecido nas fatias 8 e 10: nos três editais reais é uma linha com nulo.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  desvios_da_execucao: |
+    🔴 UMA TABELA, NÃO DUAS. O esboço propunha `criterios_desempate` e
+       `criterios_desempate_pcd`. São a mesma coisa — uma lista ordenada de critérios de um
+       edital —, e duas tabelas duplicariam RLS, índices, a regra de ordem e a tela. A
+       única diferença real é QUAIS tipos cada lista admite, e isso uma CHECK expressa
+       melhor que um nome de tabela.
+       ⚠️ E o item 14.8 do Edital 002 mostra que as duas se encadeiam: "esgotados os
+       critérios estabelecidos para as pessoas com deficiência, serão adotados os mesmos
+       critérios para os candidatos à ampla concorrência". São dois trechos de um mesmo
+       procedimento, não dois assuntos.
+
+    🔴 R3 ATENDIDO: A HORA DE NASCIMENTO NÃO FOI MODELADA. Os três têm a mesma regra de
+       último recurso — quem não apresentar a certidão "terá considerada como hora de
+       nascimento, 23 horas 59 minutos e 59 segundos". Não virou coluna porque:
+         · o dado (a hora de nascimento do candidato) o sistema não tem e não vai ter;
+         · e o parâmetro (as 23:59:59) é IDÊNTICO nos três — coluna que ninguém varia é
+           coluna em que alguém confia sem motivo.
+       Fica como artigo do capítulo, escrito à mão. É o que o R3 pedia: "registrar como
+       regra textual, para ninguém tentar modelar um campo que não se preenche".
+
+    ➕ UMA REGRA QUE O BANCO NÃO ALCANÇA E O LINTER PEGA: a ORDEM COM BURACO. O índice
+       único impede duas na mesma posição; não impede 1º, 2º, 4º. Um degrau na ordem
+       publicada faz quem lê supor que um critério foi omitido.
+
+    ➕ E OUTRA, que cruza fatias: desempate por títulos num edital SEM prova de títulos.
+       Só o 002 tem os dois; um sem o outro é um capítulo contradizendo outro.
+
+    ⚠️ `mover` FAZ A TROCA EM TRÊS PASSOS, com uma posição temporária alta. Trocar A(1)↔B(2)
+       direto falharia no índice único: ao gravar A=2, B ainda está em 2. NÃO virou RPC, e
+       é escolha — a lista tem 4 a 7 itens, a troca é entre DOIS vizinhos, e uma falha no
+       meio deixa um critério na posição 9999, visível na tela. Na fatia 1 eram 300 artigos
+       e a reescrita era da lista inteira, o que justificava a transação.
+
+    ⚠️ E A FRONTEIRA DO R1 ESTÁ NA TELA, não só no código: "o sistema não compara
+       candidatos — quem aplica os critérios é a correção da prova". Desempate é a parte do
+       edital que mais vira processo, e quem lê a tela precisa saber que ela só descreve.

@@ -48,6 +48,16 @@ export const ETAPAS_SUGERIDAS: ReadonlyArray<{ chave: string; nome: string; tipo
   { chave: "recurso_gabarito",           nome: "Recebimento dos recursos ao gabarito",              tipo: "DATA_UNICA" },
   { chave: "resultado_preliminar",       nome: "Resultado preliminar",                              tipo: "DATA_UNICA" },
   { chave: "vista_folha_respostas",      nome: "Vista da folha de respostas",                       tipo: "DATA_UNICA" },
+  // 🔵 As três etapas de TÍTULOS entraram com a fatia 6, em 2026-09-16. Elas faltavam, e
+  // a falta era concreta: o Edital 002 publica as três (entrega em 22 OU 23/07/2026,
+  // resultado em 12/08, recurso em 13/08), e sem elas o prazo de conclusão dos cursos —
+  // "30 dias antes do fim das inscrições", item 13.17 — não tinha de onde ser derivado.
+  // ⚠️ A entrega é ALTERNATIVAS, não INTERVALO: são dois dias à escolha do candidato, não
+  // uma janela contínua. Modelá-la como intervalo diria que 22 e 23 é "de 22 a 23", o que
+  // muda o que o candidato lê.
+  { chave: "entrega_titulos",            nome: "Entrega dos títulos",                               tipo: "ALTERNATIVAS" },
+  { chave: "resultado_titulos",          nome: "Resultado da avaliação de títulos",                 tipo: "DATA_UNICA" },
+  { chave: "recurso_titulos",            nome: "Recurso da avaliação de títulos",                   tipo: "DATA_UNICA" },
   { chave: "resultado_final",            nome: "Resultado final e homologação",                     tipo: "DATA_UNICA" },
 ];
 

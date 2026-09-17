@@ -48,12 +48,16 @@ export type TipoItem = "item" | "prosa" | "quadro";
  */
 export type QuadroFonte = "cargos" | "disciplinas" | "titulos" | "vagas_por_area" | "cronograma";
 
-export const QUADRO_FONTES: ReadonlyArray<{ fonte: QuadroFonte; rotulo: string; pronto: boolean }> = [
-  { fonte: "cargos", rotulo: "Quadro de cargos, vagas e vencimentos", pronto: true },
-  { fonte: "disciplinas", rotulo: "Matriz da prova objetiva", pronto: true },
-  { fonte: "cronograma", rotulo: "Cronograma do certame", pronto: true },
-  { fonte: "titulos", rotulo: "Quadro de títulos por cargo", pronto: false },
-  { fonte: "vagas_por_area", rotulo: "Vagas por área de abrangência", pronto: false },
+// 🔵 O campo `pronto` SAIU em 2026-09-17. Ele marcava fonte cujo capítulo ainda não
+// existia, e com a fatia 7 as cinco passaram a ter — virou constante `true`, e flag que
+// nunca é falsa é flag em que alguém confia sem motivo. Quem renderiza uma fonte
+// desconhecida é `QuadroDoArtigo`, que a nomeia em vez de devolver espaço em branco.
+export const QUADRO_FONTES: ReadonlyArray<{ fonte: QuadroFonte; rotulo: string }> = [
+  { fonte: "cargos", rotulo: "Quadro de cargos, vagas e vencimentos" },
+  { fonte: "disciplinas", rotulo: "Matriz da prova objetiva" },
+  { fonte: "cronograma", rotulo: "Cronograma do certame" },
+  { fonte: "titulos", rotulo: "Quadro de títulos por cargo" },
+  { fonte: "vagas_por_area", rotulo: "Vagas por área de abrangência" },
 ];
 
 /** O registro cru de `edital_itens`. */

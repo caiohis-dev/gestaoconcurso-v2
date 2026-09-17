@@ -217,9 +217,16 @@ describe("Cargos (interação)", () => {
       await user.type(campo, "DOCENTE I - ARTE");
       await user.click(screen.getByRole("button", { name: "Salvar" }));
 
+      // 🔵 Desde 2026-09-17 o UPDATE leva também escolaridade e conselho (fatia 8), e o
+      // `null` deles é significativo: é "não declarado", distinto de "declarado: não
+      // exige" ('NENHUM'). ⚠️ Renomear NÃO pode apagar a declaração de quem já a tinha —
+      // é por isso que o hook distingue `undefined` (não mexer) de `null` (apagar), e
+      // aqui o diálogo manda o que estava carregado, que neste cargo é nulo.
       await waitFor(() =>
         expect(builderQueChamou("cargos", "update").update).toHaveBeenCalledWith({
           nome: "DOCENTE I - ARTE",
+          escolaridade_minima: null,
+          conselho_classe_obrigatorio: null,
         }),
       );
       expect(buildersDaTabela("cargos").some((b) => b.upsert.mock.calls.length > 0)).toBe(false);

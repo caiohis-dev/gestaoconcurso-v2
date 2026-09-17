@@ -67,11 +67,24 @@ export default function Cargos() {
 
   // Um diálogo só: a presença de `cargoEmEdicao` é que decide criar vs. renomear. Dois
   // diálogos separados duplicariam o formulário e as regras de validação.
-  const salvar = async (nome: string) => {
+  const salvar = async (d: {
+    nome: string;
+    escolaridade_minima: string | null;
+    conselho_classe_obrigatorio: string | null;
+  }) => {
     if (cargoEmEdicao) {
-      await atualizarCargo({ id: cargoEmEdicao.id, nome });
+      await atualizarCargo({ id: cargoEmEdicao.id, ...d });
     } else {
-      await criarCargo(nome);
+      const novo = await criarCargo(d.nome);
+      // ⚠️ DOIS PASSOS na criação, e só quando há o que declarar. `criarCargo` recebe só
+      // o nome porque a importação de candidatos o chama assim, em lote, sem esses dados
+      // — e mudar a assinatura dele por causa desta tela mexeria naquele caminho.
+      // 🔴 Se o segundo passo falhar, o cargo existe sem a declaração: o toast avisa, e o
+      // linter do edital acusa `cargo-sem-conselho-declarado` até alguém completar. É
+      // estado incompleto e visível, não perda silenciosa.
+      if (d.escolaridade_minima !== null || d.conselho_classe_obrigatorio !== null) {
+        await atualizarCargo({ id: novo.id, ...d });
+      }
     }
     setDialogOpen(false);
     setCargoEmEdicao(null);
