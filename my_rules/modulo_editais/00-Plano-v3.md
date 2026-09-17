@@ -22,7 +22,7 @@ Na v3 o edital passa a ser **o documento normativo do certame**, autorado dentro
 
 | Defeito | Onde | Qual fatia o mata |
 |---|---|---|
-| **Copia-e-cola** — exige "Certidão Nada Consta do COREN" na posse de Agente Comunitário de Saúde, cargo sem conselho de classe | item 15.8-L | **fatia 8** (investidura), com a base na fatia 2 |
+| **Copia-e-cola** — exige "Certidão Nada Consta do COREN" na posse de Agente Comunitário de Saúde, cargo sem conselho de classe | item 15.8-L | ✅ **MORTO na fatia 8** (2026-09-17): trigger `IN001` + linter de texto livre |
 | **Placeholder esquecido** — `"dia XX/xx/2026"` no corpo publicado | itens 12.4 e 14.9 | **fatia 3** (cronograma), com o linter da fatia 1 |
 
 O sistema inteiro é desenhado para tornar essas duas classes de erro **impossíveis**, não improváveis.
@@ -111,7 +111,7 @@ Cada uma tem roadmap próprio em [`../analises/`](../analises/), no padrão YAML
 | 11 | Critérios de desempate e resultado | [`roadmap-editais-desempate-e-resultado.yaml`](../analises/roadmap-editais-desempate-e-resultado.yaml) |
 | 12 | Exportação (PDF / Markdown / JSON) | [`roadmap-editais-exportacao.yaml`](../analises/roadmap-editais-exportacao.yaml) |
 
-🔵 **Uma refatoração atravessou as 12 em 2026-09-16, depois das fatias 1 a 5:** o artigo saiu do texto do capítulo e virou registro próprio ([`roadmap-editais-artigos-por-registro.yaml`](../analises/roadmap-editais-artigos-por-registro.yaml)). Ela é **pré-requisito das fatias 6 a 12** — cada uma passa a ganhar um `quadro_fonte`, e não um bloco de texto.
+🟢 **Entregues: as fatias 1 a 11**, em 2026-09-16 e 17. ⏳ **A fatia 12 (exportação) foi para o [`backlog.md`](../backlog.md)** por decisão do usuário em 17/09 — é a que fecha o objetivo do módulo, e é onde duas dívidas registradas passam a sair impressas no mesmo documento. 🔵 **Uma refatoração atravessou as 12 em 2026-09-16, depois das fatias 1 a 5:** o artigo saiu do texto do capítulo e virou registro próprio ([`roadmap-editais-artigos-por-registro.yaml`](../analises/roadmap-editais-artigos-por-registro.yaml)). Ela é **pré-requisito das fatias 6 a 12** — cada uma passa a ganhar um `quadro_fonte`, e não um bloco de texto.
 
 🔵 **As fatias 9, 10 e 11 nasceram depois**, em 2026-09-16: ao dividir o plano apareceu que três módulos do [`Arquitetura de Tabelas…`](./Arquitetura%20de%20Tabelas%20de%20Banco%20de%20Dados%20para%20Editais.md) não tinham fatia, e o `edital_canais_atendimento` não tinha dono. A exportação, que era a 9, virou a 12.
 
@@ -127,7 +127,7 @@ Cada uma tem roadmap próprio em [`../analises/`](../analises/), no padrão YAML
 |---|---|
 | 2 | Qual é a **regra de arredondamento legal** das cotas (10% PCD, 20% negros)? É norma, não escolha de implementação |
 | 3 | De onde vem a lista de **feriados municipais** de Volta Redonda, sem a qual "1 dia útil" é chute? |
-| 7 | **`unidades_lotacao` vs. `unidades_prova`** — reaproveitar, relacionar ou separar? |
+| ~~7~~ | ✅ **RESPONDIDA em 17/09: SEPARAR.** A interseção medida entre os dois catálogos é **zero** — 12 escolas contra 39 UBS/UBSF. Ver o roadmap da fatia 7. |
 
 ---
 

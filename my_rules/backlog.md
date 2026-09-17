@@ -46,6 +46,26 @@ errada e o que cada decisão custou. Antes de reabrir qualquer tema abaixo, proc
 | ✅ 10/08 | o **banco de produção da v2** existe, carregado e **provado por login real** (`zugigdpuxbpogoepdawm`, us-west-2, plano free) |
 | ✅ 13/08 | **a v2 FOI AO AR**: `https://fevre.online` responde por nginx com TLS, e o bundle publicado aponta para o Supabase de produção |
 
+| ✅ 16–17/09 | a **v3 do módulo Editais**: 11 das 12 fatias entregues, e as duas que faltavam viraram itens aqui embaixo |
+
+---
+
+## 📄 Editais v3, fatia 12 — exportação (PDF / Markdown / JSON)
+
+**Status:** ⏳ **não iniciada, por decisão do usuário em 2026-09-17** — as fatias 1 a 11 foram entregues e esta foi deixada para o backlog. O roadmap é [`analises/roadmap-editais-exportacao.yaml`](./analises/roadmap-editais-exportacao.yaml), ainda em esboço.
+**Área:** módulo Editais — ver [`estrutura/modulos/editais/00-modulo.md`](./estrutura/modulos/editais/00-modulo.md)
+
+🔴 **É a fatia que fecha o objetivo do módulo.** As 11 primeiras montam o documento no banco; esta é a que o tira de lá. Sem ela, o edital continua sendo redigido no Word e o sistema é só um formulário — o que o `00-Plano-v3.md` chama de "gerar o edital publicável" não acontece.
+
+⚠️ **E é onde duas dívidas registradas deixam de ser hipótese:**
+
+1. **O e-mail duplicado** (`regras_vista_prova.email_solicitacao` × `edital_canais_atendimento`) passa a sair impresso **no mesmo documento**, em capítulos diferentes. Hoje a divergência é um aviso de tela; na exportação vira erro visível no PDF. Ver [`estrutura/transversais/invariantes.md`](./estrutura/transversais/invariantes.md).
+2. **Os dois quadros gerados não reproduzem a forma publicada** — o Quadro II de provas e os Quadros III/IV de títulos saem com uma linha por cargo, onde o Edital 002 agrupa. Foi **decisão do usuário** (não agrupar), e a exportação é onde ela aparece.
+
+⚠️ **O que já está pronto e ela consome:** a numeração calculada de capítulo e artigo, a resolução de `{{cap:}}` e `{{item:}}`, o `segmentarNegrito`, e as cinco fontes de quadro renderizando de verdade. A prévia em `EditalStudio` já monta o documento na tela — a exportação é levá-lo para fora, não remontá-lo.
+
+🔴 **A armadilha que o roadmap da fatia 7 deixou avisada:** o Anexo de abrangência tem **843 logradouros** num edital, 84% do teto de 1.000 do PostgREST. A leitura já passa por `buscar-em-fatias`; **a exportação não pode contorná-la** — um select solto devolveria 1.000 e o anexo sairia com uma rua faltando, sem erro nenhum.
+
 ---
 
 ## ⏭️ PRÓXIMA — dois tipos de distribuição automática: máxima e homogênea

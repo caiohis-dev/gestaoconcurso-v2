@@ -25,6 +25,8 @@ Três razões estruturais, e conhecê-las ajuda a prever onde procurar:
 
 ## O que o banco JÁ garante (auditado em 2026-07-26)
 
+> 🔵 **A v3 do módulo Editais acrescentou uma camada inteira em 2026-09-16/17** — 11 tabelas, 2 triggers com código nomeado, 1 RPC e ~60 CHECKs. Ela está numa tabela própria [mais abaixo](#-o-que-a-v3-do-módulo-editais-acrescentou-2026-0916-e-17), porque o volume afogaria esta. O que vale para as duas é o mesmo critério: só entra aqui o que o **banco** garante.
+
 Não repita esforço: isto está coberto e não precisa de barreira no cliente para existir.
 
 | Garantia | Onde |
@@ -156,6 +158,42 @@ Recortar `colaboradores_prova` por unidade criaria um **desencontro**: o coorden
 ⚠️ **Dois níveis de recorte convivem, e a diferença é real:** metas por **unidade** (`get_coordenador_prova_unidade_ids`), ocorrências por **prova** (`is_coordenador_prova`). Quem for uniformizar precisa decidir o correto para cada tabela — copiar um para o outro afrouxa ou aperta demais.
 
 ⚠️ **`has_role(auth.uid(),'admin')` cobre o superadmin** — a hierarquia mora dentro da função (migration `20260725195530`). Nunca escrever `SELECT` literal em `user_roles` numa policy: é a falha que já bloqueou o superadmin três vezes aqui. Verificado nesta migration: superadmin lê as 186.
+
+## 🔵 O que a v3 do módulo Editais acrescentou (2026-09/16 e 17)
+
+Sete fatias em dois dias, e o padrão que elas seguem é sempre o mesmo: **o que cruza tabelas vira trigger, o que é formato vira CHECK, o que é soma fica no linter.** Detalhe e porquê em [`../modulos/editais/00-modulo.md`](../modulos/editais/00-modulo.md).
+
+| Garantia | Onde | Bateria |
+|---|---|---|
+| 🎯 **O documento de conselho de classe só existe se algum CARGO do edital exigir aquele conselho** | trigger `check_documento_conselho`, **`IN001`**, em INSERT **e** UPDATE. ⚠️ `SECURITY INVOKER`: vale **para o admin também** | [`bateria-edital-investidura.sql`](../../../docs/bateria-edital-investidura.sql) CASOS 3, 3b, 8b |
+| Reordenar artigos de um capítulo é atômico | RPC `reordenar_itens_do_capitulo`, **`EI001`** (id de outro capítulo) e **`EI002`** (lista incompleta, que deixaria buraco). `SECURITY INVOKER` — a autorização são as policies | [`bateria-edital-itens.sql`](../../../docs/bateria-edital-itens.sql) CASOS 8–12 |
+| Âncora de artigo única por edital | `edital_itens_ancora_key`, índice **PARCIAL** (`WHERE ancora IS NOT NULL`) — a maioria dos artigos não tem âncora, e um índice íntegro quebraria o uso normal | CASOS 2, 2c |
+| Ementa e critério de desempate sem posição/nome duplicado | **dois** índices parciais em cada (`... WHERE cargo_id IS NULL` e `... IS NOT NULL`). 🔴 Em Postgres nulos são **DISTINTOS**: um índice comum deixaria passar justamente o caso que os três editais usam | [`bateria-edital-conteudo.sql`](../../../docs/bateria-edital-conteudo.sql) CASO 2 · [`bateria-edital-desempate.sql`](../../../docs/bateria-edital-desempate.sql) CASO 2 |
+| "Vale para todos os cargos" ≠ "esqueci de escolher" | CHECK `(cargo_id IS NULL) = aplica_a_todos_os_cargos` em `documentos_investidura`, `conteudo_programatico` e `criterios_desempate`. Sem ela o linter não consegue acusar linha órfã | investidura CASOS 4/4b · conteúdo CASOS 3/3b · desempate CASO 7 |
+| Pares que só fazem sentido juntos | CHECKs **bicondicionais**: `(tipo='quadro') = (quadro_fonte IS NOT NULL)` em `edital_itens`; `(criterio_tipo='PONTUACAO_DISCIPLINA') = (disciplina_referencia IS NOT NULL)` em `criterios_desempate` | itens CASO 5 · desempate CASOS 4/4b |
+| Critério de desempate de PCD não entra na lista geral (e vice-versa) | CHECK `chk_desempate_tipo_da_lista`. ⚠️ As duas listas saem em parágrafos diferentes do mesmo capítulo — a troca passaria despercebida | desempate CASOS 5, 5b |
+| Domínios fechados | CHECKs de `IN (...)`: fonte de quadro, nível de título, conselho, tipo de canal, critério de isenção, tipo de artigo, lista de desempate | todas as baterias |
+| Unicidade funcional (caixa e espaço normalizados) | `unidades_lotacao_nome_key`, `provas_disciplinas_cargo_nome_key`, `conteudo_programatico_*_key`. ⚠️ **NÃO normalizam acento** — mesmo limite de `cargos_nome_chave_key`, e aqui é identidade, não busca | territorialidade CASO 4a |
+| Todas as FKs do módulo são **RESTRICT** | `editais` passou de 3 para **10** dependentes RESTRICT. ⚠️ Cada caso de FK da bateria usa um edital **criado na hora**: num edital existente quem barra é `provas_edital_id_fkey`, e o caso passaria verde sem exercitar nada | todas |
+
+### 🔴 E o que o banco deliberadamente NÃO garante
+
+Isto é tão importante quanto a lista acima, e cada linha tem um caso de bateria que **prova a ausência** — para que ninguém acrescente a barreira sem saber o que quebra.
+
+| Não barrado | Por quê | Quem acusa |
+|---|---|---|
+| Soma que não fecha (questões × total, títulos × teto, unidades × vagas) | Agregação de outra tabela não cabe em CHECK, e um trigger recusaria a digitação no meio do caminho — 5 pontos num teto de 12 é estado legítimo | `edital-prova.ts`, `edital-titulos.ts`, `edital-territorialidade.ts` |
+| Nome de disciplina divergente entre matriz, anexo e desempate | Uma FK para `provas_disciplinas` pende de `edital_cargo_id`, e a ementa/critério comum não pertence a cargo nenhum | `edital-conteudo.ts`, `edital-desempate.ts` |
+| Sigla de conselho escrita no **texto livre** do documento | `COREN`, `Coren-RJ` e `Conselho Regional de Enfermagem` não viram barreira sem recusar o legítimo | `edital-investidura.ts` |
+| E-mail malformado, código de inscrição repetido, `numero_edital` sem formato | É a decisão de 01/08 — *"dado inválido entra cru; valide na leitura"* | `edital-inscricao.ts`, `edital-territorialidade.ts` |
+| Artigo com texto vazio | "Adicionar artigo" cria a linha em branco; uma CHECK obrigaria a UI a inventar placeholder. ⚠️ **Ementa vazia, ao contrário, É recusada** — uma disciplina no anexo sem programa deixa o candidato sem o que estudar | `edital-linter.ts` |
+| Ordem de desempate com **buraco** (1º, 2º, 4º) | O índice impede duas na mesma posição; não impede o degrau | `edital-desempate.ts` |
+
+### ⚠️ Duas dívidas conhecidas, aceitas com o custo escrito
+
+1. **O e-mail de atendimento vive em dois lugares.** `regras_vista_prova.email_solicitacao` (fatia 5) e `edital_canais_atendimento` (fatia 9) guardam o mesmo endereço sem nada ligá-los. Não foi migrado — a coluna tem CHECK própria, e remodelar tabela entregue custa mais que a duplicação. 🔴 **Decisão do usuário em 2026-09-17: só aviso, não recusar.** A divergência é possível, o aviso só aparece na tela do capítulo de inscrição, e por `psql`/PostgREST nada acusa.
+
+2. **Não há reuso rastreável entre editais.** Copiar ementa ou checklist de um edital para outro é copia-e-cola manual — e foi exatamente assim que nasceram os **dois defeitos publicados** que o módulo detecta (a Certidão do COREN no Edital 004 e o `LESGISLAÇÃO DO SUS` no 003). O reuso que existe é de **catálogo global** (`cargos`, `unidades_lotacao`) e de **constantes em código**, que são revisadas.
 
 ## ✅ A lista de verificação — use ao criar ou mexer numa regra
 

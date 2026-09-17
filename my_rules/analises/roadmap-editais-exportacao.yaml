@@ -5,7 +5,14 @@
 roadmap:
   titulo: "Editais fatia 12 — exportação (PDF diagramado, Markdown, JSON)"
   criado: "2026-09-16"
-  status: "⏳ NÃO INICIADO — 🟡 ESBOÇO. É a última fatia: depende de conteúdo para exportar."
+  status: >
+    ⏳ NÃO INICIADA — 🟡 ESBOÇO, e MOVIDA PARA O BACKLOG por decisão do usuário em
+    2026-09-17, com as fatias 1 a 11 entregues. Ver `my_rules/backlog.md`.
+    ⚠️ A dependência do esboço ("depende de conteúdo para exportar") está SATISFEITA: as
+    11 fatias anteriores povoam o documento inteiro. O que falta é só a saída.
+    🔴 É nesta fatia que duas dívidas registradas deixam de ser hipótese — o e-mail
+    duplicado e os dois quadros que não reproduzem a forma publicada. As duas estão em
+    `estrutura/transversais/invariantes.md`, e a segunda é decisão do usuário.
   depende_de: "Fatia 1 (a numeração) e todas as fatias de conteúdo que se queira ver no documento final."
 
   origem: >
