@@ -17,7 +17,7 @@ import { useTitulos } from "@/hooks/useTitulos";
 import { useTerritorialidade, useUnidadesLotacao } from "@/hooks/useTerritorialidade";
 import { useProvaObjetiva } from "@/hooks/useProvaObjetiva";
 import { useCargos } from "@/hooks/useCargos";
-import { diaDaSemana } from "@/lib/edital-cronograma";
+import { formatarDatasDaEtapa } from "@/lib/edital-cronograma";
 import type { QuadroFonte } from "@/lib/edital-itens";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -228,11 +228,11 @@ function CronogramaGerado({ editalId }: { editalId: string }) {
     return <QuadroPendente motivo="Cronograma sem nenhuma etapa — a tabela sairia vazia." />;
   }
 
-  const formatar = (d: string) => {
-    const [a, m, dia] = d.split("-").map(Number);
-    return `${String(dia).padStart(2, "0")}/${String(m).padStart(2, "0")}/${a} (${diaDaSemana(d)})`;
-  };
-
+  // 🔵 CORRIGIDO em 2026-09-18: esta função era local e interpolava `diaDaSemana`, que
+  // devolve o ÍNDICE do dia — a tabela saía como "20/09/2026 (0)" em vez de "(domingo)",
+  // e é esta tabela que vai impressa no edital. A formatação passou a ser a de
+  // `edital-cronograma.ts`, a mesma que o marcador `{{campo:cronograma_*}}` usa: duas
+  // implementações da mesma forma divergem no dia em que uma for corrigida.
   return (
     <Table>
       <TableHeader>
@@ -246,7 +246,9 @@ function CronogramaGerado({ editalId }: { editalId: string }) {
           <TableRow key={e.id}>
             <TableCell className="font-medium">{e.nome_evento}</TableCell>
             <TableCell className="text-xs">
-              {e.datas.length === 0 ? "— sem data" : e.datas.map(formatar).join(e.tipo === "INTERVALO" ? " a " : " ou ")}
+              {e.datas.length === 0
+                ? "— sem data"
+                : formatarDatasDaEtapa(e, { comDiaDaSemana: true })}
             </TableCell>
           </TableRow>
         ))}

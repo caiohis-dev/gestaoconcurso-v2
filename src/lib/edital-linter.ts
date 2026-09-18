@@ -23,7 +23,22 @@
  *
  * 🔴 A saída da `ancora-duplicada` é o §2 em ação: enquanto a regra era um laço aqui, ela
  * valia só para quem passasse pela tela. Agora vale para `psql`, PostgREST e script.
+ *
+ * ## 🔵 O que mudou em 2026-09-18, com o marcador `{{campo:}}`
+ *
+ * Entraram `campo-desconhecido` e `campo-sem-valor` — ver o comentário no corpo de
+ * `analisarArtigo`, que explica por que são duas regras e não uma.
+ *
+ * 🔴 **E o linter continua olhando o texto CRU, não o resolvido.** Isso é decisão, não
+ * descuido: no texto cru, `{{campo:executora_endereco}}` não é placeholder nenhum. Se a
+ * análise passasse a olhar o texto já resolvido, um endereço legítimo cairia na regra
+ * `placeholder-nao-preenchido` — e o caso não é hipotético: o Anexo I do Edital 004 tem um
+ * logradouro chamado **"Rua: Antonio XX"**, que casa com `/x{2,}/i`. Hoje ele mora em
+ * `territorialidade_abrangencia` e nunca chega a `edital_itens.texto`; se um dia chegar, o
+ * grito do linter estará certo.
  */
+import { camposDoTexto, CAMPO_POR_CHAVE } from "@/lib/edital-campos";
+import { CAPITULO_POR_CHAVE } from "@/lib/edital-capitulos";
 import { montarDocumento, referenciasDoTexto, type CapituloResolvido } from "@/lib/edital-numeracao";
 import {
   agruparPorCapitulo,
@@ -68,11 +83,71 @@ export interface EntradaLinter {
    * a regra `quadro-sem-dado` não roda — melhor não acusar do que acusar por ignorância.
    */
   linhasPorFonte?: Partial<Record<QuadroFonte, number>>;
+  /**
+   * Os valores de `{{campo:}}` deste edital, já formatados.
+   *
+   * ⚠️ Mesma doutrina de `linhasPorFonte`: **ausente = ainda não carregado**, e a regra
+   * `campo-sem-valor` não roda. Um `Map` vazio, em vez de `undefined`, acusaria dezenas de
+   * campos no primeiro frame da tela — a armadilha "vazio enquanto carrega".
+   *
+   * A regra `campo-desconhecido` NÃO depende disto e roda sempre: ela só precisa do
+   * catálogo. A assimetria é intencional, e é a diferença entre os dois erros (ver abaixo).
+   */
+  valoresDeCampo?: ReadonlyMap<string, string>;
 }
 
 /** Como o artigo é nomeado na mensagem: pelo número, ou pela posição quando não tem. */
 function rotuloDoArtigo(numero: string, posicao: number): string {
   return numero ? `o item ${numero}` : `o ${posicao + 1}º parágrafo`;
+}
+
+/**
+ * As duas regras dos marcadores de dado variável.
+ *
+ * 🔴 São DOIS erros com DONOS diferentes, e é por isso que são duas regras e não uma.
+ * Uma chave fora do catálogo é typo de quem escreveu o texto — e se o texto veio do edital
+ * modelo, o teste da rodada daquele capítulo devia tê-lo pego antes de chegar aqui. Já um
+ * campo sem valor é trabalho que falta ao autor DESTE edital, e a mensagem tem de dizer
+ * em que capítulo ir preencher.
+ *
+ * ⚠️ Chave desconhecida NÃO acusa também `campo-sem-valor`: a mesma linha apareceria duas
+ * vezes no painel, atribuída a duas pessoas diferentes.
+ *
+ * ⚠️ Mora fora de `analisarArtigo` pelo mesmo motivo que `analisarArtigo` mora fora de
+ * `analisarEdital`: com estas regras dentro, aquela função passou de 15 de complexidade no
+ * lint. Extrair é a saída deste repo — elevar o baseline não é.
+ */
+function analisarCamposDoArtigo(
+  cap: CapituloResolvido,
+  onde: string,
+  texto: string,
+  valoresDeCampo: ReadonlyMap<string, string> | undefined,
+): Achado[] {
+  const achados: Achado[] = [];
+
+  for (const campo of camposDoTexto(texto)) {
+    if (!campo.conhecido) {
+      achados.push({
+        severidade: "erro",
+        capitulo: cap.chave,
+        regra: "campo-desconhecido",
+        mensagem: `Em "${cap.titulo}", ${onde} usa o marcador "{{campo:${campo.chave}}}", que não existe no catálogo de campos — ele sairia impresso como "[?campo:${campo.chave}]".`,
+      });
+      continue;
+    }
+    if (valoresDeCampo && !valoresDeCampo.has(campo.chave)) {
+      const cat = CAMPO_POR_CHAVE.get(campo.chave)!;
+      const quemPreenche = CAPITULO_POR_CHAVE.get(cat.ondeSePreenche)?.titulo ?? cat.ondeSePreenche;
+      achados.push({
+        severidade: "erro",
+        capitulo: cap.chave,
+        regra: "campo-sem-valor",
+        mensagem: `Em "${cap.titulo}", ${onde} usa "${cat.rotulo}", que ainda não foi preenchido neste edital — preencha em "${quemPreenche}".`,
+      });
+    }
+  }
+
+  return achados;
 }
 
 /**
@@ -87,6 +162,7 @@ function analisarArtigo(
     documento: readonly CapituloResolvido[];
     mapaAncoras: ReadonlyMap<string, string>;
     linhasPorFonte: Partial<Record<QuadroFonte, number>> | undefined;
+    valoresDeCampo: ReadonlyMap<string, string> | undefined;
   },
   item: { tipo: string; nivel: number; texto: string | null; quadro_fonte: string | null; numero: string },
   posicao: number,
@@ -127,6 +203,8 @@ function analisarArtigo(
       );
     }
   }
+
+  achados.push(...analisarCamposDoArtigo(cap, onde, texto, ctx.valoresDeCampo));
 
   for (const m of texto.matchAll(RE_REFERENCIA_ITEM)) {
     if (!ctx.mapaAncoras.has(m[1])) {
@@ -208,7 +286,13 @@ export function analisarEdital(entrada: EntradaLinter): Achado[] {
     achados.push(...analisarCapitulo(cap, itens.length > 0));
     if (!cap.incluido || itens.length === 0) continue;
 
-    const ctx = { cap, documento, mapaAncoras, linhasPorFonte: entrada.linhasPorFonte };
+    const ctx = {
+      cap,
+      documento,
+      mapaAncoras,
+      linhasPorFonte: entrada.linhasPorFonte,
+      valoresDeCampo: entrada.valoresDeCampo,
+    };
     let viuItemDeTopo = false;
 
     numerarItens(itens, cap.numero).forEach((item, i) => {

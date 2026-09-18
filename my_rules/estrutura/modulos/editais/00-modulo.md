@@ -54,6 +54,10 @@ O **edital** é o **documento normativo do certame**, montado por capítulos den
 | `src/components/QuadroDeCargos.tsx` | 🔵 **v3 fatia 2** — o primeiro capítulo com parâmetro estruturado |
 | `supabase/migrations/20260916184254_editais_cargos_vagas_e_cg001_por_nome.sql` | 🔵 **v3 fatia 2** — `edital_cargos`, as colunas de `cargos`, e a CG001 estreitada |
 | `src/lib/edital-linter.ts` | 🔵 **v3** — função pura: as regras determinísticas, sem LLM |
+| `src/lib/edital-campos.ts` | 🔵 **2026-09-18** — o TERCEIRO marcador: `{{campo:chave}}`, o dado variável no texto |
+| `src/hooks/useCamposDoEdital.tsx` | 🔵 **2026-09-18** — a única peça do mecanismo que fala com o banco; agrega hooks que já existem |
+| `src/components/DadosDoEdital.tsx` | 🔵 **2026-09-18** — o editor do `preambulo`; **fecha o buraco da fatia 1**, em que `salvarMetadados` não era chamado por tela nenhuma |
+| `supabase/migrations/20260918103305_editais_campos_escalares_do_documento.sql` | 🔵 **2026-09-18** — as 5 colunas que faltavam |
 
 Não há Edge Function nem view neste módulo: é CRUD direto via PostgREST, contido pela RLS. 🔵 **Nem RPC** — e isso foi decidido na implementação, contra o que o roadmap previa: ver "A linha de capítulo é um override" abaixo.
 
@@ -112,6 +116,105 @@ Três tipos de artigo, e os três existem nos editais reais:
 ⚠️ **A indentação da colagem é tolerante** (3 espaços contam como 1 nível), de propósito: perder um artigo por um espaço a mais seria pior que o nível errado, que a lista mostra na hora.
 
 **As duas resoluções de referência convivem:** `{{cap:chave}}` para capítulo e `{{item:ancora}}` para artigo. As duas viram marcador visível (`[?…]`) quando não resolvem — nunca somem, nunca inventam número. Ver `src/lib/edital-itens.ts`.
+
+### 🔵 Rascunho de artigo: sair do capítulo PERGUNTA (2026-09-18)
+
+O texto do artigo é rascunho local (`rascunhos`) e só vai ao banco pelo **"Salvar capítulo"**
+— diferente dos painéis estruturados, que gravam no `blur`. A assimetria é deliberada:
+gravar artigo no `blur` desfaria a escolha de 16/09 (um save por capítulo, pensado para ~300
+artigos) e tiraria o "descartar sem salvar".
+
+⚠️ **Até 18/09 isso perdia texto em silêncio.** Trocar de capítulo fazia `setRascunhos({})`
+direto, com o comentário *"guardá-los entre capítulos daria a impressão de trabalho salvo que
+não está"* — o raciocínio estava certo e a conclusão, errada: quem digitava, clicava noutro
+capítulo e voltava, perdia tudo. O contador "N não salvo(s)" anunciava o **estado**, nunca a
+**consequência**.
+
+🔴 **São TRÊS as saídas do capítulo, e a primeira versão da guarda cobriu só duas.** A
+terceira perdia o texto do mesmo jeito:
+
+| saída | por onde |
+|---|---|
+| outro capítulo | a trilha da esquerda |
+| outro capítulo | o "ir para" do painel de pendências |
+| a tela inteira | o "Voltar para Editais" do cabeçalho |
+| a aba inteira | fechar ou recarregar — `src/hooks/useAvisarAoSair.tsx` |
+
+As três passam por `useRascunhosDoCapitulo`. O diálogo tem **três botões, e o destrutivo não
+é o padrão**: Cancelar (não navega), Descartar e continuar, Salvar e continuar. E `salvar` tem
+**uma implementação com dois chamadores** — o botão e o diálogo.
+
+⚠️ O "Voltar para Editais" **continua sendo um `Link`**, não virou `<button>`: o clique do
+meio, o "abrir em nova aba" e o foco de teclado seguem funcionando, e a guarda só intercepta
+o clique comum, e só quando há rascunho sujo.
+
+🔵 **A quarta saída fechou em 2026-09-18**, com `useAvisarAoSair` — hook próprio, e não
+código solto na página, exatamente para poder ser testado: 4 casos, cada comportamento
+falsificado em separado. Ele é o **primeiro `useEffect` do Studio**, e cabe: é assinatura de
+evento do navegador, que é para o que `useEffect` serve — não busca de dado nem escrita na
+renderização, que são os padrões que este repo evita.
+
+⚠️ **O listener só existe enquanto há rascunho sujo.** Permanente, o navegador pediria
+confirmação em todo recarregamento, inclusive com a tela limpa — o jeito mais rápido de
+ensinar alguém a clicar "sair" sem ler. O caso de controle da suíte é justamente esse.
+
+⚠️ **Uma cobertura que a suíte NÃO dá, e está dita no próprio teste:** o hook chama
+`preventDefault()` **e** atribui `returnValue` (a segunda é para Chrome e Safari antigos). No
+jsdom as duas são **o mesmo bit**, então **remover a linha do `returnValue` deixa a suíte
+verde**. Só a do `preventDefault` está guardada. O texto do diálogo é do navegador e não se
+customiza desde ~2017 — por isso quem precisa explicar o que está em risco faz isso na tela,
+antes, com o contador "N artigo(s) não salvo(s)".
+
+### 🔵 O terceiro marcador: `{{campo:chave}}` (2026-09-18)
+
+Até 18/09 havia **duas** sintaxes, e as duas resolviam **número**, não valor: `{{cap:}}` e
+`{{item:}}`. Data, prazo, endereço e valor eram literais em `edital_itens.texto`, e a única
+proteção era `placeholder-nao-preenchido` — que pega marcador **não preenchido** (`XX`),
+nunca valor **errado**.
+
+O caso que prova a diferença está publicado e já estava documentado neste arquivo: o item
+10.10 do Edital 003 deriva o corte da lactante de uma data que **não é** a da prova. Nenhum
+`XX` aparece ali — o valor está preenchido, formatado e errado.
+
+**A resolução agora tem três passos**, em ordem, em `EditalStudio`: capítulo → item →
+campo. ⚠️ **`{{campo:}}` vem por último de propósito:** o valor é a única das três coisas
+que vem de dado digitado por alguém, e um valor que contivesse `{{` viraria referência se
+fosse resolvido antes.
+
+🔴 **`{{campo:}}` é ESCALAR e POR EDITAL — não existe qualificador por cargo.** Medido nos
+três editais: valor que varia por cargo **nunca** aparece como escalar numa frase; sai como
+lista de alíneas, uma por cargo (`A) Docente I – R$ 100,00 / B) Docente II – R$ 80,00`). O
+item 2.4 do Edital 004 escreve `R$ 3.036,00` em prosa **só porque os dois cargos têm o mesmo
+vencimento** — com valores diferentes, a frase estaria errada.
+
+**As duas regras novas do linter, e elas têm DONOS diferentes:**
+
+| regra | quem errou |
+|---|---|
+| `campo-desconhecido` | **quem escreveu o texto** — chave fora do catálogo, é typo |
+| `campo-sem-valor` | **o autor deste edital** — a mensagem nomeia o capítulo onde preencher |
+
+⚠️ **Ausente e vazio são a MESMA coisa**, de propósito: o mapa é `Map<string,string>` e
+string vazia nunca entra nele. Um `""` resolveria o marcador para nada — buraco invisível no
+meio da frase. E `useCamposDoEdital` devolve **`undefined` enquanto carrega**, não um mapa
+vazio, senão o painel piscaria dezenas de erros no primeiro frame.
+
+⚠️ **O linter continua olhando o texto CRU, não o resolvido.** No texto cru,
+`{{campo:executora_endereco}}` não é placeholder nenhum. Se olhasse o resolvido, um endereço
+legítimo cairia em `/x{2,}/i` — e o caso não é hipotético: o Anexo I do Edital 004 tem um
+logradouro chamado **"Rua: Antonio XX"**.
+
+🔴 **Os campos do cronograma saem de `ETAPAS_SUGERIDAS`, não são escritos à mão** — e é isso
+que torna impossível o erro que mais preocupa aqui. Escritos à mão, alguém criaria
+`entrega_titulos_inicio`/`_fim`, e a entrega de títulos é **ALTERNATIVAS**: o documento
+passaria a dizer "de 22 a 23 de julho" onde o edital oferece "22 **ou** 23". Gerados, só
+existe um campo por etapa, de formato `periodo`, e a forma sai do `tipo` em tempo de
+renderização. Um teste assere que **nenhuma chave termina em `_inicio` ou `_fim`**.
+
+🔵 **E `formatarDatasDaEtapa` passou a ter UMA implementação só** (`edital-cronograma.ts`),
+servindo o quadro do cronograma e o marcador. No mesmo passe caiu um defeito de exibição: o
+quadro interpolava `diaDaSemana`, que devolve o **índice** — a tabela saía como
+`20/09/2026 (0)` em vez de `(domingo)`, e é essa tabela que vai impressa no edital.
 
 ### 🔴 Nenhuma tabela se digita — e isso foi medido
 
@@ -486,7 +589,7 @@ O preço combinado: desligar um capítulo **padrão** gera **aviso** do linter �
 
 **Cobertura de testes** (ver [`../../transversais/testes.md`](../../transversais/testes.md)): o módulo é o mais bem coberto do sistema. `useEditais.test.tsx` (14) cobre a listagem, as traduções de `23505`/`23503` e a invalidação dupla; `EditalDialog.test.ts` (8) o schema isolado; `EditalDialog.ui.test.tsx` (11) a interação. O lado da prova está em `ProvaDialog.ui.test.tsx` (10), que guarda a herança e o bloqueio sem edital. E o **guard da rota** está em `pages/guards.test.tsx`: `/editais` recusa deslogado, colaborador e coordenador — foi justamente quebrando este guard de propósito que a bateria foi falsificada antes de ser aceita.
 
-🔵 **A v3 trouxe 276 casos de LÓGICA PURA (2026-09-16 e 17),** em 14 arquivos: `edital-cotas` (36) · `edital-itens` (29) · `edital-linter` (26) · `edital-territorialidade` (24) · `edital-inscricao` (22) · `edital-numeracao` (20) · `edital-investidura` (19) · `edital-cronograma` (18) · `edital-desempate` (17) · `edital-conteudo` (15) · `edital-titulos` (15) · `edital-acoes-afirmativas` (13) · `edital-prova` (13) · `edital-texto` (9). Mais **15 de interação** em `ArtigosDoCapitulo.ui.test.tsx`.
+🔵 **A v3 trouxe 276 casos de LÓGICA PURA (2026-09-16 e 17),** em 14 arquivos: `edital-cotas` (36) · `edital-itens` (29) · `edital-linter` (26) · `edital-territorialidade` (24) · `edital-inscricao` (22) · `edital-numeracao` (20) · `edital-investidura` (19) · `edital-cronograma` (18) · `edital-desempate` (17) · `edital-conteudo` (15) · `edital-titulos` (15) · `edital-acoes-afirmativas` (13) · `edital-prova` (13) · `edital-texto` (9). 🔵 **Mais `edital-campos` (17) em 2026-09-18**, e 7 casos novos em `edital-linter` e em `edital-cronograma` cada. Mais **15 de interação** em `ArtigosDoCapitulo.ui.test.tsx`.
 
 ⚠️ **E 12 baterias SQL**, que é onde mora tudo que a suíte não alcança: `edital-capitulos` · `edital-itens` · `edital-cargos` · `edital-cronograma` · `edital-acoes-afirmativas` · `edital-prova-objetiva` · `edital-titulos` · `edital-territorialidade` · `edital-investidura` · `edital-inscricao` · `edital-conteudo` · `edital-desempate`. Nenhuma é alcançada por `npm test` nem por `npm run docs:conferir` — **rodá-las é passo manual**, e uma delas já apodreceu verde neste módulo (ver abaixo).
 

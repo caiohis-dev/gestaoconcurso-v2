@@ -92,6 +92,76 @@ export function diaDaSemana(iso: string): number {
 
 export const ehFimDeSemana = (iso: string) => [0, 6].includes(diaDaSemana(iso));
 
+const NOMES_DOS_DIAS = [
+  "domingo",
+  "segunda-feira",
+  "terça-feira",
+  "quarta-feira",
+  "quinta-feira",
+  "sexta-feira",
+  "sábado",
+] as const;
+
+/** O dia da semana por extenso. `diaDaSemana` devolve o índice; isto devolve o nome. */
+export function nomeDoDiaDaSemana(iso: string): string {
+  return NOMES_DOS_DIAS[diaDaSemana(iso)];
+}
+
+/** `2026-09-20` → `20/09/2026`. Sem `Date`, pelo mesmo motivo de `diaDaSemana`. */
+export function formatarDataBr(iso: string): string {
+  const [a, m, d] = iso.split("-");
+  return `${d}/${m}/${a}`;
+}
+
+/**
+ * 🔴 As datas de uma etapa como o documento as publica — e a forma depende do TIPO.
+ *
+ * | tipo | saída |
+ * |---|---|
+ * | `DATA_UNICA` | `20/09/2026` |
+ * | `INTERVALO` | `29/06/2026 a 27/07/2026` |
+ * | `ALTERNATIVAS` | `06/07/2026, 09/07/2026, 13/07/2026 ou 20/07/2026` |
+ *
+ * ⚠️ **Espremer ALTERNATIVAS num intervalo publicaria um edital FALSO** — o candidato
+ * leria que pode entregar em qualquer dia de 06/07 a 20/07, quando só cinco dias são
+ * oferecidos. Por isso o `" ou "` não é enfeite, e por isso esta função lê `e.tipo` em
+ * vez de receber a forma pronta de quem chama.
+ *
+ * ⚠️ **Existe UMA implementação disto, e é esta.** Ela serve o quadro do cronograma
+ * (`QuadroDoArtigo`) e o marcador `{{campo:cronograma_*}}` (`edital-campos.ts`). Se
+ * voltarem a existir duas, elas divergem no dia em que uma for corrigida — que foi
+ * exatamente o motivo de `parsearCapitulo` ter parado de numerar (`edital-itens.ts`).
+ *
+ * Etapa sem data devolve string vazia: quem chama decide o que dizer. Inventar um texto
+ * aqui esconderia o estado que o linter existe para acusar.
+ */
+export function formatarDatasDaEtapa(
+  e: Pick<EtapaCronograma, "tipo" | "datas">,
+  opcoes: { comDiaDaSemana?: boolean } = {},
+): string {
+  if (e.datas.length === 0) return "";
+
+  const escrever = (iso: string) =>
+    opcoes.comDiaDaSemana ? `${formatarDataBr(iso)} (${nomeDoDiaDaSemana(iso)})` : formatarDataBr(iso);
+
+  if (e.tipo === "INTERVALO") {
+    // Pelas pontas, não pelo array inteiro: a CHECK `chk_cronograma_cardinalidade` garante
+    // duas datas, mas ler as pontas continua certo se um dia ela afrouxar.
+    const ordenadas = [...e.datas].sort();
+    const inicio = escrever(ordenadas[0]);
+    const fim = escrever(ordenadas[ordenadas.length - 1]);
+    return inicio === fim ? inicio : `${inicio} a ${fim}`;
+  }
+
+  if (e.tipo === "ALTERNATIVAS" && e.datas.length > 1) {
+    // A ordem é a que o autor gravou — ela é a ordem do documento, não uma ordenação.
+    const escritas = e.datas.map(escrever);
+    return `${escritas.slice(0, -1).join(", ")} ou ${escritas[escritas.length - 1]}`;
+  }
+
+  return escrever(e.datas[0]);
+}
+
 /**
  * As regras de coerência do cronograma.
  *

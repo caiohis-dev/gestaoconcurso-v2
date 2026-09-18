@@ -843,8 +843,10 @@ export type Database = {
           cabecalho_linha2: string | null
           created_at: string | null
           created_by: string | null
+          data_publicacao: string | null
           decreto_autorizador: string | null
           entidade_executora: string | null
+          executora_endereco: string | null
           id: string
           n_candidatos: number | null
           natureza_juridica: string | null
@@ -854,6 +856,9 @@ export type Database = {
           prazo_validade_anos: number | null
           prorrogavel: boolean | null
           regime_trabalho: string | null
+          signatario_cargo: string | null
+          signatario_nome: string | null
+          site_oficial: string | null
           updated_at: string | null
         }
         Insert: {
@@ -862,8 +867,10 @@ export type Database = {
           cabecalho_linha2?: string | null
           created_at?: string | null
           created_by?: string | null
+          data_publicacao?: string | null
           decreto_autorizador?: string | null
           entidade_executora?: string | null
+          executora_endereco?: string | null
           id?: string
           n_candidatos?: number | null
           natureza_juridica?: string | null
@@ -873,6 +880,9 @@ export type Database = {
           prazo_validade_anos?: number | null
           prorrogavel?: boolean | null
           regime_trabalho?: string | null
+          signatario_cargo?: string | null
+          signatario_nome?: string | null
+          site_oficial?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -881,8 +891,10 @@ export type Database = {
           cabecalho_linha2?: string | null
           created_at?: string | null
           created_by?: string | null
+          data_publicacao?: string | null
           decreto_autorizador?: string | null
           entidade_executora?: string | null
+          executora_endereco?: string | null
           id?: string
           n_candidatos?: number | null
           natureza_juridica?: string | null
@@ -892,6 +904,9 @@ export type Database = {
           prazo_validade_anos?: number | null
           prorrogavel?: boolean | null
           regime_trabalho?: string | null
+          signatario_cargo?: string | null
+          signatario_nome?: string | null
+          site_oficial?: string | null
           updated_at?: string | null
         }
         Relationships: []

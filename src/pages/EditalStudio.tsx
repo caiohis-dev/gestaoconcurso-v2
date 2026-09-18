@@ -14,13 +14,16 @@
  * 🔴 **A numeração exibida é sempre calculada.** Ver `src/lib/edital-numeracao.ts`.
  */
 import { useMemo, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import Layout from "@/components/Layout";
 import { useEdital } from "@/hooks/useEdital";
 import { useEditalItens } from "@/hooks/useEditalItens";
 import { useLinhasPorFonte } from "@/hooks/useQuadrosDoEdital";
+import { useCamposDoEdital } from "@/hooks/useCamposDoEdital";
+import { useAvisarAoSair } from "@/hooks/useAvisarAoSair";
 import { analisarEdital, resumoDoLinter, type Achado } from "@/lib/edital-linter";
 import { resolverReferencias, type CapituloResolvido } from "@/lib/edital-numeracao";
+import { resolverCampos } from "@/lib/edital-campos";
 import {
   ancorasDoDocumento,
   mapaDeAncoras,
@@ -39,6 +42,16 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/componen
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -53,6 +66,7 @@ import { ChecklistDeInvestidura } from "@/components/ChecklistDeInvestidura";
 import { InscricaoTaxasEIsencao } from "@/components/InscricaoTaxasEIsencao";
 import { ConteudoProgramatico } from "@/components/ConteudoProgramatico";
 import { CriteriosDeDesempate } from "@/components/CriteriosDeDesempate";
+import { DadosDoEdital } from "@/components/DadosDoEdital";
 
 /** Os artigos de um capítulo, já ordenados. */
 type PorCapitulo = ReadonlyMap<string, ItemBruto[]>;
@@ -122,19 +136,29 @@ function CorpoDoCapitulo({
   itens,
   documento,
   ancoras,
+  valores,
   editalId,
 }: {
   capitulo: CapituloResolvido;
   itens: readonly ItemBruto[];
   documento: CapituloResolvido[];
   ancoras: Map<string, string>;
+  valores: ReadonlyMap<string, string> | undefined;
   editalId: string | undefined;
 }) {
   const numerados = numerarItens(itens, capitulo.numero);
   if (numerados.length === 0) return <p className="text-sm text-muted-foreground">—</p>;
 
-  // As duas resoluções de referência, em ordem: capítulo e depois item.
-  const resolver = (t: string) => resolverReferenciasDeItem(resolverReferencias(t, documento), ancoras);
+  // As TRÊS resoluções, em ordem: capítulo, item e por último o valor.
+  //
+  // ⚠️ A ordem não é arbitrária. `{{campo:}}` vem por último porque o VALOR é a única das
+  // três coisas que vem de dado digitado por alguém — um valor que contivesse `{{` viraria
+  // referência se fosse resolvido antes. Resolvendo-o no fim, não há esse caminho.
+  const resolver = (t: string) =>
+    resolverCampos(
+      resolverReferenciasDeItem(resolverReferencias(t, documento), ancoras),
+      valores ?? new Map(),
+    );
 
   return (
     <div className="space-y-1 text-sm text-muted-foreground">
@@ -169,6 +193,7 @@ function CorpoDoCapitulo({
  */
 function EditorDoCapitulo({ chave, editalId }: { chave: string; editalId: string | undefined }) {
   if (!editalId) return null;
+  if (chave === "preambulo") return <DadosDoEdital editalId={editalId} />;
   if (chave === "quadro_de_cargos") return <QuadroDeCargos editalId={editalId} />;
   if (chave === "prova_objetiva") return <MatrizDaProva editalId={editalId} />;
   if (chave === "prova_de_titulos") return <QuadroDeTitulos editalId={editalId} />;
@@ -204,6 +229,8 @@ function PainelDoCapitulo({
   setRascunhos,
   gravarCapitulo,
   artigos,
+  quantidadeSuja,
+  onSalvar,
 }: {
   capitulo: CapituloResolvido | undefined;
   editalId: string | undefined;
@@ -212,21 +239,16 @@ function PainelDoCapitulo({
   setRascunhos: (r: Rascunhos) => void;
   gravarCapitulo: (c: CapituloResolvido) => void;
   artigos: ReturnType<typeof useEditalItens>;
+  quantidadeSuja: number;
+  /**
+   * ⚠️ Vem de fora, e isso é o ponto: o botão e o diálogo de troca de capítulo chamam a
+   * MESMA função. Duas implementações de "gravar os rascunhos" divergiriam no dia em que
+   * uma fosse corrigida — o mesmo motivo que fez `parsearCapitulo` parar de numerar.
+   */
+  onSalvar: () => void;
 }) {
   if (!capitulo) return null;
   const selecionado = capitulo;
-  const sujos = itens.filter((i) => rascunhos[i.id] !== undefined);
-
-  const salvar = () => {
-    artigos.gravar(
-      sujos.map((i) => ({
-        id: i.id,
-        texto: rascunhos[i.id].texto,
-        ancora: rascunhos[i.id].ancora,
-      })),
-    );
-    setRascunhos({});
-  };
 
   return (
     <div className="flex h-full flex-col gap-3 overflow-y-auto p-4">
@@ -239,14 +261,20 @@ function PainelDoCapitulo({
             as duas ações do capítulo, e no rodapé o botão saía do campo de visão em
             capítulo longo — justamente quando há mais o que salvar. Com o artigo virando
             registro, ele passou a gravar TODOS os artigos alterados de uma vez; salvar
-            no `blur` seria mais natural com 300 artigos, mas desfaria essa escolha. */}
+            no `blur` seria mais natural com 300 artigos, mas desfaria essa escolha.
+
+            🔵 **E ele NÃO é mais a única defesa contra a perda (2026-09-18).** Trocar de
+            capítulo com rascunho sujo descartava o texto em silêncio — o contador abaixo
+            avisava, e nada impedia. Hoje a troca pergunta. O botão continua sendo o único
+            caminho do texto do artigo até o banco: os painéis estruturados gravam no
+            `blur`, os artigos não. */}
         <div className="flex shrink-0 items-center gap-3">
-          {sujos.length > 0 && (
+          {quantidadeSuja > 0 && (
             <span className="text-xs text-muted-foreground">
-              {sujos.length} artigo(s) não salvo(s)
+              {quantidadeSuja} artigo(s) não salvo(s)
             </span>
           )}
-          <Button size="sm" onClick={salvar} disabled={artigos.isGravando || sujos.length === 0}>
+          <Button size="sm" onClick={onSalvar} disabled={artigos.isGravando || quantidadeSuja === 0}>
             {artigos.isGravando ? "Salvando…" : "Salvar capítulo"}
           </Button>
           <label className="flex items-center gap-2 text-sm">
@@ -374,6 +402,8 @@ function BotaoDePrevia({
   porCapitulo: PorCapitulo;
   editalId: string | undefined;
 }) {
+  // Sem prop drilling: é o mesmo cache do React Query que o painel do capítulo já usa.
+  const { valores } = useCamposDoEdital(editalId);
   const ancoras = mapaDeAncoras(
     ancorasDoDocumento(
       documento.map((c) => ({
@@ -418,6 +448,7 @@ function BotaoDePrevia({
                     itens={porCapitulo.get(cap.chave) ?? []}
                     documento={documento}
                     ancoras={ancoras}
+                    valores={valores}
                     editalId={editalId}
                   />
                 </section>
@@ -429,20 +460,143 @@ function BotaoDePrevia({
   );
 }
 
+/**
+ * Os rascunhos dos artigos do capítulo aberto, e a guarda contra perdê-los.
+ *
+ * 🔴 **Por que é um hook e não código solto no componente.** Com estas branches dentro,
+ * `EditalStudio` passou de 15 de complexidade no lint (baseline 111). Extrair é a saída
+ * deste repo — elevar o baseline não é. `edital-linter.ts` já fez a mesma coisa duas vezes.
+ *
+ * 🔴 **`salvar` tem UMA implementação, com DOIS chamadores:** o botão "Salvar capítulo" e o
+ * diálogo de troca. Duas cópias divergiriam no dia em que uma fosse corrigida.
+ */
+/**
+ * Para onde se quer ir enquanto há rascunho sujo. `sair` é deixar a tela inteira.
+ *
+ * ⚠️ Um destino TIPADO, não uma string de chave com um valor especial. A versão com
+ * sentinela (`"__sair__"`) colidiria com chave de capítulo no dia em que o catálogo
+ * ganhasse uma parecida, e o compilador não diria nada.
+ */
+type DestinoPendente = { tipo: "capitulo"; chave: string } | { tipo: "sair" };
+
+function useRascunhosDoCapitulo(
+  artigos: ReturnType<typeof useEditalItens>,
+  documento: readonly CapituloResolvido[],
+  chaveAberta: string | undefined,
+  aoTrocar: (chave: string) => void,
+  aoSair: () => void,
+) {
+  // Rascunho local por artigo: sem ele, cada tecla dispararia uma gravação.
+  const [rascunhos, setRascunhos] = useState<Rascunhos>({});
+  const [pendente, setPendente] = useState<DestinoPendente | null>(null);
+
+  const itensAbertos = artigos.porCapitulo.get(chaveAberta ?? "") ?? [];
+  const sujos = itensAbertos.filter((i) => rascunhos[i.id] !== undefined);
+
+  // 🔴 A TERCEIRA saída: fechar a aba ou recarregar. Ela não passa pelo React em momento
+  // nenhum — só o navegador pode interromper, e só por `beforeunload`. Passa BOOLEANO, não a
+  // contagem: com a contagem, cada tecla digitada num artigo novo re-registraria o listener.
+  useAvisarAoSair(sujos.length > 0);
+
+  const salvar = () => {
+    if (sujos.length > 0) {
+      artigos.gravar(
+        sujos.map((i) => ({
+          id: i.id,
+          texto: rascunhos[i.id].texto,
+          ancora: rascunhos[i.id].ancora,
+        })),
+      );
+    }
+    setRascunhos({});
+  };
+
+  /**
+   * 🔴 SAIR do capítulo com rascunho sujo PERGUNTA, não descarta.
+   *
+   * ⚠️ Até 2026-09-18 a troca de capítulo fazia `setRascunhos({})` direto, com o comentário
+   * *"guardá-los entre capítulos daria a impressão de trabalho salvo que não está"* — o
+   * raciocínio estava certo e a conclusão, errada: quem digitava num artigo, clicava noutro
+   * capítulo na trilha e voltava, **perdia o texto sem aviso nenhum**. Perda silenciosa é o
+   * formato de defeito que este repo mais teme, e o contador "N não salvo(s)" anunciava o
+   * estado, nunca a consequência.
+   *
+   * A alternativa de gravar no `blur` do artigo foi preterida: desfaria a escolha de 16/09
+   * (um só save por capítulo, pensado para 300 artigos) e tiraria o "descartar sem salvar".
+   *
+   * 🔴 **São TRÊS as saídas do capítulo, e as três passam por aqui** — foi por isso que a
+   * primeira versão desta guarda não bastou: ela cobria as duas primeiras, e a terceira
+   * perdia o texto do mesmo jeito.
+   *
+   * | saída | por onde |
+   * |---|---|
+   * | outro capítulo | a trilha da esquerda |
+   * | outro capítulo | o "ir para" do painel de pendências |
+   * | a tela inteira | o "Voltar para Editais" do cabeçalho |
+   * | a aba inteira | fechar ou recarregar — por `useAvisarAoSair`, ver acima |
+   *
+   * ⚠️ As três primeiras são navegação do app e ganham diálogo próprio, que **nomeia** o que
+   * está em risco. A quarta só pode ser interrompida pelo navegador, com texto que ele
+   * escolhe e não se customiza desde ~2017.
+   */
+  const pedir = (destino: DestinoPendente) => {
+    if (destino.tipo === "capitulo" && destino.chave === chaveAberta) return false;
+    if (sujos.length > 0) {
+      setPendente(destino);
+      return true;
+    }
+    if (destino.tipo === "sair") aoSair();
+    else aoTrocar(destino.chave);
+    return false;
+  };
+
+  const resolver = (acao: "salvar" | "descartar") => {
+    if (acao === "salvar") salvar();
+    else setRascunhos({});
+    if (pendente?.tipo === "sair") aoSair();
+    else if (pendente) aoTrocar(pendente.chave);
+    setPendente(null);
+  };
+
+  // Nomeia o destino numa frase que serve aos dois casos: "ir para a lista de editais" e
+  // "ir para o capítulo «Da Prova Objetiva»".
+  const rotuloDoDestino =
+    pendente?.tipo === "sair"
+      ? "a lista de editais"
+      : `o capítulo \u201C${documento.find((c) => c.chave === pendente?.chave)?.titulo ?? "escolhido"}\u201D`;
+
+  return {
+    rascunhos,
+    setRascunhos,
+    quantidadeSuja: sujos.length,
+    salvar,
+    /** Devolve `true` quando ABRIU o diálogo — quem chama usa isso para barrar a navegação. */
+    pedirTroca: (chave: string) => pedir({ tipo: "capitulo", chave }),
+    pedirSaida: () => pedir({ tipo: "sair" }),
+    pendente,
+    fecharTroca: () => setPendente(null),
+    resolverTroca: resolver,
+    rotuloDoDestino,
+  };
+}
+
 export default function EditalStudio() {
   const { editalId } = useParams<{ editalId: string }>();
+  const navegar = useNavigate();
   const { edital, documento, isLoading, gravarCapitulo } = useEdital(editalId);
   const artigos = useEditalItens(editalId);
   const linhasPorFonte = useLinhasPorFonte(editalId);
+  // ⚠️ `valores` é `undefined` enquanto carrega, e é assim que tem de chegar ao linter: a
+  // regra `campo-sem-valor` não roda sem o mapa, então o painel não pisca dezenas de erros
+  // no primeiro frame. Ver o cabeçalho de `useCamposDoEdital`.
+  const { valores: valoresDeCampo } = useCamposDoEdital(editalId);
 
   const [chaveSelecionada, setChaveSelecionada] = useState<string | null>(null);
-  // Rascunho local por artigo: sem ele, cada tecla dispararia uma gravação.
-  const [rascunhos, setRascunhos] = useState<Rascunhos>({});
 
   const achados = useMemo(
-    () => analisarEdital({ documento, itens: artigos.itens, linhasPorFonte }),
+    () => analisarEdital({ documento, itens: artigos.itens, linhasPorFonte, valoresDeCampo }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [documento, artigos.itens, JSON.stringify(linhasPorFonte)],
+    [documento, artigos.itens, JSON.stringify(linhasPorFonte), valoresDeCampo],
   );
   const achadosPorCapitulo = useMemo(() => {
     const m = new Map<string, Achado[]>();
@@ -456,6 +610,9 @@ export default function EditalStudio() {
   }, [achados]);
 
   const selecionado = documento.find((c) => c.chave === chaveSelecionada) ?? documento[0];
+  const draft = useRascunhosDoCapitulo(artigos, documento, selecionado?.chave, setChaveSelecionada, () =>
+    navegar("/editais"),
+  );
 
   if (isLoading || artigos.isLoading) {
     return (
@@ -467,19 +624,23 @@ export default function EditalStudio() {
     );
   }
 
-  const selecionar = (chave: string) => {
-    setChaveSelecionada(chave);
-    // ⚠️ Descarta os rascunhos ao trocar de capítulo, como já fazia com o texto único.
-    // Guardá-los entre capítulos daria a impressão de trabalho salvo que não está.
-    setRascunhos({});
-  };
-
   return (
     <Layout>
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-4">
+          {/*
+            ⚠️ Continua sendo um `Link` de verdade — não virou `<button>`. Assim o
+            botão do meio, o "abrir em nova aba" e o foco de teclado seguem funcionando; a
+            guarda só intercepta o clique comum, e apenas quando há rascunho sujo.
+          */}
           <Button variant="ghost" size="icon" asChild>
-            <Link to="/editais" aria-label="Voltar para Editais">
+            <Link
+              to="/editais"
+              aria-label="Voltar para Editais"
+              onClick={(e) => {
+                if (draft.pedirSaida()) e.preventDefault();
+              }}
+            >
               <ArrowLeft className="h-5 w-5" />
             </Link>
           </Button>
@@ -500,7 +661,7 @@ export default function EditalStudio() {
             que este módulo faz.
           */}
           <div className="ml-auto flex items-center gap-2">
-            <BotaoDePendencias achados={achados} onIrPara={selecionar} />
+            <BotaoDePendencias achados={achados} onIrPara={draft.pedirTroca} />
             <BotaoDePrevia
               documento={documento}
               porCapitulo={artigos.porCapitulo}
@@ -516,7 +677,7 @@ export default function EditalStudio() {
               documento={documento}
               selecionada={selecionado?.chave}
               achadosPorCapitulo={achadosPorCapitulo}
-              onSelecionar={selecionar}
+              onSelecionar={draft.pedirTroca}
             />
           </ResizablePanel>
 
@@ -528,14 +689,42 @@ export default function EditalStudio() {
               capitulo={selecionado}
               editalId={editalId}
               itens={artigos.porCapitulo.get(selecionado?.chave ?? "") ?? []}
-              rascunhos={rascunhos}
-              setRascunhos={setRascunhos}
+              rascunhos={draft.rascunhos}
+              setRascunhos={draft.setRascunhos}
               gravarCapitulo={gravarCapitulo}
               artigos={artigos}
+              quantidadeSuja={draft.quantidadeSuja}
+              onSalvar={draft.salvar}
             />
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
+
+      {/*
+        ⚠️ TRÊS saídas, e nenhuma delas é a destrutiva por omissão. "Cancelar" fecha e não
+        troca de capítulo, então quem clicou por engano na trilha não perde nada nem precisa
+        decidir. Descartar é a única que perde texto, e está nomeada.
+      */}
+      <AlertDialog open={!!draft.pendente} onOpenChange={(aberto) => !aberto && draft.fecharTroca()}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Há artigo não salvo</AlertDialogTitle>
+            <AlertDialogDescription>
+              {draft.quantidadeSuja} artigo(s) de &ldquo;{selecionado?.titulo}&rdquo; foram alterados e
+              ainda não estão no banco. Salvar antes de ir para {draft.rotuloDoDestino}?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <Button variant="outline" onClick={() => draft.resolverTroca("descartar")}>
+              Descartar e continuar
+            </Button>
+            <AlertDialogAction onClick={() => draft.resolverTroca("salvar")}>
+              Salvar e continuar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Layout>
   );
 }

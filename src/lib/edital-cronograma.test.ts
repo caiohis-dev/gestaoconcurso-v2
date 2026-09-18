@@ -15,6 +15,7 @@ import {
   diaDaSemana,
   primeiraData,
   ultimaData,
+  formatarDatasDaEtapa,
   ETAPAS_SUGERIDAS,
   type EtapaCronograma,
 } from "@/lib/edital-cronograma";
@@ -199,5 +200,54 @@ describe("🔴 os dois defeitos que o cronograma REAL pegou em mim", () => {
     expect(isencao.datas[0] > inscricoes.datas[0]).toBe(true);  // 08/07 > 29/06: início
     expect(isencao.datas[0] < inscricoes.datas[1]).toBe(true);  // 08/07 < 27/07: fim
     expect(regras(EDITAL_003)).not.toContain("precedencia-invertida");
+  });
+});
+
+describe("formatarDatasDaEtapa — como o documento publica cada forma", () => {
+  it("DATA_UNICA sai como uma data só", () => {
+    const e = EDITAL_003.find((x) => x.chave === "prova_objetiva")!;
+    expect(formatarDatasDaEtapa(e)).toBe("20/09/2026");
+  });
+
+  it("INTERVALO sai com ` a ` entre as pontas", () => {
+    const e = EDITAL_003.find((x) => x.chave === "inscricoes")!;
+    expect(formatarDatasDaEtapa(e)).toBe("29/06/2026 a 27/07/2026");
+  });
+
+  it("🔴 ALTERNATIVAS sai com ` ou `, e NUNCA com ` a `", () => {
+    // O caso real: a retirada do atestado do Edital 003 oferece CINCO dias à escolha.
+    // Espremê-los num intervalo publicaria um edital falso — o candidato leria que pode
+    // ir em 07/07, 08/07, 10/07…, quando só cinco dias são oferecidos.
+    const e = EDITAL_003.find((x) => x.chave === "retirada_atestado_pcd")!;
+    const saida = formatarDatasDaEtapa(e);
+    expect(saida).toBe("06/07/2026, 09/07/2026, 13/07/2026, 16/07/2026 ou 20/07/2026");
+    expect(saida).not.toContain(" a ");
+  });
+
+  it("⚠️ e a entrega de títulos, que tem DUAS alternativas, também não vira intervalo", () => {
+    // "no dia 22/07/2026 ou no dia 23/07/2026" — o par mais fácil de confundir com
+    // intervalo, porque são dias consecutivos. Ver ETAPAS_SUGERIDAS.
+    const e = etapa("entrega_titulos", "Entrega dos títulos", "ALTERNATIVAS", ["2026-07-22", "2026-07-23"]);
+    expect(formatarDatasDaEtapa(e)).toBe("22/07/2026 ou 23/07/2026");
+  });
+
+  it("etapa SEM data devolve string vazia — quem chama decide o que dizer", () => {
+    // É o estado do Edital 004 publicado nos itens 12.4 e 14.9. Inventar um texto aqui
+    // esconderia justamente o que o linter existe para acusar.
+    expect(formatarDatasDaEtapa(etapa("prova_objetiva", "Prova", "DATA_UNICA", []))).toBe("");
+  });
+
+  it("com o dia da semana, para o quadro do cronograma", () => {
+    // 🔵 Até 2026-09-18 o quadro interpolava `diaDaSemana`, que devolve NÚMERO: a tabela
+    // saía como "20/09/2026 (0)". O nome por extenso é o que o documento quer dizer.
+    expect(formatarDatasDaEtapa(
+      etapa("prova_objetiva", "Prova", "DATA_UNICA", ["2026-09-20"]),
+      { comDiaDaSemana: true },
+    )).toBe("20/09/2026 (domingo)");
+  });
+
+  it("INTERVALO de um dia só não repete a data", () => {
+    const e = etapa("inscricoes", "Inscrições", "INTERVALO", ["2026-06-29"]);
+    expect(formatarDatasDaEtapa(e)).toBe("29/06/2026");
   });
 });

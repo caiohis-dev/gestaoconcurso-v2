@@ -166,7 +166,9 @@ O preço veio em 10/09: o bloco foi lido de boa-fé numa varredura e virou um **
 
 ## O que está coberto (2026-07-27)
 
-**1.664 testes em 88 arquivos** (medido em 2026-09-17, ao fim da **fatia 11 da v3 do módulo Editais — critérios de desempate**) — arquivo novo `src/lib/edital-desempate.test.ts` (17 casos).
+**1.769 testes em 93 arquivos** (medido em 2026-09-18, ao fim de DUAS rodadas paralelas: o **destino do colaborador sem gestão** e os **marcadores de dado variável do edital**) — cinco arquivos novos: `src/lib/papeis.test.ts` (10 casos, a tabela-verdade do predicado de destino), `src/components/AlterarSenhaCard.ui.test.tsx` (4), `src/pages/PerfilColaborador.ui.test.tsx` (3, o beco sem saída), `src/hooks/useAvisarAoSair.test.tsx` (4, o aviso do navegador ao fechar a aba) e os **+52** de `guards.test.tsx`, que passou de 183 para 235 ao ganhar dois papéis na matriz. Mais `src/lib/edital-campos.test.ts` (17) e casos novos em `edital-linter` (+7) e `edital-cronograma` (+7). Antes eram 1.664 em 88 (2026-09-17, fatia 11 da v3 de Editais).
+
+⚠️ **`useAvisarAoSair.test.tsx` é o caso mais honesto de cobertura PARCIAL da suíte, e vale ler antes de confiar nele.** O hook chama `preventDefault()` **e** atribui `returnValue` — a segunda linha existe para Chrome e Safari antigos. **No jsdom as duas são o mesmo bit**, então remover a do `returnValue` deixa a suíte verde. Está dito no cabeçalho do próprio teste, em vez de uma asserção que finge cobrir.
 
 ⭐ **O controle positivo são as TRÊS ordens publicadas, e elas diferem de verdade** — o 002 tem 5 critérios (com títulos), o 003 e o 004 têm 4, e a 2ª e 3ª posições mudam em cada um. 🔴 Um dos casos afirma justamente que **as três diferem**: sem ele, "as três saem do mesmo código" poderia estar comparando a mesma lista três vezes. Falsificado 3 vezes: numerar as duas listas juntas derruba 4; tirar a normalização de acento derruba 2; cobrar critério final também na lista de PCD derruba 1.
 

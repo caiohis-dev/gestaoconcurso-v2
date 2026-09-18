@@ -282,3 +282,69 @@ describe("resumoDoLinter", () => {
     expect(resumoDoLinter(achados)).toEqual({ erros: 1, avisos: 1 });
   });
 });
+
+describe("os marcadores de dado variável — `{{campo:}}`", () => {
+  it("⭐ CONTROLE: marcador conhecido e preenchido não acusa nada", () => {
+    const achados = analisarEdital({
+      itens: comArtigos("prova_objetiva", "A prova será aplicada em {{campo:cronograma_prova_objetiva}}."),
+      valoresDeCampo: new Map([["cronograma_prova_objetiva", "20/09/2026"]]),
+    });
+    expect(achados).toEqual([]);
+  });
+
+  it("🔴 chave fora do catálogo acusa `campo-desconhecido` — é typo de quem escreveu", () => {
+    const achados = analisarEdital({
+      itens: comArtigos("prova_objetiva", "A prova será em {{campo:data_da_prova}}."),
+      valoresDeCampo: new Map(),
+    });
+    // Uma só: a chave desconhecida NÃO acusa também `campo-sem-valor`, senão a mesma
+    // linha apareceria duas vezes no painel, com dois donos diferentes.
+    expect(achados.map((a) => a.regra)).toEqual(["campo-desconhecido"]);
+    expect(achados[0].mensagem).toContain("[?campo:data_da_prova]");
+  });
+
+  it("🔴 chave conhecida e não preenchida acusa `campo-sem-valor` e diz ONDE preencher", () => {
+    const achados = analisarEdital({
+      itens: comArtigos("prova_objetiva", "A prova será em {{campo:cronograma_prova_objetiva}}."),
+      valoresDeCampo: new Map(),
+    });
+    expect(achados.map((a) => a.regra)).toEqual(["campo-sem-valor"]);
+    expect(achados[0].severidade).toBe("erro");
+    // A mensagem tem de nomear o que fazer — §2 do CLAUDE.md. "Elementos Pós-textuais e
+    // Anexos" é o título do capítulo `anexos`, onde mora o editor do cronograma.
+    expect(achados[0].mensagem).toContain("Elementos Pós-textuais e Anexos");
+  });
+
+  it("🔴 SEM o mapa, `campo-sem-valor` não roda — melhor não acusar do que acusar por ignorância", () => {
+    // É o primeiro frame da tela, antes de os hooks resolverem. Um Map vazio aqui encheria
+    // o painel de erro que some sozinho, e é assim que alguém aprende a ignorar o painel.
+    const achados = analisarEdital({
+      itens: comArtigos("prova_objetiva", "A prova será em {{campo:cronograma_prova_objetiva}}."),
+    });
+    expect(achados).toEqual([]);
+  });
+
+  it("⚠️ mas `campo-desconhecido` roda SEM o mapa: ele só depende do catálogo", () => {
+    const achados = analisarEdital({
+      itens: comArtigos("prova_objetiva", "A prova será em {{campo:invento_qualquer}}."),
+    });
+    expect(achados.map((a) => a.regra)).toEqual(["campo-desconhecido"]);
+  });
+
+  it("⭐ CONTROLE: o marcador NÃO é lido como placeholder não preenchido", () => {
+    // O linter olha o texto CRU. Se olhasse o resolvido, um endereço como o logradouro
+    // "Rua: Antonio XX" do Anexo I do Edital 004 cairia em `/x{2,}/i`.
+    const achados = analisarEdital({
+      itens: comArtigos("inscricao_e_pagamento", "Entregue na sede, à {{campo:executora_endereco}}."),
+      valoresDeCampo: new Map([["executora_endereco", "Rua 154, nº 783, Laranjal"]]),
+    });
+    expect(achados).toEqual([]);
+  });
+
+  it("acusa cada marcador do artigo, não só o primeiro", () => {
+    const achados = analisarEdital({
+      itens: comArtigos("preambulo", "{{campo:nao_existe_um}} e {{campo:nao_existe_dois}}"),
+    });
+    expect(achados.map((a) => a.regra)).toEqual(["campo-desconhecido", "campo-desconhecido"]);
+  });
+});

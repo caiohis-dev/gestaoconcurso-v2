@@ -30,10 +30,20 @@ export interface EditalMetadados {
   regime_trabalho: string | null;
   prazo_validade_anos: number | null;
   prorrogavel: boolean | null;
+  // 🔵 Os cinco de 2026-09-18 (migration 20260918103305). Resolvem `{{campo:}}` no texto:
+  // a sede aparece 7 vezes no Edital 004 e o site 9, e o fecho manuscrito
+  // "Volta Redonda, ___ de ________ de 2026" vira estado que o linter acusa.
+  site_oficial: string | null;
+  executora_endereco: string | null;
+  signatario_nome: string | null;
+  signatario_cargo: string | null;
+  data_publicacao: string | null;
 }
 
+// ⚠️ Lista EXPLÍCITA: coluna que não estiver aqui não chega à tela, e quem a consome vê
+// `undefined` sem erro nenhum. Ao acrescentar coluna em `editais`, acrescente aqui também.
 const CAMPOS_EDITAL =
-  "id, nome, numero_edital, ano, natureza_juridica, orgao_demandante, entidade_executora, decreto_autorizador, regime_trabalho, prazo_validade_anos, prorrogavel";
+  "id, nome, numero_edital, ano, natureza_juridica, orgao_demandante, entidade_executora, decreto_autorizador, regime_trabalho, prazo_validade_anos, prorrogavel, site_oficial, executora_endereco, signatario_nome, signatario_cargo, data_publicacao";
 
 export function useEdital(editalId: string | undefined) {
   const queryClient = useQueryClient();
@@ -106,10 +116,13 @@ export function useEdital(editalId: string | undefined) {
       const { error } = await supabase.from("editais").update(dados).eq("id", editalId!);
       if (error) throw error;
     },
+    // ⚠️ SEM toast de sucesso, e isso é decisão: `DadosDoEdital` grava no `blur` de cada
+    // campo, então um aviso por gravação empilharia 14 toasts para quem só percorreu o
+    // formulário — o aviso vira o estorvo, não a informação. O ERRO continua avisando:
+    // gravação que falha calada é o formato de defeito que este repo mais teme.
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["edital", editalId] });
       queryClient.invalidateQueries({ queryKey: ["editais"] });
-      toast({ title: "Edital atualizado" });
     },
     onError: erro("Erro ao salvar o edital"),
   });
