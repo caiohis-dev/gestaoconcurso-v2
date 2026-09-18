@@ -158,6 +158,15 @@ Ele já foi uma camada `fixed` renderizada **fora** do portal do Radix, e aquilo
 - **`Perfil.tsx`** — perfil do usuário admin (dados de `profiles`, autenticado via `useAuth`).
 - **`PerfilColaborador.tsx`** — perfil do colaborador (dados de `colaboradores`). Desde a subetapa 2A é autenticado via **`useAuth`** (sessão do Supabase Auth): resolve-se por `isColaborador` + `auth.uid()`, e lê/grava pelas RPCs `get_meu_colaborador` / `update_meu_colaborador` / `update_meus_dados_bancarios`. Tem timer de inatividade de 5 minutos (`INACTIVITY_TIMEOUT`) que força logout. Salvar **não desloga mais** (confirma com toast e mantém a sessão). **Desde a Etapa 1 (2026-07-16), `colab_email` é read-only aqui — sempre**, porque quem abre esta página está logado e sua linha é, por definição, vinculada; a chamada da RPC ainda passa `p_email`, mas reescrevendo o valor carregado (no-op). Ver [`auth-e-permissoes.md`](../../transversais/auth-e-permissoes.md).
 
+### Quem chega em cada um — e a troca de senha (2026-09-18)
+
+**`/perfil-colaborador` deixou de ser tela de exceção e virou a porta de entrada da maioria.** Desde 18/09 todo colaborador **sem papel de gestão que abra porta** é mandado para lá no login (e devolvido para lá se digitar `/`): são **40 das 53 contas** com o papel, medido. Antes a condição era `role === null`, inalcançável — elas caíam no hub vazio. Ver [`auth-e-permissoes.md`](../../transversais/auth-e-permissoes.md).
+
+Duas consequências que moram nesta página:
+
+- 🔴 **Ela ganhou o card de troca de senha** (`AlterarSenhaCard`, o mesmo do `/perfil`). Sem ele a mudança seria regressão: a página **não monta o `Layout`**, logo não tem o menu do usuário nem o link "Alterar Cadastro" — que era como essas 40 pessoas trocavam a senha logadas. ⚠️ Ao mexer no chrome próprio desta página, lembre que ele é a única navegação que essa pessoa tem.
+- 🔴 **O ramo "cadastro não localizado" era um beco sem saída** — só o texto "Dados não encontrados.", sem header e sem "Sair", e `/auth` rebate quem está logado: a única saída era o timeout de 5 min. Cai nele quem tem o papel `colaborador` **sem linha em `colaboradores`** (1 conta em 53). Hoje tem header, "Sair" e nomeia a providência. **A causa-raiz continua aberta:** o papel sobrevive à exclusão da linha e nada o revoga — está no backlog.
+
 ## `GerenciarUsuarios` ≠ gestão de colaboradores
 
 `/gerenciar-usuarios` (`useUsers.tsx`) gerencia contas com role de sistema (`profiles` + `user_roles`), incluindo criação de novos admins via Edge Function `create-admin`. **Não concede mais acesso de coordenador** (saiu em 2026-07-26, dos dois lados): a coluna Coordenador é somente leitura, e conceder é exclusivo do `CoordenadoresProvaDialog`, que exige alocação real na prova. Isso é ortogonal ao cadastro de colaboradores descrito acima — um "usuário" criado ali não aparece na lista de `colaboradores` a menos que também tenha um registro correspondente nessa tabela.

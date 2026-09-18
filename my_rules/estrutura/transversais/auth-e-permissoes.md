@@ -10,10 +10,17 @@
 
 - Usa **Supabase Auth** (`supabase.auth.signInWithPassword`, sessão JWT, `onAuthStateChange`).
 - **`role`** é o papel de **gestão**, resolvido de `user_roles` pela hierarquia `superadmin` > `admin` > `coordenador` > `user` (superadmin herda admin — ver `isAdmin = role === 'admin' || role === 'superadmin'`).
-- **`colaborador` NÃO entra nessa hierarquia** — é dimensão paralela, exposta como **`isColaborador`** (`roles.includes('colaborador')`), não como valor de `role`. O hook guarda o array `roles` completo justamente porque uma pessoa acumula gestão + colaborador (os 12 do backfill). Espremer num papel único rebaixaria os 10 coordenadores que também são colaboradores.
+- **`colaborador` NÃO entra nessa hierarquia** — é dimensão paralela, exposta como **`isColaborador`** (`roles.includes('colaborador')`), não como valor de `role`. O hook guarda o array `roles` completo justamente porque uma pessoa acumula gestão + colaborador. Espremer num papel único rebaixaria os 11 coordenadores que também são colaboradores.
 - **`rolesLoaded`**: há uma janela entre `setUser` e o fim do fetch de papéis em que o usuário existe e os papéis ainda não. Quem decide para onde navegar (o `/auth`, as guardas de rota) **espera `rolesLoaded`**, senão decide sobre um conjunto vazio.
 - Logout força `window.location.href = '/auth'` (reload completo, para não deixar estado React fantasma) e limpa as chaves `sb-*`/`supabase` do `localStorage`. **Cuidado herdado:** esse reload duro destrói qualquer `navigate(..., { state })` chamado logo depois de `signOut()` — foi o bug que sumiu com a mensagem de sucesso ao salvar o perfil, na 2A.
-- Roteamento pós-login (em `Auth.tsx`, desde 2026-07-24): **colaborador puro → `/perfil-colaborador`; todo o resto → `/`** (o hub por módulos — ver [`arquitetura-geral.md`](./arquitetura-geral.md) §6). Antes o admin ia direto a `/dashboard`; agora todo gestor passa pelo hub. Os 12 gestor+colaborador caem no hub e chegam ao cadastro pelo item de menu "Meu Cadastro". A definição de "colaborador puro" (`isColaborador && role === null`) é a **mesma** aqui e no guard do `Inicio.tsx` — ver a matriz de módulos adiante.
+- **`isColaboradorSemGestao`**: é colaborador e **não** tem papel de gestão que abra alguma porta (`coordenador`, `admin`, `superadmin`). Mora em [`src/lib/papeis.ts`](../../../src/lib/papeis.ts) como função pura e é exposto pelo hook; o `Auth.tsx`, o `Inicio.tsx` e o `Perfil.tsx` consomem **esse** campo, nunca uma cópia da expressão.
+- Roteamento pós-login (em `Auth.tsx`): **colaborador sem gestão → `/perfil-colaborador`; todo o resto → `/`** (o hub por módulos — ver [`arquitetura-geral.md`](./arquitetura-geral.md) §6). Antes o admin ia direto a `/dashboard`; agora todo gestor passa pelo hub. Os 13 gestor+colaborador caem no hub e chegam ao cadastro pelo item de menu "Meu Cadastro".
+
+> 🔴 **Isto MUDOU em 2026-09-18, e o que havia antes nunca funcionou.** A condição era `isColaborador && role === null` — a tal "colaborador puro" —, copiada em quatro pontos. Ela **nunca disparou para ninguém**: o trigger `handle_new_user` insere `'user'` em **toda** conta nova antes de conceder `'colaborador'`, então `role` nunca é `null`. Medido no banco local em 18/09: das **53** contas com papel `colaborador`, **nenhuma** está sem `user`, e **40** não têm gestão alguma — todas caíam no **hub vazio** ("Nenhum módulo disponível. Fale com a administração"), sem chegar ao próprio cadastro. O destino desenhado para elas existia e era inalcançável por construção.
+>
+> ⚠️ **O termo "colaborador puro" foi APOSENTADO, não redefinido.** Se você o encontrar em doc ou comentário, ele significa `role === null` — o estado que não acontece. O termo vivo é **colaborador sem gestão**.
+>
+> ⚠️ **Não reescreva o predicado como `!isAdmin && !isCoordenador`.** Hoje é equivalente, porque só sobram `user` e `null`; um degrau novo na escada de `resolveRoleGestao` passaria a cair no portal em silêncio. A forma `role === null || role === 'user'` **falha fechado**.
 
 ### Porta única "Estou sem minha senha" (2026-07-20)
 
@@ -139,12 +146,14 @@ Travar o campo (Etapa 1) impede o estrago novo, mas não conserta quem já está
 
 ### Perfis
 
-- `/perfil` — a conta do Supabase Auth do próprio usuário (nome em `profiles` + senha). **Restrita a gestão desde 2026-07-26**: colaborador puro é mandado para `/perfil-colaborador`, que é a página dele. Quem tem `role === 'user'` **entra**, de propósito — tem conta no Auth e o hub já o aceita; barrá-lo o deixaria sem lugar para trocar a própria senha.
-- `/perfil-colaborador` — o cadastro de colaborador de quem tem `isColaborador`.
+- `/perfil` — a conta do Supabase Auth do próprio usuário (nome em `profiles` + senha). **Restrita a gestão desde 2026-07-26**: colaborador sem gestão é mandado para `/perfil-colaborador`, que é a página dele. Quem tem `role === 'user'` **e não é colaborador** (3 contas) **entra**, de propósito — tem conta no Auth, o hub o aceita, e é aqui que ele troca a própria senha.
+  - 🔵 **Até 2026-09-18 o combo `user` + `colaborador` também entrava**, pelo mesmo motivo. Agora ele é rebatido — e **a troca de senha foi junto**: o formulário virou o componente **`AlterarSenhaCard`**, montado nas **duas** páginas. Sem isso a mudança seria regressão, porque `/perfil-colaborador` não monta o `Layout` e portanto não alcança o link "Alterar Cadastro" do menu do usuário, que era o caminho logado dessas 40 pessoas. O fluxo deslogado ("Estou sem minha senha") continua existindo, mas cobrar e-mail de quem já está logado para trocar a própria senha não é caminho.
+- `/perfil-colaborador` — o cadastro de colaborador de quem tem `isColaborador`, **mais** o card de senha.
+  - 🔴 **O ramo "cadastro não localizado" era um BECO SEM SAÍDA até 2026-09-18**: renderizava só "Dados não encontrados.", sem header e **sem botão Sair** — e `/auth` rebate quem está logado, então a única saída era esperar os 5 min do `INACTIVITY_TIMEOUT`. Quem cai nele é quem tem o papel `colaborador` **sem linha em `colaboradores`** (1 conta em 53, medido em 18/09): o papel sobrevive à exclusão da linha e **nada o revoga**. Era teórico enquanto ninguém era mandado para a página; deixou de ser no mesmo dia. Hoje o ramo tem header, "Sair" e diz a providência ("fale com a coordenação").
 
 ## Modelo de roles (equipe admin)
 
-- Enum `app_role`: `superadmin`, `admin`, `coordenador`, `user` — e, desde 2026-07-14, **`colaborador`** (migration `20260714162027_*`). Desde a subetapa 2A o front **lê** esse papel, via `isColaborador` no `useAuth` (guarda de `/perfil-colaborador`, item de menu "Meu Cadastro"). Ele **não** entra na hierarquia acima: não é um degrau abaixo de `user`, e sim uma dimensão paralela — dos 15 usuários atuais, **12 são colaboradores**, e são justamente os 2 admins e os 10 coordenadores. Uma pessoa acumula os dois papéis sem contradição, e é por isso que ele vive em `user_roles` (multi-papel) e não numa coluna `tipo` em `profiles`, que forçaria escolher entre gestor e colaborador.
+- Enum `app_role`: `superadmin`, `admin`, `coordenador`, `user` — e, desde 2026-07-14, **`colaborador`** (migration `20260714162027_*`). Desde a subetapa 2A o front **lê** esse papel, via `isColaborador` no `useAuth` (guarda de `/perfil-colaborador`, item de menu "Meu Cadastro"). Ele **não** entra na hierarquia acima: não é um degrau abaixo de `user`, e sim uma dimensão paralela — das **58 contas** atuais, **53 são colaboradores** (medido em 2026-09-18), e apenas **13 delas** têm gestão: 2 admins e 11 coordenadores. ⚠️ Esta linha dizia "dos 15 usuários atuais, 12 são colaboradores" — era de julho, e a proporção que ela sugeria (o colaborador como exceção entre gestores) inverteu-se: hoje a regra é o colaborador **sem** gestão, que são 40. Uma pessoa acumula os dois papéis sem contradição, e é por isso que ele vive em `user_roles` (multi-papel) e não numa coluna `tipo` em `profiles`, que forçaria escolher entre gestor e colaborador.
 - **O papel já é concedido, e o elo já existe:** desde 2026-07-14, `colaboradores.user_id` (UNIQUE, FK para `auth.users` com `ON DELETE SET NULL`, migration `20260714162029_*`) liga o cadastro à conta, e o **backfill** do `supabase/seed.pos.sql` preencheu-o para esses 12, concedendo-lhes o papel `colaborador`. As outras 759 linhas têm `user_id` NULL e o receberão quando a pessoa se cadastrar (etapa 2). É esse `user_id` que vai ancorar RLS e RPCs em `auth.uid()` no lugar do `p_colaborador_id` que hoje vem do cliente.
 - Tabela `user_roles` (`user_id`, `role`) — um usuário pode ter mais de uma role.
 
@@ -164,7 +173,7 @@ Travar o campo (Etapa 1) impede o estrago novo, mas não conserta quem já está
 - `coordenador` é a role mais restrita das "de equipe": um coordenador só enxerga as provas/unidades a que foi explicitamente vinculado via `coordenadores_prova` (ver `useCoordenadorUnidades.tsx`, que resolve os `prova_unidade_id`s permitidos via RPC `get_coordenador_prova_unidade_ids`). Páginas de gestão (`GerenciarProva`, `OcorrenciasProva`) filtram listas no client usando esse resultado — a filtragem client-side é só UX; a proteção real está nas policies/RPCs que também checam `is_coordenador_prova`.
 - Gestão de usuários/roles é feita em `/gerenciar-usuarios` (`useUsers.tsx`), restrita a `superadmin` na navegação.
 
-### Módulos: o que cada papel vê no hub (2026-07-24)
+### Módulos: o que cada papel vê no hub (2026-07-24, linha do colaborador corrigida em 2026-09-18)
 
 A tela de entrada por módulos (o mecanismo em [`arquitetura-geral.md`](./arquitetura-geral.md) §6) deriva o acesso **dos papéis que já existem** — sem tabela nem enum de módulos no banco. Hoje são quatro módulos (Aplicação de Provas, para todo gestor; Editais, Candidatos e Alocação de Candidatos, só admin/superadmin); a matriz ainda é simples, mas o que importa é a regra.
 
@@ -173,10 +182,12 @@ A tela de entrada por módulos (o mecanismo em [`arquitetura-geral.md`](./arquit
 | `superadmin` | sim | Aplicação de Provas + Editais + Candidatos (+ "Usuários" no header, fora dos cards) | `/dashboard` |
 | `admin` | sim | Aplicação de Provas + Editais + Candidatos | `/dashboard` |
 | `coordenador` | sim | Aplicação de Provas (Editais e Candidatos são só admin) | `/colaboradores` |
-| `user` puro | sim | **nenhum** — vê o estado vazio ("fale com a administração") | — |
-| `colaborador` puro (`role === null`) | **não** | — cai direto em `/perfil-colaborador` | — |
+| `user` puro (**sem** `colaborador`) | sim | **nenhum** — vê o estado vazio ("fale com a administração") | — |
+| **`colaborador` sem gestão** (`role` é `user` ou nulo) | **não** | — cai direto em `/perfil-colaborador` | — |
 
-**O combo `user` + `colaborador` existe, e `user` prevalece.** Uma pessoa pode ter os dois papéis; `resolveRoleGestao` devolve `'user'` (não `null`), então ela **não** é "colaborador puro": cai no **hub** (estado vazio, pois `user` não tem módulo), não no portal do colaborador. Ela ainda alcança o próprio cadastro pelo item "Meu Cadastro" do header (`showFor: ['colaborador']`, sempre visível). Foi decisão explícita (2026-07-24): a dimensão de gestão manda sobre a de colaborador na hora de escolher o destino.
+**O combo `user` + `colaborador` é o caso MAIS COMUM do sistema — 40 das 53 contas com o papel** (medido em 2026-09-18), e é ele que a linha "colaborador" da tabela acima descreve. `resolveRoleGestao` devolve `'user'` (não `null`), mas isso **não** decide mais o destino: quem decide é `isColaboradorSemGestao`, e `user` não abre módulo nenhum.
+
+> 🔵 **Invertido em 2026-09-18.** Este parágrafo afirmava o oposto: *"`user` prevalece … cai no hub (estado vazio), não no portal do colaborador. Foi decisão explícita (2026-07-24): a dimensão de gestão manda sobre a de colaborador na hora de escolher o destino."* A premissa daquela decisão era que a gestão leva a algum lugar — e `user` não leva. O resultado prático era mandar a maior fatia das contas do sistema para uma tela que lhes dizia "fale com a administração", com o cadastro delas escondido atrás do item "Meu Cadastro" do header. **A dimensão de gestão só manda quando abre porta.**
 
 **Reforço — hub e `navLinks` são UX, não autorização.** Esconder um card ou um link não protege rota nenhuma; quem barra é RLS + as checagens das Edge Functions + o **`RequireAcesso`** das rotas (ver a seção adiante). Desde 2026-07-26 os guards são um só, e os papéis são declarados rota a rota no `App.tsx` — **não** lidos deste registro, justamente porque ele é UX e conhece papel por módulo, que é mais grosso que a rota.
 
@@ -201,7 +212,7 @@ As páginas de gestão **não guardam mais a si mesmas**. A autorização de rot
 
 **Três rotas seguem com guarda própria, de propósito**, porque não são páginas de módulo e cada uma decide diferente: `/` (o hub, que roteia por papel), `/perfil` e `/perfil-colaborador`.
 
-🧪 **A especificação é `src/pages/guards.test.tsx`** — 137 testes, matriz 19 páginas × 5 papéis. O harness compõe rota + wrapper como o `App.tsx` faz; se um teste dali quebrar numa refatoração de autorização, a decisão mudou de comportamento.
+🧪 **A especificação é `src/pages/guards.test.tsx`** — 235 testes, matriz **25 páginas × 7 papéis**. ⚠️ Dizia "137 testes, 19 páginas × 5 papéis" até 2026-09-18; os dois papéis novos são `colaboradorUser` (o caso dos 40) e `user` puro, que entrou como **controle positivo**: sem ele, um predicado escrito sem o `isColaborador &&` passaria verde e mandaria as 3 contas de `user` puro para um portal que não existe para elas. O harness compõe rota + wrapper como o `App.tsx` faz; se um teste dali quebrar numa refatoração de autorização, a decisão mudou de comportamento.
 
 ### Conceder acesso de coordenador — a conta vem do CADASTRO (desde 2026-09-12)
 

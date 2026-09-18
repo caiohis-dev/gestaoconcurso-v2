@@ -123,7 +123,7 @@ Coberto:
 |---|---|
 | **Hooks de dados** | **20 de 20** (`use-mobile` e `use-toast` são utilitários shadcn, fora da conta) |
 | **UI de diálogo** | **12 de 12** — todos com `.ui.test.tsx` |
-| **Guards de página** | `pages/guards.test.tsx` — 137 testes: matriz **19 páginas × 5 papéis**, a janela do `rolesLoaded` e o `isLoggingOut` |
+| **Guards de página** | `pages/guards.test.tsx` — 235 testes: matriz **25 páginas × 7 papéis**, a janela do `rolesLoaded`, o `isLoggingOut` e a cadeia rota→hub→portal |
 | Schemas Zod | 9 schemas em 8 arquivos (o `SalaProvaDialog` tem dois: criação e edição) |
 | Auth | `useAuth.test.tsx` — hierarquia, `colaborador` paralelo, `rolesLoaded`, `signOut` |
 | Registro de módulos | `lib/modulos.test.ts` — invariantes sobre `MODULOS` inteiro |
@@ -140,7 +140,7 @@ Coberto:
 
 O que **existe** hoje é verificação manual da autorização de duas delas, em [`../docs/bateria-create-admin-autorizacao.md`](../docs/bateria-create-admin-autorizacao.md) (7 casos, 2026-07-25) — inclusive o script de forjar JWT local, que qualquer teste futuro de EF vai precisar, porque o dump traz hashes de produção e ninguém sabe as senhas.
 
-**3. Anotado, não feito:** a matriz de guards usa 5 papéis e **não inclui `user` puro** (conta sem papel de gestão e sem `colaborador`). Seriam 19 combinações novas; vale se o `user` ganhar significado além de "vê o hub vazio".
+**3. ✅ FEITO em 2026-09-18.** A matriz ganhou os dois papéis que faltavam: **`user` puro** (conta sem gestão e sem `colaborador` — 3 contas) e **`colaboradorUser`** (`user` + `colaborador` — 40 contas, o caso mais comum do sistema). São 25 casos por papel, e o `user` puro entrou não por cobertura e sim como **controle positivo**: ele é o único caso que reprova um predicado de destino escrito sem o `isColaborador &&`. Esta linha dizia "vale se o `user` ganhar significado além de vê o hub vazio" — ele ganhou: virou o discriminador de quem é mandado a `/perfil-colaborador`.
 
 **4. O que deliberadamente NÃO se testa aqui.** Constraints de banco: a suíte roda contra um **mock**, sem Postgres — um teste ali afirmaria o mock. A verificação correta é bateria SQL contra o banco local, feita em [`../docs/bateria-db-constraints.sql`](../docs/bateria-db-constraints.sql) (22 casos).
 
@@ -359,6 +359,21 @@ Ao escrever o backfill do `seed.pos.sql`, a varredura das 15 contas do `auth.use
 **2. O Caio tem duas contas admin+superadmin:** `caiohis@gmail.com` (a que o backfill vinculou ao cadastro de colaborador dele) e `caio.teixeira@smevr.com.br`. A segunda é a **operacional de verdade** — assinou 406 linhas (232 e-mails do log, 87 metas, 32 salas, 31 alocações, 10 alocações de coordenador, 6 unidades, 3+5 finalizações); a primeira assinou 26. Excluir uma delas **não é trivial**: 8 FKs `created_by` são `NO ACTION`, então o `DELETE` **falha** enquanto as linhas existirem — seria preciso primeiro reapontar a autoria para a conta sobrevivente, o que **reescreve o histórico**. Tentado e abandonado em 2026-07-14 por ser complexo demais para o ganho. Enquanto as duas viverem, decidir qual é a canônica.
 
 **3. Duas contas do Auth não casam com colaborador nenhum:** uma pessoa que não existe na tabela `colaboradores`, e uma "Nathalia" cujo `full_name` (só o primeiro nome) é ambíguo entre duas colaboradoras homônimas. Ambas têm só o papel `user` e ficaram **sem vínculo**, corretamente — o backfill se recusa a adivinhar. Elas podem se reivindicar pelo fluxo normal da etapa 2; o item aqui é só **conferir com um humano** quem são.
+
+---
+
+## O papel `colaborador` sobrevive à exclusão da linha de `colaboradores`
+
+**Status:** aberto em 2026-09-18, ao mandar o colaborador sem gestão para `/perfil-colaborador`
+**Área:** Auth e Permissões (ver [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md))
+
+`handle_new_user` **concede** o papel `colaborador` quando o e-mail da conta nova casa com um cadastro, mas **nada o revoga** quando aquela linha de `colaboradores` é apagada. A FK `colaboradores.user_id` é `ON DELETE SET NULL` — ela protege a conta, não o papel.
+
+**Quem fica nesse estado cai num lugar que só existe para ele:** `/perfil-colaborador` renderiza o ramo "cadastro não localizado", porque `get_meu_colaborador` não acha nada. Medido em 2026-09-18: **1 conta em 53** (de teste, criada em 15/09, nunca logou).
+
+⚠️ **Passou a importar em 18/09**, quando o redirecionamento deixou de ser teórico: antes ninguém era mandado para a página, agora todo colaborador sem gestão é. O sintoma agudo — o **beco sem saída**, sem botão "Sair", com `/auth` rebatendo quem está logado e só o timeout de 5 min como saída — **foi corrigido no mesmo passe**. O que sobra é a causa: o papel mente sobre o que a pessoa é.
+
+**O conserto é de banco, não de tela** (§2 do `CLAUDE.md`): um trigger `AFTER DELETE` em `colaboradores` que remova o papel `colaborador` do `user_id` daquela linha. Duas coisas a medir antes: se alguém **reaproveita** o papel entre cadastros (o `SET NULL` sugere que a conta pode ser recadastrada) e se há linha com o papel sem conta. **Controle positivo obrigatório:** apagar um cadastro revoga o papel **e** a exclusão de um colaborador sem conta continua passando.
 
 ---
 

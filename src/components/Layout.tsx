@@ -90,11 +90,13 @@ export default function Layout({ children }: LayoutProps) {
                   <p className="text-xs text-muted-foreground capitalize">{role}</p>
                 </div>
                 <DropdownMenuSeparator />
-                {/* ⚠️ Só para os 12 que são gestor E colaborador — quem é só colaborador
-                    nunca vê o Layout (vai direto para /perfil-colaborador no login), e
-                    quem é só gestor não tem cadastro de colaborador para ver. Movido do
-                    header em 2026-08-01: era o único link que ficava fora do menu do
-                    usuário para uma ação sobre o próprio cadastro. */}
+                {/* ⚠️ Na prática, só para os 13 que são GESTOR e colaborador (11
+                    coordenadores + 2 admins, medido em 2026-09-18): colaborador sem
+                    papel de gestão nunca vê o Layout — desde 18/09 ele vai direto para
+                    /perfil-colaborador, e o hub o rebate de volta se insistir. Quem é só
+                    gestor não tem cadastro de colaborador para ver. Movido do header em
+                    2026-08-01: era o único link que ficava fora do menu do usuário para
+                    uma ação sobre o próprio cadastro. */}
                 {isColaborador && (
                   <DropdownMenuItem asChild>
                     <Link to="/perfil-colaborador" className="flex items-center">

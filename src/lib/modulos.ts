@@ -27,8 +27,12 @@ import {
 export type ModuloId = 'aplicacao-provas' | 'editais' | 'candidatos' | 'alocacao-candidatos';
 
 // Papéis de GESTÃO que podem receber um módulo. A dimensão 'colaborador' fica de fora:
-// o colaborador puro nunca vê o hub (segue direto para /perfil-colaborador), e config
-// geral (Usuários, Meu Cadastro) não é módulo.
+// colaborador sem gestão nunca vê o hub (segue direto para /perfil-colaborador), e
+// config geral (Usuários, Meu Cadastro) não é módulo.
+//
+// ⚠️ 'user' também fica de fora, e é isso que torna o hub VAZIO para quem só tem ele —
+// o motivo de `colaboradorSemGestao` (src/lib/papeis.ts) contar `user` como "sem
+// gestão" na hora de escolher destino.
 export type PapelGestao = 'superadmin' | 'admin' | 'coordenador';
 
 // O que o hub/header conhecem de quem está logado — um subconjunto do useAuth, para

@@ -7,7 +7,7 @@ Roteiro de teste manual da UI cobrindo a refatoração do acesso do colaborador 
 1. **⚠️ Os e-mails dos 771 colaboradores são de pessoas reais — e desde 2026-07-20 o envio local SAI DE VERDADE.** Até então o `SMTP_HOST` estava com um typo (`mtp.` em vez de `smtp.hostinger.com`) e nada saía; era um freio acidental, e este aviso dizia o contrário do que hoje acontece. **Corrigido o typo, o ambiente local envia pela conta real da Hostinger, com SPF/DKIM da FEVRE.** Um disparo errado aqui chega na caixa da pessoa como e-mail legítimo da fundação. **Nunca** rode reivindicação, cadastro público ou recuperação de senha contra a linha de um colaborador real: use um **colaborador de teste criado por você**, com e-mail de uma caixa **sua**. E note que `@example.com` **não** serve mais como rede de proteção — o envio é tentado de verdade.
    - Os e-mails **nativos do Auth** (os que o GoTrue ainda compõe sozinho) continuam caindo no **Mailpit (http://127.0.0.1:54324)**, porque não há `[auth.email.smtp]` no `config.toml`. A recuperação de senha **saiu** dessa categoria: agora passa pela EF `recuperar-senha` → `send-email` → Hostinger.
 2. **Tokens de invite/recuperação são de uso único** — abrir o link por `curl` para "conferir" o queima, e o navegador depois vê "link inválido". Não é bug.
-3. Rode com **Supabase local** (`sg docker -c 'supabase status'`) e o app (`npm run dev`). Tenha à mão uma conta **admin**, uma **coordenador**, uma **gestor+colaborador** (um dos 12) e uma **colaborador puro**.
+3. Rode com **Supabase local** (`sg docker -c 'supabase status'`) e o app (`npm run dev`). Tenha à mão uma conta **admin**, uma **coordenador**, uma **gestor+colaborador** (um dos 13) e uma **colaborador sem gestão** (`user` + `colaborador` — o caso dos 40). ⚠️ "Colaborador puro" (`role` nulo) **não existe** em produção: o trigger `handle_new_user` dá `user` a toda conta nova.
 
 ---
 
@@ -16,7 +16,7 @@ Roteiro de teste manual da UI cobrindo a refatoração do acesso do colaborador 
 - [ ] **A1** — Acessar `/auth`: uma porta só, login e-mail/senha do Supabase Auth.
 - [ ] **A2** — Login como **admin** → vai para `/` (o **hub** por módulos, desde 2026-07-24; era `/dashboard`). Ver [`teste-frontend-modulos.md`](./teste-frontend-modulos.md).
 - [ ] **A3** — Login como **coordenador** → vai para `/` (o hub).
-- [ ] **A4** — Login como **colaborador puro** → vai para `/perfil-colaborador` (segue **fora** do hub).
+- [ ] **A4** — Login como **colaborador sem gestão** → vai para `/perfil-colaborador` (segue **fora** do hub). 🔵 Até 2026-09-18 esta conta caía no **hub vazio**; o caso só passa a valer a partir dali.
 - [ ] **A5** — Login como **gestor+colaborador** → cai no **hub** e enxerga o menu **"Meu Cadastro"**.
 - [ ] **A6** — Acessar `/auth-admin` → redireciona para `/auth`.
 - [ ] **A7** — Senha errada → barrado, sem vazar se o e-mail existe.
@@ -128,7 +128,7 @@ Roteiro de teste manual da UI cobrindo a refatoração do acesso do colaborador 
 - [x] **J4** — Reabrir o dialog depois de J3 → o aviso de divergência **some** (`divergentes: false`); tentar corrigir para o mesmo e-mail → recusa "Este já é o e-mail da conta de acesso."
 - [x] **J5** *(negativo)* — Em J2, informar um e-mail que **já é de outro colaborador** → recusa clara, e **nada** é escrito.
 - [x] **J6** *(estado A)* — Numa linha não-vinculada o link **nem aparece** (o campo é editável e não há o que corrigir).
-- [x] **J7** *(permissão)* — Logado como **colaborador puro**, chamar a EF direto → **403** ("Só a coordenação pode corrigir o e-mail de acesso").
+- [x] **J7** *(permissão)* — Logado como **colaborador sem gestão**, chamar a EF direto → **403** ("Só a coordenação pode corrigir o e-mail de acesso").
 
 ---
 

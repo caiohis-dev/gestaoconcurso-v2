@@ -98,8 +98,9 @@ describe("useAuth", () => {
   /**
    * `role` é a ESCADA de gestão: superadmin > admin > coordenador > user.
    * `colaborador` NÃO entra nela — é dimensão paralela, exposta como isColaborador.
-   * O motivo é concreto: dos 12 colaboradores com conta, 10 são coordenadores e 2
-   * são admins. Espremer tudo num papel único rebaixaria a gestão deles.
+   * O motivo é concreto: das 53 contas com papel `colaborador` (medido em 2026-09-18),
+   * 13 têm gestão — 11 coordenadores e 2 admins. Espremer tudo num papel único
+   * rebaixaria a gestão desses 13.
    */
   describe("hierarquia de papéis", () => {
     it("superadmin ganha também isAdmin", async () => {
@@ -150,38 +151,55 @@ describe("useAuth", () => {
   });
 
   describe("`colaborador` é dimensão paralela, não degrau", () => {
-    it("colaborador puro tem role NULL e isColaborador true", async () => {
-      // Esta é a definição de "colaborador puro" (isColaborador && role === null)
-      // usada pelo Auth.tsx no pós-login e pelo guard do Inicio.tsx: quem cai aqui
-      // vai direto a /perfil-colaborador e nunca vê o hub. As duas telas precisam
-      // concordar; se esta resolução mudar, elas divergem.
+    it("colaborador sem papel nenhum tem role NULL e isColaboradorSemGestao true", async () => {
+      // ⚠️ Estado INALCANÇÁVEL em produção: o trigger `handle_new_user` concede `'user'`
+      // a toda conta nova. Fica como prova de que a regra de destino não depende do
+      // trigger — se ele mudar, este caso continua descrevendo o certo.
       comSessao(["colaborador"]);
       const { result } = await montar();
 
       expect(result.current.role).toBeNull();
       expect(result.current.isColaborador).toBe(true);
+      expect(result.current.isColaboradorSemGestao).toBe(true);
       expect(result.current.isAdmin).toBe(false);
       expect(result.current.isCoordenador).toBe(false);
     });
 
-    it("coordenador + colaborador mantém a gestão (o caso dos 10)", async () => {
+    it("coordenador + colaborador mantém a gestão (o caso dos 11)", async () => {
       comSessao(["coordenador", "colaborador"]);
       const { result } = await montar();
 
       expect(result.current.role).toBe("coordenador");
       expect(result.current.isColaborador).toBe(true);
+      // Coordenador abre o módulo Aplicação de Provas: tem hub, e o destino não muda.
+      expect(result.current.isColaboradorSemGestao).toBe(false);
     });
 
-    it("user + colaborador resolve para `user`, NÃO para colaborador puro", async () => {
-      // Decisão explícita de 2026-07-24: a dimensão de gestão manda na escolha do
-      // destino. Esta pessoa cai no HUB (estado vazio, pois `user` não tem módulo),
-      // não no portal do colaborador — e alcança o próprio cadastro pelo item
-      // "Meu Cadastro" do header.
+    it("user + colaborador mantém `role = 'user'` — mas é colaborador SEM gestão", async () => {
+      // 🔵 O caso mais comum do sistema: 40 das 53 contas com papel `colaborador`,
+      // medido em 2026-09-18. `role` segue `'user'` (a escada não mudou), mas o DESTINO
+      // mudou em 18/09: até então ela caía no hub, que para `user` é o estado vazio
+      // ("fale com a administração") — ou seja, o sistema mandava a maior fatia das
+      // contas para uma tela sem saída, e o portal do colaborador ficava inalcançável
+      // porque `role === null` nunca acontece.
       comSessao(["user", "colaborador"]);
       const { result } = await montar();
 
       expect(result.current.role).toBe("user");
       expect(result.current.isColaborador).toBe(true);
+      expect(result.current.isColaboradorSemGestao).toBe(true);
+    });
+
+    it("`user` puro NÃO é colaborador sem gestão — o controle positivo", async () => {
+      // 3 contas. Também sem módulo, também vendo o hub vazio — mas não há para onde
+      // mandá-las: não têm cadastro de colaborador. Um predicado escrito sem o
+      // `isColaborador &&` as jogaria num portal que não existe para elas.
+      comSessao(["user"]);
+      const { result } = await montar();
+
+      expect(result.current.role).toBe("user");
+      expect(result.current.isColaborador).toBe(false);
+      expect(result.current.isColaboradorSemGestao).toBe(false);
     });
 
     it("admin + colaborador mantém admin", async () => {

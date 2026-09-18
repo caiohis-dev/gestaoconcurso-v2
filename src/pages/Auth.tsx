@@ -19,7 +19,7 @@ export const loginSchema = z.object({
 export default function Auth() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, loading, rolesLoaded, signIn, isColaborador, role } = useAuth();
+  const { user, loading, rolesLoaded, signIn, isColaboradorSemGestao } = useAuth();
   const { toast } = useToast();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -40,16 +40,21 @@ export default function Auth() {
     }
   }, [location.state]);
 
-  // Para onde a pessoa vai depois de entrar. Colaborador PURO (só a dimensão
-  // colaborador, nenhum papel de gestão) vai direto ao portal dele. Todo o resto —
-  // gestor, os 12 híbridos, ou conta sem papel — cai no hub, que mostra os módulos de
-  // cada um (ou o estado vazio). Mesma definição de "puro" que o guard do Inicio.tsx.
+  // Para onde a pessoa vai depois de entrar. Colaborador sem papel de gestão que abra
+  // porta vai direto ao portal dele; quem tem gestão de verdade (coordenador, admin,
+  // superadmin) cai no hub, que mostra os módulos de cada um. Mesma definição que o
+  // guard do Inicio.tsx — as duas telas TÊM de concordar.
+  //
+  // 🔵 Até 2026-09-18 a condição era `isColaborador && role === null`, e ela nunca
+  // disparava: o trigger `handle_new_user` concede `'user'` a toda conta nova, então
+  // os 40 colaboradores comuns caíam no hub vazio ("fale com a administração"), sem
+  // chegar ao próprio cadastro. Ver src/lib/papeis.ts.
   useEffect(() => {
     if (loading || !rolesLoaded || !user) return;
 
-    if (isColaborador && role === null) navigate("/perfil-colaborador", { replace: true });
+    if (isColaboradorSemGestao) navigate("/perfil-colaborador", { replace: true });
     else navigate("/", { replace: true });
-  }, [user, loading, rolesLoaded, isColaborador, role, navigate]);
+  }, [user, loading, rolesLoaded, isColaboradorSemGestao, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -62,7 +62,7 @@ Três omissões apareceram em três lugares diferentes, e todas eram da mesma en
 
 - **`/colaboradores`** e **`/funcoes-colaboradores`** (2026-07-25) mandavam o deslogado para `/auth` e paravam aí — qualquer conta autenticada alcançava a página pela URL. `isAdmin` só escondia as ações de escrita.
 - **`/perfil`** (config geral) não tinha guard nenhum.
-- **`/dashboard`** usava `role !== null` como proxy de `rolesLoaded` e **prendia o colaborador puro numa tela branca** — corrigido de graça quando o `RequireAcesso` entrou.
+- **`/dashboard`** usava `role !== null` como proxy de `rolesLoaded` e **prendia o colaborador numa tela branca** — corrigido de graça quando o `RequireAcesso` entrou.
 
 **Três ocorrências da mesma classe não é coincidência:** guard escrito à mão erra por esquecimento, e o erro é silencioso — nada quebra, a página só fica aberta demais. Foi o argumento da centralização, feita em 2026-07-26.
 

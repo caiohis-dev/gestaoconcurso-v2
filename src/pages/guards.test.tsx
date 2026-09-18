@@ -30,6 +30,7 @@ import { createTestQueryClient } from "@/test/utils";
 import { resetSupabaseMock, setTableResult, setRpcResult } from "@/test/supabase-mock";
 import { RequireAcesso, type PapelExigido } from "@/components/RequireAcesso";
 import { MODULOS } from "@/lib/modulos";
+import { colaboradorSemGestao } from "@/lib/papeis";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -139,9 +140,18 @@ function cenarioLimpo(): void {
 
 const USUARIO = { id: "u-1", email: "gestor@fevre.test", user_metadata: {} };
 
-/** Base deslogada e resolvida (`loading: false`, `rolesLoaded: true`). */
+/**
+ * Base deslogada e resolvida (`loading: false`, `rolesLoaded: true`).
+ *
+ * 🔴 `isColaboradorSemGestao` é DERIVADO aqui, com o mesmo helper que o `useAuth` usa —
+ * nunca aceito como literal em `over`. Se a fixture pudesse declará-lo, a matriz
+ * passaria a afirmar a própria fixture em vez da regra, e uma fixture nova que
+ * esquecesse o campo ficaria verde afirmando o contrário do que o app faz. É a
+ * armadilha 8 de `testes.md`, e ela mordeu de verdade em 2026-09-18: as duas primeiras
+ * fixtures rodaram com o campo `undefined` e o guard simplesmente não disparou.
+ */
 function estado(over: Record<string, unknown> = {}) {
-  return {
+  const base = {
     user: null,
     session: null,
     loading: false,
@@ -158,17 +168,36 @@ function estado(over: Record<string, unknown> = {}) {
     signOut: vi.fn(),
     ...over,
   };
+  return {
+    ...base,
+    isColaboradorSemGestao: colaboradorSemGestao(base.isColaborador, base.role),
+  };
 }
 
 /**
- * Os papéis espelham o que o `useAuth` monta de verdade (ver `useAuth.tsx:185-188`):
- * `isAdmin` é true para superadmin também, e `colaborador` é dimensão PARALELA — o
- * colaborador puro tem `role === null`, não um papel de gestão rebaixado.
+ * Os papéis espelham o que o `useAuth` monta de verdade (ver os derivados no fim do
+ * provider): `isAdmin` é true para superadmin também, e `colaborador` é dimensão
+ * PARALELA — não é um papel de gestão rebaixado.
  */
 const PAPEIS = {
   deslogado: () => estado(),
-  /** Colaborador puro: sem papel de gestão — não é coordenador nem admin. */
+  /**
+   * Colaborador com `role === null`. ⚠️ Este estado é INALCANÇÁVEL em produção — o
+   * trigger `handle_new_user` concede `'user'` a toda conta nova —, e fica como
+   * controle de que a regra de destino não depende do trigger. Quem existe de verdade
+   * é o `colaboradorUser` abaixo.
+   */
   colaborador: () => estado({ user: USUARIO, roles: ["colaborador"], isColaborador: true }),
+  /** O caso REAL: colaborador comum. 40 das 53 contas com o papel, medido em 2026-09-18. */
+  colaboradorUser: () =>
+    estado({ user: USUARIO, role: "user", roles: ["user", "colaborador"], isColaborador: true }),
+  /**
+   * `user` puro, sem cadastro de colaborador — 3 contas. É o CONTROLE POSITIVO da regra
+   * nova: ele também não tem módulo e vê o hub vazio, mas NÃO pode ser mandado ao
+   * portal do colaborador, que não existe para ele. Um predicado escrito sem o
+   * `isColaborador &&` passaria em tudo menos aqui.
+   */
+  user: () => estado({ user: USUARIO, role: "user", roles: ["user"] }),
   coordenador: () =>
     estado({ user: USUARIO, role: "coordenador", roles: ["coordenador"], isCoordenador: true }),
   admin: () => estado({ user: USUARIO, role: "admin", roles: ["admin"], isAdmin: true }),
@@ -187,6 +216,7 @@ const TODOS_OS_PAPEIS = Object.keys(PAPEIS) as Papel[];
 
 const HUB = "/";
 const LOGIN = "/auth";
+const PORTAL = "/perfil-colaborador";
 
 // ---------------------------------------------------------------------------
 // Harness
@@ -300,11 +330,16 @@ const PAGINAS: Pagina[] = [
     path: "/",
     rota: "/",
     mod: () => import("./Inicio"),
-    permitidos: ["coordenador", "admin", "superadmin"],
+    // `user` puro entra: ele vê o estado vazio ("fale com a administração"), que é o
+    // estado real de uma conta sem papel — e não há para onde mandá-lo, porque ele não
+    // tem cadastro de colaborador.
+    permitidos: ["user", "coordenador", "admin", "superadmin"],
     desvios: {
-      // O colaborador puro nunca vê o hub: ele é dos papéis de gestão, e o colaborador
-      // segue direto para o próprio cadastro. Decisão de produto, não recusa.
+      // Colaborador sem gestão nunca vê o hub: o que ele veria é o estado vazio, que não
+      // leva a lugar nenhum. Segue direto para o próprio cadastro. Decisão de produto,
+      // não recusa.
       colaborador: "/perfil-colaborador",
+      colaboradorUser: "/perfil-colaborador",
     },
   },
   {
@@ -501,11 +536,14 @@ const PAGINAS: Pagina[] = [
     mod: () => import("./Perfil"),
     // Config geral, não módulo: é a conta do Supabase Auth (nome + senha). Ganhou guard
     // em 2026-07-26 — antes não tinha nenhum e renderizava para visitante deslogado.
-    permitidos: ["coordenador", "admin", "superadmin"],
+    // `user` puro entra, de propósito: tem conta no Auth e é aqui que troca a senha.
+    permitidos: ["user", "coordenador", "admin", "superadmin"],
     desvios: {
-      // Colaborador puro tem página própria para "meus dados"; duas telas concorrentes
-      // seria pior que uma recusa.
+      // Colaborador sem gestão tem página própria para "meus dados"; duas telas
+      // concorrentes seria pior que uma recusa. Desde 2026-09-18 isso vale também para
+      // quem tem `user` — e a troca de senha foi junto, no `AlterarSenhaCard`.
       colaborador: "/perfil-colaborador",
+      colaboradorUser: "/perfil-colaborador",
     },
   },
   {
@@ -513,13 +551,13 @@ const PAGINAS: Pagina[] = [
     path: "/perfil-colaborador",
     rota: "/perfil-colaborador",
     mod: () => import("./PerfilColaborador"),
-    permitidos: ["colaborador"],
+    permitidos: ["colaborador", "colaboradorUser"],
     desvios: {
-      // Quem é gestor e NÃO é colaborador vai para `/auth`, não para o hub: o guard trata
-      // "não é colaborador" no mesmo ramo de "não está logado"
-      // (PerfilColaborador.tsx:132). Na prática o usuário volta ao hub, porque o /auth
-      // rebate quem já está logado — é feio, mas não trava ninguém. Não afeta os 12 que
-      // são gestor E colaborador: para eles `isColaborador` é true.
+      // Quem NÃO é colaborador vai para `/auth`, não para o hub: o guard trata "não é
+      // colaborador" no mesmo ramo de "não está logado". Na prática o usuário volta ao
+      // hub, porque o /auth rebate quem já está logado — é feio, mas não trava ninguém.
+      // Não afeta os 13 que são gestor E colaborador: para eles `isColaborador` é true.
+      user: LOGIN,
       coordenador: LOGIN,
       admin: LOGIN,
       superadmin: LOGIN,
@@ -559,6 +597,12 @@ describe("guards de página — matriz papel × rota", () => {
       expect(rotaAtual()).not.toBe(LOGIN);
       // O hub só é destino de RECUSA; para a página que mora nele, ficar é o certo.
       if (pagina.rota !== HUB) expect(rotaAtual()).not.toBe(HUB);
+      // ⚠️ Acrescentado em 2026-09-18, e a lacuna era real: para a página que mora no
+      // hub as duas linhas acima não afirmam NADA (a primeira olha `/auth`, a segunda é
+      // pulada), então um hub que mandasse todo mundo ao portal do colaborador passaria
+      // verde aqui. Foi o que aconteceu ao falsificar o predicado — só um caso fora da
+      // matriz acusou.
+      if (pagina.rota !== PORTAL) expect(rotaAtual()).not.toBe(PORTAL);
       // Esperar as queries assentarem antes de encerrar. Sem isto, o que ainda estava em
       // voo atualiza estado depois do teste e vira aviso de `act` (armadilha 3): ruído
       // que esconde problema real na suíte seguinte. Só a página maior do repo (935 l.)
@@ -725,5 +769,89 @@ describe("a rota de entrada de cada módulo é alcançável por todos os papéis
         `${modulo.id}: papel ${papel} entra em ${entrada}, que não o admite`,
       ).toContain(papel);
     }
+  });
+});
+
+/**
+ * 🔴 A cadeia de DOIS saltos, que a matriz acima não alcança.
+ *
+ * Desde 2026-09-18 o hub deixou de ser destino para o colaborador sem gestão e virou
+ * ESCALA: o `RequireAcesso` de uma rota de gestão manda quem não tem papel para `/`
+ * (nunca para `/perfil-colaborador`, para não duplicar a decisão), e é o `Inicio` que
+ * completa o caminho. Um bookmark velho em `/colaboradores` passa a percorrer
+ * `/colaboradores` → `/` → `/perfil-colaborador`.
+ *
+ * A matriz não vê isso porque monta a rota-sentinela em `*` e nunca o `Inicio` de
+ * verdade — ela para no primeiro salto, e afirmaria `/` como destino final. Este caso
+ * monta o hub na raiz só para provar que a cadeia TERMINA. Se alguém fizer o
+ * `RequireAcesso` apontar direto para o portal, ou tirar o desvio do `Inicio`, é aqui
+ * que aparece.
+ */
+describe("colaborador sem gestão: rota de gestão → hub → portal", () => {
+  it("termina em /perfil-colaborador, não no hub", async () => {
+    auth.atual = PAPEIS.colaboradorUser();
+    const { default: Inicio } = await import("./Inicio");
+    const { default: Colaboradores } = await import("./Colaboradores");
+
+    render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <MemoryRouter
+          initialEntries={["/colaboradores"]}
+          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        >
+          <Sonda />
+          <Routes>
+            <Route
+              path="/colaboradores"
+              element={
+                <RequireAcesso papeis={["admin", "coordenador"]}>
+                  <Colaboradores />
+                </RequireAcesso>
+              }
+            />
+            {/* O hub de VERDADE, que é o que diferencia este caso da matriz. */}
+            <Route path="/" element={<Inicio />} />
+            <Route path="*" element={<span>SENTINELA</span>} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await esperarRota("/perfil-colaborador");
+  });
+
+  it("o `user` puro PARA no hub — a cadeia não continua para quem não é colaborador", async () => {
+    // Controle positivo do caso acima: prova que é o segundo salto que decide, e que ele
+    // só acontece para quem tem cadastro de colaborador. Sem este caso, um `Inicio` que
+    // mandasse todo mundo ao portal passaria no teste anterior.
+    auth.atual = PAPEIS.user();
+    const { default: Inicio } = await import("./Inicio");
+    const { default: Colaboradores } = await import("./Colaboradores");
+
+    render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <MemoryRouter
+          initialEntries={["/colaboradores"]}
+          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        >
+          <Sonda />
+          <Routes>
+            <Route
+              path="/colaboradores"
+              element={
+                <RequireAcesso papeis={["admin", "coordenador"]}>
+                  <Colaboradores />
+                </RequireAcesso>
+              }
+            />
+            <Route path="/" element={<Inicio />} />
+            <Route path="*" element={<span>SENTINELA</span>} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await esperarRota("/");
+    expect(await screen.findByText(/Nenhum módulo disponível/i)).toBeInTheDocument();
   });
 });

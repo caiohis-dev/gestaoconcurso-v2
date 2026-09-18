@@ -13,6 +13,7 @@ import fevreLogo from '@/assets/fevre-logo.png';
 import { GRAU_INSTRUCAO_OPTIONS, ESTADO_CIVIL_OPTIONS, RACA_OPTIONS } from '@/lib/constants';
 import { maskDateBR, brDateToIso, isoToBrDate, maskCPF, maskPIS, onlyDigits } from '@/lib/utils';
 import { useBancos, TIPO_CONTA_OPTIONS } from '@/hooks/useBancos';
+import AlterarSenhaCard from '@/components/AlterarSenhaCard';
 
 interface ColaboradorData {
   id: string;
@@ -355,10 +356,38 @@ export default function PerfilColaborador() {
     );
   }
 
+  // 🔴 Este ramo era um BECO SEM SAÍDA até 2026-09-18: renderizava só "Dados não
+  // encontrados.", sem header e sem "Sair" — e `/auth` rebate quem está logado, então a
+  // única saída era esperar os 5 min do INACTIVITY_TIMEOUT. Passou a importar porque
+  // agora MANDAMOS gente para cá: quem tem o papel `colaborador` sem linha em
+  // `colaboradores` (1 conta em 53, medido em 18/09) cai exatamente aqui. O papel
+  // sobrevive à exclusão da linha e nada o revoga — ver o backlog.
   if (!colaboradorData) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <p className="text-muted-foreground">Dados não encontrados.</p>
+      <div className="min-h-screen bg-muted/30 p-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-4">
+              <img src={fevreLogo} alt="FEVRE Logo" className="h-12 w-auto" />
+              <h1 className="text-xl font-bold text-foreground">Meu Perfil</h1>
+            </div>
+            <Button variant="outline" onClick={handleLogout}>
+              <LogOut className="h-4 w-4 mr-2" />
+              Sair
+            </Button>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Cadastro não localizado</CardTitle>
+              <CardDescription>
+                Sua conta de acesso existe, mas não encontramos um cadastro de colaborador
+                ligado a ela. Fale com a coordenação para regularizar — é ela que faz esse
+                vínculo.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
       </div>
     );
   }
@@ -743,6 +772,14 @@ export default function PerfilColaborador() {
             </Button>
           </CardContent>
         </Card>
+
+        {/* A troca de senha LOGADO. Esta página não monta o `Layout`, então não alcança
+            o link "Alterar Cadastro" do menu — sem este card, quem chega aqui só
+            trocaria a senha saindo e pedindo link por e-mail. Mesmo componente do
+            /perfil, para as duas telas não divergirem. */}
+        <div className="mb-6">
+          <AlterarSenhaCard />
+        </div>
 
         <p className="text-center text-xs text-muted-foreground mt-6">
           Fundação Educacional de Volta Redonda

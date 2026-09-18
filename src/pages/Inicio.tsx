@@ -8,14 +8,15 @@ import { Loader2, ArrowRight } from "lucide-react";
 import { modulosDoUsuario } from "@/lib/modulos";
 
 /**
- * A tela de entrada (hub) — a nova rota raiz "/". Lista os módulos a que o usuário
- * tem acesso. É UX: esconde módulos, não barra ninguém (RLS+EF+guards fazem isso).
- * O colaborador puro NUNCA vê o hub — cai direto no /perfil-colaborador.
+ * A tela de entrada (hub) — a rota raiz "/". Lista os módulos a que o usuário tem
+ * acesso. É UX: esconde módulos, não barra ninguém (RLS+EF+guards fazem isso).
+ * Colaborador SEM papel de gestão que abra porta nunca vê o hub — cai direto no
+ * /perfil-colaborador.
  *
  * A rota só é plugada na etapa 3 (troca atômica). Aqui o arquivo só precisa compilar.
  */
 export default function Inicio() {
-  const { user, loading, rolesLoaded, role, isAdmin, isSuperAdmin, isCoordenador, isColaborador, isLoggingOut } = useAuth();
+  const { user, loading, rolesLoaded, isAdmin, isSuperAdmin, isCoordenador, isColaboradorSemGestao, isLoggingOut } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -39,9 +40,15 @@ export default function Inicio() {
 
   if (!user) return null;
 
-  // Colaborador puro (tem a dimensão colaborador, mas nenhum papel de gestão) não tem
-  // hub. Cobre o caso de ele digitar "/" na barra do navegador.
-  if (isColaborador && role === null) {
+  // Colaborador sem gestão que abra porta não tem hub: o que ele veria é o estado
+  // vazio abaixo, que não leva a lugar nenhum. Cobre tanto quem digita "/" na barra
+  // quanto quem chega aqui rebatido pelo RequireAcesso (um bookmark velho numa rota de
+  // gestão vira dois saltos: rota -> "/" -> /perfil-colaborador).
+  //
+  // 🔵 Até 2026-09-18 a condição era `isColaborador && role === null` — inalcançável,
+  // porque o trigger `handle_new_user` dá `'user'` a toda conta nova. Ver
+  // src/lib/papeis.ts.
+  if (isColaboradorSemGestao) {
     return <Navigate to="/perfil-colaborador" replace />;
   }
 

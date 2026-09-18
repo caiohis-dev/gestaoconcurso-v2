@@ -49,7 +49,7 @@ export function RequireAcesso({ papeis, children }: RequireAcessoProps) {
 
   // Esperar `rolesLoaded`, não só `loading`: cada `applySession` (todo refresh de token)
   // reabre a janela em que o usuário já existe e os papéis ainda não. Decidir ali é
-  // decidir sobre um conjunto vazio — e foi o que prendeu o colaborador puro numa tela
+  // decidir sobre um conjunto vazio — e foi o que prendeu o colaborador numa tela
   // branca no Dashboard, que usava `role !== null` como proxy disto.
   if (loading || !rolesLoaded) {
     return (
@@ -69,8 +69,13 @@ export function RequireAcesso({ papeis, children }: RequireAcessoProps) {
   });
 
   // Sem o papel, volta ao hub — que é quem sabe para onde cada um vai (o colaborador
-  // puro, por exemplo, segue de lá para o próprio cadastro). Mandar direto para
+  // sem gestão, por exemplo, segue de lá para o próprio cadastro). Mandar direto para
   // `/perfil-colaborador` daqui duplicaria aquela decisão em dois lugares.
+  //
+  // ⚠️ Desde 2026-09-18 isto pode ser um caminho de DOIS saltos: um bookmark velho numa
+  // rota de gestão manda o colaborador para "/", e o hub o manda para o portal. A
+  // cadeia termina — `guards.test.tsx` tem um caso montando o `Inicio` na raiz só para
+  // provar isso —, mas quem mexer aqui precisa saber que ela existe.
   if (!temAcesso) return <Navigate to="/" replace />;
 
   return <>{children}</>;

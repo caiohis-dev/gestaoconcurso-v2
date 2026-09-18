@@ -1,8 +1,7 @@
 import { useState, useEffect, createContext, useContext, ReactNode, useCallback, useRef } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
-
-type AppRole = 'admin' | 'user' | 'coordenador' | 'superadmin' | 'colaborador';
+import { colaboradorSemGestao, type AppRole } from '@/lib/papeis';
 
 interface AuthContextType {
   user: User | null;
@@ -15,6 +14,8 @@ interface AuthContextType {
   isSuperAdmin: boolean;
   isCoordenador: boolean;
   isColaborador: boolean;
+  /** Colaborador sem papel de gestão que abra porta — o destino dele é `/perfil-colaborador`. */
+  isColaboradorSemGestao: boolean;
   isLoggingOut: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>;
@@ -36,9 +37,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isLoggingOutRef = useRef(false);
 
   // `role` é a escada de gestão: superadmin > admin > coordenador > user.
-  // 'colaborador' NÃO entra nela — é uma dimensão paralela. Dos 12 colaboradores que
-  // têm conta, 10 são coordenadores e 2 são admins: espremê-los num papel único
-  // rebaixaria a gestão deles. Quem precisa saber "é colaborador?" usa isColaborador.
+  // 'colaborador' NÃO entra nela — é uma dimensão paralela. Medido em 2026-09-18: das
+  // 53 contas com papel `colaborador`, 13 têm gestão (11 coordenadores + 2 admins) e
+  // 40 não têm. Espremê-las num papel único rebaixaria a gestão dos 13. Quem precisa
+  // saber "é colaborador?" usa isColaborador.
+  //
+  // ⚠️ `user` é degrau desta escada mas não abre módulo nenhum — quem tem só ele cai
+  // no hub vazio. Quem decide DESTINO não pergunta "tem papel de gestão?" e sim
+  // "tem gestão que abra porta?": é o `isColaboradorSemGestao` abaixo.
   const resolveRoleGestao = (all: AppRole[]): AppRole | null => {
     if (all.includes('superadmin')) return 'superadmin';
     if (all.includes('admin')) return 'admin';
@@ -186,6 +192,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAdmin = role === 'admin' || role === 'superadmin';
   const isCoordenador = role === 'coordenador';
   const isColaborador = roles.includes('colaborador');
+  // A pergunta de DESTINO, num lugar só. `Auth`, `Inicio` e `Perfil` têm de responder
+  // igual — até 2026-09-18 a expressão estava copiada nos quatro pontos, e a cópia
+  // afirmava `role === null`, que o trigger `handle_new_user` torna inalcançável.
+  const isColaboradorSemGestao = colaboradorSemGestao(isColaborador, role);
 
   return (
     <AuthContext.Provider
@@ -200,6 +210,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isSuperAdmin,
         isCoordenador,
         isColaborador,
+        isColaboradorSemGestao,
         isLoggingOut,
         signIn,
         signUp,

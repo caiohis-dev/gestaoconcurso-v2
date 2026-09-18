@@ -7,17 +7,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import AlterarSenhaCard from '@/components/AlterarSenhaCard';
 import { toast } from 'sonner';
-import { User, Mail, Lock, Save, Loader2 } from 'lucide-react';
+import { User, Mail, Save, Loader2 } from 'lucide-react';
 
 export default function Perfil() {
   // `loading` do useAuth vira `authLoading`: já existe um `loading` local, do submit.
-  const { user, loading: authLoading, rolesLoaded, role, isColaborador, isLoggingOut } = useAuth();
+  const { user, loading: authLoading, rolesLoaded, isColaboradorSemGestao, isLoggingOut } = useAuth();
   const navigate = useNavigate();
   const [fullName, setFullName] = useState(user?.user_metadata?.full_name || '');
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   // Até 2026-07-26 esta página não tinha guard NENHUM: renderizava inteira para
@@ -30,16 +28,25 @@ export default function Perfil() {
     if (authLoading || !rolesLoaded) return;
     if (!user) {
       navigate('/auth', { replace: true });
-    } else if (isColaborador && role === null) {
-      // `isColaborador && role === null` é a definição CANÔNICA de "colaborador puro",
-      // a mesma de Inicio.tsx e Auth.tsx — não troque por `!isAdmin && !isCoordenador`.
-      // Ele tem página própria (/perfil-colaborador) e não deve ver duas telas
-      // concorrentes de "meus dados".
+    } else if (isColaboradorSemGestao) {
+      // `isColaboradorSemGestao` (src/lib/papeis.ts) é a definição CANÔNICA, a mesma de
+      // Inicio.tsx e Auth.tsx. Ele tem página própria (/perfil-colaborador) e não deve
+      // ver duas telas concorrentes de "meus dados".
+      //
+      // ⚠️ Não troque por `!isAdmin && !isCoordenador`: hoje é equivalente, mas um
+      // degrau novo na escada de gestão passaria a cair aqui em silêncio. (Este aviso
+      // já existia por outro motivo — dizia respeito ao `role === null` — e continua
+      // valendo; ver o helper.)
       navigate('/perfil-colaborador', { replace: true });
     }
-    // Quem tem `role === 'user'` ENTRA, de propósito: tem conta no Auth e o hub já o
-    // aceita (com estado vazio). Barrá-lo aqui o deixaria sem lugar para trocar a senha.
-  }, [user, authLoading, rolesLoaded, role, isColaborador, navigate, isLoggingOut]);
+    // Quem tem `role === 'user'` SEM ser colaborador ENTRA, de propósito: tem conta no
+    // Auth, o hub o aceita (com estado vazio) e é aqui que ele troca a própria senha.
+    // São 3 contas, medido em 2026-09-18.
+    //
+    // 🔵 Até 18/09 quem tinha `user` + `colaborador` também entrava, pela mesma razão.
+    // Agora ele é mandado ao portal — e leva a troca de senha junto, no
+    // `AlterarSenhaCard`, que nasceu para esta mudança não virar regressão.
+  }, [user, authLoading, rolesLoaded, isColaboradorSemGestao, navigate, isLoggingOut]);
 
   // O nome vinha só do `useState` inicial, que roda no primeiro render — quando a sessão
   // ainda não resolveu. Num reload direto em /perfil o campo aparecia VAZIO para quem
@@ -79,38 +86,6 @@ export default function Perfil() {
     }
   };
 
-  const handleUpdatePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (newPassword !== confirmPassword) {
-      toast.error('As senhas não coincidem');
-      return;
-    }
-
-    if (newPassword.length < 6) {
-      toast.error('A nova senha deve ter pelo menos 6 caracteres');
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword
-      });
-
-      if (error) throw error;
-
-      toast.success('Senha atualizada com sucesso!');
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-    } catch (error: any) {
-      toast.error(error.message || 'Erro ao atualizar senha');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   if (authLoading || !rolesLoaded) {
     return (
@@ -120,7 +95,7 @@ export default function Perfil() {
     );
   }
 
-  if (!user || (isColaborador && role === null)) {
+  if (!user || isColaboradorSemGestao) {
     return null;
   }
 
@@ -180,53 +155,7 @@ export default function Perfil() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Lock className="h-5 w-5" />
-              Alterar Senha
-            </CardTitle>
-            <CardDescription>Atualize sua senha de acesso</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleUpdatePassword} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="newPassword">Nova Senha</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="newPassword"
-                    type="password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Mínimo 6 caracteres"
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirmar Nova Senha</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="confirmPassword"
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Repita a nova senha"
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-
-              <Button type="submit" disabled={loading} variant="secondary" className="gap-2">
-                <Lock className="h-4 w-4" />
-                Atualizar Senha
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+        <AlterarSenhaCard />
       </div>
     </Layout>
   );

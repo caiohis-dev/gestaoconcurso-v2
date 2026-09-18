@@ -7,7 +7,7 @@ O desenho e as decisões (D1–D5) estão em [`../my_rules/analises/concluidos/r
 ## Antes de começar
 
 1. Rode com **Supabase local** (`sg docker -c 'supabase status'`) e o app (`npm run dev`).
-2. Tenha à mão as 4 contas de teste: **admin**, **coordenador**, **gestor+colaborador** (um dos 12) e **colaborador puro**. Se der, tenha também uma conta **`user` puro** (só o papel `user`, sem módulo) — o estado vazio do hub.
+2. Tenha à mão as 4 contas de teste: **admin**, **coordenador**, **gestor+colaborador** (um dos 13) e **colaborador sem gestão** (`user` + `colaborador` — o caso dos 40; ⚠️ "colaborador puro", com `role` nulo, **não existe** em produção). Tenha também uma conta **`user` puro** (só o papel `user`, sem `colaborador`) — é ela que vê o estado vazio do hub, e é o contraste que importa.
 3. **Princípio a lembrar:** o hub e os links do header são **UX** — escondem, não barram. Um card ausente não é prova de que a rota está protegida; a barreira real é RLS + EFs + os guards de página. Se algo "aparece que não devia", é bug de UX; se algo "deixa fazer que não devia", é bug de autorização (outra camada).
 
 ---
@@ -33,15 +33,20 @@ O desenho e as decisões (D1–D5) estão em [`../my_rules/analises/concluidos/r
 ## C. Rotas digitadas direto na barra
 
 - [ ] **C1** — `/` deslogado → vai para `/auth`.
-- [ ] **C2** — `/` como **colaborador puro** → redireciona para `/perfil-colaborador` (cobre digitar a raiz na barra).
+- [ ] **C2** — `/` como **colaborador sem gestão** (`user` + `colaborador`) → redireciona para `/perfil-colaborador` (cobre digitar a raiz na barra).
 - [ ] **C3** — `/colaboradores` → abre a **lista de colaboradores** (a antiga home).
 - [ ] **C4** — `/dashboard` como **coordenador** → o guard da página barra e joga em `/` → **cai no hub** (destino "barrado → lugar seguro", agora correto).
 - [ ] **C5** — `/cadastro-publico` → segue **público e SEM Layout** (o header do sistema não aparece); o hub não a captura. **Este é o caso da pegadinha** `/cadastro` vs `/cadastro-publico`.
 
-## D. Regressão do colaborador puro (nada do fluxo dele mudou)
+## D. O colaborador sem gestão (revisto em 2026-09-18)
 
-- [ ] **D1** — Login do colaborador puro → `/perfil-colaborador`, **sem** Layout/header do sistema, byte a byte como antes.
-- [ ] **D2** — Digitar `/` logado como colaborador puro → volta a `/perfil-colaborador`, sem piscar o hub vazio (o guard espera `rolesLoaded`).
+> 🔵 Esta seção chamava-se "Regressão do colaborador puro (nada do fluxo dele mudou)" e valia para `role === null` — estado que o trigger `handle_new_user` torna inalcançável. Em 18/09 o fluxo passou a valer para quem tem `user` + `colaborador`, que são 40 contas; antes disso elas caíam no hub vazio.
+
+- [ ] **D1** — Login do colaborador sem gestão → `/perfil-colaborador`, **sem** Layout/header do sistema.
+- [ ] **D2** — Digitar `/` logado como colaborador sem gestão → volta a `/perfil-colaborador`, sem piscar o hub vazio (o guard espera `rolesLoaded`).
+- [ ] **D2b** — Abrir um bookmark de rota de gestão (ex.: `/colaboradores`) como colaborador sem gestão → termina em `/perfil-colaborador`. São **dois** saltos (rota → `/` → portal): o que se confere é que a cadeia PARA.
+- [ ] **D2c** — Trocar a senha pelo card no fim do `/perfil-colaborador`, deslogar e entrar com a senha nova. ⚠️ É o caminho que substituiu o link "Alterar Cadastro" do menu, que essa pessoa não tem mais.
+- [ ] **D2d** — Como **`user` puro** (sem `colaborador`): login → **hub vazio**, e `/perfil` **abre**. É o contraste que prova que a regra olha a dimensão colaborador, não só o papel `user`.
 - [ ] **D3** — Editar e salvar o cadastro → segue funcionando (sem regressão do tema anterior).
 
 ## E. Menu mobile
