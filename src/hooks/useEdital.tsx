@@ -38,12 +38,19 @@ export interface EditalMetadados {
   signatario_nome: string | null;
   signatario_cargo: string | null;
   data_publicacao: string | null;
+  // 🔵 O modelo padrão (migration 20260918183433). `eh_modelo` marca a linha que serve de
+  // texto-base; `modelo_aplicado_em` registra o FATO de um edital tê-la absorvido, e é ele
+  // que decide se o convite aparece — não um teste de "está vazio?", que re-ofereceria o
+  // modelo a quem apagou os artigos de propósito.
+  eh_modelo: boolean;
+  modelo_aplicado_em: string | null;
+  modelo_versao: string | null;
 }
 
 // ⚠️ Lista EXPLÍCITA: coluna que não estiver aqui não chega à tela, e quem a consome vê
 // `undefined` sem erro nenhum. Ao acrescentar coluna em `editais`, acrescente aqui também.
 const CAMPOS_EDITAL =
-  "id, nome, numero_edital, ano, natureza_juridica, orgao_demandante, entidade_executora, decreto_autorizador, regime_trabalho, prazo_validade_anos, prorrogavel, site_oficial, executora_endereco, signatario_nome, signatario_cargo, data_publicacao";
+  "id, nome, numero_edital, ano, natureza_juridica, orgao_demandante, entidade_executora, decreto_autorizador, regime_trabalho, prazo_validade_anos, prorrogavel, site_oficial, executora_endereco, signatario_nome, signatario_cargo, data_publicacao, eh_modelo, modelo_aplicado_em, modelo_versao";
 
 export function useEdital(editalId: string | undefined) {
   const queryClient = useQueryClient();

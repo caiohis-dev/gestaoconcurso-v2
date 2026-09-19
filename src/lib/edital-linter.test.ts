@@ -348,3 +348,39 @@ describe("os marcadores de dado variável — `{{campo:}}`", () => {
     expect(achados.map((a) => a.regra)).toEqual(["campo-desconhecido", "campo-desconhecido"]);
   });
 });
+
+describe("o que falta REDIGIR", () => {
+  it("🔴 acusa ERRO e CITA a instrução", () => {
+    const achados = analisarEdital({
+      itens: comArtigos(
+        "disposicoes_preliminares",
+        "Em observância a {{redigir:o fundamento legal deste certame}}, visa ao provimento.",
+      ),
+    });
+    expect(achados.map((a) => a.regra)).toEqual(["texto-a-redigir"]);
+    expect(achados[0].severidade).toBe("erro");
+    // Sem citar a instrução, a regra só diria "falta redigir algo" — que é o defeito do
+    // `[ ]` vazio que este marcador veio resolver.
+    expect(achados[0].mensagem).toContain("o fundamento legal deste certame");
+  });
+
+  it("acusa UM achado por trecho pendente, não um por artigo", () => {
+    const achados = analisarEdital({
+      itens: comArtigos("disposicoes_preliminares", "{{redigir:as leis}} e {{redigir:a finalidade}}"),
+    });
+    expect(achados.map((a) => a.regra)).toEqual(["texto-a-redigir", "texto-a-redigir"]);
+  });
+
+  it("⭐ CONTROLE: artigo redigido por inteiro não acusa nada", () => {
+    expect(analisarEdital({ itens: comArtigos("disposicoes_preliminares", "Artigo completo.") })).toEqual([]);
+  });
+
+  it("⚠️ o marcador NÃO cai na regra de placeholder — são achados diferentes", () => {
+    // `placeholder-nao-preenchido` pega `[ ]` e `XX`; este pega o marcador que DIZ o que
+    // falta. Se os dois acusassem o mesmo trecho, o painel mostraria a linha duas vezes.
+    const achados = analisarEdital({
+      itens: comArtigos("disposicoes_preliminares", "Funda-se em {{redigir:as leis}}."),
+    });
+    expect(achados.map((a) => a.regra)).not.toContain("placeholder-nao-preenchido");
+  });
+});

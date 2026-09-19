@@ -37,7 +37,7 @@
  * `territorialidade_abrangencia` e nunca chega a `edital_itens.texto`; se um dia chegar, o
  * grito do linter estará certo.
  */
-import { camposDoTexto, CAMPO_POR_CHAVE } from "@/lib/edital-campos";
+import { camposDoTexto, trechosARedigir, CAMPO_POR_CHAVE } from "@/lib/edital-campos";
 import { CAPITULO_POR_CHAVE } from "@/lib/edital-capitulos";
 import { montarDocumento, referenciasDoTexto, type CapituloResolvido } from "@/lib/edital-numeracao";
 import {
@@ -124,6 +124,24 @@ function analisarCamposDoArtigo(
   valoresDeCampo: ReadonlyMap<string, string> | undefined,
 ): Achado[] {
   const achados: Achado[] = [];
+
+  // ── o que ainda falta REDIGIR ─────────────────────────────────────────────
+  //
+  // 🔴 Erro, não aviso. O marcador `{{redigir:}}` existe porque o modelo tem frases que só
+  // uma pessoa pode escrever — fundamento legal e objeto do certame, que no Edital 004 são de
+  // Agente Comunitário de Saúde. Publicar sem escrever é publicar o edital errado, e a frase
+  // seria plausível o bastante para passar por uma revisão apressada.
+  //
+  // ⚠️ A mensagem CITA a instrução. Sem isso a regra só diria "falta redigir algo aqui", que
+  // é o defeito do `[ ]` vazio que este marcador veio resolver.
+  for (const instrucao of trechosARedigir(texto)) {
+    achados.push({
+      severidade: "erro",
+      capitulo: cap.chave,
+      regra: "texto-a-redigir",
+      mensagem: `Em "${cap.titulo}", ${onde} tem trecho não redigido: "${instrucao}".`,
+    });
+  }
 
   for (const campo of camposDoTexto(texto)) {
     if (!campo.conhecido) {

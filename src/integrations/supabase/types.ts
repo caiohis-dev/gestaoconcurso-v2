@@ -845,9 +845,12 @@ export type Database = {
           created_by: string | null
           data_publicacao: string | null
           decreto_autorizador: string | null
+          eh_modelo: boolean
           entidade_executora: string | null
           executora_endereco: string | null
           id: string
+          modelo_aplicado_em: string | null
+          modelo_versao: string | null
           n_candidatos: number | null
           natureza_juridica: string | null
           nome: string
@@ -869,9 +872,12 @@ export type Database = {
           created_by?: string | null
           data_publicacao?: string | null
           decreto_autorizador?: string | null
+          eh_modelo?: boolean
           entidade_executora?: string | null
           executora_endereco?: string | null
           id?: string
+          modelo_aplicado_em?: string | null
+          modelo_versao?: string | null
           n_candidatos?: number | null
           natureza_juridica?: string | null
           nome: string
@@ -893,9 +899,12 @@ export type Database = {
           created_by?: string | null
           data_publicacao?: string | null
           decreto_autorizador?: string | null
+          eh_modelo?: boolean
           entidade_executora?: string | null
           executora_endereco?: string | null
           id?: string
+          modelo_aplicado_em?: string | null
+          modelo_versao?: string | null
           n_candidatos?: number | null
           natureza_juridica?: string | null
           nome?: string
@@ -2331,6 +2340,10 @@ export type Database = {
           locked_since: string
           success: boolean
         }[]
+      }
+      aplicar_edital_modelo: {
+        Args: { p_capitulos_alvo?: string[]; p_destino: string }
+        Returns: number
       }
       aplicar_plano_de_alocacao: {
         Args: { p_plano: Json; p_prova_id: string }

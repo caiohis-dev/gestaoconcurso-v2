@@ -58,6 +58,13 @@ O **edital** é o **documento normativo do certame**, montado por capítulos den
 | `src/hooks/useCamposDoEdital.tsx` | 🔵 **2026-09-18** — a única peça do mecanismo que fala com o banco; agrega hooks que já existem |
 | `src/components/DadosDoEdital.tsx` | 🔵 **2026-09-18** — o editor do `preambulo`; **fecha o buraco da fatia 1**, em que `salvarMetadados` não era chamado por tela nenhuma |
 | `supabase/migrations/20260918103305_editais_campos_escalares_do_documento.sql` | 🔵 **2026-09-18** — as 5 colunas que faltavam |
+| `src/hooks/useAvisarAoSair.tsx` | 🔵 **2026-09-18** — o aviso do navegador ao fechar a aba com rascunho |
+| `src/hooks/useModeloPadrao.tsx` | 🔵 **2026-09-18** — o edital modelo e a absorção dele |
+| `src/components/FaixaDoModeloPadrao.tsx` | 🔵 **2026-09-18** — os três estados da faixa do modelo |
+| `supabase/migrations/20260918183433_editais_modelo_padrao_e_clonagem.sql` | 🔵 **2026-09-18** — o modelo, os 2 triggers e a RPC de clonagem |
+| `src/lib/edital-modelo/tipos.ts` · `index.ts` | 🔵 **rodada 2** — a espinha do texto do modelo: tipos, índice, `sqlDoCapitulo` |
+| `src/lib/edital-modelo/<chave>.ts` | 🔵 **uma por rodada** — o texto daquele capítulo, autorado em TS |
+| `supabase/migrations/…_modelo_edital_<chave>.sql` | 🔵 **uma por rodada** — GERADA do arquivo acima |
 
 Não há Edge Function nem view neste módulo: é CRUD direto via PostgREST, contido pela RLS. 🔵 **Nem RPC** — e isso foi decidido na implementação, contra o que o roadmap previa: ver "A linha de capítulo é um override" abaixo.
 
@@ -164,6 +171,488 @@ jsdom as duas são **o mesmo bit**, então **remover a linha do `returnValue` de
 verde**. Só a do `preventDefault` está guardada. O texto do diálogo é do navegador e não se
 customiza desde ~2017 — por isso quem precisa explicar o que está em risco faz isso na tela,
 antes, com o contador "N artigo(s) não salvo(s)".
+
+### 🔵 O texto do modelo: autorado em TS, nascido por migration (rodada 2)
+
+O modelo mora no banco e é lá que a FEVRE o edita. Mas 300+ artigos escritos direto num
+`INSERT` não passam por `npm test`, e a transcrição é justamente onde se erra. O fluxo tem
+**uma direção só**:
+
+```
+src/lib/edital-modelo/<chave>.ts  →  migration gerada  →  banco  →  a UI edita
+   autoria, diff, Vitest              nascimento          dono em runtime
+```
+
+Depois do nascimento **o banco é o dono**; editar pela tela faz o banco divergir do TS, e isso
+é consequência aceita — a migration é o nascimento, não o espelho. Um teste confere que a
+migration commitada é a que `sqlDoCapitulo()` gera: editar um lado só faria o modelo nascer
+diferente do que a suíte afirma.
+
+🔴 **A guarda da migration é `NOT EXISTS` por CAPÍTULO, não por edital.** Guardando pelo
+edital, a rodada 2 semearia e as rodadas 3 a 20 seriam no-op em qualquer banco que já tivesse
+o modelo. Por capítulo, cada rodada entra uma vez e **nenhuma sobrescreve capítulo que alguém
+já editou pela tela**. O CASO 10b da bateria prova a idempotência.
+
+**Cada capítulo declara o que o teste confere** (`CapituloDoModelo`): `artigosEsperados`,
+`camposUsados`, `ancorasPublicadas`, `ancorasConsumidas`. 🔴 O `artigosEsperados` é o **único**
+teste que pega artigo **omitido** na transcrição — o linter fica contente, a numeração segue
+coerente, e o capítulo sai com um artigo a menos do que o edital real tem.
+
+⏳ **`ANCORAS_PENDENTES` é burn-down**, não lista de exceções: âncora consumida cujo capítulo
+dono ainda não foi transcrito entra ali, e a rodada final exige a lista vazia.
+
+### 🔵 O QUARTO marcador: `{{redigir:}}` (rodada 3)
+
+Nasceu no primeiro capítulo com prosa específica do certame, e o problema é concreto. O item
+1.1 do Edital 004 funda o processo em *"Art. 198 §4º da CF, Lei Federal 11.350/2006 e Leis
+Municipais 6.787/26 e 6.836/26"* e descreve o objeto como *"prevenção de doenças e promoção da
+saúde pública no âmbito da Estratégia Saúde da Família"*. Isso é fundamento e objeto de um
+concurso de **Agente Comunitário de Saúde**.
+
+**Medido:** cada uma dessas leis aparece **uma vez** no documento inteiro. Pela regra do
+catálogo (varia entre editais **E** repete-se **ou** é data/valor) elas **não** viram campo. As
+três saídas que existiam eram todas piores:
+
+| saída | por que não |
+|---|---|
+| texto do 004 literal | o modelo publica fundamento legal errado, e a frase é **plausível** |
+| tirar a frase | o artigo fica quebrado e o autor não sabe que falta algo |
+| `[ ]` vazio | o linter pega, mas **não diz o que** escrever |
+
+Então: `{{redigir:a instrução}}`. Ele **nunca resolve para valor** — rende `[a redigir: …]`,
+visível no documento — e o linter o trata como **erro** (`texto-a-redigir`), **citando a
+instrução**. É o `[ ]` com a única coisa que lhe faltava.
+
+⚠️ **Não confundir com `{{campo:}}`:** campo é dado que o sistema tem e injeta; `redigir` é
+prosa que só uma pessoa escreve, e que o modelo não tem como adivinhar. A resolução do Studio
+passou a ter **quatro** passos: capítulo → item → campo → redigir.
+
+### 🔵 Rodada 12 — `comprovante_inscricao`, e o deslocamento provado DENTRO da página
+
+19 artigos, sem divergência da fonte — 11 itens, 2 subitens e 6 alíneas (4 em maiúscula, 2 em
+minúscula, no mesmo capítulo outra vez).
+
+**São só duas referências cruzadas, e as duas estão deslocadas um capítulo inteiro:**
+
+| item | diz | alvo real |
+|---|---|---|
+| 10.7 | "conforme subitem **9.3**" | **10.3** — a divulgação da listagem de confirmação |
+| 10.8 | "conforme subitem **9.7**" | **10.7** — a entrega do envelope de recurso |
+
+🔴 **Aqui o deslocamento se prova sem sair da página**, e é o caso mais limpo do tema: o próprio
+10.7 descreve o prazo como *"subsequente à data de divulgação da listagem de confirmação das
+inscrições"* — e manda ver o 9.3, que no Edital 004 é a lista de documentos da cota racial. Quem
+divulga a listagem é o 10.3, **três linhas acima**. O texto do artigo nomeia o alvo certo e o
+número aponta para outro lugar.
+
+🔵 **É o capítulo mais denso em DATA de todo o documento** — quatro, e as quatro etapas já
+existiam em `ETAPAS_SUGERIDAS`: `pagamento_boleto`, `confirmacao_inscricao`, `recurso_inscricao` e
+`decisao_recurso_inscricao`. ⚠️ **E o 004 publica o dia do recurso DUAS vezes**, como data
+(`06/08/2026`) e como regra (*"primeiro dia útil subsequente"*). No modelo a data sai do
+cronograma e a expressão fica como **a regra que a explica**, não como segunda fonte — é o mesmo
+padrão "duas fontes para o mesmo número" que os percentuais das rodadas 10 e 11 desarmaram.
+
+Nada de novo no mecanismo: `natureza_juridica` + `orgao_demandante` no envelope (o 004 manda
+escrever *"Concurso Público"* num Processo Seletivo pela quarta vez), `limite_envelopes` no lugar
+de *"dois envelopes"*, horário de atendimento em `{{redigir:}}`, e o termo da LBI no lugar de
+*"Pessoa com Deficiência"*.
+
+### 🔵 Rodadas 10 e 11 — as ações afirmativas, e a MEDIÇÃO DO TEMA CORRIGIDA
+
+**Rodada 10 — `vagas_pcd`:** 43 artigos, o **maior capítulo transcrito sem divergência** — cada
+elemento do publicado tem um artigo. **Rodada 11 — `vagas_cotas_raciais`:** 26, também sem
+divergência.
+
+🔴 **A rodada 10 corrigiu a medição do tema inteiro.** Minha contagem original dava **27**
+elementos ao capítulo 8; são **43**. Faltavam os 5 subitens (`8.4.1`, `8.4.2`, `8.5.1`, `8.6.1`,
+`8.10.1` — a fonte os escreve **sem indentação**, e a regex que eu usava exigia espaço à
+esquerda), as 10 alíneas em maiúscula e a linha do envelope.
+
+**Remedido o documento inteiro, com a tabela autoritativa:**
+
+| cap | N.N | N.N.N | `A)` | `a)` | rom | total | | cap | N.N | N.N.N | `A)` | `a)` | rom | total |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 6 | 0 | 0 | 0 | 0 | **6** | | 9 | 19 | 1 | 4 | 2 | 0 | **26** |
+| 2 | 4 | 0 | 0 | 0 | 0 | **4** | | 10 | 11 | 2 | 4 | 2 | 0 | **19** |
+| 3 | 2 | 2 | 0 | 0 | 24 | **28** | | 11 | 21 | 4 | 0 | 2 | 0 | **27** |
+| 4 | 1 | 14 | 0 | 0 | 0 | **15** | | 12 | 27 | 0 | 0 | 16 | 0 | **43** |
+| 5 | 2 | 9 | 0 | 0 | 0 | **11** | | 13 | 25 | 0 | 0 | 10 | 0 | **35** |
+| 6 | 35 | 0 | 0 | 4 | 0 | **39** | | 14 | 10 | 6 | 0 | 3 | 0 | **19** |
+| 7 | 17 | 5 | 7 | 0 | 0 | **29** | | 15 | 9 | 0 | 12 | 0 | 0 | **21** |
+| 8 | 27 | 5 | 10 | 0 | 0 | **42** | | 16 | 13 | 4 | 0 | 0 | 0 | **17** |
+
+**Total: 381 elementos**, não os ~334 que o roadmap registrava. 🔵 **Nenhuma rodada anterior
+ficou errada** — as diferenças começam no capítulo 7, e ali a contagem já havia sido refeita à
+mão.
+
+🔴 **Seis valores viraram campo, e o percentual é o que mais importa:** `edital-cotas.ts`
+**calcula** a reserva do Quadro I a partir de `regras_pcd.percentual_reserva` e
+`regras_cotas_raciais.percentual_reserva`. Literais no texto, o documento diria 10% e 20%
+enquanto o quadro distribuiria por outro valor — **em silêncio**, que é o formato de defeito que
+este repo mais teme.
+
+**Onze referências deslocadas nos dois capítulos**, e duas merecem nota:
+
+- o item 8.11 cita *"do subitem 7.9. **acima**"* — a palavra "acima" prova, sozinha, que é
+  auto-referência a 8.9;
+- ⚠️ **as outras seis referências do capítulo 8 estão CORRETAS.** É a melhor taxa de acerto
+  medida, e mostra que o deslocamento atinge **o que foi copiado**, não o que foi escrito ali.
+
+🔴 **E o capítulo 9 traz uma referência de ANEXO que aponta para o anexo errado.** O item 9.2
+manda retirar *"o formulário de autodeclaração constante do **Anexo II**"* — mas o Anexo II do
+004 é o conteúdo programático, e **o formulário não é anexo de edital nenhum**. O Edital 003 traz
+a mesma frase, com o mesmo número, e também não tem esse anexo.
+
+⚠️ **O capítulo 9 mostra a inconsistência de alínea dentro de si mesmo:** o item 9.3 usa `a)` e
+`b)`; o 9.7, quatro linhas abaixo, usa `A)` a `D)`.
+
+### 🔵 Rodada 9 — `isencao_taxa`, o capítulo que MELHOR prova o defeito do tema
+
+28 artigos contra 30 elementos na fonte. Contei as referências cruzadas: **12, e 11 estão
+erradas.**
+
+| item | diz | alvo real |
+|---|---|---|
+| 7.2 | "Letra A do subitem **6.1**" | 7.1 |
+| 7.2.2 | "letra A do subitem **7.1**" | ✅ **a única correta** |
+| 7.3 · 7.3.2 · 7.4 | "subitem **6.1**" | 7.1 |
+| 7.5 | "subitens **6.2 a 6.4**" | 7.2 a 7.4 |
+| 7.6 · 7.16 | "subitem **6.6**" | 7.5 |
+| 7.7 | "subitens **6.2 a 6.6**" | 7.2 a 7.5 |
+| 7.11 | "item **6.10**" | 7.10 |
+| 7.12 | "subitens de **6.1 a 6.6**" | 7.1 a 7.5 |
+| 7.13 | "subitens de **5.3 até 5.32**" | 🔴 **faixa que NÃO EXISTE** — o cap. 5 termina em 5.2.2 |
+
+🔴 **O documento contradiz a si mesmo:** o 7.2 diz *"subitem 6.1"* e o 7.2.2 diz *"subitem 7.1"*
+para o **mesmo alvo**, a duas linhas de distância. E o 7.13 manda o candidato a um intervalo que
+não existe em edital nenhum.
+
+### ⚠️ Uma CORREÇÃO nas minhas próprias medições
+
+A tabela de contagem por capítulo que eu usei nas rodadas 2 a 8 **não contava alíneas em letra
+MAIÚSCULA**. Medido agora:
+
+| cap | `a)` | `A)` | | cap | `a)` | `A)` |
+|---|---|---|---|---|---|---|
+| 6 | 4 | 0 | | 11 | 2 | 0 |
+| 7 | 0 | **7** | | 12 | 16 | 0 |
+| 8 | 0 | **10** | | 13 | 10 | 0 |
+| 9 | 2 | **4** | | 14 | 3 | 0 |
+| 10 | 0 | **4** | | 15 | 0 | **12** |
+
+🔵 **Nenhuma rodada concluída fica errada** — dos capítulos já feitos, só o 6 tem alíneas, e são
+minúsculas. Mas as rodadas 10, 11, 12 e 17 dependem desses números.
+
+E o próprio dado é o **oitavo achado** da família: o documento usa `a)` em cinco capítulos, `A)`
+em quatro, e **as duas formas** no capítulo 9. O modelo não escolhe — `numerarItens` rende letra
+**minúscula, calculada**, e a inconsistência desaparece por construção.
+
+🔵 **Dois números viraram campo** porque já tinham coluna: o "mínimo de 03 doações" é
+`regras_isencao.minimo_doacoes_sangue_12m` e "dois envelopes" é
+`inscricao_config.limite_envelopes_por_candidato`. Literais, criariam duas fontes para o mesmo
+número — o painel diria 3 e o documento, 5.
+
+⚠️ **As três leis dos requisitos ficam literais**, e é decisão: `CRITERIOS_DE_ISENCAO`, em
+`src/lib/edital-inscricao.ts`, já as carrega como `leiPadrao` no catálogo em código.
+
+### 🔵 Rodadas 7 e 8 — e o defeito provado no nível de CAPÍTULO
+
+**Rodada 7 — `distribuicao_geografica`** (condicional, 9 artigos contra 11 na fonte). É o
+capítulo para onde apontam as referências que as rodadas 4 e 6 deixaram: com ele desligado,
+aquelas referências acusam `referencia-a-capitulo-excluido` e os artigos territoriais se
+autodenunciam. Molde por cargo, como o capítulo 3.
+
+🔴 **O SEXTO defeito medido, e é o mais eloquente de todos.** O item 5.1.1 do Edital 004 diz:
+
+> *"…foram destinadas 80 vagas … conforme subitem **5.1.2. - Quadro I**"*
+
+E o subitem 5.1.2, na linha seguinte, se intitula **"Quadro II"**. A mesma frase erra o número
+do quadro que ela própria acabou de citar corretamente pelo subitem. Referência cruzada se
+contradizendo dentro de uma linha.
+
+⚠️ **E os totais de vagas saíram da prosa.** O 004 escreve "80 vagas" e "143 vagas" — valores por
+cargo cuja soma o quadro de `vagas_por_area` já rende. Repetir o total em prosa cria duas fontes
+para o mesmo número, e é assim que um edital publica 80 num lugar e 82 no quadro.
+
+⚠️ Correções: `USBF/USB` → **UBSF/UBS** (letras trocadas, duas vezes na mesma frase) e o fecho
+agramatical do 5.1.5 (*"aqueles que compreende local de divisas não seja prejudicado…"*).
+
+**Rodada 8 — `inscricao_e_pagamento`**, o maior capítulo (38 artigos contra 39).
+
+🔴 **O SÉTIMO achado, e o primeiro no nível de CAPÍTULO** — até aqui o deslocamento só havia
+sido medido em referências de item:
+
+| publicado | manda ver | o assunto está no capítulo |
+|---|---|---|
+| 6.31 | "Item 10 deste Edital" | **11** (condições especiais) |
+| 6.32 a) | "Item 7. deste Edital" | **8** (vagas PCD) |
+| 6.32 b) | "Item 10 deste Edital" | **11** (condições especiais) |
+
+Mais duas de item: o 6.1 manda ver *"subitens 6.8 a 6.13"* (que tratam de ficha e boleto, não de
+isenção) e o 6.35 manda ver *"subitens 13.3"* (jurado, que está no capítulo 14). É o mesmo
+deslocamento do Edital 002 — onde isenção é 6, PCD é 7 e condições especiais é 10. **As cinco
+foram reapontadas para o alvo real, não traduzidas.**
+
+🔵 **E uma decisão do plano foi SUBSTITUÍDA aqui.** A lista de taxas por cargo (item 6.23) ia
+levar `[ ]` vazio, apanhado pela regra `placeholder-nao-preenchido`. Com `{{redigir:}}`
+existindo, ele faz o mesmo trabalho e **diz o que escrever** — era a única coisa que faltava ao
+`[ ]`. ⏳ `edital_cargos.taxa_inscricao` já existe, então a lista é candidata a
+`quadro_fonte: 'taxas'`; mas **tabela nova exige fatia nova**.
+
+⚠️ **O posto presencial virou `{{redigir:}}`**, não campo: ele mora em
+`edital_canais_atendimento`, que é **coleção**, e não há marcador escalar para coleção.
+
+### 🔵 Rodadas 5 e 6 — e a regra que o contraste entre elas revelou
+
+As duas rodadas caíram uma ao lado da outra e, juntas, fixaram **a pergunta que decide se um
+capítulo é transcrito ou virado molde**:
+
+| capítulo | fonte | modelo | por quê |
+|---|---|---|---|
+| `atribuicoes_dos_cargos` | **28 artigos** | **4** (molde) | tudo é conteúdo **do cargo** |
+| `requisitos_investidura` | **15 artigos** | **15** (íntegra) | tudo é condição **jurídica genérica** |
+
+**Conteúdo genérico o modelo entrega pronto; conteúdo do certame vira `{{redigir:}}`.** É a
+mesma pergunta que o catálogo de campos faz sobre dado — *"varia entre editais?"* — aplicada a
+prosa.
+
+🔴 **O tipo ganhou um contrato para a divergência.** `artigosNaFonte` + `porQueDiverge`, e um
+teste **exige o par**: sem ele, *"divergi de propósito"* e *"esqueci 24 artigos"* seriam
+indistinguíveis — e pegar o segundo é a razão de `artigosEsperados` existir.
+
+**Rodada 5 — `atribuicoes_dos_cargos`.** Os 28 artigos do 004 são as atribuições de Agente
+Comunitário de Saúde, em 24 incisos. Transcritos, todo edital novo nasceria com elas, e um de
+magistério publicaria *"atuar com adscrição de famílias em base territorial definida"* — o
+defeito do COREN na escala do capítulo. O modelo leva um molde de 4 artigos que o autor duplica
+por cargo.
+
+⚠️ **Medido: os dois cargos do MESMO documento têm formas diferentes** — `3.1 AGENTE
+COMUNITÁRIO DE SAÚDE` com "Atribuições:", contra `3.2 ATRIBUIÇÕES DO AGENTE DE COMBATE…` com
+"DESCRIÇÃO SINTÉTICA:". Quinto achado de copia-e-cola do tema, e o argumento para o molde ser
+**um só**: o modelo não reproduz a inconsistência, remove.
+
+🔵 **E o caso especial dos NUMERAIS ROMANOS se dissolveu.** O plano previa transcrever os 24
+incisos como `prosa` com o romano literal, porque `nivel 2` rende **letra**. Com a lista virando
+`{{redigir:}}` não há romano a transcrever, e a pergunta virou **em que nível o autor escreve a
+dele**: `nivel 2`, alínea em letra, porque letra é **calculada** e romano teria de ser digitado
+— o que o módulo existe para matar. ⏳ A dívida fica com gatilho: **se um segundo capítulo
+precisar de romano, abrir a fatia de estilo de numeração.**
+
+**Rodada 6 — `requisitos_investidura`.** 15 artigos, o primeiro capítulo transcrito por inteiro,
+**sem um único `{{redigir:}}`**. Três correções silenciosas registradas — *"portador de
+deficiência"* → **"pessoa com deficiência"** (o termo da LBI, que o resto do documento já usa) e
+dois pontos finais ausentes.
+
+⚠️ **E uma coisa que NÃO mexi, de propósito:** o requisito 4.1.8 recusa quem tenha *"deficiência
+incompatível com o exercício do cargo"*, o que convive mal com o capítulo de reserva de vagas
+para PCD, que prevê perícia de compatibilidade. É decisão de mérito jurídico, não de
+transcrição.
+
+🔴 **Nos dois capítulos a territorialidade se autodenuncia** pela referência a
+`{{cap:distribuicao_geografica}}` — e nenhum cita "Quadro II", como o publicado faz.
+
+### 🔵 Rodada 4 — `quadro_de_cargos`, e o QUARTO defeito da mesma família
+
+4 artigos, e o **primeiro capítulo do modelo com artigo `tipo = 'quadro'`** (fonte `cargos`): o
+texto é só a legenda, e a tabela nasce de `edital_cargos` na renderização.
+
+🔴 **Medi a numeração dos quadros, e ela é tão instável quanto a dos anexos:**
+
+| | Quadro I | Quadro II | Quadro III |
+|---|---|---|---|
+| 002 | cargos | provas | títulos |
+| 003 | cargos | provas | — |
+| 004 | cargos | **vagas por UBSF** | vagas do 2º cargo |
+
+E o 004 vai além: chama de **"Quadro II" tanto as vagas de ACS (item 5.1.2) quanto a tabela de
+composição da prova** — dois quadros com o mesmo número no mesmo documento publicado.
+
+É o quarto defeito medido desta família, depois das ~35 referências deslocadas, do `V0LTA` e do
+número do anexo. Por isso **nenhum artigo do modelo cita número de quadro**; quem aponta para
+ele referencia o **capítulo**, cujo número é calculado.
+
+⚠️ **E isso me obrigou a corrigir a rodada 3 no mesmo passe:** o item 1.1 dizia *"conforme
+indicado no Quadro I abaixo"* — número literal que passou. Agora é `{{cap:quadro_de_cargos}}`.
+Foi possível **regerar** aquela migration porque ela ainda não estava commitada.
+
+🔴 **O vencimento não entra em prosa.** O item 2.4 do 004 escreve "O vencimento é de
+R$ 3.036,00" — e só funciona porque os **dois** cargos daquele edital têm o mesmo valor. O
+artigo do modelo aponta para o quadro, e a lista de vantagens (insalubridade na saúde, FUNDEB no
+magistério) virou `{{redigir:}}`. ⚠️ A alternativa — uma coluna por vantagem — foi preterida:
+são valores que aparecem uma vez cada, e virar formulário de cinco campos para reproduzir uma
+frase é o contrário do que a regra do catálogo pede.
+
+🔴 **A territorialidade se AUTODENUNCIA, e o modelo não precisou de "artigo condicional".** Os
+artigos 2.2 e 2.3 só fazem sentido com restrição territorial; eles referenciam
+`{{cap:distribuicao_geografica}}`, e com aquele capítulo desligado o linter acusa
+`referencia-a-capitulo-excluido` como **erro**. O artigo diz sozinho que está fora de lugar.
+
+⚠️ O texto foi **generalizado**: o 004 diz "Para o cargo de Agente Comunitário de Saúde (ACS)".
+A regra vale para qualquer cargo com restrição territorial, e transcrever literal levaria o
+cargo adiante — o mesmo defeito do COREN.
+
+### ⚠️ Uma restrição durável do fluxo TS → migration
+
+Enquanto a migration de um capítulo está **sem commit**, corrigir o texto é regerar o arquivo.
+Depois de commitada isso **deixa de ser permitido** — *"nunca edite uma migration já aplicada"*
+é absoluto no CLAUDE.md —, e a correção passa a ser uma **migration nova com `UPDATE`**.
+
+Por isso o teste de sincronia confere **o texto e a âncora de cada artigo**, não o bloco
+`DO $$` inteiro: um teste que exigisse o bloco gerado reprovaria justamente o caminho certo.
+Um caso irmão guarda o **gerador** (a guarda `NOT EXISTS` e a contagem de linhas), que é o que o
+primeiro deixou de cobrir.
+
+### 🔵 Rodada 3 — `disposicoes_preliminares`
+
+6 artigos, todos de nível 0, do capítulo 1 do Edital 004. Sem referência velha a auditar — é o
+primeiro capítulo e ninguém aponta para trás dele. Dois `{{redigir:}}` no item 1.1 (acima), e
+uma lacuna que esta rodada descobriu:
+
+🔴 **O número do ANEXO é referência calculada, e não há mecanismo.** Medido: o item 1.6 aponta
+o conteúdo programático para o **Anexo I** no 002 e no 003, e para o **Anexo II** no 004 —
+porque lá o Anexo I é a abrangência territorial. É o problema da numeração de capítulo um nível
+abaixo: elemento pós-textual condicional que entra desloca os seguintes. E `{{cap:anexos}}` não
+serve, porque `anexos` é `numerado: false` e resolveria para `[?anexos]`.
+
+**Por ora o artigo não cita número** — *"como anexo deste Edital"* é impreciso e **nunca
+falso**, contra um número que estaria errado em 2 dos 3 editais reais. ⏳ A lacuna está no
+[`backlog.md`](../../../backlog.md) para a fatia de exportação, que é quem monta os anexos.
+⚠️ E o apontamento acontece **duas vezes por edital** (item 1.6 e o capítulo da prova), então a
+âncora `conteudo_programatico_anexo` existe para o segundo apontar para o primeiro.
+
+⚠️ **A LGPD fica literal**, ao contrário das leis do certame: ela é a mesma em todo edital, e a
+regra exige que o dado varie. Campo para constante é formulário a mais sem verdade a mais.
+
+### 🔵 Rodada 2 — `preambulo`
+
+**Medido: o elemento pré-textual tem DUAS partes, não uma.**
+
+| | 002 | 003 | 004 |
+|---|---|---|---|
+| cabeçalho empilhado (município · secretaria · natureza · nº) | sim | sim | não transcrito |
+| parágrafo de abertura ("torna público que…") | sim | sim | sim |
+
+🔴 **Só o parágrafo entrou; o cabeçalho NÃO.** Ele é identificação pura, inteiramente derivável
+dos metadados, e sem nada a redigir — vem da exportação (fatia 12). Virar quatro artigos de
+texto seria convidar alguém a digitar à mão o que os campos já sabem, e a divergir deles.
+
+🎯 **E este capítulo sozinho mata um defeito medido:** `MUNICÍPIO DE V0LTA REDONDA`, com **zero
+no lugar do O** — 3 ocorrências no Edital 002, 1 no 003, nenhuma no 004. Presente em dois
+documentos e ausente no terceiro é a assinatura de copia-e-cola: o erro viajou de um edital
+para o outro e ninguém viu. No modelo o nome é escrito **uma vez**, e um caso de teste o
+guarda.
+
+⚠️ Duas correções silenciosas em relação ao 004, registradas para não parecerem descuido: ele
+escreve *"nos termos NO presente Edital"* (o 002 escreve "do") e repete o "para" em *"para o
+PROCESSO SELETIVO PÚBLICO PARA"*.
+
+**Três campos novos**, e a regra de admissão em ação:
+
+| campo | por quê |
+|---|---|
+| `natureza_juridica` | formato `natureza`: o domínio vira língua (`PROCESSO_SELETIVO` → "Processo Seletivo Público") |
+| `regime_trabalho` | texto, já existia em `editais` e não tinha marcador |
+| `{{campo:cargos_do_edital}}` | formato `lista_e`: **escalar DERIVADO de coleção** — `A, B e C` |
+
+🔴 **`{{campo:cargos_do_edital}}` não é exceção à regra do módulo.** A regra medida é que valor que
+**varia** por cargo (taxa, vencimento) não entra em prosa. Aqui não há valor variando: é uma
+frase que nomeia todos os cargos, igual para o edital inteiro, e os três editais reais a
+escrevem assim na abertura.
+
+⚠️ **O que NÃO virou campo:** "MUNICÍPIO DE VOLTA REDONDA" e "Administração Pública Municipal
+de Volta Redonda" ficam literais — a regra exige que o dado **varie** entre editais, e o
+município é o mesmo em todo certame desta banca. E a secretaria que **publica** não ganhou
+campo próprio: ela já está em `signatario_cargo`, e duas fontes para o mesmo fato divergem.
+
+⚠️ **Divergência deliberada do publicado:** `natureza_juridica` rende a forma de título, não a
+caixa alta que o parágrafo de abertura usa. Reproduzir a caixa alta exigiria um segundo campo
+para o mesmo fato — e o próprio item 1.1 do Edital 004 escreve "O Processo Seletivo Público".
+A ênfase fica com o `**negrito**`, que é a única formatação do módulo.
+
+🔴 **Um defeito real encontrado ao ligar o campo derivado:** `useCamposDoEdital` não incluía o
+`isLoading` de `useCargos` na conta. Como o marcador dos cargos cruza `edital_cargos` com o
+catálogo de nomes, o catálogo atrasado fazia a frase sair com **menos cargos, ou nenhum** —
+valor **errado**, não ausente: o marcador resolve, o linter cala, e o edital publicaria
+"inscrições para Agente Comunitário de Saúde" onde há dois cargos.
+
+### 🔵 O EDITAL MODELO, e a clonagem (2026-09-18)
+
+Um edital novo nascia com 19 capítulos em branco, e quem redigia recomeçava do zero ou colava
+de um Word — que é de onde vêm os defeitos que este módulo existe para matar.
+
+🔴 **O modelo é um edital de VERDADE:** uma linha em `editais` com `eh_modelo = true`, UUID
+fixo `00000000-0000-4000-8000-000000000001`, nascida da migration `20260918183433`. **Decisão
+do usuário**, contra a alternativa de guardá-lo em código: assim a FEVRE ajusta o texto padrão
+pela própria tela. O caminho é o botão "Edital padrão" em `/editais` — a rota é a mesma dos
+outros, já sob guard de admin.
+
+**Por que migration e não `seed.pos.sql`:** o precedente é
+`20260712134220_seed_funcoes_basicas_sistema.sql` — *"seeds só rodam em `db reset`; `db push`
+aplica apenas migrations. Enquanto estas linhas viviam só no seed.sql, um banco de produção
+novo nasceria sem elas — sem erro visível em lugar nenhum."* Aqui o sintoma seria pior que
+invisível: o botão apareceria e não teria o que copiar.
+
+⚠️ **Consequência aceita:** editar o modelo pela tela faz o banco divergir da migration. Ela é
+o **nascimento**, não o espelho — igual às 7 funções básicas.
+
+**A absorção é UM CLIQUE** (decisão do usuário), pela `FaixaDoModeloPadrao`, que tem três
+estados: "este é o modelo", "este edital ainda não tem texto — aplicar?" e "montado a partir do
+padrão em DD/MM, versão X". ⚠️ E um quarto: **se não existe modelo, a faixa DIZ isso** em vez de
+oferecer um botão que não funciona.
+
+🔴 **O convite depende de `modelo_aplicado_em`, não de "está vazio?".** Três razões: quem apaga
+os artigos de propósito seria re-oferecido para sempre; "vazio" é lido antes de escrever, e duas
+abas perdem a corrida; e `modelo_versao` deixa consultável *"quais editais nasceram antes de o
+capítulo 12 existir?"*.
+
+**A RPC `aplicar_edital_modelo(p_destino, p_capitulos_alvo)`** é `SECURITY INVOKER` (a
+autorização são as policies) e copia `INSERT … SELECT` **dentro do banco**:
+
+🔵 **É aqui que a escolha do usuário se paga.** O roadmap previa o texto atravessando o
+PostgREST como `jsonb` (~110 KB medidos) e discutia teto do Kong, tabela de preparo e chunking.
+Com o modelo no banco, **nenhum byte de texto sai do servidor** e a conversa inteira desaparece.
+A **versão** também é lida da linha do modelo, nunca recebida por parâmetro — §8: *"parâmetro que
+o chamador envia não é identidade"*.
+
+| sigla | recusa |
+|---|---|
+| `EM001` | o destino não existe — **ou o autor não é admin**, ver abaixo |
+| `EM002` | o destino já absorveu o modelo (aplicação total) |
+| `EM003` | o capítulo alvo já tem texto; a mensagem **nomeia as chaves** |
+| `EM004` | o destino é o próprio modelo |
+| `EM005` | não existe modelo neste banco |
+| `EM010` | prova ou inscrito apontando para o modelo (trigger) |
+| `EM011` | promover a modelo um edital que já tem prova ou inscrito (trigger) |
+
+🔴 **O `FOR UPDATE` da primeira leitura é o que separa isto de um teste de "está vazio?"** — sem
+ele, duas abas leem "ainda não aplicado" e as duas escrevem.
+
+⚠️ **MEDIDO na bateria, e é fato do Postgres que vale saber:** um não-admin para em **EM001**,
+não em `42501`. `SELECT … FOR UPDATE` é filtrado pela policy de **UPDATE**, então a linha
+simplesmente não aparece. A proteção é dupla — se passasse, o INSERT cairia na RLS.
+
+🔴 **A colisão de âncora aborta a cópia INTEIRA**, pelo índice parcial `edital_itens_ancora_key`.
+⚠️ **E a bateria corrigiu o desenho do teste aqui:** numa aplicação **total** a colisão é
+inalcançável, porque o EM003 recusa antes; ela só existe na aplicação **por capítulo**, quando o
+autor escreveu em OUTRO capítulo um artigo com a âncora que o capítulo do modelo publica.
+
+🔴 **O modelo NÃO copia linha de `edital_capitulos`.** Se copiasse, ligaria
+`distribuicao_geografica` em todo edital novo — porque o Edital 004, base do texto, tem
+territorialidade. É o mapa carreira→funcionalidade recusado em 2026-09-16. O modelo entrega
+**texto** para todos os capítulos, inclusive os que nascem desligados, onde ele fica dormente e
+invisível (`analisarCapitulo` não analisa capítulo excluído).
+
+**O modelo não vaza para o resto do sistema.** `useEditais` o exclui — quatro telas o consomem
+(`/editais`, `/candidatos`, a importação e o seletor do `ProvaDialog`) e sem o filtro ele
+apareceria como certame. ⚠️ Isso é **conveniência**; a barreira são `EM010`/`EM011` (§2).
+
+**Verificação:** `docs/bateria-edital-modelo.sql`, **21 casos**, todos verdes — ela cobre
+também as 5 colunas da rodada 0, que ficaram sem bateria quando nasceram. ⚠️ Rodá-la é passo
+manual: nem `npm test` nem `docs:conferir` a alcançam.
+
+⏳ **O modelo entra VAZIO.** O texto vem uma rodada por capítulo (19 delas), e cada uma
+acrescenta os artigos daquele capítulo a esta linha, subindo `modelo_versao`. Modelo vazio é
+estado **correto**, não meio-estado.
 
 ### 🔵 O terceiro marcador: `{{campo:chave}}` (2026-09-18)
 

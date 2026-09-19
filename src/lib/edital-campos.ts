@@ -48,10 +48,16 @@ import { ETAPAS_SUGERIDAS } from "@/lib/edital-cronograma";
 export type FormatoCampo =
   /** Uma ou mais datas de uma etapa do cronograma, na forma que o TIPO dela manda. */
   | "periodo"
+  /** `PROCESSO_SELETIVO` → `Processo Seletivo Público` — o domínio virando língua. */
+  | "natureza"
+  /** Os cargos deste edital numa frase: `A, B e C`. Escalar DERIVADO de uma coleção. */
+  | "lista_e"
   /** `2026-06-29` → `29 de junho de 2026` — o fecho do documento. */
   | "data_extenso"
   /** `80` → `R$ 80,00` */
   | "moeda"
+  /** `10.00` → `10%` — o zero decimal cai, porque documento não escreve "10,00%". */
+  | "percentual"
   /** `16:00:00` → `16 horas` */
   | "hora"
   | "inteiro"
@@ -141,6 +147,98 @@ const CAMPOS_DO_EDITAL: readonly CampoCatalogo[] = [
     ondeSePreenche: "preambulo",
   },
   {
+    chave: "natureza_juridica",
+    rotulo: "Natureza do certame",
+    formato: "natureza",
+    fonte: "editais.natureza_juridica",
+    ondeSePreenche: "preambulo",
+  },
+  {
+    chave: "regime_trabalho",
+    rotulo: "Regime de trabalho",
+    formato: "texto",
+    fonte: "editais.regime_trabalho",
+    ondeSePreenche: "preambulo",
+  },
+  {
+    // 🔴 ESCALAR derivado de uma coleção, e não uma exceção à regra do módulo.
+    //
+    // A regra medida é que valor que VARIA por cargo (taxa, vencimento) não entra em prosa;
+    // ele sai como lista de alíneas. Aqui não há valor variando: é UMA frase que nomeia
+    // todos os cargos, e ela é a mesma para o edital inteiro. Os três editais reais a
+    // escrevem assim na abertura — "para AGENTES COMUNITÁRIOS DE SAÚDE e AGENTES DE
+    // COMBATE ÀS ENDEMIAS".
+    //
+    // ⚠️ A ordem é alfabética, não a do Quadro I: `edital_cargos` não tem coluna `ordem`, e
+    // ordem de chegada do banco não é ordem. Se um dia o Quadro I ganhar posição própria,
+    // esta frase deve segui-la.
+    chave: "cargos_do_edital",
+    rotulo: "Cargos deste edital (em frase)",
+    formato: "lista_e",
+    fonte: "edital_cargos × cargos.nome",
+    ondeSePreenche: "quadro_de_cargos",
+  },
+  // ── 🔵 Rodada 10 e 11: as regras de ação afirmativa, que já têm tabela ──────────────
+  {
+    chave: "percentual_pcd",
+    rotulo: "Percentual reservado a pessoas com deficiência",
+    formato: "percentual",
+    fonte: "regras_pcd.percentual_reserva",
+    ondeSePreenche: "vagas_pcd",
+  },
+  {
+    chave: "leis_pcd",
+    rotulo: "Leis que fundamentam a reserva de PCD",
+    formato: "texto",
+    fonte: "regras_pcd.leis_base",
+    ondeSePreenche: "vagas_pcd",
+  },
+  {
+    chave: "validade_laudo_temporario_meses",
+    rotulo: "Validade do laudo temporário (meses)",
+    formato: "inteiro",
+    fonte: "regras_pcd.validade_meses_laudo_temporario",
+    ondeSePreenche: "vagas_pcd",
+  },
+  {
+    chave: "local_pericia",
+    rotulo: "Local da perícia médica",
+    formato: "texto",
+    fonte: "regras_pcd.local_pericia",
+    ondeSePreenche: "vagas_pcd",
+  },
+  {
+    chave: "percentual_cotas_raciais",
+    rotulo: "Percentual reservado a negros",
+    formato: "percentual",
+    fonte: "regras_cotas_raciais.percentual_reserva",
+    ondeSePreenche: "vagas_cotas_raciais",
+  },
+  {
+    chave: "lei_cotas_raciais",
+    rotulo: "Lei que fundamenta a reserva de cotas raciais",
+    formato: "texto",
+    fonte: "regras_cotas_raciais.lei_base",
+    ondeSePreenche: "vagas_cotas_raciais",
+  },
+  {
+    // 🔵 Rodada 9. Escalares DERIVADOS de coleção, como `cargos_do_edital`: cada um é um valor
+    // por edital que já tem coluna, e deixá-los literais no modelo criaria duas fontes para o
+    // mesmo número — o painel de isenção diria 3 e o documento, 5.
+    chave: "minimo_doacoes_sangue",
+    rotulo: "Mínimo de doações de sangue em 12 meses",
+    formato: "inteiro",
+    fonte: "regras_isencao.minimo_doacoes_sangue_12m WHERE tipo_criterio = 'DOADOR_SANGUE_OU_MEDULA'",
+    ondeSePreenche: "isencao_taxa",
+  },
+  {
+    chave: "limite_envelopes",
+    rotulo: "Limite de envelopes por candidato",
+    formato: "inteiro",
+    fonte: "inscricao_config.limite_envelopes_por_candidato",
+    ondeSePreenche: "isencao_taxa",
+  },
+  {
     chave: "prazo_validade_anos",
     rotulo: "Prazo de validade (anos)",
     formato: "inteiro",
@@ -196,6 +294,50 @@ export const CAMPO_POR_CHAVE: ReadonlyMap<string, CampoCatalogo> = new Map(
 
 /** A sintaxe no texto: `{{campo:data_publicacao}}`. Mesmo formato de chave das outras. */
 export const RE_REFERENCIA_CAMPO = /\{\{campo:([a-z0-9_]+)\}\}/g;
+
+/**
+ * O QUARTO marcador: `{{redigir:o que falta escrever}}` — texto que o autor tem de escrever.
+ *
+ * 🔴 **Ele nasceu na rodada 3 do edital padrão, por um problema que só apareceu no primeiro
+ * capítulo com prosa específica do certame.** O item 1.1 do Edital 004 funda o processo em
+ * "Art. 198 §4º da CF, Lei Federal 11.350/2006 e Leis Municipais 6.787/26 e 6.836/26" e
+ * descreve o objeto como "prevenção de doenças e promoção da saúde pública no âmbito da
+ * Estratégia Saúde da Família". Isso é fundamento e objeto de um concurso de **Agente
+ * Comunitário de Saúde** — num edital de magistério, seria publicado errado.
+ *
+ * As três saídas que existiam eram todas piores:
+ *
+ * | saída | por que não |
+ * |---|---|
+ * | deixar o texto do 004 literal | o modelo publica fundamento legal errado, e a frase é plausível |
+ * | tirar a frase | o artigo fica gramaticalmente quebrado, e o autor não sabe que falta algo |
+ * | `[ ]` vazio | o linter pega (regra `placeholder-nao-preenchido`), mas não diz O QUE escrever |
+ *
+ * Então: um marcador que **carrega a instrução**. Ele nunca resolve para valor — resolve
+ * para `[a redigir: …]`, visível no documento —, e o linter o trata como **erro**, citando a
+ * instrução. É o `[ ]` com a única coisa que faltava a ele: dizer o que se espera ali.
+ *
+ * ⚠️ Não confundir com `{{campo:}}`. Campo é dado que o SISTEMA tem e injeta; `redigir` é
+ * prosa que só uma pessoa pode escrever, e que o modelo não tem como adivinhar.
+ */
+export const RE_A_REDIGIR = /\{\{redigir:([^}]+)\}\}/g;
+
+/** As instruções de redação pendentes num texto, na ordem em que aparecem. */
+export function trechosARedigir(texto: string): string[] {
+  return [...texto.matchAll(RE_A_REDIGIR)].map((m) => m[1].trim());
+}
+
+/**
+ * Troca `{{redigir:X}}` por `[a redigir: X]`.
+ *
+ * ⚠️ Sempre visível, em qualquer circunstância — não há "estado resolvido" para este
+ * marcador. É o oposto de um placeholder que some: quem publicar sem escrever leva a
+ * instrução impressa no Diário Oficial, e isso é de propósito. O `"dia XX/xx/2026"` do
+ * Edital 004 chegou lá porque parecia texto.
+ */
+export function resolverARedigir(texto: string): string {
+  return texto.replace(RE_A_REDIGIR, (_todo, instrucao: string) => `[a redigir: ${instrucao.trim()}]`);
+}
 
 export interface CampoDoTexto {
   chave: string;
@@ -273,6 +415,21 @@ export function formatarHora(hora: string | null | undefined): string | null {
   return min === "00" ? `${hh} horas` : `${hh}h${min}`;
 }
 
+/**
+ * `10.00` → `10%` · `7.50` → `7,5%`.
+ *
+ * ⚠️ O zero decimal CAI. A coluna é `numeric(5,2)`, então 10% chega como `10.00` — e nenhum
+ * edital escreve "10,00% das vagas". Percentual com casa significativa (7,5% da gratificação de
+ * nível superior) mantém a casa, com vírgula, que é como o documento escreve.
+ */
+export function formatarPercentual(valor: number | string | null | undefined): string | null {
+  if (valor === null || valor === undefined || valor === "") return null;
+  const n = typeof valor === "string" ? Number(valor) : valor;
+  if (!Number.isFinite(n)) return null;
+  const texto = Number.isInteger(n) ? String(n) : String(n).replace(".", ",");
+  return `${texto}%`;
+}
+
 export function formatarInteiro(valor: number | null | undefined): string | null {
   return valor === null || valor === undefined || !Number.isFinite(valor) ? null : String(valor);
 }
@@ -280,4 +437,33 @@ export function formatarInteiro(valor: number | null | undefined): string | null
 export function formatarTexto(valor: string | null | undefined): string | null {
   const t = valor?.trim();
   return t ? t : null;
+}
+
+/**
+ * O domínio de `natureza_juridica` virando a língua do documento.
+ *
+ * ⚠️ Devolve a forma de TÍTULO ("Processo Seletivo Público"), não a caixa alta que o
+ * parágrafo de abertura dos três editais usa. É divergência DELIBERADA: a caixa alta é
+ * tipografia daquela posição, e reproduzi-la exigiria um segundo campo para o mesmo fato —
+ * o próprio corpo do Edital 004 escreve "O Processo Seletivo Público" no item 1.1. O ênfase
+ * fica com o `**negrito**`, que é a única formatação que o módulo tem.
+ */
+export function formatarNatureza(valor: string | null | undefined): string | null {
+  if (valor === "CONCURSO_PUBLICO") return "Concurso Público";
+  if (valor === "PROCESSO_SELETIVO") return "Processo Seletivo Público";
+  return null;
+}
+
+/**
+ * Nomes numa frase: `A`, `A e B`, `A, B e C`.
+ *
+ * ⚠️ Mesma família do `" ou "` das ALTERNATIVAS do cronograma, e pelo mesmo motivo de
+ * existir: a conjunção certa é o que faz a frase dizer a verdade. Lista vazia devolve
+ * `null` — nunca "" —, senão a frase publicaria "inscrições para , visando…".
+ */
+export function juntarComE(nomes: readonly string[]): string | null {
+  const limpos = nomes.map((n) => n.trim()).filter((n) => n !== "");
+  if (limpos.length === 0) return null;
+  if (limpos.length === 1) return limpos[0];
+  return `${limpos.slice(0, -1).join(", ")} e ${limpos[limpos.length - 1]}`;
 }

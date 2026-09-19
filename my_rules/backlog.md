@@ -210,7 +210,7 @@ ainda não existe.
 
 ---
 
-## ⏭️ PRÓXIMA — dois tipos de distribuição automática: máxima e homogênea
+## ⏭️ NA FILA (era a próxima até 2026-09-18) — dois tipos de distribuição automática: máxima e homogênea
 
 **Status:** ⏳ **não iniciado, e o desenho NÃO está fechado.** O usuário anunciou o tema em 2026-08-05 e disse que **dará mais detalhes na hora de implementar**. Esta entrada existe só para o tema não se perder — não é especificação.
 **Área:** módulo Alocação de Candidatos — ver [`estrutura/modulos/alocacao-candidatos/00-modulo.md`](./estrutura/modulos/alocacao-candidatos/00-modulo.md)

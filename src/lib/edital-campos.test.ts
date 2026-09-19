@@ -21,6 +21,8 @@ import {
   formatarMoeda,
   formatarInteiro,
   formatarTexto,
+  resolverARedigir,
+  trechosARedigir,
 } from "@/lib/edital-campos";
 import { ETAPAS_SUGERIDAS } from "@/lib/edital-cronograma";
 
@@ -151,5 +153,39 @@ describe("os formatadores", () => {
   it("inteiro e texto", () => {
     expect(formatarInteiro(2)).toBe("2");
     expect(formatarTexto("  FEVRE  ")).toBe("FEVRE");
+  });
+});
+
+describe("o quarto marcador: `{{redigir:}}`", () => {
+  it("🔴 NUNCA resolve para valor — vira instrução visível", () => {
+    // Não há estado "resolvido" para este marcador. É o oposto de um placeholder que some:
+    // quem publicar sem escrever leva a instrução impressa, e isso é de propósito.
+    expect(resolverARedigir("em observância a {{redigir:o fundamento legal}}, visa ao…"))
+      .toBe("em observância a [a redigir: o fundamento legal], visa ao…");
+  });
+
+  it("aceita instrução longa, com acento e vírgula", () => {
+    const t = "{{redigir:a finalidade do cargo neste certame — que serviço público atende}}";
+    expect(resolverARedigir(t)).toBe(
+      "[a redigir: a finalidade do cargo neste certame — que serviço público atende]",
+    );
+  });
+
+  it("resolve VÁRIOS no mesmo texto, e `trechosARedigir` os lista na ordem", () => {
+    const t = "funda-se em {{redigir:as leis}} e visa a {{redigir:a finalidade}}.";
+    expect(trechosARedigir(t)).toEqual(["as leis", "a finalidade"]);
+    expect(resolverARedigir(t)).toBe("funda-se em [a redigir: as leis] e visa a [a redigir: a finalidade].");
+  });
+
+  it("⭐ CONTROLE: texto sem o marcador passa intacto e não lista nada", () => {
+    expect(trechosARedigir("Artigo redigido por inteiro.")).toEqual([]);
+    expect(resolverARedigir("Artigo redigido por inteiro.")).toBe("Artigo redigido por inteiro.");
+  });
+
+  it("⚠️ NÃO se confunde com `{{campo:}}` — são necessidades diferentes", () => {
+    // Campo é dado que o sistema tem e injeta; `redigir` é prosa que só uma pessoa escreve.
+    const t = "o **{{campo:site_oficial}}** e {{redigir:o resto}}";
+    expect(trechosARedigir(t)).toEqual(["o resto"]);
+    expect(camposDoTexto(t).map((c) => c.chave)).toEqual(["site_oficial"]);
   });
 });

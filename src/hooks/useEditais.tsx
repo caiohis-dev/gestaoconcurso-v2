@@ -47,6 +47,19 @@ export function useEditais() {
       const { data, error } = await supabase
         .from("editais")
         .select("*")
+        // 🔴 O EDITAL MODELO NÃO É UM CONCURSO, e por isso não entra nesta lista.
+        //
+        // Quatro telas consomem este hook — `/editais`, `/candidatos`, a importação de
+        // inscritos e o seletor do `ProvaDialog`. Sem o filtro, o modelo apareceria nas
+        // quatro como se fosse um certame, e alguém acabaria criando prova ou importando
+        // 7.000 inscritos sob o texto-base de todos os editais.
+        //
+        // ⚠️ Isto é CONVENIÊNCIA, não barreira (§2). A escrita de `provas` e `candidatos` é
+        // PostgREST direto, e um POST com o `edital_id` do modelo não passa por aqui. Quem
+        // garante são os triggers `EM010`/`EM011` da migration 20260918183433.
+        //
+        // Quem precisa do modelo é `useEditalModelo`, que o busca nomeadamente.
+        .eq("eh_modelo", false)
         .order("nome", { ascending: true });
 
       if (error) throw error;

@@ -4,11 +4,12 @@ import { useAuth } from "@/hooks/useAuth";
 import { useEditais, Edital, EditalInsert, EditalUpdate } from "@/hooks/useEditais";
 import { EditalDialog } from "@/components/EditalDialog";
 import { useContagemCandidatosPorEdital } from "@/hooks/useCandidatos";
+import { useEditalModelo } from "@/hooks/useModeloPadrao";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PasswordConfirmDialog } from "@/components/PasswordConfirmDialog";
-import { Plus, Loader2, FileText, Pencil, Trash2, Users, ScrollText } from "lucide-react";
+import { Plus, Loader2, FileText, Pencil, Trash2, Users, ScrollText, FileStack } from "lucide-react";
 
 export default function Editais() {
   const { user, loading: authLoading, isAdmin } = useAuth();
@@ -22,6 +23,7 @@ export default function Editais() {
     isUpdating,
     isDeleting,
   } = useEditais();
+  const { modelo } = useEditalModelo();
   // A rota é de admin e a RLS de `candidatos` também — a contagem chega inteira aqui.
   const { contagem, isLoading: carregandoContagem } = useContagemCandidatosPorEdital();
 
@@ -72,10 +74,27 @@ export default function Editais() {
               Cadastre os editais; cada prova é criada sob um deles.
             </p>
           </div>
-          <Button onClick={handleCreate} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Novo Edital
-          </Button>
+          <div className="flex items-center gap-2">
+            {/*
+              🔴 O caminho para o edital MODELO. Sem ele, o modelo existe no banco e ninguém
+              o alcança: ele não aparece na lista abaixo de propósito (não é um concurso), e
+              a rota é a mesma dos outros — `/editais/:id`, já sob guard de admin.
+              ⚠️ Fica fora do grid: é texto-base, não certame. Misturá-lo aos cards seria
+              convidar alguém a criar prova ou importar inscritos sob ele.
+            */}
+            {modelo && (
+              <Button variant="outline" asChild className="gap-2">
+                <Link to={`/editais/${modelo.id}`}>
+                  <FileStack className="h-4 w-4" />
+                  Edital padrão
+                </Link>
+              </Button>
+            )}
+            <Button onClick={handleCreate} className="gap-2">
+              <Plus className="h-4 w-4" />
+              Novo Edital
+            </Button>
+          </div>
         </div>
 
         {isLoading ? (

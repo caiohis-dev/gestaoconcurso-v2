@@ -23,7 +23,7 @@ import { useCamposDoEdital } from "@/hooks/useCamposDoEdital";
 import { useAvisarAoSair } from "@/hooks/useAvisarAoSair";
 import { analisarEdital, resumoDoLinter, type Achado } from "@/lib/edital-linter";
 import { resolverReferencias, type CapituloResolvido } from "@/lib/edital-numeracao";
-import { resolverCampos } from "@/lib/edital-campos";
+import { resolverCampos, resolverARedigir } from "@/lib/edital-campos";
 import {
   ancorasDoDocumento,
   mapaDeAncoras,
@@ -67,6 +67,7 @@ import { InscricaoTaxasEIsencao } from "@/components/InscricaoTaxasEIsencao";
 import { ConteudoProgramatico } from "@/components/ConteudoProgramatico";
 import { CriteriosDeDesempate } from "@/components/CriteriosDeDesempate";
 import { DadosDoEdital } from "@/components/DadosDoEdital";
+import { FaixaDoModeloPadrao } from "@/components/FaixaDoModeloPadrao";
 
 /** Os artigos de um capítulo, já ordenados. */
 type PorCapitulo = ReadonlyMap<string, ItemBruto[]>;
@@ -149,15 +150,17 @@ function CorpoDoCapitulo({
   const numerados = numerarItens(itens, capitulo.numero);
   if (numerados.length === 0) return <p className="text-sm text-muted-foreground">—</p>;
 
-  // As TRÊS resoluções, em ordem: capítulo, item e por último o valor.
+  // As QUATRO resoluções, em ordem: capítulo, item, valor e o que falta redigir.
   //
   // ⚠️ A ordem não é arbitrária. `{{campo:}}` vem por último porque o VALOR é a única das
   // três coisas que vem de dado digitado por alguém — um valor que contivesse `{{` viraria
   // referência se fosse resolvido antes. Resolvendo-o no fim, não há esse caminho.
   const resolver = (t: string) =>
-    resolverCampos(
-      resolverReferenciasDeItem(resolverReferencias(t, documento), ancoras),
-      valores ?? new Map(),
+    resolverARedigir(
+      resolverCampos(
+        resolverReferenciasDeItem(resolverReferencias(t, documento), ancoras),
+        valores ?? new Map(),
+      ),
     );
 
   return (
@@ -669,6 +672,16 @@ export default function EditalStudio() {
             />
           </div>
         </div>
+
+        {editalId && edital && (
+          <FaixaDoModeloPadrao
+            editalId={editalId}
+            ehModelo={edital.eh_modelo}
+            aplicadoEm={edital.modelo_aplicado_em}
+            versaoAplicada={edital.modelo_versao}
+            temArtigo={artigos.itens.length > 0}
+          />
+        )}
 
         <ResizablePanelGroup direction="horizontal" className="min-h-[70vh] rounded-lg border">
           {/* ── Esquerda: a trilha. É a MESMA lista da prévia. ────────────────── */}

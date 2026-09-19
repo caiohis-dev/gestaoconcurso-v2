@@ -5,6 +5,7 @@ import {
   setTableResult,
   resetSupabaseMock,
   erroPostgrest,
+  builderQueChamou,
   CODIGOS_POSTGREST,
   type QueryBuilderMock,
 } from "@/test/supabase-mock";
@@ -49,6 +50,24 @@ describe("useEditais", () => {
   });
 
   describe("listagem", () => {
+    it("🔴 EXCLUI o edital modelo da listagem", async () => {
+      // O modelo não é um concurso. Quatro telas consomem este hook — `/editais`,
+      // `/candidatos`, a importação de inscritos e o seletor do `ProvaDialog` — e sem o
+      // filtro ele apareceria nas quatro como se fosse certame, convidando alguém a criar
+      // prova ou importar 7.000 inscritos sob o texto-base de todos os editais.
+      //
+      // ⚠️ Isto guarda a CONVENIÊNCIA. A barreira são os triggers EM010/EM011 no banco,
+      // provados em `docs/bateria-edital-modelo.sql` — porque a escrita de `provas` e
+      // `candidatos` é PostgREST direto e não passa por este hook.
+      setTableResult("editais", { data: [EDITAL], error: null });
+
+      const { result } = renderHookWithProviders(() => useEditais());
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      const builder = builderQueChamou("editais", "select");
+      expect(builder.eq).toHaveBeenCalledWith("eh_modelo", false);
+    });
+
     it("começa em loading e resolve com os editais", async () => {
       setTableResult("editais", { data: [EDITAL], error: null });
 
