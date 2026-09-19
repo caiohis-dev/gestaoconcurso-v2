@@ -33,6 +33,19 @@
 8. `npm run dev` — a partir daqui o frontend fala com o Supabase local (Postgres real em `127.0.0.1:54322`, Studio em `127.0.0.1:54323`, e-mails de teste em `127.0.0.1:54324`).
 9. Para desenvolver Edge Functions localmente: copiar `supabase/functions/.env.example` para `supabase/functions/.env`, preencher credenciais de teste (não as de produção), e rodar `npm run supabase:functions:serve` em paralelo ao stack principal.
 
+## 🔴 Rodar uma BATERIA SQL (`docs/bateria-*.sql`)
+
+**`psql` não existe no host** — ele só existe dentro do contêiner do banco, e é por lá que as baterias se executam:
+
+```bash
+sg docker -c "docker exec -i supabase_db_dqslqfzqukcahogkieet psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f -" < docs/bateria-XXX.sql
+```
+
+- ⚠️ **O nome do contêiner carrega o `project_id` do `config.toml`, que ainda é o da era Lovable** (`dqslqfzqukcahogkieet`). Não é o projeto de produção, e não é para "consertar" — confira com `sg docker -c 'docker ps'` antes de supor qualquer coisa.
+- **`ON_ERROR_STOP=1` é o que torna a execução honesta.** Sem ele o `psql` segue adiante depois de um erro e a saída vira um muro de mensagens onde a falha some; e como a bateria abre transação, tudo depois do erro morre com *"current transaction is aborted"* — **nenhum caso roda, e nenhum `NOTICE` de veredito aparece**. Foi assim que `bateria-troca-total-candidatos.sql` ficou 2 dias quebrada (uma RPC ganhou um 4º parâmetro e as 9 chamadas seguiram com 3) sem ninguém notar — ver §5 do `CLAUDE.md`.
+- Uma bateria **afirma o veredito em `RAISE NOTICE`**; quem lê é você. `npm test` não a alcança (mocka o Supabase) e `npm run docs:conferir` não a lê (confere doc). **"Ela existe" não é "ela passa" — rode antes de citá-la como prova.**
+- Toda bateria roda em transação com `ROLLBACK`, então não suja o banco. Mesmo assim, o banco local é cópia de produção com PII: ver a seção do dump abaixo.
+
 ## Gotcha (resolvido em 2026-07-12): `funcoes_colaboradores` básicas
 
 Histórico, porque explica a forma da solução: as migrations originais só tinham um `UPDATE ... WHERE id IN (...)` marcando 7 UUIDs de `funcoes_colaboradores` como "básicos do sistema" (`cargo_editavel = false`) — nunca um `INSERT`. Esses 7 registros (Coordenador Geral, Auxiliar de Coordenação, Coordenador de Pagamento, Enfermeiro, Equipe de Apoio, Fiscal, Motorista) foram criados à mão no banco remoto, pelo dashboard, fora do fluxo de migrations.
