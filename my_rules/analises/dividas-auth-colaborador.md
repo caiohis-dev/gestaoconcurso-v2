@@ -38,7 +38,35 @@ Concretizada na 2D (migration `20260715130603_*`): a cláusula `AND NOT is_colab
 
 ## 3. Reivindicação de CPF alheio
 
-Um pedido de reivindicação para um CPF que não é seu dispara um invite ao e-mail **da vítima** e marca o registro como vinculado — mas **à conta do próprio dono do e-mail** (recuperável por "esqueci senha", já que o link foi para a caixa dele). **Contida pelo rate limit** (5/15min por IP, tabela `reivindicacao_rate_limit`). Não foi tratada além disso.
+⚠️ **Mudou de forma em 2026-09-19:** o que se dispara hoje é `invite` **ou** `recovery`, conforme o e-mail já ter conta — antes, no caso da conta existente, não saía nada. O teto de 5/15 min segue sendo a contenção. Um pedido de reivindicação para um CPF que não é seu dispara um link ao e-mail **da vítima** e marca o registro como vinculado — mas **à conta do próprio dono do e-mail** (recuperável por "esqueci senha", já que o link foi para a caixa dele). **Contida pelo rate limit** (5/15min por IP, tabela `reivindicacao_rate_limit`). Não foi tratada além disso.
+
+## 4. O typo do admin agora ALCANÇA conta de terceiro (2026-09-19)
+
+Aberta no tema que consertou o invite silencioso, e **de propósito**: o usuário decidiu que o
+conserto fica só no servidor, sem aviso na tela.
+
+**O que mudou.** Digitar um e-mail errado num cadastro em estado A sempre foi arriscado: se o
+endereço **não** tem conta, o `invite` a **cria** ali e o vínculo acontece assim que o dono daquela
+caixa criar a senha. Isso não mudou. O que mudou é o outro ramo: um e-mail errado que **já tem
+conta de um terceiro** antes não fazia nada (o invite morria) e hoje manda `recovery` para a caixa
+dele — e, quando essa pessoa logar por qualquer motivo, o gatilho `on_auth_user_signin` **vincula**
+o cadastro alheio à conta dela, com o papel `colaborador` junto. Ela passaria a ver, em
+`/perfil-colaborador`, o cadastro de outra pessoa.
+
+**Por que se aceitou mesmo assim:**
+
+- exige **acerto exato** num endereço que já tem conta no sistema — são **58** contas, todas de
+  equipe interna (medido em 19/09), e o índice único funcional de `colab_email` já impede colidir
+  com o e-mail de um cadastro **existente**;
+- a guarda do `NOT EXISTS` impede roubar conta que **já é** de outro colaborador;
+- o vínculo exige que a vítima **entre na conta** — não acontece sozinho. É estritamente mais
+  exigente que o ramo do invite, que só depende de a pessoa abrir um e-mail;
+- e agora há **rastro**: `vincular_colaborador_a_conta` faz `RAISE LOG` a cada vínculo. Antes não
+  havia nada.
+
+**O que fecharia:** avisar na tela antes de salvar ("esse e-mail já tem conta"). Foi considerado e
+**recusado** — o front não lê o Auth, então exigiria uma EF de consulta, que é um oráculo
+autenticado de "quem tem conta". Se algum dia se decidir o contrário, é este o item.
 
 ## Fragilidade 7 (normalização de CPF) — resolvida, não é dívida
 

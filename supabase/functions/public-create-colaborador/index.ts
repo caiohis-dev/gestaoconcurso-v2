@@ -1,7 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { z } from 'npm:zod@3';
-import { enviarLinkAcesso, mascararEmail } from '../_shared/enviar-link-acesso.ts';
+import { enviarLinkAcesso, mascararEmail, registrarFalhaDeEnvio } from '../_shared/enviar-link-acesso.ts';
 import { barrarSeExcedeu } from '../_shared/rate-limit.ts';
 
 // Subetapa 2C: o cadastro público cria a linha de colaborador e dispara o link de
@@ -119,13 +119,22 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Dispara o link de acesso (invite) para o e-mail do cadastro. O trigger vincula a
-    // conta ao criar. Uma falha de envio não desfaz o cadastro — a linha já existe e a
-    // pessoa pode reivindicar/recuperar depois.
-    await enviarLinkAcesso(supabase, {
-      email: data.colab_email as string,
-      nome: data.colab_nome_completo as string,
-    });
+    // Dispara o link de acesso para o e-mail do cadastro. O helper escolhe entre
+    // `invite` e `recovery` conforme o e-mail já ter conta — quem se cadastra aqui com
+    // um endereço que já tem conta caía, até 2026-09-19, no mesmo buraco silencioso da
+    // reivindicação: linha criada, invite recusado, ninguém sabendo. O vínculo fica com
+    // os triggers (nascimento ou login), nunca com esta função.
+    //
+    // Uma falha de envio não desfaz o cadastro — a linha já existe e a pessoa pode
+    // reivindicar/recuperar depois. Mas ela vai para o log.
+    registrarFalhaDeEnvio(
+      'public-create-colaborador',
+      `cadastro ${data.id}`,
+      await enviarLinkAcesso(supabase, {
+        email: data.colab_email as string,
+        nome: data.colab_nome_completo as string,
+      }),
+    );
 
     return new Response(
       JSON.stringify({ success: true, id: data.id, email_mascarado: mascararEmail(data.colab_email as string) }),

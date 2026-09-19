@@ -35,6 +35,7 @@ Não repita esforço: isto está coberto e não precisa de barreira no cliente p
 | Valor de pagamento e meta **não negativos** | `chk_valor_pagamento_nao_negativo`, `chk_quantidade_meta_nao_negativa` |
 | Unicidade: e-mail e chave PIX de colaborador, nome de edital, nome de função, meta por (unidade, função), valor por (prova, função), papel por usuário | índices únicos — vários **funcionais** (`lower(btrim(...))`), de propósito |
 | Colaborador só numa unidade por prova | trigger `check_colaborador_prova_unique_trigger` |
+| **Conta e cadastro de mesmo e-mail se vinculam — e o papel `colaborador` vai junto** (19/09) | função `vincular_colaborador_a_conta`, chamada por **dois** triggers: `on_auth_user_created` (nascimento) e `on_auth_user_signin` (login/confirmação). ⚠️ O `EXECUTE` é **revogado de `anon`/`authenticated`**: ela é `SECURITY DEFINER` e escreve `user_roles`. 🧪 `docs/bateria-vinculo-colaborador.sql` (10 casos) |
 | Função do sistema não se exclui, não se renomeia, não vira editável | trigger `check_system_funcao_changes` |
 | Função em uso não se exclui | **`ON DELETE RESTRICT`** nas 3 FKs (26/07) |
 | Valor não se remove com meta > 0 pendente | trigger `check_valor_sem_meta` (26/07) |

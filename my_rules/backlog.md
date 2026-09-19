@@ -50,41 +50,25 @@ errada e o que cada decisão custou. Antes de reabrir qualquer tema abaixo, proc
 
 ---
 
-## ⏭️ PRÓXIMA — as três ressalvas do "admin preenche o e-mail e o colaborador se reivindica"
+## ⏭️ PRÓXIMA — as DUAS ressalvas restantes do "admin preenche o e-mail e o colaborador se reivindica"
 
 **Status:** ⏳ aberto em 2026-09-18, ao conferir se um colaborador **sem e-mail** consegue concluir o acesso depois de o admin preencher o campo pelo *Editar Colaborador* de `/colaboradores`.
+✅ **A ressalva 1 — a grave — foi FECHADA em 2026-09-19** (migration `20260919121555` + `_shared/auth-lookup.ts`): o vínculo deixou de depender do nascimento da conta e o helper passou a mandar `recovery` quando o e-mail já tem conta. Ver [`analises/concluidos/backlog-itens-concluidos.md`](./analises/concluidos/backlog-itens-concluidos.md). Sobram as duas abaixo, **independentes entre si**.
 **Área:** Auth e Permissões ([`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md)) + [`estrutura/modulos/aplicacao-provas/colaboradores.md`](./estrutura/modulos/aplicacao-provas/colaboradores.md)
 
 **O caminho feliz FUNCIONA e não é o item.** Linha em estado A (`user_id IS NULL`) tem `colab_email`
 editável (`isVinculado` em `src/components/ColaboradorDialog.tsx`); depois disso `/auth` → *"Estou sem
 minha senha"* atende pelos dois campos (CPF → `reivindicar-acesso`; e-mail → o ramo de estado A da
 `recuperar-senha`), o `generateLink('invite')` **cria a conta** e o trigger `handle_new_user`
-(migration `20260714201650`) preenche `user_id` e concede o papel `colaborador`. O item são as três
-bordas que esse caminho não cobre.
+(migration `20260714201650`) preenche `user_id` e concede o papel `colaborador`. O item são as
+bordas que esse caminho não cobre — eram três, restam **duas**.
 
 **Medido em 2026-09-18, no banco local:** 821 colaboradores · **243 sem e-mail** (todos os 243 sem
 conta) · **526 em estado A já com e-mail** · e **0** cadastros em estado A cujo `colab_email` já tenha
-conta no `auth.users`. A ressalva 1 é, portanto, risco **prospectivo** — e é o ato de digitar o e-mail
-à mão que o cria.
+conta no `auth.users`. A ressalva 1 era, portanto, risco **prospectivo** — e foi fechada antes de
+produzir um caso real.
 
-### 🔴 1. E-mail que JÁ tem conta no Auth: o invite falha e ninguém fica sabendo
-
-`enviarLinkAcesso` devolve `{ ok }`, e a `reivindicar-acesso` **descarta esse retorno de propósito**
-("uma falha aqui não muda a resposta ao cliente") — a pessoa vê "link enviado" com o e-mail mascarado
-e nada saiu. Pior que o e-mail perdido é o vínculo: `handle_new_user` só roda no **nascimento** da
-conta, então se ela já existia, a pessoa entra por *esqueci minha senha* e fica com `user_id` NULL e
-**sem o papel `colaborador`** — logada e invisível como colaboradora para o sistema.
-
-⚠️ **O precedente é literal:** é o mesmo defeito que aposentou a EF `create-coordenador` (migration
-`20260912165246`) — criar a conta fora de ordem e deixar a linha vinculada a nada.
-
-**O conserto tem duas pontas:** (a) quando a conta já existe e o cadastro está em estado A, mandar
-**`recovery`** e **vincular** (`user_id` + papel) em vez de tentar um invite condenado — nas duas EFs,
-porque `recuperar-senha` cai no ramo do `user` encontrado e também não vincula; (b) a tela do admin
-não tem como antecipar nada: `/colaboradores` não sabe dizer "esse e-mail já tem conta". Decidir se
-avisa antes de salvar (exige EF, o front não lê o Auth) ou se o conserto fica só no servidor.
-
-### ⚠️ 2. A recusa do banco chega ao usuário pela metade
+### ⚠️ 1. A recusa do banco chega ao usuário pela metade
 
 A **duplicidade** já chega traduzida: `mensagemDuplicidade` (`src/hooks/useColaboradores.tsx`) casa o
 nome do índice — que é mesmo `colaboradores_colab_email_key`, ainda que funcional
@@ -94,7 +78,7 @@ colaborador"*. **A CHECK `chk_colab_email_formato` não chega:** cai como mensag
 mas é o §2 do `CLAUDE.md` — a mensagem do banco tem de nomear o que fazer —, e o `CadastroLote` já
 traduz essa mesma CHECK. Um dos dois está errado.
 
-### ⚠️ 3. O teto de 5/15 min é por IP e COMPARTILHADO — cadastrar em lote esbarra nele
+### ⚠️ 2. O teto de 5/15 min é por IP e COMPARTILHADO — cadastrar em lote esbarra nele
 
 `reivindicar-acesso` e `recuperar-senha` dividem o mesmo orçamento (`barrarSeExcedeu(…, 'acesso', …)`,
 tabela `reivindicacao_rate_limit`), e o link do e-mail **expira em 1 hora**. Uma coordenação que
@@ -106,12 +90,14 @@ pública.
 
 ### Como verificar (controle positivo obrigatório)
 
-Bateria SQL + exercício das EFs contra o banco local, em transação com `ROLLBACK`:
-1. Cadastro em estado A, e-mail **sem** conta → invite criado, `user_id` preenchido, papel concedido.
-   **Este é o caso que tem de continuar passando.**
-2. Cadastro em estado A, e-mail **com** conta → hoje: nada enviado e `user_id` segue NULL. Depois do
-   conserto: `recovery` enviado **e** linha vinculada com papel.
-3. E-mail duplicado de outro colaborador → recusa nomeando o e-mail (não "duplicate key …").
+1. E-mail **fora de formato** (o que o zod deixaria passar, ou um `UPDATE` direto) → mensagem que
+   **nomeia o campo**, não o texto cru do Postgres. Comparar com o que o `CadastroLote` já mostra —
+   um dos dois está errado.
+2. E-mail duplicado de outro colaborador → continua recusando **nomeando o e-mail**. É o controle
+   positivo: `mensagemDuplicidade` já acerta esse caso e não pode regredir.
+
+🔵 **Os casos de vínculo saíram daqui em 19/09** — viraram `docs/bateria-vinculo-colaborador.sql`
+(10 casos, com controle positivo) e `supabase/functions/_shared/enviar-link-acesso.test.ts`.
 
 ⚠️ A suíte **mocka o Supabase** e não alcança nada disso (trigger, índice funcional, CHECK) — ver §5
 do `CLAUDE.md`. `npm run test:ef` alcança as EFs, mas **`reivindicar-acesso` e `recuperar-senha`

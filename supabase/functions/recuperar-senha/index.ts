@@ -3,6 +3,7 @@ import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { z } from 'npm:zod@3';
 import { enviarLinkAcesso } from '../_shared/enviar-link-acesso.ts';
 import { barrarSeExcedeu } from '../_shared/rate-limit.ts';
+import { buscarContaPorEmail } from '../_shared/auth-lookup.ts';
 
 // Recuperação de senha pelo caminho da casa.
 //
@@ -79,23 +80,18 @@ Deno.serve(async (req) => {
     const barrado = await barrarSeExcedeu(supabase, 'acesso', req, jsonResp);
     if (barrado) return barrado;
 
-    // Localiza a conta no Auth. O supabase-js não filtra listUsers por e-mail, então
-    // vai direto no endpoint admin do GoTrue. O `filter` é busca parcial — o
-    // e-mail exato é conferido depois, senão "ana@x.com" casaria com "mariana@x.com".
-    const resp = await fetch(
-      `${supabaseUrl}/auth/v1/admin/users?filter=${encodeURIComponent(email)}`,
-      { headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey } },
-    );
+    // Localiza a conta no Auth. 🔵 Desde 2026-09-19 isto mora em _shared/auth-lookup.ts:
+    // o enviar-link-acesso passou a precisar da mesma resposta para escolher entre
+    // invite e recovery, e duas cópias da mesma consulta divergiriam. O `filter` do
+    // GoTrue é busca PARCIAL — a conferência do e-mail exato está lá dentro, senão
+    // "ana@x.com" casaria com "mariana@x.com".
+    const conta = await buscarContaPorEmail(email, { supabaseUrl, serviceKey });
 
-    if (!resp.ok) {
-      console.error('admin/users falhou:', resp.status, await resp.text());
-      return jsonResp(RESPOSTA_GENERICA);
-    }
+    // Consulta indisponível não é "não existe": responder o ramo de estado A aqui
+    // mandaria invite para conta que talvez exista. Sai genérico, como tudo aqui.
+    if (conta.estado === 'indisponivel') return jsonResp(RESPOSTA_GENERICA);
 
-    const { users } = await resp.json() as { users: Array<Record<string, unknown>> };
-    const user = (users ?? []).find(
-      (u) => String(u.email ?? '').trim().toLowerCase() === email,
-    );
+    const user = conta.estado === 'encontrada' ? conta.user : undefined;
 
     // Sem conta no Auth NÃO significa "não tem nada aqui". A maioria dos colaboradores
     // está no estado A: cadastro existe, conta nunca foi criada. Para essa pessoa o que

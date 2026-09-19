@@ -56,7 +56,9 @@ roadmap:
 
     1. "Signup aberto permite tomar o cadastro de 504 colaboradores."
        → FALSO em produção: signup desligado e confirmação ligada.
-       ⚠️ O MECANISMO CONTINUA EXISTINDO: handle_new_user vincula no INSERT de auth.users.
+       ⚠️ O MECANISMO CONTINUA EXISTINDO: handle_new_user vincula no INSERT de auth.users
+         — e, desde 2026-09-19, on_auth_user_signin também vincula no LOGIN (migration
+         20260919121555). Religar o signup reabre isso por DOIS caminhos, não um.
          Religar o signup reabre isso sem tocar em código, e projeto Supabase novo nasce
          com signup ABERTO. Demonstrado ponta a ponta no banco local (§5 da análise).
 

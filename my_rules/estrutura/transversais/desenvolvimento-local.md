@@ -26,7 +26,7 @@
 3. Login (interativo, via browser — não tem script no `package.json` por não fazer sentido automatizar): `npx supabase login`.
 4. `npm run supabase:link` (opcional, só necessário para sincronizar com o remoto via `db pull`/`db diff`; **não é necessário só para rodar migrations locais**, que já estão todas versionadas em `supabase/migrations/`).
 5. `npm run supabase:start` — primeira execução baixa as imagens Docker (pode demorar) e ao final imprime `API URL`, `anon key`, `service_role key`, `Studio URL`, etc.
-6. `npm run supabase:reset` — aplica as **159** migrations existentes + `supabase/seed.sql` + `supabase/seed.local.sql` numa base zerada. O `seed.local.sql` **não vem no repositório** (é o dump de produção, com PII — ver seção própria abaixo): se ele não existir na sua máquina, este passo falha, e você precisa removê-lo de `sql_paths` no `config.toml` ou gerar um dump novo (ver seção própria abaixo).
+6. `npm run supabase:reset` — aplica as **160** migrations existentes + `supabase/seed.sql` + `supabase/seed.local.sql` numa base zerada. O `seed.local.sql` **não vem no repositório** (é o dump de produção, com PII — ver seção própria abaixo): se ele não existir na sua máquina, este passo falha, e você precisa removê-lo de `sql_paths` no `config.toml` ou gerar um dump novo (ver seção própria abaixo).
 7. Copiar a `anon key` impressa no passo 5 (ou via `npm run supabase:status`) para `VITE_SUPABASE_PUBLISHABLE_KEY` em `.env.local` (arquivo já criado na raiz, gitignored). O Vite carrega `.env.local` com prioridade sobre `.env` automaticamente.
 
    ⚠️ **Esta linha dizia que "basta esse arquivo existir ou não" para alternar entre local e produção. Era FALSO**, e por quase um mês: apagar o `.env.local` caía no `.env` da raiz, que **também** apontava para o Docker. 🔵 Em 2026-09-12 o `.env` foi **removido** — hoje, sem `.env.local`, o `npm run dev` fica sem `VITE_SUPABASE_URL` e o cliente quebra alto, em vez de falar com o banco errado em silêncio. **Continua não havendo caminho para apontar o `dev` para a nuvem** — é o item do roadmap de alternância, ainda aberto. Ver `.env.example`.
@@ -86,7 +86,7 @@ npx supabase db dump --db-url "$U" --data-only -f data.sql
    awk '/^INSERT INTO /{i=1} i && /\);[[:space:]]*$/{sub(/;[[:space:]]*$/," ON CONFLICT DO NOTHING;");i=0} {print}' data.sql > seed.local.sql
    ```
 
-O `SET session_replication_role = replica;` no topo **o próprio CLI já põe** — é ele que desliga `on_auth_user_created` e evita `profiles`/`user_roles` duplicados.
+O `SET session_replication_role = replica;` no topo **o próprio CLI já põe** — é ele que desliga os triggers de `auth.users` e evita `profiles`/`user_roles` duplicados. ⚠️ **Desde 2026-09-19 são DOIS**: `on_auth_user_created` e `on_auth_user_signin` (o vínculo no login). Esta linha nomeava só o primeiro. O caso 8 de `docs/bateria-vinculo-colaborador.sql` é o que prova que `replica` desliga os dois — sem isso, o `db reset` se comportaria diferente da carga real.
 
 A `export-seed` **não existe mais** no projeto: era um canal de exfiltração da base inteira e foi aposentada assim que cumpriu o papel. O código dela está guardado em [`../historico/export-seed/`](../../historico/export-seed/). ⚠️ **Não a ressuscite para gerar dump** — desde 16/09 o caminho é o `supabase db dump` descrito acima, que não expõe nada.
 

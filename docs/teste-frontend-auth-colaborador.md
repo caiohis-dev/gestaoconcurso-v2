@@ -40,6 +40,7 @@ Roteiro de teste manual da UI cobrindo a refatoração do acesso do colaborador 
 - [x] **C4** — CPF **sem e-mail** no cadastro → orienta procurar o coordenador (ramo `needsEmail` morto). **Segue sendo beco sem saída, por decisão** — são 254 pessoas.
 - [x] **C5** — CPF **inexistente** → resposta genérica, sem revelar nada.
 - [x] **C6** — Repetir **6×** rápido (mesmo IP) → o **6º é cortado** (rate limit 5/15min).
+- [ ] **C8** *(2026-09-19 — o invite que morria calado)* — Num cadastro em **estado A**, pôr pelo *Editar Colaborador* um e-mail que **já tem conta no Auth** (use uma conta de teste sua, nunca a de outra pessoa). Reivindicar por esse CPF → **chega um link de REDEFINIÇÃO** (não o de primeiro acesso), e o log da EF **não** traz `envio do link falhou`. Antes deste tema a tela dizia "link enviado" e **nada saía**. ⚠️ O cadastro **continua em estado A nesse momento** — o vínculo só acontece quando a pessoa **logar** (gatilho `on_auth_user_signin`). Conferir depois do login: `user_id` preenchido e papel `colaborador` concedido.
 - [x] **C7** *(orçamento compartilhado)* — Gastar o teto pelo **e-mail** (bloco E) e em seguida tentar pelo **CPF** → **também 429**. As duas portas dividem a mesma tabela `reivindicacao_rate_limit` de propósito: separadas, o atacante somaria 5 + 5.
 
 ## D. Cadastro público (2C)
@@ -58,6 +59,8 @@ Roteiro de teste manual da UI cobrindo a refatoração do acesso do colaborador 
 > **Deixou de ser o fluxo nativo.** O `resetPasswordForEmail` saiu do `Auth.tsx`: agora é a EF `recuperar-senha`, que gera o link com `generateLink` e envia pela `send-email`/Hostinger, com o visual da FEVRE. **O e-mail sai de verdade e não cai mais no Mailpit** — use uma caixa sua. Exige `npm run supabase:functions:serve`.
 >
 > **A EF decide sozinha entre `recovery` e `invite`**: se o e-mail já tem conta, redefine; se é cadastro em **estado A** (sem conta), manda o invite e o trigger vincula. O front não sabe qual dos dois aconteceu — e não deve saber.
+>
+> 🔵 **Desde 2026-09-19 a decisão mora no helper, não só aqui.** `_shared/enviar-link-acesso.ts` tem `tipo: 'auto'` como padrão e consulta o Auth — é o que fez a `reivindicar-acesso` (bloco C) e a `public-create-colaborador` (bloco D) pararem de gerar invite condenado. Os dois ramos desta EF passam o tipo **explícito** e **não mudaram**: se o comportamento do bloco E mudar, é regressão.
 
 - [x] **E1** — `/auth` → "Estou sem minha senha" → informar **e-mail com conta** → e-mail chega **com o visual da FEVRE** (não o template cru do Supabase), assunto "Redefinição de senha", botão "Redefinir minha senha". *(Aprovado em 2026-07-20.)*
 - [x] **E2** — Concluir → abrir link → cai em `/redefinir-senha`, troca a senha, novo login funciona. *(Aprovado em 2026-07-20.)*

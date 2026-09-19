@@ -30,6 +30,70 @@ ler dado real. **Conferir a premissa no código antes de executar o item é obri
 
 ---
 
+## ✅ CONCLUÍDO 2026-09-19 — o invite que morria calado em e-mail que já tinha conta
+
+Era a **ressalva 1** do item "admin preenche o e-mail e o colaborador se reivindica", aberto em
+18/09. As ressalvas 2 (a CHECK que chega crua) e 3 (o teto compartilhado) **seguem abertas** no
+backlog — foram deixadas de fora por decisão de escopo, não por terem sido resolvidas.
+
+### O que era
+
+Um cadastro em estado A cujo `colab_email` já tivesse conta no Auth não tinha saída:
+`generateLink('invite')` falhava, `reivindicar-acesso` **descartava** esse retorno e respondia
+sucesso. A pessoa via "link enviado", nada saía, e — pior — ela entrava por *esqueci minha senha* e
+ficava com `user_id` NULL e **sem o papel `colaborador`**. O vínculo só existia no
+`handle_new_user`, que roda **no nascimento** da conta; quem já tinha conta não se vinculava por
+caminho nenhum.
+
+### Como ficou
+
+| Camada | O quê |
+|---|---|
+| Banco (`20260919121555`) | `vincular_colaborador_a_conta(uuid, text)` — o miolo do vínculo extraído do `handle_new_user` — chamada por **dois** triggers: `on_auth_user_created` e o novo **`on_auth_user_signin`** (`AFTER UPDATE OF last_sign_in_at, email_confirmed_at`) |
+| EF | `_shared/auth-lookup.ts` (a consulta ao Auth, extraída da `recuperar-senha`) + `tipo: 'auto'` como **padrão** do `enviar-link-acesso`, com **retry** em `email_exists` |
+| Chamadores | `reivindicar-acesso` e `public-create-colaborador` passaram a **logar** o `{ ok }` falso, por `registrarFalhaDeEnvio` |
+| Verificação | `docs/bateria-vinculo-colaborador.sql` (10 casos) + `_shared/enviar-link-acesso.test.ts` (10 casos) |
+
+**O vínculo acontece no LOGIN, não no envio** — entrar com a própria senha é prova de posse da
+caixa, o mesmo princípio que a `corrigir-email-acesso` já adotava (`email_confirm: false`).
+
+### 🔴 O achado que quase passou: a UNIQUE que derrubaria o login
+
+`colaboradores_user_id_key UNIQUE (user_id)` existe. Se a conta que está logando já estiver
+vinculada a **outra** linha, o `UPDATE` levantaria `23505` **dentro da transação de login do
+GoTrue** — e a pessoa não entraria. É alcançável de verdade: conta renomeada (estado B, que existe
+no dump) + outro cadastro em estado A com o e-mail novo. Daí as duas defesas: a guarda `NOT EXISTS`
+na função e o `EXCEPTION` no gatilho.
+
+⚠️ **E o caso de bateria que prova isso é OFUSCADO por construção:** o caso 6 fica verde com a
+guarda **ou** com o `EXCEPTION` — medido, tirar a guarda não o derruba. Quem separa os dois é o
+**6b**, que chama a função direto, sem trigger para salvá-la. É o mesmo padrão da CHECK que ofuscou
+outra CHECK em 03/08.
+
+### Alternativas consideradas e REJEITADAS (não ressuscitar)
+
+1. **Vincular dentro da Edge Function**, como o próprio item do backlog sugeria. Recusada pelo §2 do
+   `CLAUDE.md`: não valeria para `psql`, PostgREST nem script, concederia papel sem posse provada, e
+   seria `UPDATE` + `INSERT` de papel **sem transação**, em duas EFs.
+2. **Trigger em `public.colaboradores`** (`AFTER INSERT OR UPDATE OF colab_email`), vinculando assim
+   que o e-mail passasse a casar uma conta existente. Fecharia o buraco no instante em que nasce e
+   cobriria quem nunca mais loga — mas vincula **sem ato nenhum do dono**: um typo do admin daria o
+   papel `colaborador` à conta de um terceiro na hora. Recusada por isso.
+3. **Avisar na tela antes de salvar** ("esse e-mail já tem conta"). Recusada pelo usuário: o front
+   não lê o Auth, então exigiria uma EF de consulta — um oráculo autenticado de quem tem conta.
+
+O que sobra dessa escolha é a **dívida 4** de [`../dividas-auth-colaborador.md`](../dividas-auth-colaborador.md).
+
+### Medido antes de desenhar (banco local, 19/09)
+
+821 colaboradores · 769 em estado A · 526 deles com e-mail · **0** em estado A cujo `colab_email` já
+tivesse conta · 58 contas (52 confirmadas, 52 com login) · 0 vinculados sem o papel. **Não havia
+dado a sanear** — o risco era prospectivo, criado pelo ato de digitar o e-mail à mão. E foi essa
+medição que escolheu a coluna do gatilho: as 52 contas confirmadas **já têm** `email_confirmed_at`,
+então um gatilho só nessa coluna nunca dispararia para o caso alvo.
+
+---
+
 ## ✅ CONCLUÍDO 2026-07-26 — a fabricação de alocação falsa foi apagada por inteiro
 
 **Área:** Alocação e Funções / Autenticação. Registro mantido no backlog porque **deixou uma decisão de operação em aberto** (no fim desta seção) e porque a verificação não é automatizável.

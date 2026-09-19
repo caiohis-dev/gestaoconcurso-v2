@@ -4,7 +4,8 @@
 //
 // Envia o link com o visual da FEVRE pela função send-email. O tipo do link depende
 // de a conta já existir:
-//   'invite'   (padrão) — a conta ainda NÃO existe. O generateLink a cria, e o trigger
+//   'auto'     (padrão) — pergunta ao Auth e escolhe entre os dois abaixo.
+//   'invite'            — a conta ainda NÃO existe. O generateLink a cria, e o trigger
 //                         on_auth_user_created vincula user_id e concede 'colaborador'
 //                         (migration 20260714201650).
 //   'recovery'          — a conta JÁ existe (o invite falharia). É o caso da correção
@@ -12,11 +13,24 @@
 //                         vínculo já está de pé, e o link só serve para a pessoa criar
 //                         a senha. Ao abri-lo, o Auth também confirma o endereço.
 //
+// 🔴 O PADRÃO ERA 'invite', E ISSO ERA O DEFEITO (corrigido em 2026-09-19). Quando o
+// e-mail já tinha conta, o invite falhava, a reivindicar-acesso descartava o erro e
+// respondia "link enviado" — nada saía, e a pessoa ficava com user_id NULL e sem o
+// papel 'colaborador'. Perda silenciosa. Hoje o padrão é 'auto': quem passa o tipo
+// explícito (recuperar-senha, corrigir-email-acesso) não muda de comportamento.
+//
+// ⚠️ O 'auto' consulta o Auth ANTES de gerar, mas a consulta não é garantia: a conta
+// pode nascer no meio, e a consulta pode cair. Por isso existe também o retry em
+// `email_exists` — é ele que fecha a corrida. Se a consulta falha, o tipo escolhido é
+// 'invite', que é exatamente o comportamento de antes desta mudança.
+//
 // Não lança: devolve { ok } para o chamador decidir. Se o generateLink falha, ou o
 // e-mail não sai (SMTP), a operação de negócio que chamou (cadastrar, reivindicar,
 // corrigir) não deve ser desfeita por causa disso — a pessoa ainda entra por
-// "esqueci minha senha".
+// "esqueci minha senha". ⚠️ Mas o chamador tem de LOGAR o { ok } falso: foi
+// justamente descartá-lo sem olhar que escondeu o defeito acima.
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
+import { buscarContaPorEmail, type ContaNoAuth, type FetchLike } from './auth-lookup.ts';
 
 // O texto muda conforme o que a pessoa vai fazer, e isso NÃO é o mesmo que o `tipo`
 // do link: a correção de e-mail (corrigir-email-acesso) usa link 'recovery' por razão
@@ -84,26 +98,110 @@ export function mascararEmail(email: string): string {
   return `${visivel}${'*'.repeat(Math.max(3, local.length - 2))}@${dominio}`;
 }
 
+export type TipoLink = 'invite' | 'recovery';
+
+/**
+ * A decisão, pura e testável: conta encontrada pede `recovery`; ausente pede
+ * `invite`. Consulta indisponível também dá `invite` — é o comportamento de sempre,
+ * e o retry em `email_exists` cobre o caso de a conta existir mesmo assim.
+ */
+export function escolherTipoLink(conta: ContaNoAuth): TipoLink {
+  return conta.estado === 'encontrada' ? 'recovery' : 'invite';
+}
+
+/**
+ * O GoTrue recusa `invite` em e-mail que já tem conta com HTTP 422 e
+ * `error_code: "email_exists"` (medido no Auth local em 2026-09-19). ⚠️ Não basta
+ * olhar o `code`: a forma do erro do supabase-js já mudou entre versões, então a
+ * mensagem entra como segunda leitura.
+ */
+function contaJaExiste(err: unknown): boolean {
+  const e = err as { code?: string; message?: string } | null;
+  const code = e?.code ?? '';
+  const msg = (e?.message ?? '').toLowerCase();
+  return code === 'email_exists'
+    || msg.includes('email_exists')
+    || msg.includes('already been registered')
+    || msg.includes('already registered');
+}
+
+/**
+ * Gera o link e, se o `invite` for recusado porque a conta existe, REPETE como
+ * `recovery`. A corrida é real: a conta pode nascer entre a consulta e a geração, e a
+ * própria consulta pode cair. Sem este retry, o e-mail se perderia do mesmo jeito.
+ */
+async function gerarComRetry(
+  supabase: SupabaseClient,
+  email: string,
+  tipo: TipoLink,
+  siteUrl: string,
+) {
+  const gerar = (t: TipoLink) =>
+    supabase.auth.admin.generateLink({
+      type: t,
+      email,
+      options: { redirectTo: `${siteUrl}/redefinir-senha` },
+    });
+
+  const primeira = await gerar(tipo);
+
+  if (primeira.error && tipo === 'invite' && contaJaExiste(primeira.error)) {
+    console.warn('enviar-link-acesso: invite recusado (conta já existe); repetindo como recovery');
+    return { tipo: 'recovery' as TipoLink, ...(await gerar('recovery')) };
+  }
+
+  return { tipo, ...primeira };
+}
+
+/**
+ * O log que os chamadores devem fazer quando o envio falha. Existe para que nenhum
+ * deles precise de um `if` próprio — foi exatamente um `{ ok }` descartado sem olhar
+ * que manteve este defeito invisível por meses.
+ */
+export function registrarFalhaDeEnvio(
+  origem: string,
+  alvo: string,
+  r: { ok: boolean; tipoUsado?: TipoLink; motivo?: string },
+): void {
+  if (r.ok) return;
+  console.error(
+    `${origem}: envio do link falhou (tipo=${r.tipoUsado ?? '?'}) para ${alvo}: ${r.motivo ?? 'sem motivo'}`,
+  );
+}
+
 export async function enviarLinkAcesso(
   supabase: SupabaseClient,
-  params: { email: string; nome: string; tipo?: 'invite' | 'recovery'; contexto?: Contexto },
-): Promise<{ ok: boolean }> {
+  params: {
+    email: string;
+    nome: string;
+    tipo?: TipoLink | 'auto';
+    contexto?: Contexto;
+    fetchImpl?: FetchLike;
+  },
+): Promise<{ ok: boolean; tipoUsado?: TipoLink; motivo?: string }> {
   const siteUrl = Deno.env.get('SITE_URL') ?? 'http://127.0.0.1:8080';
+  const doFetch = params.fetchImpl ?? fetch;
+  const pedido = params.tipo ?? 'auto';
 
-  const { data: linkData, error: linkErr } = await supabase.auth.admin.generateLink({
-    type: params.tipo ?? 'invite',
-    email: params.email,
-    options: { redirectTo: `${siteUrl}/redefinir-senha` },
-  });
+  const escolhido: TipoLink = pedido === 'auto'
+    ? escolherTipoLink(await buscarContaPorEmail(params.email, { fetchImpl: doFetch }))
+    : pedido;
+
+  const { tipo, data: linkData, error: linkErr } = await gerarComRetry(
+    supabase,
+    params.email,
+    escolhido,
+    siteUrl,
+  );
 
   if (linkErr || !linkData?.properties?.action_link) {
     console.error('generateLink falhou:', linkErr?.message);
-    return { ok: false };
+    return { ok: false, tipoUsado: tipo, motivo: linkErr?.message ?? 'link vazio' };
   }
 
   const contexto = params.contexto ?? 'primeiro-acesso';
   const html = buildEmailHtml(params.nome, linkData.properties.action_link, contexto);
-  const sendResp = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/send-email`, {
+  const sendResp = await doFetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/send-email`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -119,8 +217,9 @@ export async function enviarLinkAcesso(
   });
 
   if (!sendResp.ok) {
-    console.error('send-email falhou:', await sendResp.text());
-    return { ok: false };
+    const texto = await sendResp.text();
+    console.error('send-email falhou:', texto);
+    return { ok: false, tipoUsado: tipo, motivo: texto };
   }
-  return { ok: true };
+  return { ok: true, tipoUsado: tipo };
 }

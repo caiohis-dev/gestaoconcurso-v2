@@ -1,7 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { z } from 'npm:zod@3';
-import { enviarLinkAcesso, mascararEmail } from '../_shared/enviar-link-acesso.ts';
+import { enviarLinkAcesso, mascararEmail, registrarFalhaDeEnvio } from '../_shared/enviar-link-acesso.ts';
 import { barrarSeExcedeu } from '../_shared/rate-limit.ts';
 
 // Subetapa 2B — reivindicação do acesso do colaborador.
@@ -77,10 +77,19 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Dispara o link do Auth (o helper cria a conta pelo invite e envia com o visual
-    // da FEVRE; o trigger vincula). Uma falha aqui não muda a resposta ao cliente:
-    // a conta pode ter sido criada e a pessoa ainda entra por "esqueci minha senha".
-    await enviarLinkAcesso(supabase, { email, nome: colab.colab_nome_completo as string });
+    // Dispara o link do Auth com o visual da FEVRE. O helper decide sozinho entre
+    // `invite` (conta nova — o trigger on_auth_user_created vincula) e `recovery`
+    // (a conta já existe — o trigger on_auth_user_signin vincula quando ela logar).
+    //
+    // 🔴 O RETORNO NÃO SE DESCARTA MAIS (2026-09-19). A resposta ao cliente continua
+    // a mesma — a assimetria CPF × e-mail é deliberada e não muda por isto —, mas
+    // engolir o `{ ok }` sem olhar foi o que manteve invisível, por meses, o invite
+    // que morria em e-mail com conta: "link enviado" na tela e nada saindo.
+    registrarFalhaDeEnvio(
+      'reivindicar-acesso',
+      `cadastro ${colab.id}`,
+      await enviarLinkAcesso(supabase, { email, nome: colab.colab_nome_completo as string }),
+    );
 
     return jsonResp({ existe: true, ja_vinculado: false, email_mascarado: mascararEmail(email) });
   } catch (e) {
