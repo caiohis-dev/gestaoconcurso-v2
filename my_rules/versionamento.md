@@ -60,6 +60,14 @@ Versionamento semântico, com prefixo `v`:
 
   🔴 **A ordem foi BANCO ANTES DO SITE, e não é detalhe.** O bundle da v2.1.0 chama a RPC `totais_da_prova` e a coluna computada `colab_nome_busca`; publicar o site primeiro quebraria as duas telas na cara do usuário. Na ordem certa, o banco ganha dois objetos que o bundle antigo simplesmente não usa — inofensivo. **Medido antes de começar**, com duas requisições de leitura e sem linkar: `PGRST202` para a RPC e `42703` para a coluna, os dois virando `42501 permission denied` depois do push. Um `200` ali teria sido notícia ruim: significaria que o `REVOKE` de `anon` não pegou.
 
+⚠️ **Entre a v2.1.0 e a v3.0.0 houve cinco releases que este arquivo não registrou** — `v2.1.1`, `v2.2.0`, `v2.3.0`, `v2.4.0` e `v2.5.0`. Elas existem como tag e estão no ar; o que falta é a nota aqui. **Não deduza o histórico desta lista** — `git tag --sort=-creatordate` é a fonte.
+
+- **`v3.0.0` nasceu em 2026-09-19**, no commit `ebfa19a`, sobre o `checkpoint/pre-v3` (`8acc748`, a v2.5.0). Entregou o **módulo Editais v3** — 26 migrations, capítulos e artigos como registros próprios, o edital padrão clonável — e o **vínculo colaborador↔conta no login**. MAJOR pela escala e pela nomenclatura que o próprio checkpoint já usava, não por quebra de compatibilidade: as migrations são aditivas.
+
+  🔴 **Banco antes do site, de novo, e por margem maior:** o bundle fala com 13 tabelas e várias RPCs que produção não tinha. Medido antes e depois, sem adivinhar: `edital_capitulos` respondia **PGRST205** (não existe) e passou a **42501** (existe, `anon` barrado) — um **200** ali teria sido notícia ruim, significaria `anon` lendo dado. E o `prod:diff` depois do push saiu **vazio**, exceto `pg_net`, que é extensão da plataforma e não se toca.
+
+  ⚠️ **Subiu sem backup novo**, por decisão do usuário; o mais recente era o de 16/09. Fica registrado porque o Free não tem backup automático nenhum.
+
 Crie a tag no commit que efetivamente entrega a versão, com mensagem: `git tag -a v2.1.0 -m "..."`.
 
 **A tag é o gatilho do banco de produção.** Combinado em 2026-07-12: o banco de produção só é atualizado em **versões estáveis** — nunca a cada migration ou a cada merge. Entre releases, as migrations se acumulam em **`dev`** e o schema de produção fica deliberadamente atrás do local. Por isso **código e migration da mesma versão sobem juntos**: nunca publique o frontend de uma versão cujo schema ainda não subiu. O roteiro está em [`banco-producao.md`](./banco-producao.md).

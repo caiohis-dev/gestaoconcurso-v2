@@ -6,7 +6,9 @@ Como o gestaoconcurso vai ao ar. Par de [`banco-producao.md`](./banco-producao.m
 >
 > O deploy foi executado em outra sessão; o ferramental vive fora deste repo, em `configura_server_gestaoconcurso`. 🟢 **O secret `SITE_URL` e as redirect URLs — que ficaram como ressalva aqui desde 13/08 — foram CONFIRMADOS em 2026-09-09**, por uma recuperação de senha real: o e-mail chegou com o visual da FEVRE e o link abriu `fevre.online/redefinir-senha`.
 >
-> 🟢 **Deploy mais recente: 2026-09-10, release `v2.1.0`** (commit `f17a56f`) — e foi o primeiro feito pelo ritual inteiro no mesmo evento: merge, tag, `prod:push`, `deploy.sh`. **Como conferir que o deploy PEGOU**, além do "concluído" do script (que sempre sucede, porque o `rsync` sucede):
+> 🟢 **Deploy mais recente: 2026-09-19, release `v3.0.0`** (commit `ebfa19a`) — o módulo Editais v3 (26 migrations) e o vínculo colaborador↔conta. Ritual inteiro na ordem: merge fast-forward, tag, `prod:push`, `functions deploy` das 3 que mudaram, `deploy.sh`, `prod:unlink`. Conferido depois: hash do bundle no ar **idêntico** ao buildado (`index-CfqKTUa4.js`), **0** ocorrências de `127.0.0.1` e 7 do projeto de produção, HTTPS 200, HTTP 301, logo 200. ⚠️ **Subiu SEM backup novo**, por decisão do usuário — o mais recente é o de 16/09.
+>
+> *(O bloco abaixo descreve a release anterior que estabeleceu o ritual.)* 🟢 **Deploy de 2026-09-10, release `v2.1.0`** (commit `f17a56f`) — e foi o primeiro feito pelo ritual inteiro no mesmo evento: merge, tag, `prod:push`, `deploy.sh`. **Como conferir que o deploy PEGOU**, além do "concluído" do script (que sempre sucede, porque o `rsync` sucede):
 >
 > ```bash
 > curl -s https://fevre.online | grep -o 'assets/index-[A-Za-z0-9]*\.js'   # bate com o build?
