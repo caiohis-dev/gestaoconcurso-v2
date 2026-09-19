@@ -32,8 +32,9 @@ Componente: `ReivindicarAcessoCard` com a prop **`permitirEmail`**. Sem ela (o `
 
 | Input | EF | Política | Por quê |
 |---|---|---|---|
-| **CPF** | `reivindicar-acesso` | **Revela**: e-mail mascarado, e distingue "sem e-mail" de "não encontrado" | Concessão já aceita e contida por rate limit. O mascarado diz **qual caixa abrir** — quem tem vários e-mails depende disso |
+| **CPF** | `reivindicar-acesso` | **Revela**: e-mail mascarado — 🔵 desde 19/09, em cadastro **vinculado**, o da **CONTA** e não o do cadastro, mais um sinalizador `divergente` — e distingue "sem e-mail" de "não encontrado" | Concessão já aceita e contida por rate limit. O mascarado diz **qual caixa abrir** — quem tem vários e-mails depende disso |
 | **E-mail** | `recuperar-senha` | **Não revela nada**: resposta idêntica em todos os casos | Anti-enumeração: lista de e-mails se compra pronta e se testa em massa |
+| **CPF + e-mail** (19/09) | `incluir-email-cadastro` | Revela **o mesmo que o CPF já revelava**; e a recusa é **colapsada** — "não é possível usar este e-mail" vale tanto para "já tem conta" quanto para "é de outro colaborador" | Distinguir as duas faria desta porta um oráculo de **quem tem conta**, que a linha de cima se recusa a ser. ⚠️ Esta porta **escreve**: ver a dívida §5 |
 
 Uniformizar "para ficar consistente" quebra um dos dois lados: revelando, reabre a enumeração por e-mail; calando, mata o e-mail mascarado e o aviso que os **254 sem e-mail** recebem. Para esses 254 a tela do caminho do e-mail traz a dica **"tente pelo CPF"** — sem ela eles digitariam o e-mail pessoal, não receberiam nada e não teriam como saber por quê.
 
@@ -48,6 +49,8 @@ Toda porta pública passa por **`supabase/functions/_shared/rate-limit.ts`**, qu
 | `acesso` | `reivindicar-acesso` + `recuperar-senha` | **5 / 15 min** | orçamento compartilhado, como acima |
 | `cadastro` | `public-create-colaborador` | **3 / 60 min** | o mais apertado: escreve PII e dispara e-mail com o domínio da FEVRE |
 | `checagem-cpf` | `check-cpf-colaborador` | **30 / 15 min** | sem efeito colateral; o teto é contra **varredura**, não contra abuso pontual |
+| `inclusao-email` | `incluir-email-cadastro` | **10 / 60 min** | 🔵 19/09. Folgado **de propósito**: aquela porta não tem prova de posse, então o teto por IP não detém o ataque dirigido (basta uma requisição) — só o abuso em massa. Apertá-lo barraria fiscais da mesma escola sem deter ninguém |
+| `inclusao-email-global` | `incluir-email-cadastro` | **20 / 60 min**, **chave fixa** | 🔴 O único teto do sistema que **não é por IP**. Existe porque a auditoria daquela porta é um multiplicador de e-mail (1 convite + 1 aviso por admin) e rotação de IP é trivial — sem ele, a trilha vira o vetor e o domínio da FEVRE vai para blocklist |
 
 🔴 **A regra que define o helper: na dúvida, BLOQUEIA.** Erro da RPC devolve `false`, não `true`.
 
@@ -73,7 +76,7 @@ Toda porta pública passa por **`supabase/functions/_shared/rate-limit.ts`**, qu
 
 **O login em si tem teto da plataforma, não nosso** (medido no dashboard em 2026-08-13): **30 requisições de sign-in/sign-up por 5 min por IP**, mais 150/5 min de token refresh e 30/5 min de verificação. ⚠️ **É por IP, não por conta** — não há bloqueio de conta, backoff nem aviso de tentativa falha, e `minimum_password_length` é **6**. Signup está **desligado** e *Confirm email* **ligado** no dashboard: ⚠️ isso **não** vem do `config.toml` (onde os valores são de dev, abertos), e é o que impede que uma conta criada por signup se vincule sozinha a um cadastro de colaborador pelo `handle_new_user`. 🔵 **Desde 2026-09-19 isso protege menos do que parece:** o gatilho `on_auth_user_signin` vincula no **login**, então uma conta que nascesse por signup se vincularia na primeira vez que entrasse. O que segura é o signup estar desligado — não o momento do vínculo.
 
-**O que a porta única ainda não resolve:** os **254 sem e-mail** seguem dependendo do coordenador (decisão explícita), e o CPF de quem **já tem conta** informa em vez de mandar o link — a pessoa precisa reinformar o e-mail. Fechar esse segundo caso esbarra no estado B, onde `colab_email` e o e-mail da conta divergem e mandar para a conta não ajudaria.
+**O que a porta única ainda não resolve:** 🔴 **a linha abaixo foi REVERTIDA em 2026-09-19** — os sem e-mail **deixaram de depender do coordenador**: eles informam o próprio e-mail em `/auth` (CPF + e-mail), pela EF `incluir-email-cadastro`. ⚠️ **Sem prova de posse, e isso é dívida escrita, não descuido** — ver [`../analises/dividas-auth-colaborador.md`](../../analises/dividas-auth-colaborador.md) §5 antes de mexer em qualquer guarda desse fluxo. E o número desta frase estava velho: são **243**, não 254 (medido em 19/09). *A frase original, que valeu até 19/09:* os **254 sem e-mail** seguem dependendo do coordenador (decisão explícita), e o CPF de quem **já tem conta** informa em vez de mandar o link — a pessoa precisa reinformar o e-mail. Fechar esse segundo caso esbarra no estado B, onde `colab_email` e o e-mail da conta divergem e mandar para a conta não ajudaria.
 
 ### Recuperação de senha — EF própria, não o fluxo nativo (2026-07-20)
 
@@ -119,8 +122,14 @@ Depois da refatoração do acesso, `colab_email` acumulou **dois papéis**: dado
 
 | Estado | Condição | Comportamento |
 |---|---|---|
-| **A** | `user_id IS NULL` | ✅ **Livre** — é o caminho dos 254 sem e-mail e do conserto de typo *antes* da reivindicação |
+| **A** | `user_id IS NULL` | ✅ **Livre** — é o caminho dos **243** sem e-mail (🔵 era "254" e era o coordenador quem preenchia; desde 19/09 a **própria pessoa** informa, sem prova de posse) e do conserto de typo *antes* da reivindicação |
 | **B** | Vinculado, conta não-confirmada | 🚫 Travado no formulário, ✅ **corrigível pela ação deliberada** — a EF `corrigir-email-acesso` (Etapa 2) |
+
+> 🔴 **O estado B dessincronizado era um CICLO FECHADO, com mensagem de sucesso — corrigido em 2026-09-19.** Quem tem `colab_email` diferente do e-mail da conta ouvia, pelo CPF, *"informe o seu e-mail neste mesmo campo"*; informava o do cadastro; a `recuperar-senha` não achava conta com ele e caía no ramo de estado A, **que exige `user_id IS NULL`** — e a linha dele é vinculada. Resposta: *"link enviado"*, **sem enviar nada**. E a dica de escape ("tente pelo CPF") devolvia ao começo. Medido: **1 pessoa real**, o coordenador do item "Sanear as contas do Auth" (login `ab@ab.…`, cadastro `joao.0…`).
+>
+> **O conserto foi na porta do CPF, não na do e-mail:** a `reivindicar-acesso` passou a resolver o e-mail **da conta** (`auth.admin.getUserById`) e a devolver `divergente`. Quando diverge, a tela para de mandar informar um e-mail que não vai funcionar e aponta para a coordenação. ⚠️ **Não é revelação nova** — a porta do CPF já revela e-mail mascarado por desenho; o que mudou é passar a revelar o endereço **certo**. A porta do e-mail continua sem revelar nada.
+>
+> ⚠️ **E entrar com a senha antiga, nesse estado, mostrava `"Email not confirmed"` em inglês.** O `Auth.tsx` traduzia só `Invalid login credentials`; hoje usa [`src/lib/auth-erros.ts`](../../../src/lib/auth-erros.ts), cujos códigos foram **medidos** contra o GoTrue local. Medido junto: **6 contas não confirmadas, 5 com cadastro** — e esse estado é o que a `corrigir-email-acesso` cria **de propósito** (`email_confirm: false`).
 | **C** | Vinculado, conta confirmada | 🚫 Travado — a troca pertence ao dono, e **não há caminho no app** (dívida aberta) |
 
 **O que a Etapa 1 fez (só front, sem migration):**
@@ -231,7 +240,7 @@ A RPC exige, nesta ordem, e cada recusa **nomeia a providência**: chamador `adm
 >
 > ⚠️ **Esta seção afirmava, desde 2026-07-26, que quem concedia era `useCoordenadoresProva.createMutation` e que ele "só vinculava o `user_id` ao `colaborador_prova_id` que já existe".** Era falso: o `createMutation` nunca teve chamador — quem agia era a EF, que criava conta. É a classe de erro que o `docs:conferir` não pega (símbolo certo, comportamento mentindo), e só releitura dirigida ao código encontra.
 
-**Quem ainda NÃO tem conta aparece na lista, desabilitado, com o motivo escrito** — e os dois motivos pedem providências diferentes: *sem conta* (a pessoa entra em `/auth` por "Estou sem minha senha") × *sem e-mail no cadastro* (alguém cadastra o e-mail antes; são **255** colaboradores assim, medido em 2026-09-12). Sumir da lista seria perda silenciosa: o admin procuraria o nome e nada diria por quê.
+**Quem ainda NÃO tem conta aparece na lista, desabilitado, com o motivo escrito** — e os dois motivos pedem providências diferentes: *sem conta* (a pessoa entra em `/auth` por "Estou sem minha senha") × *sem e-mail no cadastro* (🔵 desde 19/09 a **própria pessoa** pode cadastrar o e-mail em `/auth`, além do coordenador; são **243**, medido em 2026-09-19 — a frase dizia 255, de 12/09). Sumir da lista seria perda silenciosa: o admin procuraria o nome e nada diria por quê.
 
 **A concessão por `/gerenciar-usuarios` saiu em 2026-07-26**, junto com a **fabricação de alocação** que existia em dois lugares (`useUsers.addCoordenadorAccess` e `createCoordenadorAccess`, na EF `create-admin`): quando não havia alocação elegível, pegava-se **qualquer colaborador** (`.limit(1)`, sem ordenação) e criava-se uma linha em `colaboradores_prova` — a tabela de alocação real, base de relatório e pagamento. A `create-admin` passou a **recusar `role: "coordenador"` com 400**.
 

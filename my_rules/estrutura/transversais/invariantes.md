@@ -35,6 +35,7 @@ Não repita esforço: isto está coberto e não precisa de barreira no cliente p
 | Valor de pagamento e meta **não negativos** | `chk_valor_pagamento_nao_negativo`, `chk_quantidade_meta_nao_negativa` |
 | Unicidade: e-mail e chave PIX de colaborador, nome de edital, nome de função, meta por (unidade, função), valor por (prova, função), papel por usuário | índices únicos — vários **funcionais** (`lower(btrim(...))`), de propósito |
 | Colaborador só numa unidade por prova | trigger `check_colaborador_prova_unique_trigger` |
+| **E-mail autoinformado só entra em cadastro SEM e-mail e NÃO vinculado — e nunca num e-mail que já tem conta** (19/09) | RPC `registrar_email_do_proprio_cadastro`: guardas no `WHERE` do UPDATE + `SELECT … FOR UPDATE` + `EXISTS` em `auth.users`, tudo numa transação. `EXECUTE` só para `service_role`. 🧪 `docs/bateria-email-autoinformado.sql` (18 checagens). ⚠️ A porta **não prova identidade** — `analises/dividas-auth-colaborador.md` §5 |
 | **Conta e cadastro de mesmo e-mail se vinculam — e o papel `colaborador` vai junto** (19/09) | função `vincular_colaborador_a_conta`, chamada por **dois** triggers: `on_auth_user_created` (nascimento) e `on_auth_user_signin` (login/confirmação). ⚠️ O `EXECUTE` é **revogado de `anon`/`authenticated`**: ela é `SECURITY DEFINER` e escreve `user_roles`. 🧪 `docs/bateria-vinculo-colaborador.sql` (10 casos) |
 | Função do sistema não se exclui, não se renomeia, não vira editável | trigger `check_system_funcao_changes` |
 | Função em uso não se exclui | **`ON DELETE RESTRICT`** nas 3 FKs (26/07) |

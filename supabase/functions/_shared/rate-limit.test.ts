@@ -114,4 +114,12 @@ Deno.test("os tetos confirmados em 2026-09-12 (decisão N1)", () => {
   assertEquals(TETOS.acesso, { escopo: "acesso", max: 5, janelaMin: 15 });
   assertEquals(TETOS.cadastro, { escopo: "cadastro", max: 3, janelaMin: 60 });
   assertEquals(TETOS["checagem-cpf"], { escopo: "checagem-cpf", max: 30, janelaMin: 15 });
+  // 🔴 Acrescentado em 2026-09-19, e o número é folgado DE PROPÓSITO: a porta de
+  // `incluir-email-cadastro` não tem prova de posse, então o teto por IP não detém o
+  // ataque dirigido (basta uma requisição) — só o abuso em massa. Apertá-lo barraria
+  // vários fiscais da mesma rede sem deter ninguém. Ver dividas-auth-colaborador.md §5.
+  assertEquals(TETOS["inclusao-email"], { escopo: "inclusao-email", max: 10, janelaMin: 60 });
+  // O teto GLOBAL, de chave fixa: é ele que impede a auditoria daquela porta (1 convite
+  // + 1 aviso por admin, a cada registro) de virar o vetor — rotação de IP é trivial.
+  assertEquals(TETOS["inclusao-email-global"], { escopo: "inclusao-email-global", max: 20, janelaMin: 60 });
 });

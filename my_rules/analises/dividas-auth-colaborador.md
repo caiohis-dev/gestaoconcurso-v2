@@ -68,6 +68,51 @@ o cadastro alheio à conta dela, com o papel `colaborador` junto. Ela passaria a
 **recusado** — o front não lê o Auth, então exigiria uma EF de consulta, que é um oráculo
 autenticado de "quem tem conta". Se algum dia se decidir o contrário, é este o item.
 
+## 5. 🔴 O autosserviço de e-mail NÃO prova identidade (2026-09-19)
+
+**A maior dívida deliberada deste sistema até hoje**, e a única aberta com o risco
+explicitado antes de implementar. Levantei a objeção, o usuário decidiu seguir assim, e
+pediu que ficasse registrada para ser desfeita.
+
+**O que existe:** quem tem cadastro **sem `colab_email`** informa o próprio e-mail em
+`/auth`, com **CPF + e-mail**. Nada mais. Sem OTP, sem aprovação humana.
+
+**Por que é grave, e não "aceitável porque o CPF é difícil de achar":** o CPF não é
+credencial — está em documento, em ficha de RH, e o próprio sistema confirma
+publicamente se um CPF existe (`check-cpf-colaborador`). Quem souber o CPF de um dos
+**243** aponta o cadastro para a própria caixa, recebe o convite e vira `colaborador`
+com `user_id`. **O ativo atrás da porta não é o login:** é `/perfil-colaborador`, onde
+`update_meu_colaborador` aceita **`p_chave_pix`** e `update_meus_dados_bancarios`
+reescreve **banco, agência e conta**. O desfecho do ataque é **redirecionar o
+pagamento** de um fiscal.
+
+⚠️ **E a vítima não recebe sinal nenhum** — ela não tem e-mail; é a premissa da porta.
+Pior: é **"primeiro a chegar leva"**. Depois do primeiro registro o cadastro passa a ter
+e-mail, a porta se fecha, e a pessoa legítima passa a ver o e-mail **mascarado de outra
+pessoa**, sem entender por quê.
+
+**O que contém, hoje** (e mexer em qualquer um destes é abrir a porta de par em par):
+
+| Contenção | Onde |
+|---|---|
+| Só alcança cadastro **sem e-mail** e **não vinculado** — nunca substitui | guardas da RPC `registrar_email_do_proprio_cadastro`, no `WHERE` do UPDATE |
+| E-mail que **já tem conta** no Auth é recusado | `EXISTS` em `auth.users`, **dentro** da RPC — atômico com a escrita |
+| A recusa **não distingue** "tem conta" de "é de outro colaborador" | mensagem colapsada, para a porta não virar oráculo de contas |
+| Corrida de dois reivindicantes | `SELECT … FOR UPDATE` + guardas no `WHERE` |
+| Teto por IP (10/60) **e teto global** (20/60, chave fixa) | `_shared/rate-limit.ts` — o global existe porque a auditoria é um multiplicador de e-mail e rotação de IP é trivial |
+| **Trilha + aviso aos 3 admins** | `log_email_autoinformado` (com `aviso_admins_em`) — é a **única** detecção |
+
+**O que desfaz a dívida:** prova de posse por **OTP no telefone do cadastro** — o código
+vai para um número **que já estava gravado**, não para um que o reivindicante escolheu, e
+é exatamente essa a propriedade que sustenta o fluxo por e-mail hoje. **Medido em
+2026-09-19: 240 dos 243 têm telefone.** As outras 3 seguiriam com o coordenador. O custo
+é integração de SMS/WhatsApp, que o sistema ainda não tem. Está no backlog.
+
+⚠️ **Recusado no desenho, com motivo:** exigir um **segundo campo do cadastro** (data de
+nascimento, matrícula). Não é prova de posse, é mais uma coisa que se *sabe* — e viaja no
+mesmo documento do CPF. Ainda por cima transformaria o endpoint num oráculo para adivinhar
+esses campos.
+
 ## Fragilidade 7 (normalização de CPF) — resolvida, não é dívida
 
 A `check-cpf-colaborador` (única sobrevivente do modelo antigo) **normaliza o CPF** (`replace(/\D/g,'').padStart(11,'0')`) antes de comparar; a RPC velha que comparava o CPF cru foi dropada na 2D. A divergência de normalização entre camadas deixou de existir.

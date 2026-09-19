@@ -105,10 +105,46 @@ enviam e-mail de verdade** a partir do banco local (que é cópia de produção,
 
 ---
 
-## 📄 EDITAL PADRÃO — rodadas 13 a 19 (7 capítulos restantes)
+## 🔴 DESFAZER A FRAGILIDADE: o autosserviço de e-mail não prova identidade
 
-**Status:** 🟡 **em andamento.** Rodadas 0 a 11 em 2026-09-18 e a **12 em 2026-09-19** — **11
-capítulos, 193 artigos, modelo na versão `1.0`**. ⚠️ As rodadas 1 a 12 estão **NÃO commitadas**.
+**Status:** ⏳ aberto em 2026-09-19, **no mesmo passe que criou a fragilidade** — não é
+achado posterior, é dívida assumida na hora.
+**Área:** Auth e Permissões · [`analises/dividas-auth-colaborador.md`](./analises/dividas-auth-colaborador.md) §5
+
+Desde 19/09, quem tem cadastro **sem e-mail** informa o próprio em `/auth` com **CPF +
+e-mail e nada mais**. O CPF não é credencial — está em documento, em ficha de RH, e o
+sistema já confirma publicamente se um CPF existe. Quem souber o CPF de um dos **243**
+aponta o cadastro para a própria caixa e entra como aquela pessoa; a partir daí
+`update_meu_colaborador` aceita `p_chave_pix` e `update_meus_dados_bancarios` reescreve
+banco/agência/conta. **O desfecho do ataque é redirecionar pagamento.**
+
+**O conserto é prova de POSSE, não um segundo campo.** Um segundo dado do cadastro
+(nascimento, matrícula) é mais uma coisa que se *sabe*, viaja no mesmo documento do CPF, e
+ainda vira oráculo para adivinhá-lo. O que resolve é um **OTP no telefone do cadastro**: o
+código vai para um número **já gravado**, não para um que o reivindicante escolheu — é
+exatamente a propriedade que sustenta o fluxo por e-mail hoje.
+
+**Medido em 2026-09-19:** **240 dos 243** têm telefone. Os outros 3 continuariam pelo
+coordenador. O que falta é a integração de SMS/WhatsApp, que o sistema não tem (hoje só
+há SMTP).
+
+⚠️ **Enquanto não for feito, o que segura é frágil e precisa continuar de pé:** as guardas
+da RPC, a recusa colapsada, os dois tetos (por IP e o global) e — principalmente — a
+**trilha `log_email_autoinformado` + o aviso aos admins**, que é a única detecção. Mexer
+em qualquer um sem ler a §5 é abrir a porta de par em par.
+
+### E um item menor que nasce junto
+
+**Tela para o admin ler a trilha.** Hoje `log_email_autoinformado` só se lê por SQL. O
+aviso por e-mail avisa **um** evento; ver o padrão (*"12 registros do mesmo lugar em uma
+hora"*) exige a tabela. Enquanto não existir, a consulta é manual.
+
+---
+
+## 📄 EDITAL PADRÃO — rodadas 15 a 19 (5 capítulos restantes)
+
+**Status:** 🟡 **em andamento.** Rodadas 0 a 11 em 2026-09-18 e as **12, 13 e 14 em 2026-09-19** —
+**13 capítulos, 262 artigos, modelo na versão `1.0`**.
 **Área:** módulo Editais — ver [`estrutura/modulos/editais/00-modulo.md`](./estrutura/modulos/editais/00-modulo.md)
 
 O plano aprovado está em `~/.claude/plans/vamos-montar-um-plano-noble-raccoon.md`. Uma rodada de

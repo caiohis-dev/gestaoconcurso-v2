@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Mail, CheckCircle2 } from "lucide-react";
+import InformarEmailCard from "./InformarEmailCard";
 
 const formatCpf = (value: string) => {
   const numbers = value.replace(/\D/g, "");
@@ -17,7 +18,7 @@ const formatCpf = (value: string) => {
 
 type Resultado =
   | { tipo: "enviado"; emailMascarado: string }
-  | { tipo: "ja_vinculado" }
+  | { tipo: "ja_vinculado"; emailMascarado: string | null; divergente: boolean }
   | { tipo: "sem_email" }
   | { tipo: "nao_encontrado" }
   | { tipo: "generico" };
@@ -57,6 +58,11 @@ export default function ReivindicarAcessoCard({ onClose, initialCpf, permitirEma
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultado, setResultado] = useState<Resultado | null>(null);
+
+  // O CPF que o SERVIDOR já confirmou existir e estar sem e-mail. Guardado à parte do
+  // input `cpf` (que está mascarado e a pessoa pode reeditar) porque o formulário de
+  // "informe o seu e-mail" precisa mandá-lo de volta.
+  const [cpfSemEmail, setCpfSemEmail] = useState<string | null>(null);
 
   const valor = cpf.trim();
   const ehEmail = permitirEmail === true && valor.includes("@");
@@ -141,8 +147,13 @@ export default function ReivindicarAcessoCard({ onClose, initialCpf, permitirEma
       if (!data.existe) {
         setResultado({ tipo: "nao_encontrado" });
       } else if (data.ja_vinculado) {
-        setResultado({ tipo: "ja_vinculado" });
+        setResultado({
+          tipo: "ja_vinculado",
+          emailMascarado: (data.email_mascarado as string | null) ?? null,
+          divergente: data.divergente === true,
+        });
       } else if (!data.email_mascarado) {
+        setCpfSemEmail(cpfClean);
         setResultado({ tipo: "sem_email" });
       } else {
         setResultado({ tipo: "enviado", emailMascarado: data.email_mascarado as string });
@@ -193,7 +204,7 @@ export default function ReivindicarAcessoCard({ onClose, initialCpf, permitirEma
               para definir a sua senha.
             </p>
             <p className="text-sm text-muted-foreground">Não esqueça de conferir a caixa de spam.</p>
-            {/* Sem esta dica, quem tem cadastro SEM e-mail (254 pessoas) digita o e-mail
+            {/* Sem esta dica, quem tem cadastro SEM e-mail (243 pessoas) digita o e-mail
                 pessoal, não recebe nada e não tem como saber por quê — a resposta é
                 genérica por desenho. Pelo CPF, o servidor acha e explica o caso. */}
             <Alert>
@@ -219,11 +230,22 @@ export default function ReivindicarAcessoCard({ onClose, initialCpf, permitirEma
           <div className="flex flex-col items-center text-center space-y-4">
             <CheckCircle2 className="w-12 h-12 text-primary" />
             <h3 className="text-lg font-semibold">Este cadastro já tem acesso</h3>
+            {/* 🔴 O e-mail mostrado aqui é o da CONTA, não o do cadastro — eles podem
+                divergir. Mostrar o do cadastro fechava um ciclo: a pessoa informava um
+                endereço que não tem conta, ouvia "link enviado" e nada chegava. */}
             <p className="text-muted-foreground">
-              Você já pode entrar com o seu e-mail e senha.
-              {permitirEmail
-                ? " Se não lembra a senha, volte e informe o seu e-mail neste mesmo campo — o link de redefinição vai para lá."
-                : ' Se não lembra a senha, use "Estou sem minha senha" na tela de login.'}
+              {resultado.emailMascarado ? (
+                <>
+                  O acesso está no e-mail <strong>{resultado.emailMascarado}</strong>.
+                </>
+              ) : (
+                "Você já pode entrar com o seu e-mail e senha."
+              )}
+              {resultado.divergente
+                ? " Esse endereço é diferente do que está no seu cadastro — se ele não é seu, você não vai conseguir receber o link. Procure o coordenador: só a coordenação corrige o e-mail de acesso."
+                : permitirEmail
+                  ? " Se não lembra a senha, volte e informe esse e-mail neste mesmo campo — o link de redefinição vai para lá."
+                  : ' Se não lembra a senha, use "Estou sem minha senha" na tela de login.'}
             </p>
             <Button className="w-full" onClick={onClose}>
               Voltar para o login
@@ -234,20 +256,31 @@ export default function ReivindicarAcessoCard({ onClose, initialCpf, permitirEma
     );
   }
 
-  if (resultado?.tipo === "sem_email" || resultado?.tipo === "nao_encontrado") {
-    const semEmail = resultado.tipo === "sem_email";
+  // 🔵 Até 2026-09-19 este ramo era um BECO SEM SAÍDA: dizia "procure o coordenador" e
+  // acabava ali — eram 243 pessoas sem caminho nenhum no app. Agora ela informa o
+  // próprio e-mail. ⚠️ O `nao_encontrado` foi SEPARADO deste ramo de propósito: os dois
+  // dividiam o mesmo bloco, e quem não tem cadastro NÃO pode ganhar formulário nenhum.
+  if (resultado?.tipo === "sem_email" && cpfSemEmail) {
+    return (
+      <InformarEmailCard
+        cpf={cpfSemEmail}
+        origem={permitirEmail ? "auth" : "cadastro-publico"}
+        onEnviado={(emailMascarado) => setResultado({ tipo: "enviado", emailMascarado })}
+        onCancel={onClose}
+      />
+    );
+  }
+
+  if (resultado?.tipo === "nao_encontrado") {
     return (
       <Card className="border-none shadow-lg">
         <CardContent className="pt-6">
           <div className="flex flex-col items-center text-center space-y-4">
             <AlertCircle className="w-12 h-12 text-amber-500" />
-            <h3 className="text-lg font-semibold">
-              {semEmail ? "Cadastro sem e-mail" : "CPF não encontrado"}
-            </h3>
+            <h3 className="text-lg font-semibold">CPF não encontrado</h3>
             <p className="text-muted-foreground">
-              {semEmail
-                ? "O seu cadastro não tem um e-mail. Procure o coordenador para incluir o seu e-mail — depois volte aqui para criar a sua senha."
-                : "Não encontramos um cadastro com esse CPF. Confira o número, ou faça um novo cadastro na tela inicial."}
+              Não encontramos um cadastro com esse CPF. Confira o número, ou faça um novo
+              cadastro na tela inicial.
             </p>
             <Button className="w-full" onClick={onClose}>
               Voltar para o login

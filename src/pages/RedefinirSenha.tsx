@@ -148,7 +148,7 @@ export default function RedefinirSenha() {
             ) : (
               <div className="space-y-4">
                 <p className="text-sm text-muted-foreground text-center">
-                  Peça um link novo na tela de login, em "Esqueci minha senha".
+                  Peça um link novo na tela de login, em "Estou sem minha senha".
                 </p>
                 <Button className="w-full" onClick={() => navigate("/auth")}>
                   Voltar para o login

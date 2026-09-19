@@ -36,8 +36,13 @@ Roteiro de teste manual da UI cobrindo a refatoração do acesso do colaborador 
 
 - [x] **C1** — `/auth` → "Estou sem minha senha", CPF de **colaborador não vinculado com e-mail** → mostra e-mail **mascarado** (`j2***@…`), nunca inteiro.
 - [x] **C2** — Concluir → **o e-mail chega de verdade** (não mais Mailpit — ver o cuidado nº 1); abrir → define senha → loga → `/perfil-colaborador`.
-- [x] **C3** — CPF **já vinculado** → mensagem de "já tem conta" (não reenvia invite), orientando informar o **e-mail no mesmo campo** para receber o link de redefinição.
-- [x] **C4** — CPF **sem e-mail** no cadastro → orienta procurar o coordenador (ramo `needsEmail` morto). **Segue sendo beco sem saída, por decisão** — são 254 pessoas.
+- [x] **C3** — CPF **já vinculado** → mensagem de "já tem conta" (não reenvia invite), orientando informar o **e-mail no mesmo campo** para receber o link de redefinição. 🔵 **Desde 19/09 a tela mostra QUAL e-mail** — o da **conta**, não o do cadastro.
+- [ ] **C3a** 🔴 *(o ciclo fechado, corrigido em 19/09)* — CPF de um cadastro **dessincronizado** (o `colab_email` difere do login; há 1 no banco) → a tela tem de mostrar o e-mail **da conta** e mandar **procurar o coordenador**. ⚠️ Se ela mandar "informe o seu e-mail neste mesmo campo", o ciclo voltou: a pessoa informa o do cadastro e ouve "link enviado" sem que nada saia.
+- [ ] **C4** 🔴 **REESCRITO em 2026-09-19 — deixou de ser beco sem saída.** CPF **sem e-mail** no cadastro → a tela agora mostra um **formulário** ("Seu e-mail" + "Repita o e-mail"), não mais "procure o coordenador". São **243** pessoas (a linha antiga dizia 254, e falava do ramo `needsEmail`, que não existe mais no código). ⚠️ **Esta porta não prova identidade** — ver `my_rules/analises/dividas-auth-colaborador.md` §5.
+- [ ] **C4a** — Preencher os dois campos **iguais** → chega o link de primeiro acesso, e **os admins recebem um aviso por e-mail**. Conferir as duas coisas: sem o aviso, a porta fica sem detecção nenhuma.
+- [ ] **C4b** — Os dois campos **diferentes** → a tela barra **antes** de chamar o servidor. Um erro de digitação aqui é irreversível para a pessoa.
+- [ ] **C4c** — Informar um e-mail que **já é de outro colaborador**, e depois um que **já tem conta no sistema** → ⚠️ **as duas recusas têm de ter o MESMO texto.** Se diferirem, a porta virou oráculo de quem tem conta.
+- [ ] **C4d** *(controle positivo)* — Repetir o C4a com o mesmo CPF → agora o cadastro tem e-mail e a resposta é a do **C1** (e-mail mascarado), não o formulário.
 - [x] **C5** — CPF **inexistente** → resposta genérica, sem revelar nada.
 - [x] **C6** — Repetir **6×** rápido (mesmo IP) → o **6º é cortado** (rate limit 5/15min).
 - [ ] **C8** *(2026-09-19 — o invite que morria calado)* — Num cadastro em **estado A**, pôr pelo *Editar Colaborador* um e-mail que **já tem conta no Auth** (use uma conta de teste sua, nunca a de outra pessoa). Reivindicar por esse CPF → **chega um link de REDEFINIÇÃO** (não o de primeiro acesso), e o log da EF **não** traz `envio do link falhou`. Antes deste tema a tela dizia "link enviado" e **nada saía**. ⚠️ O cadastro **continua em estado A nesse momento** — o vínculo só acontece quando a pessoa **logar** (gatilho `on_auth_user_signin`). Conferir depois do login: `user_id` preenchido e papel `colaborador` concedido.
@@ -85,6 +90,12 @@ Roteiro de teste manual da UI cobrindo a refatoração do acesso do colaborador 
 
 - [ ] **G1** — `PainelDadosColaboradores` → **read-only** (nome/e-mail/unidade/último acesso + busca/ordenação); **sem** botão "Solicitar Atualização de Dados".
 - [ ] **G2** — Exportar em `GerenciarProva` e `GerenciarColaboradoresProva` → **sem** coluna "Código de acesso".
+
+## H-bis. Mensagens de erro do login (19/09)
+
+- [ ] **H-bis 1** 🔴 — Entrar com uma conta **não confirmada** (há 6 no banco; é o estado que a `corrigir-email-acesso` deixa de propósito) → a mensagem tem de estar **em português** e dizer a providência (abrir o link no endereço novo). ⚠️ Se aparecer `"Email not confirmed"`, o tradutor de `src/lib/auth-erros.ts` deixou de ser usado.
+- [ ] **H-bis 2** — Senha errada → "E-mail ou senha incorretos." E o mesmo para e-mail inexistente: **medido, o GoTrue devolve o mesmo código nos dois**, e distinguir seria virar oráculo de contas.
+- [ ] **H-bis 3** *(link expirado)* — Abrir um link de acesso **vencido** (1h) → "Este link não é válido ou já expirou", e a instrução tem de citar **"Estou sem minha senha"**. ⚠️ Até 19/09 ela mandava procurar *"Esqueci minha senha"*, botão aposentado em 20/07 — a pessoa chegava em `/auth` e não achava.
 
 ## H. Segurança / negativos
 

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { mensagemDeErroDeLogin } from "@/lib/auth-erros";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -78,12 +79,12 @@ export default function Auth() {
     setIsSubmitting(false);
 
     if (error) {
+      // ⚠️ Não repasse `error.message`: ele vem do GoTrue em INGLÊS, e o caso que mais
+      // dói é "Email not confirmed" — o estado em que a `corrigir-email-acesso` deixa a
+      // conta de propósito. Ver src/lib/auth-erros.ts.
       toast({
         title: "Erro ao entrar",
-        description:
-          error.message === "Invalid login credentials"
-            ? "E-mail ou senha incorretos."
-            : error.message,
+        description: mensagemDeErroDeLogin(error),
         variant: "destructive",
       });
     }

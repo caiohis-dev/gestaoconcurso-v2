@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { z } from 'npm:zod@3';
 import { enviarLinkAcesso, mascararEmail, registrarFalhaDeEnvio } from '../_shared/enviar-link-acesso.ts';
@@ -22,6 +23,41 @@ const BodySchema = z.object({
 // Teto do rate limit: no máximo N tentativas por IP na janela. A função revela se um
 // CPF existe (concessão aceita no desenho); o teto impede varrer CPFs em massa e
 // disparar e-mails em série.
+
+/**
+ * O que responder quando o cadastro JÁ tem conta.
+ *
+ * 🔴 O e-mail que importa aqui é o da CONTA, não o do cadastro — e os dois podem divergir
+ * (o "estado B dessincronizado"). Até 2026-09-19 esta resposta devolvia `colab_email`, e
+ * isso fechava um CICLO: pelo CPF a tela mandava "informe o seu e-mail", a pessoa
+ * informava o do cadastro, a `recuperar-senha` não achava conta com ele, caía no ramo de
+ * estado A (que exige `user_id IS NULL`, e a linha dela é vinculada) e respondia "link
+ * enviado" — sem enviar nada. Perda silenciosa, em círculo. Medido: 1 pessoa real.
+ *
+ * ⚠️ Não é revelação nova: a porta do CPF já revela e-mail mascarado por desenho (ver a
+ * assimetria em auth-e-permissoes.md). O que muda é revelar o endereço CERTO — o que de
+ * fato recebe o link.
+ */
+async function estadoDoCadastroVinculado(
+  supabase: SupabaseClient,
+  userId: string,
+  emailDoCadastro: string | null,
+) {
+  const { data: conta } = await supabase.auth.admin.getUserById(userId);
+  const emailConta = (conta?.user?.email as string | undefined)?.trim() || null;
+  const alvo = emailConta ?? emailDoCadastro;
+
+  return {
+    existe: true,
+    ja_vinculado: true,
+    email_mascarado: alvo ? mascararEmail(alvo) : null,
+    // O front usa isto para parar de mandar a pessoa informar um e-mail que não vai
+    // funcionar, e apontá-la para a coordenação, que tem a saída de verdade (a EF
+    // `corrigir-email-acesso`).
+    divergente: !!emailConta && !!emailDoCadastro
+      && emailConta.toLowerCase() !== emailDoCadastro.toLowerCase(),
+  };
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -67,14 +103,24 @@ Deno.serve(async (req) => {
     const jaVinculado = colab.user_id !== null;
     const email = (colab.colab_email as string | null)?.trim() || null;
 
-    // Já tem conta, ou não tem e-mail para onde mandar: só informa o estado. O
-    // front orienta (login/esqueci-senha, ou procurar o coordenador). Nenhum link.
-    if (jaVinculado || !email) {
-      return jsonResp({
-        existe: true,
-        ja_vinculado: jaVinculado,
-        email_mascarado: email ? mascararEmail(email) : null,
-      });
+    // 🔴 Vinculado: o que importa aqui é o e-mail da CONTA, não o do cadastro — e os dois
+    // podem divergir (é o "estado B dessincronizado"). Até 2026-09-19 esta resposta
+    // devolvia `colab_email`, e isso fechava um CICLO para quem está nesse estado: pelo
+    // CPF a tela mandava "informe o seu e-mail", a pessoa informava o do cadastro, a
+    // `recuperar-senha` não achava conta com ele, caía no ramo de estado A (que exige
+    // `user_id IS NULL`, e a linha dela é vinculada) e respondia "link enviado" — sem
+    // enviar nada. Perda silenciosa, em círculo. Medido: 1 pessoa real no banco.
+    //
+    // ⚠️ Não é revelação nova: a porta do CPF já revela e-mail mascarado por desenho
+    // (ver a assimetria em auth-e-permissoes.md). O que muda é passar a revelar o
+    // endereço CERTO — o que de fato recebe o link.
+    if (jaVinculado) {
+      return jsonResp(await estadoDoCadastroVinculado(supabase, colab.user_id as string, email));
+    }
+
+    // Não tem e-mail para onde mandar: o front oferece informar o próprio (2026-09-19).
+    if (!email) {
+      return jsonResp({ existe: true, ja_vinculado: false, email_mascarado: null });
     }
 
     // Dispara o link do Auth com o visual da FEVRE. O helper decide sozinho entre

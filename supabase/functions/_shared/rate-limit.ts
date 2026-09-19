@@ -15,6 +15,8 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 export type EscopoRateLimit =
   | 'acesso'          // reivindicar-acesso + recuperar-senha (orçamento COMPARTILHADO)
   | 'cadastro'        // public-create-colaborador
+  | 'inclusao-email'         // incluir-email-cadastro, por IP
+  | 'inclusao-email-global'  // incluir-email-cadastro, o sistema inteiro
   | 'checagem-cpf';   // check-cpf-colaborador
 
 export interface TetoRateLimit {
@@ -42,6 +44,29 @@ export const TETOS: Record<EscopoRateLimit, TetoRateLimit> = {
   // mandar. O pior dano não é a base poluída — é o domínio da FEVRE numa blocklist, que
   // derrubaria TODOS os fluxos de acesso legítimos de uma vez.
   cadastro: { escopo: 'cadastro', max: 3, janelaMin: 60 },
+
+  // 🔴 Escopo PRÓPRIO e deliberadamente folgado, e a razão contraria a intuição: esta
+  // porta não tem prova de posse nenhuma (é a fragilidade aceita em 2026-09-19), então
+  // o teto por IP **não protege contra o ataque que importa** — quem sabe um CPF precisa
+  // de UMA requisição, e nenhum teto impede isso. O que ele contém é abuso em MASSA.
+  //
+  // Sabendo que ele não é a defesa, apertá-lo só compra o pior modo de falha operacional:
+  // vários fiscais na mesma wifi da escola sendo barrados com resposta genérica, sem
+  // ninguém entender por quê — e o público-alvo são 243 pessoas que já estavam num beco
+  // sem saída. Separado do `cadastro` por isso, e não por descuido.
+  'inclusao-email': { escopo: 'inclusao-email', max: 10, janelaMin: 60 },
+
+  // 🔴 E um teto GLOBAL, com chave fixa em vez do IP. Ele existe porque a AUDITORIA
+  // daquela porta é, ela própria, um multiplicador de e-mail: cada auto-registro dispara
+  // 1 convite + 1 aviso por admin. Uma lista de CPFs somada a rotação de IP — que é
+  // trivial, e o cooldown por alvo do roadmap ainda NÃO foi executado — viraria centenas
+  // de mensagens pelo SMTP da FEVRE, que é exatamente o dano que o teto de `cadastro`
+  // existe para evitar: o domínio numa blocklist derruba TODOS os fluxos de acesso.
+  //
+  // 20/h é folgadíssimo para o uso real (243 pessoas ao longo de semanas), e quando
+  // estoura a degradação é segura: a pessoa vê "procure o coordenador", que é exatamente
+  // o estado em que ela estava antes desta porta existir.
+  'inclusao-email-global': { escopo: 'inclusao-email-global', max: 20, janelaMin: 60 },
 
   // Folgado porque não tem efeito colateral: devolve só `{exists}` e não envia nada.
   // O teto aqui é contra varredura de CPF em massa, não contra abuso pontual.
