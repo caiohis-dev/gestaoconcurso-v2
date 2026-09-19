@@ -534,7 +534,7 @@ export default function GerenciarProva() {
                 {prova?.editais?.nome} - {formatDate(prova?.prova_data || null)}
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
               <Button
                 variant="outline"
                 onClick={exportColaboradores}
@@ -570,6 +570,21 @@ export default function GerenciarProva() {
                 <FileText className="h-4 w-4" />
                 Documentos Impressão
               </Button>
+              {/* 🔵 O painel também aparece com a prova FINALIZADA (2026-09-19, a pedido do
+                  usuário): ele é SOMENTE LEITURA — `PainelDadosColaboradores` não escreve
+                  nada — e é justamente depois de fechar a configuração que se confere o que
+                  ficou. `isAdmin &&` porque a rota é `papeis={["admin"]}`; sem a guarda, o
+                  coordenador veria um botão que só o devolve para a home. */}
+              {isAdmin && (
+                <Button
+                  variant="outline"
+                  onClick={() => navigate(`/painel-dados-colaboradores/${provaId}`)}
+                  className="gap-2"
+                >
+                  <Users className="h-4 w-4" />
+                  Painel de Dados dos Colaboradores
+                </Button>
+              )}
             </div>
           </div>
 

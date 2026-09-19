@@ -143,6 +143,9 @@ function abrir() {
   return renderWithProviders(
     <Routes>
       <Route path="/gerenciar-prova/:provaId" element={<GerenciarProva />} />
+      {/* Destino do botão do painel — nomeado para que "o clique leva ao painel" seja
+          uma asserção de DESTINO, e não só de que a página mudou. */}
+      <Route path="/painel-dados-colaboradores/:provaId" element={<span>PAINEL DE DADOS</span>} />
       <Route path="*" element={<span>SAIU DA PÁGINA</span>} />
     </Routes>,
     { route: `/gerenciar-prova/${PROVA_ID}` },
@@ -507,5 +510,85 @@ describe("GerenciarProva — painel de alocação (interação)", () => {
         "CIEP 295 - PROFª GLÓRIA ROUSSIM G. PINTO",
       ]);
     });
+  });
+});
+
+/**
+ * 🔵 O PAINEL DE DADOS na visão de prova FINALIZADA (2026-09-19, a pedido do usuário).
+ *
+ * ⚠️ **O caso "o botão aparece" sozinho não guardaria nada** — é a armadilha 8 de
+ * `testes.md` na forma mais crua. A visão normal também tem esse botão, então um fixture
+ * que falhasse em entrar na visão finalizada deixaria o teste verde pelo motivo errado.
+ * Por isso todo caso daqui ancora primeiro no título "Configuração da Prova Finalizada".
+ *
+ * A guarda `isAdmin` não é decoração: a rota é `papeis={["admin"]}` em `App.tsx`, enquanto
+ * `/gerenciar-prova/:provaId` aceita `admin` E `coordenador`. Sem ela, o coordenador veria
+ * um botão que só o devolve para a home.
+ */
+describe("GerenciarProva — prova finalizada (2026-09-19)", () => {
+  const PROVA_FINALIZADA = {
+    ...PROVA,
+    prova_finalizada: true,
+    finalizada_at: "2026-09-18T12:00:00Z",
+  };
+
+  beforeEach(() => {
+    resetSupabaseMock();
+    papel.admin = true;
+    papel.coordenador = false;
+    setTableResult("provas", { data: [PROVA_FINALIZADA], error: null });
+    setTableResult("valores_funcao_prova", { data: [VALOR_FUNCAO], error: null });
+    setTableResult("prova_unidades", { data: [PROVA_UNIDADE], error: null });
+    setTableResult("salas_prova_distribuidas", { data: SALAS, error: null });
+  });
+
+  it("🔴 o admin vê o Painel de Dados dos Colaboradores com a configuração fechada", async () => {
+    abrir();
+
+    // Âncora primeiro: sem isto, o caso passaria na visão normal e não provaria nada.
+    expect(await screen.findByText("Configuração da Prova Finalizada")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: /Painel de Dados dos Colaboradores/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("⭐ e o clique leva ao painel, não a outro lugar", async () => {
+    abrir();
+
+    // ⚠️ Esperar a VISÃO assentar antes de clicar não é zelo: a página ainda tem cargas
+    // assíncronas em voo, e o nó achado antes delas é substituído na re-renderização — o
+    // clique cai num elemento já destacado do DOM e nada acontece, sem erro nenhum. Foi
+    // exatamente o que fez este caso falhar na primeira escrita.
+    expect(await screen.findByText("Configuração da Prova Finalizada")).toBeInTheDocument();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Painel de Dados dos Colaboradores/i }),
+    );
+
+    expect(await screen.findByText("PAINEL DE DADOS")).toBeInTheDocument();
+  });
+
+  it("⭐ CONTROLE: o coordenador NÃO vê o botão — a rota do painel é só de admin", async () => {
+    papel.admin = false;
+    papel.coordenador = true;
+    abrir();
+
+    expect(await screen.findByText("Configuração da Prova Finalizada")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Painel de Dados dos Colaboradores/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("⭐ CONTROLE: com a prova ABERTA o botão continua onde estava", async () => {
+    // O oposto do primeiro caso: garante que a mudança ACRESCENTOU um lugar, em vez de
+    // mover o botão da visão normal para a finalizada.
+    setTableResult("provas", { data: [PROVA], error: null });
+    abrir();
+
+    expect(await screen.findByText("Organização da Prova")).toBeInTheDocument();
+    expect(screen.queryByText("Configuração da Prova Finalizada")).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: /Painel de Dados dos Colaboradores/i }),
+    ).toBeInTheDocument();
   });
 });

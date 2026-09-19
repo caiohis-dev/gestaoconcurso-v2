@@ -65,6 +65,10 @@ Painel read-only dos colaboradores alocados numa prova (nome, e-mail, unidade, �
 
 🔵 **As quatro colunas ordenam desde 2026-09-15.** Até então só Nome e Último Acesso ordenavam — Email e Unidade eram cabeçalho morto. ⚠️ Esta linha dizia *"ordenação por nome / último acesso"*.
 
+🔵 **O link para cá também aparece com a prova FINALIZADA desde 2026-09-19** (pedido do usuário). Antes o botão *"Painel de Dados dos Colaboradores"* vivia só na visão de edição de `GerenciarProva`, e fechar a configuração o fazia sumir — justamente no momento em que se confere o que ficou. Como a página **não escreve nada**, expô-la ali não abre caminho nenhum em volta do congelamento de `PF001`: é leitura, e o `prova_finalizada` nunca governou esta rota.
+
+⚠️ **O botão é `isAdmin &&` nos DOIS lugares, e isso não é decoração:** `/gerenciar-prova/:provaId` aceita `admin` **e** `coordenador`, enquanto esta rota é `papeis={["admin"]}`. Sem a guarda, o coordenador veria um botão que só o devolve para a home. 🧪 Os 4 casos de `GerenciarProva.ui.test.tsx` cobrem os dois papéis e o destino do clique.
+
 Três coisas do desenho que valem saber antes de mexer:
 
 - **A ordenação é no CLIENTE**, sobre as linhas já buscadas — diferente de `/colaboradores`, que ordena no servidor. Aqui não há paginação, então ordenar no cliente ordena o conjunto inteiro e não mente. ⚠️ Mas veja o aviso do teto de 1000 abaixo.
