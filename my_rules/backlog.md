@@ -50,6 +50,148 @@ errada e o que cada decisão custou. Antes de reabrir qualquer tema abaixo, proc
 
 ---
 
+## ⏭️ PRÓXIMA — as três ressalvas do "admin preenche o e-mail e o colaborador se reivindica"
+
+**Status:** ⏳ aberto em 2026-09-18, ao conferir se um colaborador **sem e-mail** consegue concluir o acesso depois de o admin preencher o campo pelo *Editar Colaborador* de `/colaboradores`.
+**Área:** Auth e Permissões ([`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md)) + [`estrutura/modulos/aplicacao-provas/colaboradores.md`](./estrutura/modulos/aplicacao-provas/colaboradores.md)
+
+**O caminho feliz FUNCIONA e não é o item.** Linha em estado A (`user_id IS NULL`) tem `colab_email`
+editável (`isVinculado` em `src/components/ColaboradorDialog.tsx`); depois disso `/auth` → *"Estou sem
+minha senha"* atende pelos dois campos (CPF → `reivindicar-acesso`; e-mail → o ramo de estado A da
+`recuperar-senha`), o `generateLink('invite')` **cria a conta** e o trigger `handle_new_user`
+(migration `20260714201650`) preenche `user_id` e concede o papel `colaborador`. O item são as três
+bordas que esse caminho não cobre.
+
+**Medido em 2026-09-18, no banco local:** 821 colaboradores · **243 sem e-mail** (todos os 243 sem
+conta) · **526 em estado A já com e-mail** · e **0** cadastros em estado A cujo `colab_email` já tenha
+conta no `auth.users`. A ressalva 1 é, portanto, risco **prospectivo** — e é o ato de digitar o e-mail
+à mão que o cria.
+
+### 🔴 1. E-mail que JÁ tem conta no Auth: o invite falha e ninguém fica sabendo
+
+`enviarLinkAcesso` devolve `{ ok }`, e a `reivindicar-acesso` **descarta esse retorno de propósito**
+("uma falha aqui não muda a resposta ao cliente") — a pessoa vê "link enviado" com o e-mail mascarado
+e nada saiu. Pior que o e-mail perdido é o vínculo: `handle_new_user` só roda no **nascimento** da
+conta, então se ela já existia, a pessoa entra por *esqueci minha senha* e fica com `user_id` NULL e
+**sem o papel `colaborador`** — logada e invisível como colaboradora para o sistema.
+
+⚠️ **O precedente é literal:** é o mesmo defeito que aposentou a EF `create-coordenador` (migration
+`20260912165246`) — criar a conta fora de ordem e deixar a linha vinculada a nada.
+
+**O conserto tem duas pontas:** (a) quando a conta já existe e o cadastro está em estado A, mandar
+**`recovery`** e **vincular** (`user_id` + papel) em vez de tentar um invite condenado — nas duas EFs,
+porque `recuperar-senha` cai no ramo do `user` encontrado e também não vincula; (b) a tela do admin
+não tem como antecipar nada: `/colaboradores` não sabe dizer "esse e-mail já tem conta". Decidir se
+avisa antes de salvar (exige EF, o front não lê o Auth) ou se o conserto fica só no servidor.
+
+### ⚠️ 2. A recusa do banco chega ao usuário pela metade
+
+A **duplicidade** já chega traduzida: `mensagemDuplicidade` (`src/hooks/useColaboradores.tsx`) casa o
+nome do índice — que é mesmo `colaboradores_colab_email_key`, ainda que funcional
+(`UNIQUE (lower(trim(colab_email)))`) — e devolve *"Este e-mail já está cadastrado para outro
+colaborador"*. **A CHECK `chk_colab_email_formato` não chega:** cai como mensagem crua do Postgres no
+`else` do `onError` do update. O risco prático hoje é baixo (o zod do dialog valida `.email()` antes),
+mas é o §2 do `CLAUDE.md` — a mensagem do banco tem de nomear o que fazer —, e o `CadastroLote` já
+traduz essa mesma CHECK. Um dos dois está errado.
+
+### ⚠️ 3. O teto de 5/15 min é por IP e COMPARTILHADO — cadastrar em lote esbarra nele
+
+`reivindicar-acesso` e `recuperar-senha` dividem o mesmo orçamento (`barrarSeExcedeu(…, 'acesso', …)`,
+tabela `reivindicacao_rate_limit`), e o link do e-mail **expira em 1 hora**. Uma coordenação que
+preencha o e-mail de vários colaboradores e teste o acesso em série, do mesmo IP, bate no teto — e a
+resposta é genérica por anti-enumeração, então **ninguém descobre por quê**. Decidir o que fazer: nada
+(e documentar), orçamento separado para quem está autenticado como admin, ou um caminho de "reenviar
+convite" a partir de `/colaboradores`, que seria a porta certa para o admin e não passaria pela porta
+pública.
+
+### Como verificar (controle positivo obrigatório)
+
+Bateria SQL + exercício das EFs contra o banco local, em transação com `ROLLBACK`:
+1. Cadastro em estado A, e-mail **sem** conta → invite criado, `user_id` preenchido, papel concedido.
+   **Este é o caso que tem de continuar passando.**
+2. Cadastro em estado A, e-mail **com** conta → hoje: nada enviado e `user_id` segue NULL. Depois do
+   conserto: `recovery` enviado **e** linha vinculada com papel.
+3. E-mail duplicado de outro colaborador → recusa nomeando o e-mail (não "duplicate key …").
+
+⚠️ A suíte **mocka o Supabase** e não alcança nada disso (trigger, índice funcional, CHECK) — ver §5
+do `CLAUDE.md`. `npm run test:ef` alcança as EFs, mas **`reivindicar-acesso` e `recuperar-senha`
+enviam e-mail de verdade** a partir do banco local (que é cópia de produção, com PII real).
+
+---
+
+## 📄 EDITAL PADRÃO — rodadas 13 a 19 (7 capítulos restantes)
+
+**Status:** 🟡 **em andamento.** Rodadas 0 a 11 em 2026-09-18 e a **12 em 2026-09-19** — **11
+capítulos, 193 artigos, modelo na versão `1.0`**. ⚠️ As rodadas 1 a 12 estão **NÃO commitadas**.
+**Área:** módulo Editais — ver [`estrutura/modulos/editais/00-modulo.md`](./estrutura/modulos/editais/00-modulo.md)
+
+O plano aprovado está em `~/.claude/plans/vamos-montar-um-plano-noble-raccoon.md`. Uma rodada de
+código **por capítulo**, a pedido do usuário, para mitigar erro de código e de texto.
+
+**Falta transcrever** (com a contagem de elementos **corrigida** na rodada 10 — ver a tabela
+autoritativa no doc do módulo):
+
+| # | capítulo | elementos |
+|---|---|---|
+| 13 | `condicoes_especiais_prova` | 27 |
+| 14 | `prova_objetiva` | 43 |
+| 15 | `recursos_prova_objetiva` | 35 |
+| 16 | `desempate_e_resultado` | 19 |
+| 17 | `investidura_e_posse` | 21 |
+| 18 | `disposicoes_gerais` | 17 |
+| 19 | `anexos` + `prova_de_titulos` (do Edital **002**) | — |
+
+🔴 **A receita de cada rodada está no doc do módulo, e o passo 2 é o que justifica o tema:** toda
+referência cruzada é **relida contra o alvo real**, nunca traduzida número a número. Foram medidos
+**8 defeitos** de copia-e-cola no Edital 004, e o pior deles é o capítulo 7 — **12 referências, 11
+erradas**, uma delas apontando para uma faixa que não existe.
+
+**O que fecha o tema (rodada final):**
+
+- `ANCORAS_PENDENTES` **vazia** — o teste passa a exigir `toBe(0)`;
+- o modelo inteiro passando pelo linter sem erro;
+- `docs/bateria-edital-modelo.sql` com o clone completo verificado.
+
+⏳ **Duas pendências abertas pelo caminho:** numerar ANEXO e QUADRO (entrada própria abaixo) e o
+`quadro_fonte: 'taxas'` para a lista de taxas por cargo — **tabela nova exige fatia nova**.
+
+---
+
+## 📄 O número do ANEXO e do QUADRO são referência calculada, e não há mecanismo
+
+**Status:** ⏳ aberto em 2026-09-18, na rodada 3 do edital padrão.
+**Área:** módulo Editais — ver [`estrutura/modulos/editais/00-modulo.md`](./estrutura/modulos/editais/00-modulo.md)
+
+**Medido nos três editais:** o conteúdo programático é o **Anexo I** no 002 e no 003, e o
+**Anexo II** no 004 — porque lá o Anexo I é a abrangência territorial. É exatamente o problema
+que a numeração calculada de capítulo resolve, um nível abaixo: elemento pós-textual condicional
+que entra desloca todos os seguintes.
+
+🔴 **E o mesmo vale para os QUADROS, medido na rodada 4:**
+
+| | Quadro I | Quadro II | Quadro III |
+|---|---|---|---|
+| 002 | cargos | provas | títulos |
+| 003 | cargos | provas | — |
+| 004 | cargos | **vagas por UBSF** | vagas do 2º cargo |
+
+E o Edital 004 chama de **"Quadro II" tanto as vagas de ACS quanto a tabela de composição da
+prova** — dois quadros com o mesmo número no mesmo documento publicado.
+
+Hoje não há mecanismo para nenhum dos dois. `{{cap:anexos}}` não serve — `anexos` é
+`numerado: false` no catálogo, e resolveria para `[?anexos]`.
+
+**Paliativo em uso:** o modelo não cita o número (*"como anexo deste Edital"*), o que é
+impreciso e nunca falso. ⚠️ Mas o apontamento acontece **duas vezes por edital** (item 1.6 e o
+capítulo da prova), e o publicado cita o número nas duas.
+
+**O conserto natural é da fatia 12 (exportação)**, que é quem monta os anexos e portanto sabe
+quantos há e em que ordem: ela pode expor uma numeração de anexo como expõe a de capítulo, e aí
+um `{{anexo:conteudo_programatico}}` resolve. Fazer antes disso seria numerar uma lista que
+ainda não existe.
+
+---
+
 ## 📄 Editais v3, fatia 12 — exportação (PDF / Markdown / JSON)
 
 **Status:** ⏳ **não iniciada, por decisão do usuário em 2026-09-17** — as fatias 1 a 11 foram entregues e esta foi deixada para o backlog. O roadmap é [`analises/roadmap-editais-exportacao.yaml`](./analises/roadmap-editais-exportacao.yaml), ainda em esboço.
