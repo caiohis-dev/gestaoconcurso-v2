@@ -155,8 +155,6 @@ autoritativa no doc do módulo):
 
 | # | capítulo | elementos |
 |---|---|---|
-| 13 | `condicoes_especiais_prova` | 27 |
-| 14 | `prova_objetiva` | 43 |
 | 15 | `recursos_prova_objetiva` | 35 |
 | 16 | `desempate_e_resultado` | 19 |
 | 17 | `investidura_e_posse` | 21 |
@@ -165,8 +163,11 @@ autoritativa no doc do módulo):
 
 🔴 **A receita de cada rodada está no doc do módulo, e o passo 2 é o que justifica o tema:** toda
 referência cruzada é **relida contra o alvo real**, nunca traduzida número a número. Foram medidos
-**8 defeitos** de copia-e-cola no Edital 004, e o pior deles é o capítulo 7 — **12 referências, 11
-erradas**, uma delas apontando para uma faixa que não existe.
+**10 defeitos** no Edital 004, e o pior deles é o capítulo 7 — **12 referências, 11 erradas**, uma
+delas apontando para uma faixa que não existe. 🔵 Os dois últimos saíram das rodadas 13 e 14, e não
+são de referência: o capítulo 11 usa **`11.4.1` para dois subitens diferentes** (e numera `11.8.1`
+um subitem que pende do 11.10), e o item **12.4 publica o formulário em branco** — *"dia
+XX/xx/2026"*, com o negrito sem fechar.
 
 **O que fecha o tema (rodada final):**
 
@@ -174,8 +175,19 @@ erradas**, uma delas apontando para uma faixa que não existe.
 - o modelo inteiro passando pelo linter sem erro;
 - `docs/bateria-edital-modelo.sql` com o clone completo verificado.
 
-⏳ **Duas pendências abertas pelo caminho:** numerar ANEXO e QUADRO (entrada própria abaixo) e o
-`quadro_fonte: 'taxas'` para a lista de taxas por cargo — **tabela nova exige fatia nova**.
+⏳ **Quatro pendências abertas pelo caminho:**
+
+1. numerar ANEXO e QUADRO (entrada própria abaixo);
+2. `quadro_fonte: 'taxas'` para a lista de taxas por cargo — **tabela nova exige fatia nova**;
+3. 🔴 **o quadro da matriz (`quadro_fonte: 'disciplinas'`) não rende duração, tempo mínimo de
+   permanência, tempo para levar o caderno nem nota de corte** — as quatro colunas de
+   `provas_objetivas_config`, que é **por cargo**. Enquanto não render, o capítulo 12 descreve os
+   três tempos com `{{redigir:}}` nomeando a tabela, e a nota de corte como *"a pontuação mínima
+   indicada para o seu cargo"*. ⚠️ Não vire `{{campo:}}`: qualificador por cargo foi medido e
+   rejeitado na rodada 0;
+4. valores do capítulo 11 **sem coluna em lugar nenhum** — a fonte da prova ampliada (*"Arial
+   tamanho 20 em A3"*), os 60 minutos de tempo adicional, as 72 horas do pedido tardio e a
+   antecedência de uma hora do capítulo 12. Hoje são literais no texto, que é editável.
 
 ---
 

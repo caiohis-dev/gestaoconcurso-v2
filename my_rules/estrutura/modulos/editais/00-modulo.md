@@ -227,6 +227,86 @@ instrução**. É o `[ ]` com a única coisa que lhe faltava.
 prosa que só uma pessoa escreve, e que o modelo não tem como adivinhar. A resolução do Studio
 passou a ter **quatro** passos: capítulo → item → campo → redigir.
 
+### 🔵 Rodadas 13 e 14 — o NONO e o DÉCIMO defeitos, e o limite do `{{campo:}}`
+
+**Rodada 13 — `condicoes_especiais_prova`:** 27 artigos, sem divergência.
+**Rodada 14 — `prova_objetiva`:** 42 contra 43 na fonte, e é o maior capítulo do documento.
+
+#### 🔴 O nono defeito é de um tipo NOVO: número repetido, e número que contradiz a posição
+
+O capítulo 11 tem **dois subitens `11.4.1`**, um atrás do outro — *"DA DIFERENÇA DE CRITÉRIOS DE
+AVALIAÇÃO"* e *"DA ENTREGA SEPARADA DA DOCUMENTAÇÃO"* —, e o seguinte é `11.4.2`: **um dos dois
+não tem endereço**. Não é referência deslocada nem cópia de outro edital; é o mesmo número para
+duas coisas na mesma página.
+
+E logo abaixo do item `11.10` (uso de prótese auditiva) vem um subitem numerado **`11.8.1`**, que
+trata justamente da prótese do 11.10 — o 11.8 é a prova ampliada. **Posição e número se
+contradizem**, e quem seguir o número para no item errado.
+
+🔵 Os dois somem por construção: no modelo o subitem é `nivel: 1` na posição certa, e
+`numerarItens` calcula o número a partir do pai. **Nenhum dos dois é escolha de quem escreve.**
+
+#### 🔴 O décimo defeito: o item 12.4 publica um CAMPO DE FORMULÁRIO em branco
+
+> *"As Provas Objetivas … estão previstas para o **dia XX/xx/2026\* em local e horário a ser
+> informado no comprovante de Local de Prova."*
+
+A data **não foi preenchida** no edital publicado, e o asterisco do negrito nem fecha. É o defeito
+que o `{{campo:}}` torna impossível: a data vem da etapa `prova_objetiva` do cronograma, e o linter
+acusa `campo-sem-valor` enquanto ela faltar — em vez de o documento sair com `XX/xx` no Diário.
+
+#### 🔴 E o capítulo 12 mostrou o LIMITE do `{{campo:}}`
+
+Duração da prova, tempo mínimo de permanência, tempo para levar o caderno e nota de corte moram em
+`provas_objetivas_config`, cuja PK é **`edital_cargo_id`** — são valores **por cargo**. E
+`{{campo:}}` é escalar e por edital: o qualificador por cargo foi **medido e rejeitado** na rodada
+0, porque valor que varia por cargo nunca aparece em frase nos três editais reais.
+
+O quadro gerado (`disciplinas`) ainda rende só cargo × disciplina × questões × peso. Então:
+
+| valor | no modelo |
+|---|---|
+| composição por disciplina | **o quadro**, e os itens 12.1/12.2 viram **um** (é a divergência) |
+| nota de corte | *"a pontuação mínima indicada para o seu cargo"* — sem número |
+| duração · permanência · caderno | `{{redigir:}}`, **nomeando a tabela** de onde o número sai |
+
+⚠️ **E sem exemplo numérico dentro da instrução** — um *"ex.: 3 horas"* ali é o número de um cargo
+convidando a ser copiado para todos. O primeiro caso de teste da rodada reprovou exatamente por
+isso, e estava certo. ⏳ Quando a matriz render essas colunas, o texto aponta para ela; está no
+backlog.
+
+#### Os três valores da lactante viraram campo — e um deles NÃO tem coluna
+
+`idade_maxima_lactente` e `tempo_compensacao_lactante` já tinham coluna em `regras_lactantes`.
+
+⭐ **`data_corte_lactante` é o único campo do catálogo sem coluna, e é de propósito:** ele sai da
+data da prova menos a idade máxima, na renderização. O Edital 003/2026 escreveu essa data à mão —
+*"a partir do dia 16 de março"* — derivando-a de um "16 de setembro" que, no cronograma do próprio
+edital, é o **comprovante de local de prova**; a prova é em 20/09. **O corte publicado está 4 dias
+errado** e recusaria por engano uma candidata cujo bebê nasceu em 18/03. Ver
+`src/lib/edital-acoes-afirmativas.ts`, que já calculava isso desde a fatia 4 — a rodada 13 só o
+ligou ao texto.
+
+⚠️ O item do 004 escreve o tempo de compensação **duas vezes na mesma frase** (*"até 30 minutos"* e
+*"em exatamente 30 minutos"*). Os dois são o mesmo marcador; se só um fosse campo, o documento se
+contradiria sozinho no dia em que alguém mudasse o número.
+
+**As referências deslocadas das duas rodadas**, todas de um capítulo inteiro:
+
+| item | diz | alvo real |
+|---|---|---|
+| 11.21 | *"o prazo no subitem **10.18**"* e *"o mesmo endereço descrito no subitem **10.18**"* | **11.20**, a linha acima |
+| 12.18 | *"subitens de **11.10 a 11.15**"* | **12.10 a 12.15** — no cap. 11 essa faixa é a lactante |
+
+⚠️ **O que ficou LITERAL, e por quê:** *"Arial tamanho 20 em papel A3"*, os 60 minutos de tempo
+adicional, as 72 horas do pedido tardio e a antecedência de uma hora **não têm coluna em lugar
+nenhum** — inventar campo sem fonte só criaria marcador que nunca resolve. O texto é editável.
+
+⚠️ **Duas correções de redação que valem registro:** o 11.1 manda marcar a opção *"Outro"* e o
+11.13, *"Outra"* — o mesmo campo da ficha, com gênero trocado a doze linhas de distância; e o
+**12.27 repete o 12.19 palavra por palavra** na primeira oração, de modo que o modelo deixa a
+eliminação com um e a falta com o outro.
+
 ### 🔵 Rodada 12 — `comprovante_inscricao`, e o deslocamento provado DENTRO da página
 
 19 artigos, sem divergência da fonte — 11 itens, 2 subitens e 6 alíneas (4 em maiúscula, 2 em

@@ -11,6 +11,8 @@
  */
 import { ATRIBUICOES_DOS_CARGOS } from "@/lib/edital-modelo/atribuicoes-dos-cargos";
 import { COMPROVANTE_INSCRICAO } from "@/lib/edital-modelo/comprovante-inscricao";
+import { CONDICOES_ESPECIAIS_PROVA } from "@/lib/edital-modelo/condicoes-especiais-prova";
+import { PROVA_OBJETIVA } from "@/lib/edital-modelo/prova-objetiva";
 import { DISPOSICOES_PRELIMINARES } from "@/lib/edital-modelo/disposicoes-preliminares";
 import { DISTRIBUICAO_GEOGRAFICA } from "@/lib/edital-modelo/distribuicao-geografica";
 import { INSCRICAO_E_PAGAMENTO } from "@/lib/edital-modelo/inscricao-e-pagamento";
@@ -45,6 +47,8 @@ export const CAPITULOS_DO_MODELO: readonly CapituloDoModelo[] = [
   VAGAS_PCD,
   VAGAS_COTAS_RACIAIS,
   COMPROVANTE_INSCRICAO,
+  CONDICOES_ESPECIAIS_PROVA,
+  PROVA_OBJETIVA,
 ];
 
 export const CAPITULO_DO_MODELO_POR_CHAVE: ReadonlyMap<string, CapituloDoModelo> = new Map(

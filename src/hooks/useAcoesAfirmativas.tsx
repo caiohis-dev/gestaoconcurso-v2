@@ -1,9 +1,13 @@
 /**
  * As regras de ação afirmativa de um edital — PCD, cotas raciais e lactantes.
  *
- * 🔴 **Não há campo para a data de corte da lactante.** Ela é derivada da etapa
+ * 🔴 **Não há COLUNA para a data de corte da lactante.** Ela é derivada da etapa
  * `prova_objetiva` do cronograma — ver `src/lib/edital-acoes-afirmativas.ts` e o defeito
  * do Edital 003/2026 que justificou isso.
+ *
+ * 🔵 **Desde a rodada 13 (2026-09-19) existe o marcador `{{campo:data_corte_lactante}}`**, e ele
+ * não contradiz o de cima: o marcador resolve pela MESMA derivação, em `useCamposDoEdital`.
+ * Persistir a data continua proibido — é ela que envelhece calada quando a prova muda de dia.
  *
  * As três tabelas têm PK = `edital_id`: é uma linha por edital, então gravar é upsert.
  */

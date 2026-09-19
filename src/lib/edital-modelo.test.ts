@@ -657,3 +657,157 @@ describe("capítulo `comprovante_inscricao` — as duas referências, as duas de
     expect(tudo).not.toMatch(/Pessoa com Deficiência|portador/);
   });
 });
+
+describe("capítulo `condicoes_especiais_prova` — o defeito de NÚMERO REPETIDO", () => {
+  const cap = CAPITULOS_DO_MODELO.find((c) => c.chave === "condicoes_especiais_prova")!;
+
+  it("são 27 artigos, sem divergência da fonte", () => {
+    expect(cap.artigos).toHaveLength(27);
+    expect(cap.artigosNaFonte).toBeUndefined();
+    const porNivel = [0, 1, 2].map((n) => cap.artigos.filter((a) => (a.nivel ?? 0) === n).length);
+    expect(porNivel).toEqual([21, 4, 2]);
+  });
+
+  it("🔴 os DOIS subitens que o 004 numera igual existem, e são distintos", () => {
+    // O Edital 004 chama de `11.4.1` tanto "DA DIFERENÇA DE CRITÉRIOS" quanto "DA ENTREGA
+    // SEPARADA", e o seguinte é 11.4.2 — um dos dois fica sem endereço. Aqui os dois são
+    // nível 1 na posição certa e `numerarItens` lhes dá números diferentes por construção.
+    const subitens = cap.artigos.filter((a) => a.nivel === 1);
+    expect(subitens).toHaveLength(4);
+    expect(subitens[0].texto).toMatch(/diferença de critérios/i);
+    expect(subitens[1].texto).toMatch(/entrega separada/i);
+  });
+
+  it("🔴 o subitem da prótese vem DEPOIS do item da prótese", () => {
+    // No 004 ele é numerado `11.8.1` (prova ampliada) e está logo abaixo do 11.10 (prótese):
+    // número e posição se contradizem. Aqui a posição é a única coisa que existe.
+    const i = cap.artigos.findIndex((a) => a.texto.includes("prótese ou aparelho auditivo"));
+    expect(i).toBeGreaterThan(-1);
+    expect(cap.artigos[i + 1].nivel).toBe(1);
+    expect(cap.artigos[i + 1].texto).toMatch(/retirar o aparelho auditivo/);
+  });
+
+  it("⭐ CONTROLE: nenhuma referência por NÚMERO sobrou — o 11.21 tinha duas", () => {
+    const tudo = cap.artigos.map((a) => a.texto).join(" ");
+    expect(tudo).not.toMatch(/subitens?\s+\d+\.\d/);
+    expect(tudo).not.toMatch(/[Ii]tem\s+\d+\b/);
+    // E as duas viraram a mesma âncora, porque o alvo é o mesmo item.
+    const tardio = cap.artigos[cap.artigos.length - 1];
+    expect(tardio.texto).toContain("{{item:entrega_documentacao_especial}}");
+    expect(tardio.texto).toContain("naquele subitem");
+  });
+
+  it("🔴 os três valores da lactante são CAMPO, e nenhum ficou literal", () => {
+    for (const campo of ["idade_maxima_lactente", "tempo_compensacao_lactante", "data_corte_lactante"]) {
+      expect(cap.camposUsados, `falta ${campo}`).toContain(campo);
+      expect(CAMPO_POR_CHAVE.has(campo), `campo "${campo}" fora do catálogo`).toBe(true);
+    }
+    const tudo = cap.artigos.map((a) => a.texto).join(" ");
+    // Os números do 004: 6 meses, 30 minutos, e a data de corte escrita à mão.
+    expect(tudo).not.toMatch(/6\s*\(seis\)\s*meses/i);
+    expect(tudo).not.toMatch(/30\s*\(trinta\)\s*minutos/i);
+    expect(tudo).not.toMatch(/16 de (março|setembro)/i);
+  });
+
+  it("⭐ CONTROLE: o tempo de compensação aparece DUAS vezes, e as duas como campo", () => {
+    // O item do 004 diz "até 30 minutos" e "em exatamente 30 minutos" — o mesmo número em duas
+    // pontas da mesma frase. Se só uma virasse campo, o documento se contradiria sozinho.
+    const artigo = cap.artigos.find((a) => a.texto.includes("um único período"))!;
+    expect(artigo.texto.match(/\{\{campo:tempo_compensacao_lactante\}\}/g)).toHaveLength(2);
+  });
+
+  it("consome a âncora dos documentos de PCD, em vez de repetir a lista", () => {
+    const envelope = cap.artigos.find((a) => a.texto.includes("Envelope 1"))!;
+    expect(envelope.texto).toContain("{{item:documentos_pcd}}");
+    expect(cap.ancorasConsumidas).toContain("documentos_pcd");
+  });
+
+  it("⚠️ o que ficou literal é o que NÃO tem coluna — e é só isso", () => {
+    // Registrado para a escolha não parecer descuido: sem fonte no banco, um `{{campo:}}`
+    // seria marcador que nunca resolve. O texto é editável pela tela.
+    const tudo = cap.artigos.map((a) => a.texto).join(" ");
+    expect(tudo).toContain("Arial, tamanho 20");
+    expect(tudo).toContain("60 (sessenta) minutos");
+    expect(tudo).toContain("72 horas antes");
+  });
+});
+
+describe("capítulo `prova_objetiva` — o maior, e o item que publica formulário", () => {
+  const cap = CAPITULOS_DO_MODELO.find((c) => c.chave === "prova_objetiva")!;
+
+  it("42 artigos contra 43 na fonte, com o motivo declarado", () => {
+    expect(cap.artigos).toHaveLength(42);
+    expect(cap.artigosNaFonte).toBe(43);
+    expect(cap.porQueDiverge).toMatch(/mesma frase repetida por cargo/);
+  });
+
+  it("🔴 a composição por cargo é o QUADRO, não duas frases iguais", () => {
+    // O 004 escreve a mesma composição duas vezes, uma por cargo. Num edital de oito cargos
+    // seriam oito itens — e o quadro de `provas_disciplinas` já rende cargo × disciplina.
+    const quadros = cap.artigos.filter((a) => a.tipo === "quadro");
+    expect(quadros).toHaveLength(1);
+    expect(quadros[0].quadroFonte).toBe("disciplinas");
+    const tudo = cap.artigos.map((a) => a.texto).join(" ");
+    expect(tudo).not.toMatch(/Agente Comunitário|Endemias/);
+    // E nenhum número de questão em prosa: quem os diz é o quadro.
+    expect(tudo).not.toMatch(/\d+\s*\((dez|trinta|cinquenta)\)\s*questões/i);
+  });
+
+  it("🔴 a data da prova é CAMPO — o 004 publicou o formulário em branco", () => {
+    // O item 12.4 saiu no Diário Oficial com "dia XX/xx/2026" e o negrito sem fechar. Com o
+    // marcador, a data vem do cronograma e o linter acusa `campo-sem-valor` enquanto faltar.
+    expect(cap.camposUsados).toContain("cronograma_prova_objetiva");
+    const tudo = cap.artigos.map((a) => a.texto).join(" ");
+    expect(tudo).not.toMatch(/x{2,}/i);
+  });
+
+  it("🔴 a referência deslocada do 12.18 virou a FAIXA certa, por âncora", () => {
+    // "subitens de 11.10 a 11.15" aponta, no capítulo 11, para a lactante. O alvo real é a
+    // faixa do documento de identificação, aqui delimitada pelas duas âncoras.
+    const artigo = cap.artigos.find((a) => a.texto.includes("não fará a prova"))!;
+    expect(artigo.texto).toContain("{{item:documentos_no_dia}}");
+    expect(artigo.texto).toContain("{{item:perda_do_documento}}");
+    expect([...cap.ancorasPublicadas].sort()).toEqual(["documentos_no_dia", "perda_do_documento"]);
+  });
+
+  it("⭐ CONTROLE: nenhuma referência por NÚMERO sobrou", () => {
+    const tudo = cap.artigos.map((a) => a.texto).join(" ");
+    expect(tudo).not.toMatch(/subitens?\s+(de\s+)?\d+\.\d/);
+    expect(tudo).not.toMatch(/Quadro\s+(I|II|III)\b/);
+    // E o conteúdo programático não cita número de anexo — é Anexo I no 12.3 e Anexo II no 004.
+    expect(tudo).toContain("como anexo deste Edital");
+    expect(tudo).not.toMatch(/Anexo\s+(I|II)\b/);
+  });
+
+  it("🔴 os valores POR CARGO não viraram campo — e nenhum ficou em prosa", () => {
+    // `provas_objetivas_config` tem PK `edital_cargo_id`: duração, tempos e nota de corte são
+    // por cargo, e `{{campo:}}` é escalar por edital. Qualificador por cargo foi rejeitado.
+    const tudo = cap.artigos.map((a) => a.texto).join(" ");
+    expect(tudo).not.toMatch(/3\s*\(três\)\s*horas/i);
+    expect(tudo).not.toMatch(/50%/);
+    expect(tudo).toContain("pontuação mínima indicada para o seu cargo");
+    // Os três tempos ficam como instrução, NOMEANDO A TABELA de onde o número sai — e sem
+    // exemplo numérico de propósito: um "ex.: 3 horas" na instrução é o número por cargo
+    // convidando a ser copiado cegamente, que é o defeito que este capítulo evita.
+    // ⚠️ A primeira versão deste caso reprovou por isso mesmo, e estava certa.
+    const comInstrucao = cap.artigos.filter((a) => trechosARedigir(a.texto).some((t) => /provas_objetivas_config/.test(t)));
+    expect(comInstrucao).toHaveLength(3);
+  });
+
+  it("as 16 alíneas da eliminação são nível 2, e o caput NÃO publica âncora", () => {
+    const alineas = cap.artigos.filter((a) => a.nivel === 2);
+    expect(alineas).toHaveLength(16);
+    for (const a of alineas) {
+      expect(a.texto, `letra digitada: ${a.texto.slice(0, 40)}`).not.toMatch(/^[a-p]\)/);
+    }
+  });
+
+  it("⚠️ o 12.27 deixou de repetir o 12.19 palavra por palavra", () => {
+    // No 004 os dois abrem com "Não haverá, sob qualquer pretexto, segunda chamada, nem
+    // justificativa de falta" — o 12.19 para listar eliminações, o 12.27 para tratar da falta.
+    const caput = cap.artigos.find((a) => a.texto.startsWith("Será eliminado"))!;
+    expect(caput.texto).not.toMatch(/segunda chamada/);
+    const ultimo = cap.artigos[cap.artigos.length - 1];
+    expect(ultimo.texto).toMatch(/segunda chamada de prova/);
+  });
+});

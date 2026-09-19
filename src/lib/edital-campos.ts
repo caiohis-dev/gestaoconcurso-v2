@@ -239,6 +239,38 @@ const CAMPOS_DO_EDITAL: readonly CampoCatalogo[] = [
     ondeSePreenche: "isencao_taxa",
   },
   {
+    // ── 🔵 Rodada 13 — os três da lactante ─────────────────────────────────────────────
+    //
+    // Os dois primeiros já tinham coluna, e a razão é a de sempre: `regras_lactantes`
+    // alimenta o painel do capítulo e o aviso `chk_lactante_tempo_coerente`. Literais no
+    // texto, o painel diria 6 meses e o documento, 5 — em silêncio.
+    chave: "idade_maxima_lactente",
+    rotulo: "Idade máxima do lactente (meses)",
+    formato: "inteiro",
+    fonte: "regras_lactantes.idade_maxima_lactente_meses",
+    ondeSePreenche: "condicoes_especiais_prova",
+  },
+  {
+    chave: "tempo_compensacao_lactante",
+    rotulo: "Tempo de compensação da amamentação (minutos)",
+    formato: "inteiro",
+    fonte: "regras_lactantes.tempo_maximo_compensacao_minutos",
+    ondeSePreenche: "condicoes_especiais_prova",
+  },
+  {
+    // 🔴 **O único campo do catálogo que NÃO tem coluna, e é o mais importante dos três.**
+    // A data de corte é DERIVADA da etapa `prova_objetiva` menos a idade máxima — não se
+    // persiste, senão envelhece calada quando a prova muda de dia. É o conserto de um defeito
+    // publicado: o Edital 003/2026 diz "16 de setembro" no item 10.10 e marca a prova em
+    // 20/09 no cronograma, então o corte publicado (16 de março) está 4 dias errado e recusaria
+    // por engano uma candidata cujo bebê nasceu em 18/03. Ver `edital-acoes-afirmativas.ts`.
+    chave: "data_corte_lactante",
+    rotulo: "Nascimento do lactente a partir de (calculado)",
+    formato: "data_extenso",
+    fonte: "DERIVADO de cronograma_etapas['prova_objetiva'] − regras_lactantes.idade_maxima_lactente_meses",
+    ondeSePreenche: "condicoes_especiais_prova",
+  },
+  {
     chave: "prazo_validade_anos",
     rotulo: "Prazo de validade (anos)",
     formato: "inteiro",

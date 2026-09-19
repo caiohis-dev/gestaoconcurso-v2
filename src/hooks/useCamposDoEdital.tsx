@@ -31,7 +31,8 @@ import {
   formatarTexto,
   juntarComE,
 } from "@/lib/edital-campos";
-import { formatarDatasDaEtapa } from "@/lib/edital-cronograma";
+import { formatarDatasDaEtapa, primeiraData } from "@/lib/edital-cronograma";
+import { dataLimiteNascimentoLactente } from "@/lib/edital-acoes-afirmativas";
 
 
 /** Um par chave→valor pronto para o mapa. `null` significa "não entra". */
@@ -98,13 +99,38 @@ function paresDasAcoesAfirmativas(
   ];
 }
 
+/**
+ * Os escalares da LACTANTE — dois de coluna e um DERIVADO.
+ *
+ * 🔴 **`data_corte_lactante` não tem coluna, e é de propósito.** Ela sai da data da prova menos
+ * a idade máxima, na renderização. Persistida, envelheceria calada no dia em que a prova mudasse
+ * de data — e foi exatamente assim que o Edital 003/2026 publicou um corte 4 dias errado,
+ * recusando por engano quem tivesse bebê nascido no intervalo. Ver `edital-acoes-afirmativas.ts`.
+ *
+ * ⚠️ Sem data de prova no cronograma, a derivação devolve `null` e o marcador fica `[?campo:…]`.
+ * É o comportamento certo: melhor o buraco visível que uma data inventada num edital.
+ */
+function paresDaLactante(
+  lactantes: ReturnType<typeof useAcoesAfirmativas>["lactantes"],
+  etapas: ReturnType<typeof useCronograma>["etapas"],
+): Par[] {
+  const etapaDaProva = etapas.find((e) => e.chave === "prova_objetiva");
+  const dataDaProva = etapaDaProva ? primeiraData(etapaDaProva) : null;
+  const idade = lactantes?.idade_maxima_lactente_meses ?? null;
+  return [
+    ["idade_maxima_lactente", formatarInteiro(idade)],
+    ["tempo_compensacao_lactante", formatarInteiro(lactantes?.tempo_maximo_compensacao_minutos ?? null)],
+    ["data_corte_lactante", formatarDataExtenso(dataLimiteNascimentoLactente(dataDaProva, idade))],
+  ];
+}
+
 export function useCamposDoEdital(editalId: string | undefined) {
   const { edital, isLoading: carregandoEdital } = useEdital(editalId);
   const { etapas, isLoading: carregandoCronograma } = useCronograma(editalId);
   const { cargosDoEdital, isLoading: carregandoEditalCargos } = useEditalCargos(editalId);
   const { cargos, isLoading: carregandoCatalogoDeCargos } = useCargos();
   const { criterios, config: configDeInscricao, isLoading: carregandoInscricao } = useInscricao(editalId);
-  const { pcd, cotas, isLoading: carregandoAcoes } = useAcoesAfirmativas(editalId);
+  const { pcd, cotas, lactantes, isLoading: carregandoAcoes } = useAcoesAfirmativas(editalId);
 
   // 🔴 O `isLoading` de `useCargos` ESTÁ nesta conta, e faltava na primeira versão — era um
   // defeito de verdade. `cargos_do_edital` cruza `edital_cargos` com o catálogo de nomes: se
@@ -135,6 +161,7 @@ export function useCamposDoEdital(editalId: string | undefined) {
     for (const [chave, valor] of paresDoEdital(edital)) por(chave, valor);
     for (const [chave, valor] of paresDaInscricao(criterios, configDeInscricao)) por(chave, valor);
     for (const [chave, valor] of paresDasAcoesAfirmativas(pcd, cotas)) por(chave, valor);
+    for (const [chave, valor] of paresDaLactante(lactantes, etapas)) por(chave, valor);
 
     // 🔴 Os cargos numa frase — ESCALAR derivado de coleção, não valor por cargo.
     //
@@ -161,7 +188,7 @@ export function useCamposDoEdital(editalId: string | undefined) {
     }
 
     return m as ReadonlyMap<string, string>;
-  }, [isLoading, edital, etapas, cargosDoEdital, cargos, criterios, configDeInscricao, pcd, cotas]);
+  }, [isLoading, edital, etapas, cargosDoEdital, cargos, criterios, configDeInscricao, pcd, cotas, lactantes]);
 
   return { valores, isLoading };
 }
