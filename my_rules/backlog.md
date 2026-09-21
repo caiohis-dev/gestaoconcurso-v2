@@ -141,53 +141,95 @@ hora"*) exige a tabela. Enquanto não existir, a consulta é manual.
 
 ---
 
-## 📄 EDITAL PADRÃO — rodadas 15 a 19 (5 capítulos restantes)
+## ⏳ A TRILHA DE ENVIO DO LINK não existe — (o carimbo de "Último Acesso" foi FEITO em 20/09)
 
-**Status:** 🟡 **em andamento.** Rodadas 0 a 11 em 2026-09-18 e as **12, 13 e 14 em 2026-09-19** —
-**13 capítulos, 262 artigos, modelo na versão `1.0`**.
+**Status:** ✅ **a parte 1 foi executada em 2026-09-20** (migration `20260921002249_carimbar_ultimo_acesso_no_login.sql`) — o carimbo
+voltou a ser escrito, com os casos 9 a 14 de `docs/bateria-vinculo-colaborador.sql`.
+⏳ **Sobra a parte 3: a trilha de envio do link**, que nunca existiu. Aberto ao investigar por que
+colaboradores que acabavam de informar o próprio e-mail apareciam como *"Nunca acessou"*.
+**Área:** Auth e Permissões · estudo completo em
+[`analises/analise-ultimo-acesso-e-convite.md`](./analises/analise-ultimo-acesso-e-convite.md)
+
+`colaboradores.colab_ultimo_acesso` teve os seus dois únicos escritores dropados na migration
+`20260715125720_drop_rpcs_colaborador_antigas.sql` (eram do portal de código de 4 dígitos). A
+**leitura ficou** — `ColaboradoresList` e `PainelDadosColaboradores` —, e ninguém notou porque a
+coluna continuou existindo com dado dentro.
+
+🔴 **Medido em PRODUÇÃO em 2026-09-20: 263 de 263.** Das **274** contas vinculadas, **263** entraram
+de verdade — e **todas as 263** estão descritas errado: **71** como *"Nunca acessou"* e **192** com
+uma data congelada de junho/julho. O carimbo mais recente da coluna é **2026-07-09**; o login mais
+recente de verdade é do **próprio dia da medição, 23:43**. ⚠️ Não é a maioria, é a totalidade — e o
+recurso de *ordenar* por último acesso, que existe justamente para achar quem nunca entrou, ordena
+sobre `null`.
+
+🔴 **Confirmado em PRODUÇÃO no mesmo dia, e não é teórico:** a colaboradora do aviso de
+autosserviço (`patricia…@gmail.com`) abriu o link **42 s** depois do envio e entrou com a senha
+própria **2 min 27 s** depois — e a tela diz *"Nunca acessou"*. 🟢 O mesmo caso prova, de quebra,
+que o secret `SITE_URL` de produção está correto e que a entrega pela Hostinger funciona ponta a
+ponta para destinatário real.
+
+### O conserto
+
+1. ✅ **FEITO — carimbar no trigger que já existe.** `vincular_colaborador_no_signin` passou a gravar
+   `colab_ultimo_acesso = NEW.last_sign_in_at`. 🔴 **Num bloco `EXCEPTION` PRÓPRIO, não no do
+   vínculo** — achado da implementação: fundidos, a exceção do carimbo anula a subtransação e
+   **desfaz o vínculo junto**, criando uma perda silenciosa nova. O caso 14 da bateria falsifica a
+   variante fundida. ⚠️ Carimba só quando `last_sign_in_at` **muda**: confirmar e-mail não é acesso.
+2. 🔵 **SEM BACKFILL — decisão dele em 2026-09-20:** *"o erro de informação 'nunca acessou' não
+   precisa ser corrigido para informações passadas"*. Cada pessoa se corrige sozinha no primeiro
+   login seguinte. ⚠️ **Não reabra propondo backfill "para deixar consistente"** — foi recusado com
+   motivo, e recusá-lo elimina o único passo manual em produção do conserto (`seed.pos.sql` não
+   roda sozinho lá; esquecê-lo seria falha silenciosa). O custo aceito: os 192 com data congelada
+   seguem exibindo junho/julho até logarem de novo.
+3. ⏳ **O QUE SOBRA — a trilha de envio do link, que não existe** — nenhuma coluna tipo `colab_convite_enviado_em`;
+   hoje *"o e-mail saiu?"* só se responde pelos carimbos do `auth.users`, que existem por sorte e
+   não por desenho nosso.
+
+### Como verificar (controle positivo obrigatório)
+
+🔴 **O controle positivo do carimbo são os 8 casos ANTIGOS da bateria**, não os novos: o carimbo foi
+acrescentado dentro da função do vínculo, então provar que ele grava é metade — a outra é provar que
+o vínculo não regrediu. Os 14 passam desde 2026-09-20, depois de `db reset` completo.
+
+Provar que passou a carimbar é metade. A outra é
+[`docs/consulta-acesso-colaborador.sql`](../docs/consulta-acesso-colaborador.sql) continuar
+distinguindo os quatro estados — em especial **convite pendente** (`confirmation_sent_at`
+preenchido) de **só abriu o link** (delta < 1 s entre `email_confirmed_at` e `last_sign_in_at`).
+⚠️ O limiar é **1 segundo e foi medido**, não arbitrado: a distribuição é bimodal (7 contas em 4–13
+ms, nada até 24,8 s, 40 contas acima). Um corte de 2 minutos classifica errado quem criou a senha e
+logou em seguida — o caminho normal.
+
+---
+
+## 📄 EDITAL PADRÃO — as cinco pendências que sobraram do tema
+
+**Status:** ⏳ aberto em 2026-09-19, quando o **texto padrão ficou completo** (19 capítulos, 377
+artigos, versão `1.0` — o tema em si saiu daqui para
+[`analises/concluidos/backlog-itens-concluidos.md`](./analises/concluidos/backlog-itens-concluidos.md)).
 **Área:** módulo Editais — ver [`estrutura/modulos/editais/00-modulo.md`](./estrutura/modulos/editais/00-modulo.md)
 
-O plano aprovado está em `~/.claude/plans/vamos-montar-um-plano-noble-raccoon.md`. Uma rodada de
-código **por capítulo**, a pedido do usuário, para mitigar erro de código e de texto.
+🔴 **As três primeiras são a MESMA pendência:** existe tabela com dono estruturado que o documento
+ainda não sabe renderizar, e por isso o texto pede o conteúdo por `{{redigir:}}`. Cada uma é um
+valor novo no domínio de `chk_edital_item_quadro_fonte` **mais** um renderizador — fonte nova exige
+fatia nova, e sem o renderizador o artigo cai no ramo "fonte desconhecida".
 
-**Falta transcrever** (com a contagem de elementos **corrigida** na rodada 10 — ver a tabela
-autoritativa no doc do módulo):
-
-| # | capítulo | elementos |
+| # | tabela sem `quadro_fonte` | onde o texto sente |
 |---|---|---|
-| 15 | `recursos_prova_objetiva` | 35 |
-| 16 | `desempate_e_resultado` | 19 |
-| 17 | `investidura_e_posse` | 21 |
-| 18 | `disposicoes_gerais` | 17 |
-| 19 | `anexos` + `prova_de_titulos` (do Edital **002**) | — |
+| 1 | `documentos_investidura` | cap. 15 — a lista que produziu o **COREN exigido de ACS** |
+| 2 | `criterios_desempate` | cap. 14 — a ordem por disciplina, que difere nos três editais |
+| 3 | taxas por cargo | cap. 6 — a lista de alíneas de valor de inscrição |
 
-🔴 **A receita de cada rodada está no doc do módulo, e o passo 2 é o que justifica o tema:** toda
-referência cruzada é **relida contra o alvo real**, nunca traduzida número a número. Foram medidos
-**10 defeitos** no Edital 004, e o pior deles é o capítulo 7 — **12 referências, 11 erradas**, uma
-delas apontando para uma faixa que não existe. 🔵 Os dois últimos saíram das rodadas 13 e 14, e não
-são de referência: o capítulo 11 usa **`11.4.1` para dois subitens diferentes** (e numera `11.8.1`
-um subitem que pende do 11.10), e o item **12.4 publica o formulário em branco** — *"dia
-XX/xx/2026"*, com o negrito sem fechar.
+4. **A matriz (`quadro_fonte: 'disciplinas'`) não rende duração, tempo mínimo de permanência,
+   tempo para levar o caderno nem nota de corte** — as quatro colunas de `provas_objetivas_config`,
+   que é **por cargo**. Enquanto não render, o capítulo 12 descreve os três tempos com
+   `{{redigir:}}` nomeando a tabela. ⚠️ **Não vire `{{campo:}}`:** qualificador por cargo foi
+   medido e rejeitado na rodada 0.
+5. **Valores sem coluna em lugar nenhum**, hoje literais ou instrução: a fonte da prova ampliada,
+   os 60 minutos de tempo adicional, as 72 horas do pedido tardio, a antecedência de uma hora, o
+   **e-mail da impugnação**, o órgão oficial de publicação e o endereço do **órgão demandante**
+   (que não é o da entidade executora — confundi-los manda o candidato ao lugar errado).
 
-**O que fecha o tema (rodada final):**
-
-- `ANCORAS_PENDENTES` **vazia** — o teste passa a exigir `toBe(0)`;
-- o modelo inteiro passando pelo linter sem erro;
-- `docs/bateria-edital-modelo.sql` com o clone completo verificado.
-
-⏳ **Quatro pendências abertas pelo caminho:**
-
-1. numerar ANEXO e QUADRO (entrada própria abaixo);
-2. `quadro_fonte: 'taxas'` para a lista de taxas por cargo — **tabela nova exige fatia nova**;
-3. 🔴 **o quadro da matriz (`quadro_fonte: 'disciplinas'`) não rende duração, tempo mínimo de
-   permanência, tempo para levar o caderno nem nota de corte** — as quatro colunas de
-   `provas_objetivas_config`, que é **por cargo**. Enquanto não render, o capítulo 12 descreve os
-   três tempos com `{{redigir:}}` nomeando a tabela, e a nota de corte como *"a pontuação mínima
-   indicada para o seu cargo"*. ⚠️ Não vire `{{campo:}}`: qualificador por cargo foi medido e
-   rejeitado na rodada 0;
-4. valores do capítulo 11 **sem coluna em lugar nenhum** — a fonte da prova ampliada (*"Arial
-   tamanho 20 em A3"*), os 60 minutos de tempo adicional, as 72 horas do pedido tardio e a
-   antecedência de uma hora do capítulo 12. Hoje são literais no texto, que é editável.
+⏳ **Numerar ANEXO e QUADRO** continua na entrada própria abaixo, para a fatia de exportação.
 
 ---
 

@@ -1,9 +1,17 @@
--- Bateria: vínculo colaborador↔conta
--- Migration coberta: 20260919121555_vinculo_colaborador_em_conta_existente.sql
+-- Bateria: vínculo colaborador↔conta  +  carimbo do último acesso
+-- Migrations cobertas:
+--   · 20260919121555_vinculo_colaborador_em_conta_existente.sql  (casos 0 a 8)
+--   · 20260921002249_carimbar_ultimo_acesso_no_login.sql         (casos 9 a 14)
+--     ⚠️ o nome do arquivo é UTC; a sessão que a escreveu foi 2026-09-20 local
 --   · função  `vincular_colaborador_a_conta(uuid, text)`
 --   · trigger `on_auth_user_created`  → `handle_new_user()`        (nascimento da conta)
 --   · trigger `on_auth_user_signin`   → `vincular_colaborador_no_signin()` (login/confirmação)
--- Escrita em 2026-09-19, junto com a migration.
+-- Escrita em 2026-09-19 junto com a primeira migration; estendida em 2026-09-20.
+--
+-- 🔴 OS CASOS 0 A 8 SÃO O CONTROLE POSITIVO DOS NOVOS. O carimbo foi acrescentado
+-- DENTRO da função do vínculo: provar que ele passou a carimbar é metade, a outra é
+-- provar que o vínculo não regrediu. Se algum caso de 1 a 8 falhar, o conserto do
+-- carimbo quebrou o que já funcionava — e isso importa mais que o carimbo.
 --
 -- COMO RODAR
 --   sg docker -c "docker exec -i supabase_db_<ref> psql -U postgres -d postgres" \
@@ -456,6 +464,230 @@ BEGIN
   ELSE
     RAISE NOTICE 'CASO 8: FALHOU — profiles=% user_id=% (o db reset vai se comportar diferente)',
       v_perfis, v_depois;
+  END IF;
+END $$;
+ROLLBACK;
+
+\echo ''
+\echo '╔════════════════════════════════════════════════════════════════════════╗'
+\echo '║ 9. 🟢 O CARIMBO — login grava colab_ultimo_acesso = last_sign_in_at   ║'
+\echo '╚════════════════════════════════════════════════════════════════════════╝'
+\echo '-- Conta JÁ vinculada, para isolar o carimbo do vínculo.'
+
+BEGIN;
+DO $$
+DECLARE
+  v_colab uuid; v_conta uuid; v_quando timestamptz := now() - interval '3 hours';
+  v_carimbo timestamptz;
+BEGIN
+  SELECT id, user_id INTO v_colab, v_conta
+    FROM public.colaboradores WHERE user_id IS NOT NULL LIMIT 1;
+  IF v_colab IS NULL THEN RAISE NOTICE 'CASO 9: PULADO — sem fixture vinculada'; RETURN; END IF;
+
+  UPDATE public.colaboradores SET colab_ultimo_acesso = NULL WHERE id = v_colab;
+  UPDATE auth.users SET last_sign_in_at = v_quando WHERE id = v_conta;
+
+  SELECT colab_ultimo_acesso INTO v_carimbo FROM public.colaboradores WHERE id = v_colab;
+
+  IF v_carimbo = v_quando THEN
+    RAISE NOTICE 'CASO 9: OK — o login carimbou, e com o valor EXATO de last_sign_in_at';
+  ELSIF v_carimbo IS NULL THEN
+    RAISE NOTICE 'CASO 9: FALHOU — não carimbou nada (a coluna continua morta)';
+  ELSE
+    RAISE NOTICE 'CASO 9: FALHOU — carimbou % , esperado %', v_carimbo, v_quando;
+  END IF;
+END $$;
+ROLLBACK;
+
+\echo ''
+\echo '╔════════════════════════════════════════════════════════════════════════╗'
+\echo '║ 10. ⚠️ Confirmar o e-mail NÃO é acesso — e não pode mexer no carimbo  ║'
+\echo '╚════════════════════════════════════════════════════════════════════════╝'
+\echo '-- O gatilho dispara TAMBÉM em email_confirmed_at. Sem a guarda de DISTINCT'
+\echo '-- FROM, a confirmação reescreveria o carimbo e a coluna voltaria a mentir.'
+
+BEGIN;
+DO $$
+DECLARE
+  v_colab uuid; v_conta uuid;
+  v_antes timestamptz := '2026-01-15 10:00:00+00';
+  v_depois timestamptz;
+BEGIN
+  SELECT id, user_id INTO v_colab, v_conta
+    FROM public.colaboradores WHERE user_id IS NOT NULL LIMIT 1;
+  IF v_colab IS NULL THEN RAISE NOTICE 'CASO 10: PULADO — sem fixture'; RETURN; END IF;
+
+  UPDATE public.colaboradores SET colab_ultimo_acesso = v_antes WHERE id = v_colab;
+  -- confirma o e-mail SEM tocar em last_sign_in_at
+  UPDATE auth.users SET email_confirmed_at = now() WHERE id = v_conta;
+
+  SELECT colab_ultimo_acesso INTO v_depois FROM public.colaboradores WHERE id = v_colab;
+
+  IF v_depois = v_antes THEN
+    RAISE NOTICE 'CASO 10: OK — a confirmação não tocou no carimbo';
+  ELSE
+    RAISE NOTICE 'CASO 10: FALHOU — carimbo virou % (era %)', v_depois, v_antes;
+  END IF;
+END $$;
+ROLLBACK;
+
+\echo ''
+\echo '╔════════════════════════════════════════════════════════════════════════╗'
+\echo '║ 11. O carimbo AVANÇA a cada login — não congela no primeiro           ║'
+\echo '╚════════════════════════════════════════════════════════════════════════╝'
+\echo '-- É literalmente o defeito que esta migration conserta: uma coluna parada.'
+
+BEGIN;
+DO $$
+DECLARE
+  v_colab uuid; v_conta uuid;
+  v_t1 timestamptz := now() - interval '2 days';
+  v_t2 timestamptz := now() - interval '1 hour';
+  v_carimbo timestamptz;
+BEGIN
+  SELECT id, user_id INTO v_colab, v_conta
+    FROM public.colaboradores WHERE user_id IS NOT NULL LIMIT 1;
+  IF v_colab IS NULL THEN RAISE NOTICE 'CASO 11: PULADO — sem fixture'; RETURN; END IF;
+
+  UPDATE auth.users SET last_sign_in_at = v_t1 WHERE id = v_conta;
+  UPDATE auth.users SET last_sign_in_at = v_t2 WHERE id = v_conta;
+
+  SELECT colab_ultimo_acesso INTO v_carimbo FROM public.colaboradores WHERE id = v_colab;
+
+  IF v_carimbo = v_t2 THEN
+    RAISE NOTICE 'CASO 11: OK — o segundo login sobrescreveu o primeiro';
+  ELSE
+    RAISE NOTICE 'CASO 11: FALHOU — carimbo ficou em % , esperado %', v_carimbo, v_t2;
+  END IF;
+END $$;
+ROLLBACK;
+
+\echo ''
+\echo '╔════════════════════════════════════════════════════════════════════════╗'
+\echo '║ 12. Primeiro acesso: VINCULA e CARIMBA no mesmo disparo               ║'
+\echo '╚════════════════════════════════════════════════════════════════════════╝'
+\echo '-- Prova a ORDEM dos dois blocos: sem user_id, o carimbo não acha a linha.'
+\echo '-- Invertida a ordem na função, este caso é o único que reprova.'
+
+BEGIN;
+DO $$
+DECLARE
+  v_colab uuid; v_conta uuid := gen_random_uuid();
+  v_email text := 'bateria.vinculo.caso12@exemplo.test';
+  v_quando timestamptz := now() - interval '10 minutes';
+  v_user_id uuid; v_carimbo timestamptz;
+BEGIN
+  SELECT id INTO v_colab FROM public.colaboradores
+   WHERE user_id IS NULL AND colab_email IS NOT NULL LIMIT 1;
+  IF v_colab IS NULL THEN RAISE NOTICE 'CASO 12: PULADO — sem fixture em estado A'; RETURN; END IF;
+
+  UPDATE public.colaboradores
+     SET colab_email = v_email, colab_ultimo_acesso = NULL WHERE id = v_colab;
+
+  -- conta que já existia (nasce com os gatilhos de nascimento) e agora loga
+  SET LOCAL session_replication_role = replica;
+  INSERT INTO auth.users (id, email, aud, role, created_at)
+  VALUES (v_conta, v_email, 'authenticated', 'authenticated', now() - interval '30 days');
+  SET LOCAL session_replication_role = origin;
+
+  UPDATE auth.users SET last_sign_in_at = v_quando WHERE id = v_conta;
+
+  SELECT user_id, colab_ultimo_acesso INTO v_user_id, v_carimbo
+    FROM public.colaboradores WHERE id = v_colab;
+
+  IF v_user_id = v_conta AND v_carimbo = v_quando THEN
+    RAISE NOTICE 'CASO 12: OK — vinculou E carimbou no mesmo login';
+  ELSIF v_user_id = v_conta THEN
+    RAISE NOTICE 'CASO 12: FALHOU — vinculou mas NÃO carimbou (a ordem dos blocos está invertida)';
+  ELSE
+    RAISE NOTICE 'CASO 12: FALHOU — nem vinculou (user_id=%, carimbo=%)', v_user_id, v_carimbo;
+  END IF;
+END $$;
+ROLLBACK;
+
+\echo ''
+\echo '╔════════════════════════════════════════════════════════════════════════╗'
+\echo '║ 13. Conta que NÃO é de colaborador loga — nada quebra, nada é tocado  ║'
+\echo '╚════════════════════════════════════════════════════════════════════════╝'
+\echo '-- O gatilho dispara em TODO login do sistema, não só nos de colaborador.'
+
+BEGIN;
+DO $$
+DECLARE
+  v_conta uuid := gen_random_uuid();
+  v_antes int; v_depois int;
+BEGIN
+  SELECT count(*) INTO v_antes FROM public.colaboradores WHERE colab_ultimo_acesso IS NOT NULL;
+
+  SET LOCAL session_replication_role = replica;
+  INSERT INTO auth.users (id, email, aud, role, created_at)
+  VALUES (v_conta, 'bateria.vinculo.caso13@exemplo.test', 'authenticated', 'authenticated', now());
+  SET LOCAL session_replication_role = origin;
+
+  UPDATE auth.users SET last_sign_in_at = now() WHERE id = v_conta;
+
+  SELECT count(*) INTO v_depois FROM public.colaboradores WHERE colab_ultimo_acesso IS NOT NULL;
+
+  IF v_antes = v_depois THEN
+    RAISE NOTICE 'CASO 13: OK — login de não-colaborador não carimbou ninguém (% linhas)', v_depois;
+  ELSE
+    RAISE NOTICE 'CASO 13: FALHOU — o total de carimbos mudou de % para %', v_antes, v_depois;
+  END IF;
+END $$;
+ROLLBACK;
+
+\echo ''
+\echo '╔════════════════════════════════════════════════════════════════════════╗'
+\echo '║ 14. 🔴 O CARIMBO FALHANDO NÃO DERRUBA O LOGIN NEM O VÍNCULO           ║'
+\echo '╚════════════════════════════════════════════════════════════════════════╝'
+\echo '-- É o caso que justifica os DOIS blocos EXCEPTION separados. Um gatilho'
+\echo '-- temporário faz o UPDATE de colaboradores explodir; o login e o vínculo'
+\echo '-- têm de sobreviver. Junte os dois blocos na função e este caso reprova.'
+
+BEGIN;
+CREATE FUNCTION pg_temp.sabotar_carimbo() RETURNS trigger LANGUAGE plpgsql AS $sab$
+BEGIN
+  IF NEW.colab_ultimo_acesso IS DISTINCT FROM OLD.colab_ultimo_acesso THEN
+    RAISE EXCEPTION 'sabotagem proposital da bateria (caso 14)';
+  END IF;
+  RETURN NEW;
+END;
+$sab$;
+CREATE TRIGGER tr_sabotar_carimbo BEFORE UPDATE ON public.colaboradores
+  FOR EACH ROW EXECUTE FUNCTION pg_temp.sabotar_carimbo();
+
+DO $$
+DECLARE
+  v_colab uuid; v_conta uuid := gen_random_uuid();
+  v_email text := 'bateria.vinculo.caso14@exemplo.test';
+  v_quando timestamptz := now() - interval '5 minutes';
+  v_user_id uuid; v_login timestamptz; v_carimbo timestamptz;
+BEGIN
+  SELECT id INTO v_colab FROM public.colaboradores
+   WHERE user_id IS NULL AND colab_email IS NOT NULL LIMIT 1;
+  IF v_colab IS NULL THEN RAISE NOTICE 'CASO 14: PULADO — sem fixture'; RETURN; END IF;
+
+  SET LOCAL session_replication_role = replica;
+  UPDATE public.colaboradores SET colab_email = v_email, colab_ultimo_acesso = NULL
+   WHERE id = v_colab;
+  INSERT INTO auth.users (id, email, aud, role, created_at)
+  VALUES (v_conta, v_email, 'authenticated', 'authenticated', now() - interval '30 days');
+  SET LOCAL session_replication_role = origin;
+
+  UPDATE auth.users SET last_sign_in_at = v_quando WHERE id = v_conta;
+
+  SELECT last_sign_in_at INTO v_login FROM auth.users WHERE id = v_conta;
+  SELECT user_id, colab_ultimo_acesso INTO v_user_id, v_carimbo
+    FROM public.colaboradores WHERE id = v_colab;
+
+  IF v_login = v_quando AND v_user_id = v_conta AND v_carimbo IS NULL THEN
+    RAISE NOTICE 'CASO 14: OK — carimbo falhou, LOGIN e VÍNCULO sobreviveram (o WARNING fica no log)';
+  ELSIF v_login IS NULL THEN
+    RAISE NOTICE 'CASO 14: FALHOU — O LOGIN MORREU. A exceção escapou do bloco.';
+  ELSIF v_user_id IS NULL THEN
+    RAISE NOTICE 'CASO 14: FALHOU — o vínculo foi junto com o carimbo (blocos EXCEPTION fundidos?)';
+  ELSE
+    RAISE NOTICE 'CASO 14: FALHOU — login=% user_id=% carimbo=%', v_login, v_user_id, v_carimbo;
   END IF;
 END $$;
 ROLLBACK;

@@ -65,6 +65,8 @@ Painel read-only dos colaboradores alocados numa prova (nome, e-mail, unidade, �
 
 🔵 **As quatro colunas ordenam desde 2026-09-15.** Até então só Nome e Último Acesso ordenavam — Email e Unidade eram cabeçalho morto. ⚠️ Esta linha dizia *"ordenação por nome / último acesso"*.
 
+🔵 **A coluna "Último Acesso" desta página voltou a receber dado em 2026-09-20** (migration `20260921002249_carimbar_ultimo_acesso_no_login.sql`), pelo mesmo caminho de `/colaboradores`. ⚠️ Esta linha dizia que ela *"mostra dado congelado"* — valia desde 15/07 e deixou de valer. **O passado não foi corrigido por decisão do usuário**, então quem não logou desde 20/09 ainda aparece com a data velha ou como "Nunca acessou". Ver [`colaboradores.md`](./colaboradores.md).
+
 🔵 **O link para cá também aparece com a prova FINALIZADA desde 2026-09-19** (pedido do usuário). Antes o botão *"Painel de Dados dos Colaboradores"* vivia só na visão de edição de `GerenciarProva`, e fechar a configuração o fazia sumir — justamente no momento em que se confere o que ficou. Como a página **não escreve nada**, expô-la ali não abre caminho nenhum em volta do congelamento de `PF001`: é leitura, e o `prova_finalizada` nunca governou esta rota.
 
 ⚠️ **O botão é `isAdmin &&` nos DOIS lugares, e isso não é decoração:** `/gerenciar-prova/:provaId` aceita `admin` **e** `coordenador`, enquanto esta rota é `papeis={["admin"]}`. Sem a guarda, o coordenador veria um botão que só o devolve para a home. 🧪 Os 4 casos de `GerenciarProva.ui.test.tsx` cobrem os dois papéis e o destino do clique.
