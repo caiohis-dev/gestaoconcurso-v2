@@ -70,7 +70,22 @@ Versionamento semântico, com prefixo `v`:
 
 - **`v3.2.0` nasceu em 2026-09-20**, no commit `f6136f4`. Entregou o **edital padrão COMPLETO** (rodadas 15 a 19 — 19 capítulos, 377 artigos) e o conserto do **"Último Acesso"**, que estava sem escritor desde 15/07 e descrevia errado **263 de 263** pessoas em produção. MINOR: tudo aditivo.
 
-  🔵 **Release de BANCO apenas — o site NÃO subiu, e isso é correto aqui.** O conserto do carimbo é inteiramente de banco (um gatilho), e o bundle publicado já lê a coluna. As 5 migrations do edital são conteúdo do edital-modelo, e o front que as consome subiu na v3.0.0. Fica o banco à frente do site, que é **a ordem segura** — o inverso é que quebra tela na cara do usuário.
+  🔴 **O site FOI publicado depois, no mesmo dia, pelo usuário** — corrigindo uma leitura errada
+  minha logo após o `prod:push`: eu tinha concluído "release de banco apenas" olhando só a
+  natureza das migrations, sem conferir o diff de `src/`. A rodada 15 do edital trazia código de
+  app junto — `useInscricao` passou a ler `regras_vista_prova.email_solicitacao` + interstício, e
+  `useCamposDoEdital` passou a resolver dois marcadores novos, `{{campo:email_vista_folha}}` e
+  `{{campo:intersticio_vista_horas}}`. Sem o site, esses dois apareceriam como
+  `[?campo:email_vista_folha]` nos capítulos 15 a 19 — visível, não silencioso, mas incompleto.
+
+  **`deploy.sh` rodado pelo usuário, em `~/dev/configura_server_gestaoconcurso`. Conferido depois:**
+  hash do bundle no ar **idêntico** ao buildado localmente (`index-Db8QuKdJ.js`), `last-modified`
+  batendo com o horário do build, HTTPS 200, gzip ligado, HTTP→HTTPS 301, **0** ocorrências de
+  `127.0.0.1` no bundle e 4 do projeto de produção, logo 200, e o marcador `email_vista_folha`
+  presente no bundle — a lacuna fechou.
+
+  **A lição:** *"o site não precisa subir"* é conclusão que se **confere no diff de `src/`**, não se
+  deduz da natureza da migration.
 
   ⚠️ **A árvore tinha 8 arquivos soltos de outras sessões** (notas, um symlink para `seguranca/`, um roadmap de monitoramento). A `main` foi avançada com `git fetch . dev:main`, **sem checkout** — o truque de 09/09, registrado mais abaixo. Nada foi commitado por engano.
 
