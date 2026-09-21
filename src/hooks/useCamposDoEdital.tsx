@@ -79,6 +79,24 @@ function paresDaInscricao(
 }
 
 /**
+ * Os dois escalares da VISTA DA FOLHA DE RESPOSTAS, de `regras_vista_prova`.
+ *
+ * 🔴 O e-mail é o único valor do modelo que o teste do capítulo **proíbe** como literal — a regra
+ * `nenhum LITERAL que devia ser marcador` pega endereço de e-mail. E ele não é só formatação: é o
+ * mesmo valor que o linter cruza com os canais de inscrição (`email-da-vista-fora-dos-canais`),
+ * então literal no texto seria uma segunda fonte para um endereço que o sistema já conhece.
+ */
+function paresDaVista(
+  emailDaVista: string | null,
+  intersticioHoras: number | null,
+): Par[] {
+  return [
+    ["email_vista_folha", formatarTexto(emailDaVista)],
+    ["intersticio_vista_horas", formatarInteiro(intersticioHoras)],
+  ];
+}
+
+/**
  * Os escalares DERIVADOS das regras de ação afirmativa.
  *
  * 🔴 Todos já têm coluna, e é por isso que estão aqui em vez de literais no texto do modelo. O
@@ -129,7 +147,13 @@ export function useCamposDoEdital(editalId: string | undefined) {
   const { etapas, isLoading: carregandoCronograma } = useCronograma(editalId);
   const { cargosDoEdital, isLoading: carregandoEditalCargos } = useEditalCargos(editalId);
   const { cargos, isLoading: carregandoCatalogoDeCargos } = useCargos();
-  const { criterios, config: configDeInscricao, isLoading: carregandoInscricao } = useInscricao(editalId);
+  const {
+    criterios,
+    config: configDeInscricao,
+    emailDaVistaDeProva,
+    intersticioDaVistaHoras,
+    isLoading: carregandoInscricao,
+  } = useInscricao(editalId);
   const { pcd, cotas, lactantes, isLoading: carregandoAcoes } = useAcoesAfirmativas(editalId);
 
   // 🔴 O `isLoading` de `useCargos` ESTÁ nesta conta, e faltava na primeira versão — era um
@@ -162,6 +186,7 @@ export function useCamposDoEdital(editalId: string | undefined) {
     for (const [chave, valor] of paresDaInscricao(criterios, configDeInscricao)) por(chave, valor);
     for (const [chave, valor] of paresDasAcoesAfirmativas(pcd, cotas)) por(chave, valor);
     for (const [chave, valor] of paresDaLactante(lactantes, etapas)) por(chave, valor);
+    for (const [chave, valor] of paresDaVista(emailDaVistaDeProva, intersticioDaVistaHoras)) por(chave, valor);
 
     // 🔴 Os cargos numa frase — ESCALAR derivado de coleção, não valor por cargo.
     //
@@ -188,7 +213,10 @@ export function useCamposDoEdital(editalId: string | undefined) {
     }
 
     return m as ReadonlyMap<string, string>;
-  }, [isLoading, edital, etapas, cargosDoEdital, cargos, criterios, configDeInscricao, pcd, cotas, lactantes]);
+  }, [
+    isLoading, edital, etapas, cargosDoEdital, cargos, criterios, configDeInscricao,
+    pcd, cotas, lactantes, emailDaVistaDeProva, intersticioDaVistaHoras,
+  ]);
 
   return { valores, isLoading };
 }

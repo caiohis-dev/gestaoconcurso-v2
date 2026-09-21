@@ -9,10 +9,16 @@
  * ⚠️ A ORDEM desta lista é irrelevante para o documento: quem ordena é o catálogo de
  * `edital-capitulos.ts`, e o número sai de `numerarItens`. Aqui a ordem é só a de leitura.
  */
+import { ANEXOS } from "@/lib/edital-modelo/anexos";
 import { ATRIBUICOES_DOS_CARGOS } from "@/lib/edital-modelo/atribuicoes-dos-cargos";
 import { COMPROVANTE_INSCRICAO } from "@/lib/edital-modelo/comprovante-inscricao";
 import { CONDICOES_ESPECIAIS_PROVA } from "@/lib/edital-modelo/condicoes-especiais-prova";
+import { DESEMPATE_E_RESULTADO } from "@/lib/edital-modelo/desempate-e-resultado";
+import { DISPOSICOES_GERAIS } from "@/lib/edital-modelo/disposicoes-gerais";
+import { INVESTIDURA_E_POSSE } from "@/lib/edital-modelo/investidura-e-posse";
+import { PROVA_DE_TITULOS } from "@/lib/edital-modelo/prova-de-titulos";
 import { PROVA_OBJETIVA } from "@/lib/edital-modelo/prova-objetiva";
+import { RECURSOS_PROVA_OBJETIVA } from "@/lib/edital-modelo/recursos-prova-objetiva";
 import { DISPOSICOES_PRELIMINARES } from "@/lib/edital-modelo/disposicoes-preliminares";
 import { DISTRIBUICAO_GEOGRAFICA } from "@/lib/edital-modelo/distribuicao-geografica";
 import { INSCRICAO_E_PAGAMENTO } from "@/lib/edital-modelo/inscricao-e-pagamento";
@@ -49,6 +55,12 @@ export const CAPITULOS_DO_MODELO: readonly CapituloDoModelo[] = [
   COMPROVANTE_INSCRICAO,
   CONDICOES_ESPECIAIS_PROVA,
   PROVA_OBJETIVA,
+  RECURSOS_PROVA_OBJETIVA,
+  PROVA_DE_TITULOS,
+  DESEMPATE_E_RESULTADO,
+  INVESTIDURA_E_POSSE,
+  DISPOSICOES_GERAIS,
+  ANEXOS,
 ];
 
 export const CAPITULO_DO_MODELO_POR_CHAVE: ReadonlyMap<string, CapituloDoModelo> = new Map(

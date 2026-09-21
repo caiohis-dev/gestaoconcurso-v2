@@ -20,7 +20,7 @@ import {
   sqlDoCapitulo,
 } from "@/lib/edital-modelo";
 import { CAMPO_POR_CHAVE, camposDoTexto, trechosARedigir } from "@/lib/edital-campos";
-import { CAPITULO_POR_CHAVE } from "@/lib/edital-capitulos";
+import { CAPITULO_POR_CHAVE, CAPITULOS_CATALOGO } from "@/lib/edital-capitulos";
 import { RE_REFERENCIA_ITEM } from "@/lib/edital-itens";
 import { segmentarNegrito } from "@/lib/edital-texto";
 
@@ -106,10 +106,21 @@ describe("coerência do modelo — vale para todo capítulo", () => {
     }
   });
 
-  it("⏳ ANCORAS_PENDENTES é burn-down — a rodada final a exige VAZIA", () => {
-    // Enquanto houver rodada por fazer, este caso só registra o tamanho. Na última rodada
-    // ele vira `toBe(0)` e passa a ser o portão de fechamento do tema.
-    expect(ANCORAS_PENDENTES.length).toBeLessThanOrEqual(CAPITULOS_DO_MODELO.length * 3);
+  it("🔴 ANCORAS_PENDENTES está VAZIA — o portão de fechamento do tema (rodada 19)", () => {
+    // Durante as 18 rodadas anteriores este caso só registrava o tamanho da lista. Com o
+    // modelo completo ele vira o que sempre prometeu ser: nenhuma âncora consumida pode
+    // seguir sem dono, porque não há mais capítulo por transcrever para acolhê-la.
+    expect(ANCORAS_PENDENTES).toHaveLength(0);
+  });
+
+  it("🔴 o modelo cobre os 19 capítulos do CATÁLOGO — nenhum ficou de fora", () => {
+    // O outro portão da rodada final. `artigosEsperados` pega artigo omitido dentro de um
+    // capítulo; este pega o capítulo inteiro que ninguém transcreveu — inclusive os dois
+    // condicionais, que nascem desligados mas precisam ter texto para serem ligáveis.
+    const noModelo = new Set(CAPITULOS_DO_MODELO.map((c) => c.chave));
+    const faltando = CAPITULOS_CATALOGO.filter((c) => !noModelo.has(c.chave)).map((c) => c.chave);
+    expect(faltando).toEqual([]);
+    expect(noModelo.size).toBe(CAPITULOS_CATALOGO.length);
   });
 
   it("🔴 nenhum `**` solto — a transcrição de origem tem negrito quebrado", () => {
@@ -408,10 +419,14 @@ describe("capítulo `distribuicao_geografica` — condicional", () => {
   it("nasce DESLIGADO no catálogo, e é para cá que as outras rodadas apontam", () => {
     expect(CAPITULO_POR_CHAVE.get("distribuicao_geografica")!.padrao).toBe(false);
     // Rodadas 4 e 6 deixaram referências para cá; com o capítulo desligado elas se autodenunciam.
+    // 🔵 `anexos` ENTROU nesta lista na rodada 19, e o caso caiu por isso — armadilha 8 em
+    // estado puro: o contrato cresceu, o teste não estava errado. O anexo das áreas de
+    // abrangência só existe se houver territorialidade, e a referência é o que faz o artigo se
+    // autodenunciar quando o capítulo está desligado, sem mecanismo de "artigo condicional".
     const apontamPraCa = CAPITULOS_DO_MODELO.filter((c) =>
       c.artigos.some((a) => a.texto.includes("{{cap:distribuicao_geografica}}")),
     ).map((c) => c.chave);
-    expect(apontamPraCa.sort()).toEqual(["quadro_de_cargos", "requisitos_investidura"]);
+    expect(apontamPraCa.sort()).toEqual(["anexos", "quadro_de_cargos", "requisitos_investidura"]);
   });
 
   it("tem o quadro de vagas por área, e é a fonte `vagas_por_area`", () => {
@@ -809,5 +824,270 @@ describe("capítulo `prova_objetiva` — o maior, e o item que publica formulár
     expect(caput.texto).not.toMatch(/segunda chamada/);
     const ultimo = cap.artigos[cap.artigos.length - 1];
     expect(ultimo.texto).toMatch(/segunda chamada de prova/);
+  });
+});
+
+describe("capítulo `recursos_prova_objetiva` — o e-mail que não pode ser literal", () => {
+  const cap = CAPITULOS_DO_MODELO.find((c) => c.chave === "recursos_prova_objetiva")!;
+
+  it("são 35 artigos, sem divergência da fonte", () => {
+    expect(cap.artigos).toHaveLength(35);
+    expect(cap.artigosNaFonte).toBeUndefined();
+    const porNivel = [0, 1, 2].map((n) => cap.artigos.filter((a) => (a.nivel ?? 0) === n).length);
+    expect(porNivel).toEqual([25, 0, 10]);
+  });
+
+  it("🔴 o e-mail da vista é CAMPO — e a coluna já existia", () => {
+    // `regras_vista_prova.email_solicitacao` é o mesmo valor que o linter cruza com os canais
+    // de inscrição. Literal, o documento publicaria um endereço e o sistema conferiria outro.
+    expect(cap.camposUsados).toContain("email_vista_folha");
+    expect(CAMPO_POR_CHAVE.get("email_vista_folha")!.fonte).toContain("regras_vista_prova");
+    // O caso geral "nenhum LITERAL que devia ser marcador" já pega e-mail; este nomeia o porquê.
+    const tudo = cap.artigos.map((a) => a.texto).join(" ");
+    expect(tudo).not.toMatch(/visto_fr|fevre\.com\.br/i);
+  });
+
+  it("🔴 as três referências deslocadas viraram âncora, e duas delas são FAIXA", () => {
+    const tudo = cap.artigos.map((a) => a.texto).join(" ");
+    expect(tudo).toContain("{{item:prazo_do_recurso}} a {{item:entrega_do_recurso}}");
+    expect(tudo).toContain("{{item:proibicoes_na_vista}} a {{item:material_na_vista}}");
+    expect(tudo).not.toMatch(/subitens?\s+\d+\.\d/);
+    expect(tudo).not.toMatch(/itens\s+\d+\.\d/);
+  });
+
+  it("⚠️ o 'horário estabelecido neste subitem' passou a apontar para o subitem CERTO", () => {
+    // O 13.13 do 004 diz "neste subitem" falando do ANTERIOR — quem fixa o horário é o 13.12.
+    const artigo = cap.artigos.find((a) => a.texto.includes("automaticamente desconsiderados"))!;
+    expect(artigo.texto).toContain("{{item:pedido_de_vista}}");
+    expect(artigo.texto).not.toContain("neste subitem");
+  });
+
+  it("as cinco datas do capítulo vêm do cronograma", () => {
+    for (const etapa of [
+      "cronograma_divulgacao_gabarito",
+      "cronograma_recurso_gabarito",
+      "cronograma_resultado_preliminar",
+      "cronograma_vista_folha_respostas",
+      "cronograma_resultado_final",
+    ]) {
+      expect(cap.camposUsados, `falta ${etapa}`).toContain(etapa);
+    }
+  });
+});
+
+describe("capítulo `desempate_e_resultado` — o subitem com o CAPÍTULO errado", () => {
+  const cap = CAPITULOS_DO_MODELO.find((c) => c.chave === "desempate_e_resultado")!;
+
+  it("são 19 artigos, sem divergência da fonte", () => {
+    expect(cap.artigos).toHaveLength(19);
+    expect(cap.artigosNaFonte).toBeUndefined();
+    const porNivel = [0, 1, 2].map((n) => cap.artigos.filter((a) => (a.nivel ?? 0) === n).length);
+    expect(porNivel).toEqual([10, 6, 3]);
+  });
+
+  it("🔴 o subitem que o 004 numera `13.5.1` é um subitem DESTE capítulo", () => {
+    // Não é referência a outro capítulo: é o número do próprio subitem, que pende do 14.5. E o
+    // 14.6 aponta para ele pelo mesmo número errado — referência e alvo coerentes entre si, e
+    // ambos fora do capítulo. Aqui o número não existe: existe a posição e a âncora.
+    const ordem = cap.artigos.find((a) => a.ancora === "ordem_de_desempate")!;
+    expect(ordem.nivel).toBe(1);
+    const quemAponta = cap.artigos.find((a) => a.texto.includes("{{item:ordem_de_desempate}}"))!;
+    expect(quemAponta.texto).toMatch(/último quesito/);
+  });
+
+  it("🔴 o 14.5 foi RELIDO, não deslocado — e é o caso que prova a regra", () => {
+    // "os subitens 13.2 e 13.4" é o único que não se resolve somando um capítulo: a frase fala
+    // dos CRITÉRIOS aferidos, que são idade e jurado. O 14.4 não é critério — é o empate ENTRE
+    // idosos. Traduzir número a número teria apontado para ele.
+    const artigo = cap.artigos.find((a) => a.texto.startsWith("Aferidos os critérios"))!;
+    expect(artigo.texto).toContain("{{item:criterio_idoso}}");
+    expect(artigo.texto).toContain("{{item:criterio_jurado}}");
+  });
+
+  it("⭐ CONTROLE: nenhuma referência por NÚMERO sobrou, e o 14.9 não publica formulário", () => {
+    const tudo = cap.artigos.map((a) => a.texto).join(" ");
+    expect(tudo).not.toMatch(/subitens?\s+\d+\.\d/);
+    expect(tudo).not.toMatch(/x{2,}/i);
+    expect(cap.camposUsados).toContain("cronograma_resultado_final");
+  });
+
+  it("🔴 as leis do desempate de PCD são o MESMO campo do capítulo de PCD", () => {
+    // 3.113/94 e 3.221/95 são `regras_pcd.leis_base`. Literais aqui, seriam a segunda fonte de
+    // um valor que a rodada 10 já tirou do texto.
+    expect(cap.camposUsados).toContain("leis_pcd");
+    const tudo = cap.artigos.map((a) => a.texto).join(" ");
+    expect(tudo).not.toContain("3.113");
+    expect(tudo).not.toContain("3.221");
+  });
+
+  it("⚠️ a hora de nascimento fica LITERAL, como o doc do módulo decidiu", () => {
+    // "o dado o sistema não tem e não vai ter", e o parâmetro é idêntico nos três editais.
+    const tudo = cap.artigos.map((a) => a.texto).join(" ");
+    expect(tudo).toContain("23 horas 59 minutos e 59 segundos");
+  });
+
+  it("⏳ a ordem por disciplina é instrução, e NOMEIA a tabela", () => {
+    // `criterios_desempate` existe e difere de verdade entre os três editais, mas não há
+    // `quadro_fonte` para ela — fonte nova exige fatia nova. Está no backlog.
+    const ordem = cap.artigos.find((a) => a.ancora === "ordem_de_desempate")!;
+    expect(trechosARedigir(ordem.texto)[0]).toMatch(/criterios_desempate/);
+  });
+});
+
+describe("capítulo `investidura_e_posse` — a lista que NÃO se transcreve", () => {
+  const cap = CAPITULOS_DO_MODELO.find((c) => c.chave === "investidura_e_posse")!;
+
+  it("🔴 10 artigos contra 21 na fonte, e o motivo é o defeito de abertura do módulo", () => {
+    expect(cap.artigos).toHaveLength(10);
+    expect(cap.artigosNaFonte).toBe(21);
+    expect(cap.porQueDiverge).toMatch(/documentos_investidura/);
+    expect(cap.porQueDiverge).toMatch(/COREN/);
+  });
+
+  it("⭐ CONTROLE: nenhum documento da lista vazou para o texto", () => {
+    // Transcrever as 12 alíneas criaria a segunda fonte que pôs "Certidão Nada Consta do
+    // COREN" num edital de Agente Comunitário de Saúde. A lista tem dono: `documentos_investidura`.
+    const tudo = cap.artigos.map((a) => a.texto).join(" ");
+    for (const trecho of ["COREN", "PIS/PASEP", "Reservista", "Ensino Médio", "3X4", "Imposto de Renda"]) {
+      expect(tudo, `"${trecho}" vazou da lista de documentos`).not.toContain(trecho);
+    }
+    const instrucao = cap.artigos.find((a) => trechosARedigir(a.texto).length > 0 && a.nivel === 1)!;
+    expect(trechosARedigir(instrucao.texto)[0]).toMatch(/documentos_investidura/);
+  });
+
+  it("🔴 a referência do 15.4 foi RELIDA — a tradução literal apontaria para o 15.3", () => {
+    // "conforme subitem 14.1 e estipulado no subitem 14.3": somar um capítulo daria 15.3, que
+    // não estipula prazo nenhum. Quem estipula o prazo de apresentação é o 15.5.
+    const artigo = cap.artigos.find((a) => a.texto.startsWith("Decorrido o prazo"))!;
+    expect(artigo.texto).toContain("{{item:prazo_de_apresentacao}}");
+    expect(artigo.texto).toContain("{{item:convocacao_pelo_site}}");
+  });
+
+  it("🔴 a natureza do certame é CAMPO nos dois pontos em que o 004 se contradiz", () => {
+    // O 15.3 diz "Concurso Público" e o 15.9, "Processo Seletivo Público" — mesmo capítulo.
+    const comNatureza = cap.artigos.filter((a) => a.texto.includes("{{campo:natureza_juridica}}"));
+    expect(comNatureza.length).toBeGreaterThanOrEqual(2);
+    const tudo = cap.artigos.map((a) => a.texto).join(" ");
+    expect(tudo).not.toMatch(/Concurso Público|Processo Seletivo/);
+  });
+});
+
+describe("capítulo `disposicoes_gerais` — onde o documento não sabe o que ele é", () => {
+  const cap = CAPITULOS_DO_MODELO.find((c) => c.chave === "disposicoes_gerais")!;
+
+  it("são 17 artigos, sem divergência da fonte", () => {
+    expect(cap.artigos).toHaveLength(17);
+    expect(cap.artigosNaFonte).toBeUndefined();
+    const porNivel = [0, 1, 2].map((n) => cap.artigos.filter((a) => (a.nivel ?? 0) === n).length);
+    expect(porNivel).toEqual([13, 4, 0]);
+  });
+
+  it("🔴 as OITO ocorrências de natureza viraram campo — e o 16.3 tinha as duas na mesma frase", () => {
+    // "O Concurso Público contará com … dentro da validade deste Processo", num Processo
+    // Seletivo Público. Oito ocorrências, duas naturezas, um documento só.
+    const tudo = cap.artigos.map((a) => a.texto).join(" ");
+    expect((tudo.match(/\{\{campo:natureza_juridica\}\}/g) ?? []).length).toBeGreaterThanOrEqual(8);
+    expect(tudo).not.toMatch(/Concurso Público|Processo Seletivo/);
+  });
+
+  it("o prazo de validade vem da coluna, e o 16.4 usa ÂNCORA em vez de 'item anterior'", () => {
+    expect(cap.camposUsados).toContain("prazo_validade_anos");
+    const artigo = cap.artigos.find((a) => a.texto.includes("{{item:validade_do_certame}}"))!;
+    expect(artigo.texto).not.toContain("item anterior");
+    expect(cap.artigos.map((a) => a.texto).join(" ")).not.toMatch(/\b0?2 \(dois\) anos/);
+  });
+
+  it("⚠️ o e-mail da impugnação é INSTRUÇÃO — não empresta o e-mail da vista", () => {
+    // O teste geral proíbe e-mail literal; e `regras_vista_prova.email_solicitacao` é de outra
+    // finalidade — emprestá-lo mandaria a impugnação para a caixa errada.
+    const impugnacao = cap.artigos[1];
+    expect(trechosARedigir(impugnacao.texto)[0]).toMatch(/impugnação/i);
+    expect(cap.camposUsados).not.toContain("email_vista_folha");
+  });
+});
+
+describe("capítulo `prova_de_titulos` — o único vindo do Edital 002", () => {
+  const cap = CAPITULOS_DO_MODELO.find((c) => c.chave === "prova_de_titulos")!;
+
+  it("são 28 artigos, sem divergência, e um deles é o QUADRO de títulos", () => {
+    expect(cap.artigos).toHaveLength(28);
+    expect(cap.artigosNaFonte).toBeUndefined();
+    const quadros = cap.artigos.filter((a) => a.tipo === "quadro");
+    expect(quadros).toHaveLength(1);
+    expect(quadros[0].quadroFonte).toBe("titulos");
+    expect(quadros[0].ancora).toBe("quadro_de_titulos");
+  });
+
+  it("nasce DESLIGADO no catálogo — como a territorialidade", () => {
+    expect(CAPITULO_POR_CHAVE.get("prova_de_titulos")!.padrao).toBe(false);
+  });
+
+  it("🔴 a pontuação NÃO entra em prosa — ela é por cargo, e o quadro a rende", () => {
+    const tudo = cap.artigos.map((a) => a.texto).join(" ");
+    expect(tudo).not.toMatch(/12\s*\(doze\)\s*pontos/i);
+    expect(tudo).not.toMatch(/50%/);
+  });
+
+  it("⭐ CONTROLE: os dois 'subitem anterior' viraram âncora", () => {
+    // Vizinhança não é referência: inserir um artigo entre os dois faria a frase apontar para
+    // outra coisa sem quebrar teste nenhum.
+    const tudo = cap.artigos.map((a) => a.texto).join(" ");
+    expect(tudo).not.toContain("subitem anterior");
+    expect(tudo).toContain("{{item:normas_do_curso}}");
+    expect(tudo).toContain("{{item:declaracao_da_instituicao}}");
+    expect(tudo).not.toMatch(/subitem\s+\d+\.\d/);
+  });
+
+  it("⚠️ o texto foi generalizado — nada de Docente I/II", () => {
+    const tudo = cap.artigos.map((a) => a.texto).join(" ");
+    expect(tudo).not.toMatch(/Docente|EJA|Magistério/);
+  });
+
+  it("as três etapas de títulos do cronograma são usadas", () => {
+    for (const etapa of ["cronograma_entrega_titulos", "cronograma_resultado_titulos", "cronograma_recurso_titulos"]) {
+      expect(cap.camposUsados, `falta ${etapa}`).toContain(etapa);
+    }
+  });
+});
+
+describe("capítulo `anexos` — o fecho, e a quinta fonte de quadro", () => {
+  const cap = CAPITULOS_DO_MODELO.find((c) => c.chave === "anexos")!;
+
+  it("🔴 NENHUM artigo é `item` — o capítulo não é numerado", () => {
+    // Igual ao preâmbulo: um `item` aqui pediria um número que `numerarItens` não dá.
+    expect(CAPITULO_POR_CHAVE.get("anexos")!.numerado).toBe(false);
+    for (const a of cap.artigos) {
+      expect(a.tipo, `artigo numerado em capítulo não numerado: ${a.texto.slice(0, 40)}`).not.toBe("item");
+    }
+  });
+
+  it("⭐ o cronograma entra pela QUINTA fonte de quadro — e ela só é usada aqui", () => {
+    const cronograma = cap.artigos.filter((a) => a.quadroFonte === "cronograma");
+    expect(cronograma).toHaveLength(1);
+    // As cinco fontes do domínio da CHECK estão todas usadas pelo modelo completo.
+    const fontesUsadas = new Set(
+      artigosDoModelo()
+        .map(({ artigo }) => artigo.quadroFonte)
+        .filter((f): f is NonNullable<typeof f> => !!f),
+    );
+    expect([...fontesUsadas].sort()).toEqual(["cargos", "cronograma", "disciplinas", "titulos", "vagas_por_area"]);
+  });
+
+  it("🔴 nenhum NÚMERO de anexo — é Anexo I no 002/003 e Anexo II no 004", () => {
+    const tudo = cap.artigos.map((a) => a.texto).join(" ");
+    expect(tudo).not.toMatch(/Anexo\s+(I|II|III)\b/);
+  });
+
+  it("o fecho usa os três campos que nenhum outro capítulo usava", () => {
+    // `data_publicacao`, `signatario_nome` e `signatario_cargo` nasceram na rodada 0 e só agora
+    // têm casa. O 004 publicou "Volta Redonda, ___ de ___________ de 2026" — a terceira
+    // ocorrência de formulário em branco no mesmo documento.
+    expect([...cap.camposUsados].sort()).toEqual(["data_publicacao", "signatario_cargo", "signatario_nome"]);
+  });
+
+  it("⭐ CONTROLE: o município é literal e escrito certo, como no preâmbulo", () => {
+    const tudo = cap.artigos.map((a) => a.texto).join(" ");
+    expect(tudo).toContain("Volta Redonda");
+    expect(tudo).not.toMatch(/V0LTA/i);
   });
 });

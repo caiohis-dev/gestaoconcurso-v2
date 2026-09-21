@@ -30,6 +30,89 @@ ler dado real. **Conferir a premissa no código antes de executar o item é obri
 
 ---
 
+## ✅ CONCLUÍDO 2026-09-19 — o EDITAL PADRÃO, em 19 rodadas de capítulo
+
+Um edital modelo no banco (`eh_modelo = true`, UUID fixo), clonável por um clique, com o dado
+variável em marcadores. **19 capítulos, 377 artigos, versão `1.0`** — o catálogo inteiro, os dois
+condicionais incluídos. Aberto em 2026-09-18 e fechado em 2026-09-19.
+
+**As 4 decisões do usuário que governaram o tema:** o modelo mora **no banco**; é absorvido por um
+**clique numa faixa**, nunca por `useEffect`; os marcadores **cobrem tudo**, criando a coluna que
+faltar; e a **prova de títulos entra**, com texto do Edital 002.
+
+**Os quatro marcadores, resolvidos nesta ordem:** `{{cap:}}` → `{{item:}}` → `{{campo:}}` →
+`{{redigir:}}`. A ordem não é arbitrária — valor é a única das quatro coisas que vem de dado
+digitado, e um valor contendo `{{` viraria referência se fosse resolvido antes.
+
+### 🔴 Os TREZE defeitos medidos no Edital 004 publicado — a justificativa do tema
+
+Cada um foi contado, não estimado:
+
+1. **35 de 51 referências de item** apontam para o capítulo anterior — texto copiado do 002.
+2. `MUNICÍPIO DE V0LTA REDONDA` **com zero**: 3× no 002, 1× no 003.
+3. O número do **ANEXO varia** entre editais (I no 002/003, II no 004).
+4. O número do **QUADRO varia**, e o 004 chama **duas tabelas de "Quadro II"**.
+5. Os dois cargos do capítulo 3 têm **formas diferentes** no mesmo documento.
+6. O item **5.1.1 se contradiz na própria linha** — cita "5.1.2 - Quadro I", e o 5.1.2 se
+   intitula "Quadro II".
+7. **Referências de CAPÍTULO deslocadas** (6.31, 6.32).
+8. **Alínea `a)` vs `A)`** inconsistente, e as duas formas dentro do capítulo 9.
+9. **Número repetido:** dois subitens `11.4.1`, e um `11.8.1` que pende do 11.10.
+10. **O item 12.4 publicou o formulário em branco** — *"dia XX/xx/2026"*, negrito sem fechar.
+11. **Subitem numerado com o capítulo errado:** `13.5.1` dentro do capítulo 14 — e o 14.6 aponta
+    para ele pelo mesmo número, **coerentes entre si e ambos fora do capítulo**.
+12. **Segunda e terceira ocorrências do formulário em branco:** o 14.9 e o fecho do documento
+    (*"Volta Redonda, ___ de ___________ de 2026"*).
+13. **O documento não sabe o que ele é:** um Processo Seletivo Público que se chama "Concurso
+    Público" em 4 itens do capítulo 16, "Processo Seletivo" em 3, e **os dois na mesma frase** no
+    16.3.
+
+⭐ **O pior continua sendo o capítulo 7:** 12 referências, **11 erradas**, uma delas mandando ver
+*"5.3 até 5.32"*, faixa que não existe em edital nenhum.
+
+### 🔴 As três regras que o tema fixou, e valem para qualquer rodada futura
+
+1. **Referência NUNCA se traduz, sempre se REAPONTA.** O número publicado é relido contra o artigo
+   que o texto realmente descreve. ⭐ **Dois casos provaram por quê:** o 14.5 (*"subitens 13.2 e
+   13.4"*) e o 15.4 (*"subitem 14.3"*) — nos dois, somar um capítulo produziria uma referência
+   **plausível e errada**, apontando para um artigo que não diz o que a frase promete.
+2. **Conteúdo genérico o modelo entrega pronto; conteúdo do certame vira `{{redigir:}}`.** Foi o
+   contraste entre as atribuições (28 artigos de ACS → molde de 4) e os requisitos de investidura
+   (15 íntegros, sem um único `{{redigir:}}`).
+3. **Nenhuma tabela se digita.** Lista com dono estruturado não é transcrita: vira `quadro` ou,
+   enquanto não houver fonte, instrução nomeando a tabela. ⭐ A alínea `L` do 15.8 do 004 — *"Certidão
+   Nada Consta do COREN"* exigida de Agente Comunitário de Saúde — é uma linha copiada à mão do
+   edital de Enfermagem, e é o defeito que abre o módulo.
+
+### O fluxo, e a restrição durável que ele criou
+
+```
+src/lib/edital-modelo/<chave>.ts  →  migration GERADA  →  banco  →  a UI edita
+   autoria, diff, Vitest              nascimento          dono em runtime
+```
+
+- A guarda da migration é **`NOT EXISTS` por CAPÍTULO**, nunca por edital: pelo edital, a segunda
+  rodada em diante seria no-op em qualquer banco que já tivesse o modelo.
+- O teste de sincronia confere **texto e âncora de cada artigo**, não o bloco `DO $$` — depois de
+  commitada, corrigir migration é proibido, e a correção vira migration nova com `UPDATE`.
+- 🔴 **`artigosEsperados` pegou erro de transcrição três vezes.** Quando o modelo diverge da fonte,
+  `artigosNaFonte` + `porQueDiverge` são obrigatórios **em par**.
+
+### ⚠️ Duas correções de medição feitas pelo caminho
+
+- **O total do documento é 381 elementos, não ~334:** a regex original perdia subitens sem
+  indentação (`8.4.1`) e alíneas em MAIÚSCULA. Corrigido na rodada 10; nenhuma rodada anterior
+  ficou errada.
+- **O CASO 2e da bateria reprovou uma clonagem correta na rodada 19**, porque comparava com `= 1`
+  — o único artigo que a *fixture* insere em `prova_de_titulos`. Transcrito o capítulo, passou a
+  achar 29. Virou contagem contra o modelo. É o aviso do §5 do `CLAUDE.md` acontecendo: **bateria
+  é código que só existe quando alguém a executa.**
+
+⏳ **O que sobrou está no backlog**, em entrada própria: as três tabelas sem `quadro_fonte`, as
+quatro colunas por cargo que a matriz não rende, e os valores sem coluna nenhuma.
+
+---
+
 ## ✅ CONCLUÍDO 2026-09-19 — o invite que morria calado em e-mail que já tinha conta
 
 Era a **ressalva 1** do item "admin preenche o e-mail e o colaborador se reivindica", aberto em

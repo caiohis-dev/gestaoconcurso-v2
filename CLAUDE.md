@@ -156,7 +156,7 @@ sg docker -c 'npx supabase db reset'    # aplica migrations + os 3 seeds
 **Não há CI.** Nada roda a suíte sozinho; cada tema fechado depende de alguém lembrar. É o item de maior alavancagem do backlog, adiado por decisão do usuário.
 
 ```bash
-npm test                                  # 1898 testes em 97 arquivos
+npm test                                  # 1930 testes em 97 arquivos
 npx tsc --noEmit -p tsconfig.app.json     # tem de sair limpo
 npm run build
 npm run lint                              # baseline 111 (56 erros, 55 avisos)
@@ -167,7 +167,7 @@ npm run docs:conferir                     # docs × código/banco — tem de sai
 
 ### `npm run docs:conferir` — o que ele pega, e o que não pega
 
-Extrai a verdade estrutural (580 fatos do banco + o `App.tsx`) e confere as docs vivas contra ela: **arquivo citado existe · tabela existe · identificador de banco existe · contagem bate · a matriz de rota × papéis do doc bate com o `RequireAcesso` do `App.tsx`**.
+Extrai a verdade estrutural (1.121 fatos do banco + o `App.tsx`) e confere as docs vivas contra ela: **arquivo citado existe · tabela existe · identificador de banco existe · contagem bate · a matriz de rota × papéis do doc bate com o `RequireAcesso` do `App.tsx`**.
 
 🔴 **A checagem de guards é a mais importante, e pega os DOIS sentidos** — doc que envelheceu *e* **guard removido do código**. Foi falsificada nas duas direções antes de ser aceita. Ela existe porque em 31/07 um doc afirmava que *"guard é escrito à mão, um por arquivo"* e mandava copiar o par bounce-por-login + bounce-por-papel — o padrão que já falhou **3 vezes** e que a centralização de 26/07 eliminou. **Doc errada sobre guard ensina a reabrir buraco de autorização.**
 
@@ -197,7 +197,7 @@ Aconteceu: em 02/08 a RPC `trocar_candidatos_do_edital` ganhou um 4º parâmetro
 
 ## 6. Git e produção
 
-- 🔵 **`main` está em `v3.0.0` desde 2026-09-19** (commit `ebfa19a`), e o congelamento acabou em 09/09. ⚠️ **Esta linha dizia `v2.1.0`/`f17a56f` e ficou parada por cinco releases** — v2.1.1, v2.2.0, v2.3.0, v2.4.0 e v2.5.0 subiram sem que ninguém a atualizasse. É o aviso do §1: *contagem e versão envelhecem mais rápido que o resto* — **confira a tag na hora** (`git tag --sort=-creatordate | head -1`), não acredite neste número. 🟢 **Hoje `main`, `dev` e o schema de produção coincidem** — a v2.1.0 foi a **primeira release feita pelo ritual inteiro no mesmo evento**: merge (fast-forward), tag, `prod:push`, `deploy.sh`, nessa ordem. 🔴 **Banco antes do site, sempre**: o bundle novo chamava uma RPC e uma coluna que produção ainda não tinha, e inverter a ordem quebraria as telas na cara do usuário. Esta linha dizia *"`main` está CONGELADA em `v1.0.0` até a v2 ir ao ar"*. ⚠️ Mas note a ordem real, porque ela contraria o ritual: **o site subiu em 13/08 a partir da `dev`**, com a `main` ainda parada 205 commits atrás; ela só alcançou a `dev` em 09/09, junto com o `prod:push` do keep-alive, e a tag nasceu aí. `git checkout main` segue sendo coisa de dia de subida — e mesmo nele há alternativa melhor (ver [`versionamento.md`](./my_rules/versionamento.md)).
+- 🔵 **`main` está em `v3.1.0` desde 2026-09-19** (commit `c9d1dff`), e o congelamento acabou em 09/09. ⚠️ **Esta linha dizia `v2.1.0`/`f17a56f` e ficou parada por cinco releases** — v2.1.1, v2.2.0, v2.3.0, v2.4.0 e v2.5.0 subiram sem que ninguém a atualizasse. É o aviso do §1: *contagem e versão envelhecem mais rápido que o resto* — **confira a tag na hora** (`git tag --sort=-creatordate | head -1`), não acredite neste número. 🟢 **Hoje `main`, `dev` e o schema de produção coincidem** — a v2.1.0 foi a **primeira release feita pelo ritual inteiro no mesmo evento**: merge (fast-forward), tag, `prod:push`, `deploy.sh`, nessa ordem. 🔴 **Banco antes do site, sempre**: o bundle novo chamava uma RPC e uma coluna que produção ainda não tinha, e inverter a ordem quebraria as telas na cara do usuário. Esta linha dizia *"`main` está CONGELADA em `v1.0.0` até a v2 ir ao ar"*. ⚠️ Mas note a ordem real, porque ela contraria o ritual: **o site subiu em 13/08 a partir da `dev`**, com a `main` ainda parada 205 commits atrás; ela só alcançou a `dev` em 09/09, junto com o `prod:push` do keep-alive, e a tag nasceu aí. `git checkout main` segue sendo coisa de dia de subida — e mesmo nele há alternativa melhor (ver [`versionamento.md`](./my_rules/versionamento.md)).
 - **`dev` é a branch de integração.** Branches de tema (`feat/*`, `fix/*`, `db/*`) saem de `dev` e voltam para `dev`.
 - 🔴 **Empurrar `dev` é decisão do usuário — NÃO pergunte, NÃO faça sozinho.** `dev` à frente de `origin/dev` por N commits é o estado normal de repouso, não algo a sinalizar. (Empurrar quando pedido explicitamente é normal.)
 - Commit e push só quando pedido.

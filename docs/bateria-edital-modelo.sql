@@ -169,10 +169,17 @@ BEGIN
   -- CASO 2e — ⭐ CONTROLE: o capítulo que nasce DESLIGADO também recebeu texto.
   -- Texto em capítulo desligado fica dormente e aparece quando o autor liga o capítulo. Se
   -- a clonagem "otimizar" e pular os desligados, quem ligar Prova de Títulos acha branco.
+  --
+  -- ⚠️ CONTADO CONTRA O MODELO, nunca cravado — e esta linha é a prova de por que a regra
+  -- existe. Até 2026-09-19 o caso comparava com `= 1`, o único artigo que a FIXTURE insere;
+  -- a rodada 19 transcreveu o capítulo (28 artigos) e ele passou a achar 29 e a REPROVAR uma
+  -- clonagem correta. O número certo é sempre "o que o modelo tem".
+  SELECT count(*) INTO v_no_modelo
+    FROM public.edital_itens WHERE edital_id = v_modelo AND capitulo_chave = 'prova_de_titulos';
   SELECT count(*) INTO v_n
     FROM public.edital_itens WHERE edital_id = v_destino AND capitulo_chave = 'prova_de_titulos';
-  RAISE NOTICE 'CASO 2e (capítulo desligado tem texto) %  %', v_n,
-    CASE WHEN v_n = 1 THEN 'OK — dormente, não ausente' ELSE '🔴 FALHOU' END;
+  RAISE NOTICE 'CASO 2e (capítulo desligado tem texto) % de %  %', v_n, v_no_modelo,
+    CASE WHEN v_n = v_no_modelo AND v_n > 0 THEN 'OK — dormente, não ausente' ELSE '🔴 FALHOU' END;
 
   -- CASO 3 — EM002: segunda aplicação TOTAL é recusada.
   BEGIN

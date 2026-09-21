@@ -63,8 +63,8 @@ O **edital** é o **documento normativo do certame**, montado por capítulos den
 | `src/components/FaixaDoModeloPadrao.tsx` | 🔵 **2026-09-18** — os três estados da faixa do modelo |
 | `supabase/migrations/20260918183433_editais_modelo_padrao_e_clonagem.sql` | 🔵 **2026-09-18** — o modelo, os 2 triggers e a RPC de clonagem |
 | `src/lib/edital-modelo/tipos.ts` · `index.ts` | 🔵 **rodada 2** — a espinha do texto do modelo: tipos, índice, `sqlDoCapitulo` |
-| `src/lib/edital-modelo/<chave>.ts` | 🔵 **uma por rodada** — o texto daquele capítulo, autorado em TS |
-| `supabase/migrations/…_modelo_edital_<chave>.sql` | 🔵 **uma por rodada** — GERADA do arquivo acima |
+| `src/lib/edital-modelo/<chave>.ts` | 🟢 **19 arquivos, um por capítulo** — o texto do modelo, autorado em TS. Completo em 2026-09-19 |
+| `supabase/migrations/…_modelo_edital_<chave>.sql` | 🟢 **uma por rodada, 18 no total** — GERADAS dos arquivos acima; a última traz `prova_de_titulos` e `anexos` juntos |
 
 Não há Edge Function nem view neste módulo: é CRUD direto via PostgREST, contido pela RLS. 🔵 **Nem RPC** — e isso foi decidido na implementação, contra o que o roadmap previa: ver "A linha de capítulo é um override" abaixo.
 
@@ -198,8 +198,11 @@ já editou pela tela**. O CASO 10b da bateria prova a idempotência.
 teste que pega artigo **omitido** na transcrição — o linter fica contente, a numeração segue
 coerente, e o capítulo sai com um artigo a menos do que o edital real tem.
 
-⏳ **`ANCORAS_PENDENTES` é burn-down**, não lista de exceções: âncora consumida cujo capítulo
-dono ainda não foi transcrito entra ali, e a rodada final exige a lista vazia.
+🟢 **`ANCORAS_PENDENTES` está VAZIA desde a rodada 19**, e o teste passou a exigir isso
+(`toHaveLength(0)`). Ela era burn-down, não lista de exceções: âncora consumida cujo capítulo dono
+ainda não fora transcrito entrava ali. ⚠️ **Ela continua existindo e continua valendo** — se
+alguém acrescentar capítulo ao catálogo, é lá que uma âncora sem dono espera, e o teste volta a
+ser o portão.
 
 ### 🔵 O QUARTO marcador: `{{redigir:}}` (rodada 3)
 
@@ -226,6 +229,130 @@ instrução**. É o `[ ]` com a única coisa que lhe faltava.
 ⚠️ **Não confundir com `{{campo:}}`:** campo é dado que o sistema tem e injeta; `redigir` é
 prosa que só uma pessoa escreve, e que o modelo não tem como adivinhar. A resolução do Studio
 passou a ter **quatro** passos: capítulo → item → campo → redigir.
+
+### 🟢 Rodadas 17 a 19 — o MODELO ESTÁ COMPLETO (2026-09-19)
+
+**19 capítulos, 377 artigos, versão `1.0`.** O catálogo inteiro tem texto, os dois condicionais
+incluídos — `distribuicao_geografica` e `prova_de_titulos` nascem desligados e **ligáveis**, com
+texto dormente esperando.
+
+| rodada | capítulo | artigos |
+|---|---|---|
+| 17 | `investidura_e_posse` | **10** contra 21 na fonte |
+| 18 | `disposicoes_gerais` | 17 |
+| 19 | `prova_de_titulos` (do Edital **002**) + `anexos` | 28 + 6 |
+
+#### 🔴 A divergência da rodada 17 é a mais importante do tema
+
+As 12 alíneas do item 15.8 são a lista de `documentos_investidura` — que tem dono estruturado
+desde a fatia 8, com trigger `IN001`. **Transcrevê-las criaria a segunda fonte que produziu o
+defeito de abertura deste módulo:** a alínea `L` do Edital 004 exige *"Certidão Nada Consta do
+COREN"* de Agente Comunitário de Saúde, e o medido é que o Edital 003 (Enfermagem) tem **dois**
+documentos de COREN — o 004 herdou só o segundo, com o mesmo texto entre parênteses. Uma linha
+copiada à mão entre documentos.
+
+O modelo leva **um** artigo de instrução, nomeando a tabela. É a mesma decisão da ordem de
+desempate (rodada 16) e da lista de taxas (rodada 8), e as três viraram **uma pendência só** no
+backlog: tabela com dono que o documento ainda não sabe renderizar.
+
+#### 🔴 O décimo terceiro defeito: o documento não sabe o que ele é
+
+O Edital 004 é um **Processo Seletivo Público**. No capítulo 16 ele se chama *"Concurso Público"*
+em quatro itens, *"Processo Seletivo"* em três, e **os dois na mesma frase** no 16.3:
+
+> *"O **Concurso Público** contará com um Cadastro de Reserva … dentro da validade deste
+> **Processo**."*
+
+Somando o capítulo 15, são **dez ocorrências e duas naturezas no mesmo documento**.
+`{{campo:natureza_juridica}}` faz a escolha desaparecer: o valor vem da coluna que a tela usa para
+tudo, e não há como o documento discordar de si mesmo.
+
+#### ⭐ E o segundo caso que prova a regra de reapontar
+
+O 15.4 diz *"conforme subitem 14.1 e estipulado no subitem **14.3**"*. Somar um capítulo daria
+15.3 — que é *"a escolha de vagas obedecerá à ordem de classificação"* e **não estipula prazo
+nenhum**. Quem estipula o prazo de apresentação é o **15.5**. Com o 14.5 da rodada anterior, são
+dois pontos em que a tradução literal produziria uma referência plausível e errada.
+
+#### `anexos` — o fecho, e a quinta fonte de quadro
+
+Não é numerado, como o preâmbulo: **nenhum artigo é `item`**, só `prosa` e `quadro`. O cronograma
+entra por `quadro_fonte: 'cronograma'` — a **última das cinco fontes** a ser usada, e com ela o
+modelo exercita todas. Nenhum artigo cita número de anexo.
+
+⚠️ **O fecho do 004 publicado traz *"Volta Redonda, ___ de ___________ de 2026"*** — a **terceira**
+ocorrência de formulário em branco no mesmo documento, depois do 12.4 e do 14.9. Aqui a data vem de
+`editais.data_publicacao`, e os três campos que a rodada 0 criou (`data_publicacao`,
+`signatario_nome`, `signatario_cargo`) finalmente têm casa.
+
+#### 🔴 Os dois portões de fechamento, e o que a bateria pegou
+
+O teste de `ANCORAS_PENDENTES` virou `toHaveLength(0)`, como prometido desde a rodada 2, e entrou
+o caso que confere que **os 19 capítulos do catálogo têm texto** — `artigosEsperados` pega artigo
+omitido dentro de um capítulo; só este pega o capítulo inteiro que ninguém transcreveu.
+
+⚠️ **E o CASO 2e da bateria reprovou uma clonagem CORRETA.** Ele comparava com `= 1`, o único
+artigo que a *fixture* insere em `prova_de_titulos`; transcrito o capítulo, passou a achar 29.
+Virou contagem contra o modelo, que é a regra que a própria bateria já enunciava para o CASO 2 —
+**"contado, nunca cravado"**. É o aviso do §5 do `CLAUDE.md` em ato: bateria é código que só
+existe quando alguém a executa.
+
+### 🔵 Rodadas 15 e 16 — a numeração erra o CAPÍTULO, e uma referência que não se desloca
+
+**Rodada 15 — `recursos_prova_objetiva`:** 35 artigos. **Rodada 16 — `desempate_e_resultado`:**
+19. Nenhuma das duas diverge da fonte.
+
+#### 🔴 O décimo primeiro defeito: um subitem numerado com o CAPÍTULO ERRADO
+
+Dentro do capítulo 14, entre o 14.5 e o 14.6, há um subitem escrito **`13.5.1`**. Não é
+referência a outro capítulo — é o **número do próprio subitem**, que pertence ao 14.5. O capítulo
+11 já numerava `11.8.1` um subitem do 11.10; aqui o erro subiu um nível e trocou o capítulo.
+
+⭐ **E o 14.6 aponta para ele pelo mesmo número errado** (*"o 4º quesito do subitem 13.5.1"*).
+Referência e alvo ficam **consistentes entre si e ambos errados** — um documento que se
+contradiz é detectável; este é coerente e aponta para fora do capítulo.
+
+#### 🔴 O décimo segundo: o 14.9 publica o formulário em branco, como o 12.4
+
+*"O Resultado Final será divulgado no dia **xx**…"*, com o negrito abrindo no meio da data. É a
+**segunda** ocorrência da mesma falha no mesmo documento — a primeira é o 12.4, da rodada 14. Nas
+duas, a data passa a vir do cronograma.
+
+#### ⭐ E o caso que prova por que referência se RELÊ, nunca se traduz
+
+As referências deslocadas das duas rodadas seguem o padrão de somar um capítulo — 13.7 → 13.6,
+13.8 → 13.2 a 13.6, 13.20 → 13.17 a 13.19, 14.3.1 → 14.3, 14.4 → 14.2, 14.6 → 14.5.1 —, **menos
+uma**:
+
+> 14.5: *"Após aferido o critério de desempate previsto nos subitens **13.2 e 13.4**"*
+
+O deslocamento literal daria 14.2 e **14.4**. Mas o 14.4 não é critério: é a regra do empate
+**entre** idosos. Os critérios aferidos são a idade (14.2) e o jurado (14.3) — e é para lá que o
+modelo aponta. **Traduzir número a número teria produzido uma referência plausível e errada**, que
+é exatamente o defeito que o tema existe para não reproduzir.
+
+🔴 **O 13.8 é o mais grave dos deslocados:** manda *"indeferir os recursos dos candidatos que não
+cumprirem os itens 12.2 a 12.6"* — e, pelo número publicado, esses itens não falam de recurso
+nenhum (são o local da prova e o documento digital).
+
+#### O e-mail da vista é o único valor que o teste PROÍBE como literal
+
+A regra *"nenhum LITERAL que devia ser marcador"* casa endereço de e-mail, e aqui ela tem motivo
+de banco: `regras_vista_prova.email_solicitacao` já guarda esse endereço, e o linter o cruza com
+os canais de inscrição (`email-da-vista-fora-dos-canais`). Literal no texto, **o documento
+publicaria um endereço e o sistema conferiria outro**. O interstício de 72 horas veio junto, de
+`intersticio_minimo_horas`.
+
+⚠️ **E isso mexeu no `isLoading` de `useInscricao`:** a consulta de `regras_vista_prova` estava
+fora dele, porque só servia ao linter. Virando campo, ficar fora significaria montar o mapa antes
+de a consulta voltar — o capítulo 13 sairia com `[?campo:email_vista_folha]` no primeiro frame, que
+é a armadilha "vazio enquanto carrega".
+
+⏳ **A ordem de desempate por disciplina ficou como `{{redigir:}}`**, nomeando `criterios_desempate`:
+a lista existe no banco e difere de verdade entre os três editais, mas **não há `quadro_fonte` para
+ela**, e fonte nova exige fatia nova. É a quinta pendência do backlog. ⚠️ Já a **hora de nascimento
+de 23h59min59s fica literal por decisão registrada** — o dado o sistema não tem, e o parâmetro é
+idêntico nos três editais.
 
 ### 🔵 Rodadas 13 e 14 — o NONO e o DÉCIMO defeitos, e o limite do `{{campo:}}`
 

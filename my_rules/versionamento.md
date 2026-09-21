@@ -68,6 +68,10 @@ Versionamento semântico, com prefixo `v`:
 
   ⚠️ **Subiu sem backup novo**, por decisão do usuário; o mais recente era o de 16/09. Fica registrado porque o Free não tem backup automático nenhum.
 
+- **`v3.1.0` nasceu em 2026-09-19**, no commit `c9d1dff`, poucas horas depois da v3.0.0. Entregou o **autosserviço de e-mail** (o colaborador sem `colab_email` informa o próprio — 🔴 **sem prova de posse, dívida assumida**, ver `analises/dividas-auth-colaborador.md` §5), o conserto de **três becos sem saída** da rota de acesso e as rodadas 13–14 do edital padrão. MINOR: tudo aditivo.
+
+  🔴 **A ordem teve um degrau a mais que as anteriores: banco → EDGE FUNCTIONS → site.** O bundle novo posta em `incluir-email-cadastro`, que **nasceu nesta release**; publicar o site antes da EF daria 404 no formulário, e publicar a EF antes da migration a faria quebrar na RPC. Medido antes e depois: `log_email_autoinformado` ia de **PGRST205** para **42501**, e as duas funções novas respondem `permission denied` ao `anon` — o `REVOKE` pegou.
+
 Crie a tag no commit que efetivamente entrega a versão, com mensagem: `git tag -a v2.1.0 -m "..."`.
 
 **A tag é o gatilho do banco de produção.** Combinado em 2026-07-12: o banco de produção só é atualizado em **versões estáveis** — nunca a cada migration ou a cada merge. Entre releases, as migrations se acumulam em **`dev`** e o schema de produção fica deliberadamente atrás do local. Por isso **código e migration da mesma versão sobem juntos**: nunca publique o frontend de uma versão cujo schema ainda não subiu. O roteiro está em [`banco-producao.md`](./banco-producao.md).

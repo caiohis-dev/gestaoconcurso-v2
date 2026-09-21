@@ -258,6 +258,26 @@ const CAMPOS_DO_EDITAL: readonly CampoCatalogo[] = [
     ondeSePreenche: "condicoes_especiais_prova",
   },
   {
+    // ── 🔵 Rodada 15 — os dois da vista da folha de respostas ──────────────────────────
+    //
+    // 🔴 O e-mail é o único valor do modelo que o teste PROÍBE como literal (a regex de
+    // `nenhum LITERAL que devia ser marcador` pega e-mail). E ele já tinha coluna: é o mesmo
+    // valor que o linter cruza com os canais de inscrição, pela regra
+    // `email-da-vista-fora-dos-canais`.
+    chave: "email_vista_folha",
+    rotulo: "E-mail para pedir vista da folha de respostas",
+    formato: "texto",
+    fonte: "regras_vista_prova.email_solicitacao",
+    ondeSePreenche: "recursos_prova_objetiva",
+  },
+  {
+    chave: "intersticio_vista_horas",
+    rotulo: "Interstício mínimo da vista (horas úteis)",
+    formato: "inteiro",
+    fonte: "regras_vista_prova.intersticio_minimo_horas",
+    ondeSePreenche: "recursos_prova_objetiva",
+  },
+  {
     // 🔴 **O único campo do catálogo que NÃO tem coluna, e é o mais importante dos três.**
     // A data de corte é DERIVADA da etapa `prova_objetiva` menos a idade máxima — não se
     // persiste, senão envelhece calada quando a prova muda de dia. É o conserto de um defeito

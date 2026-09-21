@@ -90,14 +90,21 @@ export function useInscricao(editalId: string | undefined) {
    * ⚠️ O e-mail que a fatia 5 guarda em `regras_vista_prova`, lido aqui SÓ para o linter
    * poder cruzar. Ver a regra `email-da-vista-fora-dos-canais` — é a mitigação do R1, que
    * se materializou quando a fatia 5 veio antes desta.
+   *
+   * 🔵 **Desde a rodada 15 (2026-09-19) ele também alimenta `{{campo:email_vista_folha}}`**, e
+   * o interstício veio junto: os dois aparecem no texto do capítulo 13, e o e-mail é o único
+   * valor do modelo que o teste do modelo **proíbe** como literal.
    */
-  const emailDaVista = useQuery({
+  const regrasDaVista = useQuery({
     queryKey: ["regras_vista_prova", editalId, "email"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("regras_vista_prova").select("email_solicitacao").eq("edital_id", editalId!).maybeSingle();
+        .from("regras_vista_prova")
+        .select("email_solicitacao, intersticio_minimo_horas")
+        .eq("edital_id", editalId!)
+        .maybeSingle();
       if (error) throw error;
-      return data?.email_solicitacao ?? null;
+      return data ?? null;
     },
     enabled: !!editalId,
   });
@@ -160,8 +167,12 @@ export function useInscricao(editalId: string | undefined) {
     criterios: criterios.data ?? [],
     canais: canais.data ?? [],
     config: config.data ?? null,
-    emailDaVistaDeProva: emailDaVista.data ?? null,
-    isLoading: criterios.isLoading || canais.isLoading || config.isLoading,
+    emailDaVistaDeProva: regrasDaVista.data?.email_solicitacao ?? null,
+    intersticioDaVistaHoras: regrasDaVista.data?.intersticio_minimo_horas ?? null,
+    // 🔴 `regrasDaVista` ENTROU nesta conta com a rodada 15, e a razão é a armadilha "vazio
+    // enquanto carrega": sem ela, `useCamposDoEdital` montaria o mapa antes de a consulta
+    // voltar e o capítulo 13 sairia com `[?campo:email_vista_folha]` no primeiro frame.
+    isLoading: criterios.isLoading || canais.isLoading || config.isLoading || regrasDaVista.isLoading,
     salvarCriterio: salvarCriterio.mutate,
     removerCriterio: removerCriterio.mutate,
     salvarCanal: salvarCanal.mutate,
