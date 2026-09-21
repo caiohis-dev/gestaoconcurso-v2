@@ -68,6 +68,14 @@ Versionamento semântico, com prefixo `v`:
 
   ⚠️ **Subiu sem backup novo**, por decisão do usuário; o mais recente era o de 16/09. Fica registrado porque o Free não tem backup automático nenhum.
 
+- **`v3.2.0` nasceu em 2026-09-20**, no commit `f6136f4`. Entregou o **edital padrão COMPLETO** (rodadas 15 a 19 — 19 capítulos, 377 artigos) e o conserto do **"Último Acesso"**, que estava sem escritor desde 15/07 e descrevia errado **263 de 263** pessoas em produção. MINOR: tudo aditivo.
+
+  🔵 **Release de BANCO apenas — o site NÃO subiu, e isso é correto aqui.** O conserto do carimbo é inteiramente de banco (um gatilho), e o bundle publicado já lê a coluna. As 5 migrations do edital são conteúdo do edital-modelo, e o front que as consome subiu na v3.0.0. Fica o banco à frente do site, que é **a ordem segura** — o inverso é que quebra tela na cara do usuário.
+
+  ⚠️ **A árvore tinha 8 arquivos soltos de outras sessões** (notas, um symlink para `seguranca/`, um roadmap de monitoramento). A `main` foi avançada com `git fetch . dev:main`, **sem checkout** — o truque de 09/09, registrado mais abaixo. Nada foi commitado por engano.
+
+  🔴 **O symlink `my_rules/seguranca` → `../seguranca` NÃO é pego pelo `.gitignore`** (a regra é `seguranca/`, e o symlink não tem barra). Um `git add .` comitaria notas de pentest. Adicione arquivo por arquivo, sempre.
+
 - **`v3.1.0` nasceu em 2026-09-19**, no commit `c9d1dff`, poucas horas depois da v3.0.0. Entregou o **autosserviço de e-mail** (o colaborador sem `colab_email` informa o próprio — 🔴 **sem prova de posse, dívida assumida**, ver `analises/dividas-auth-colaborador.md` §5), o conserto de **três becos sem saída** da rota de acesso e as rodadas 13–14 do edital padrão. MINOR: tudo aditivo.
 
   🔴 **A ordem teve um degrau a mais que as anteriores: banco → EDGE FUNCTIONS → site.** O bundle novo posta em `incluir-email-cadastro`, que **nasceu nesta release**; publicar o site antes da EF daria 404 no formulário, e publicar a EF antes da migration a faria quebrar na RPC. Medido antes e depois: `log_email_autoinformado` ia de **PGRST205** para **42501**, e as duas funções novas respondem `permission denied` ao `anon` — o `REVOKE` pegou.
