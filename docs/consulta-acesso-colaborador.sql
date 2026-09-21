@@ -183,3 +183,40 @@ WHERE u.email_confirmed_at IS NOT NULL
   AND u.last_sign_in_at IS NOT NULL
   AND u.last_sign_in_at - u.email_confirmed_at < interval '1 second'
 ORDER BY u.email_confirmed_at DESC;
+
+
+-- =============================================================================
+-- BLOCO 6 — A TRILHA DE ENVIO (migration 20260921005259) — FONTE DIRETA
+-- =============================================================================
+-- Tudo acima INFERE "o e-mail saiu?" dos carimbos do GoTrue — que existem por sorte,
+-- não por desenho nosso, e só respondem para quem JÁ tem conta no Auth. A partir de
+-- 2026-09-20, `log_envio_link_acesso` responde DIRETO, para toda tentativa de envio
+-- (sucesso ou falha), disparada por qualquer uma das 5 portas.
+--
+-- ⚠️ SÓ VALE DAQUI PARA FRENTE. Não houve backfill (mesma decisão do carimbo de
+-- último acesso) — envios de antes de 20/09 não aparecem aqui.
+
+\echo ''
+\echo '--- 6.1 Por pessoa: todo envio já tentado para este e-mail ---'
+WITH alvo AS (SELECT 'COLE-AQUI-O-EMAIL'::text AS busca)
+SELECT l.criado_em, l.origem, l.tipo_usado, l.sucesso, l.motivo_falha
+FROM alvo a
+JOIN public.log_envio_link_acesso l ON lower(trim(l.email)) = lower(trim(a.busca))
+ORDER BY l.criado_em DESC;
+
+\echo ''
+\echo '--- 6.2 Falhas de envio, as mais recentes — hoje só existiam em console.error ---'
+SELECT criado_em, origem, email, tipo_usado, motivo_falha
+FROM public.log_envio_link_acesso
+WHERE sucesso = false
+ORDER BY criado_em DESC
+LIMIT 50;
+
+\echo ''
+\echo '--- 6.3 Volume por porta e por resultado, desde que a trilha existe ---'
+SELECT origem,
+       count(*) FILTER (WHERE sucesso)       AS sucesso,
+       count(*) FILTER (WHERE NOT sucesso)   AS falha
+FROM public.log_envio_link_acesso
+GROUP BY origem
+ORDER BY origem;

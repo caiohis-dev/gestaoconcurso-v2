@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
     if (!user) {
       const { data: colabA } = await supabase
         .from('colaboradores')
-        .select('colab_nome_completo')
+        .select('id, colab_nome_completo')
         .ilike('colab_email', email)
         .is('user_id', null)
         .maybeSingle();
@@ -121,6 +121,8 @@ Deno.serve(async (req) => {
         nome: (colabA.colab_nome_completo as string | undefined) ?? '',
         tipo: 'invite',
         contexto: 'primeiro-acesso',
+        origem: 'recuperar-senha',
+        colaboradorId: colabA.id as string,
       });
       if (!okInvite) console.error('recuperar-senha: invite falhou para cadastro em estado A');
 
@@ -151,7 +153,7 @@ Deno.serve(async (req) => {
     // (admin/coordenador não têm linha em colaboradores), daí o fallback do helper.
     const { data: colab } = await supabase
       .from('colaboradores')
-      .select('colab_nome_completo')
+      .select('id, colab_nome_completo')
       .ilike('colab_email', email)
       .maybeSingle();
 
@@ -160,6 +162,8 @@ Deno.serve(async (req) => {
       nome: (colab?.colab_nome_completo as string | undefined) ?? '',
       tipo: 'recovery',
       contexto: 'redefinir',
+      origem: 'recuperar-senha',
+      colaboradorId: colab?.id as string | undefined,
     });
 
     // Falha de envio não vira erro visível: diria que a conta existe. Fica no log.

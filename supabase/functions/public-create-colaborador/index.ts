@@ -133,6 +133,8 @@ Deno.serve(async (req) => {
       await enviarLinkAcesso(supabase, {
         email: data.colab_email as string,
         nome: data.colab_nome_completo as string,
+        origem: 'public-create-colaborador',
+        colaboradorId: data.id as string,
       }),
     );
 

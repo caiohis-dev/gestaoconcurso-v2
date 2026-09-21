@@ -134,7 +134,12 @@ Deno.serve(async (req) => {
     registrarFalhaDeEnvio(
       'reivindicar-acesso',
       `cadastro ${colab.id}`,
-      await enviarLinkAcesso(supabase, { email, nome: colab.colab_nome_completo as string }),
+      await enviarLinkAcesso(supabase, {
+        email,
+        nome: colab.colab_nome_completo as string,
+        origem: 'reivindicar-acesso',
+        colaboradorId: colab.id as string,
+      }),
     );
 
     return jsonResp({ existe: true, ja_vinculado: false, email_mascarado: mascararEmail(email) });

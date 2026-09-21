@@ -261,6 +261,8 @@ Deno.serve(async (req) => {
       email,
       nome: (colab.colab_nome_completo as string) ?? '',
       tipo: 'recovery',
+      origem: 'corrigir-email-acesso',
+      colaboradorId: colaborador_id as string,
     });
 
     if (!ok) {

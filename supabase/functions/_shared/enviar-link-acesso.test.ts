@@ -31,10 +31,22 @@ function fetchDeAuth(emails: string[], opts?: { falha?: boolean }): typeof fetch
 
 type Chamada = { type: string; email: string };
 
-/** Dublê do supabase.auth.admin.generateLink, guardando o que foi pedido. */
+type LinhaTrilha = Record<string, unknown>;
+
+/**
+ * Dublê do supabase.auth.admin.generateLink + do `.from('log_envio_link_acesso')`
+ * que `registrarTrilhaDeEnvio` passou a chamar. `trilha`, se passado, recebe cada
+ * linha inserida — é o que os testes novos usam para conferir o que foi gravado.
+ * `trilhaFalha` simula o INSERT falhando (RLS, conexão), para provar que o helper
+ * segue best-effort mesmo aí.
+ */
 function clienteDuble(
   chamadas: Chamada[],
-  opts?: { recusaInviteComoExistente?: boolean },
+  opts?: {
+    recusaInviteComoExistente?: boolean;
+    trilha?: LinhaTrilha[];
+    trilhaFalha?: boolean;
+  },
 ) {
   return {
     auth: {
@@ -54,6 +66,18 @@ function clienteDuble(
         },
       },
     },
+    from: (tabela: string) => ({
+      insert: (linha: LinhaTrilha) => {
+        if (tabela !== "log_envio_link_acesso") {
+          throw new Error(`dublê não implementa .from('${tabela}')`);
+        }
+        if (opts?.trilhaFalha) {
+          return Promise.resolve({ error: { message: "RLS recusou o insert (dublê)" } });
+        }
+        opts?.trilha?.push(linha);
+        return Promise.resolve({ error: null });
+      },
+    }),
     // O dublê implementa só o que o helper usa; o cast atravessa o tipo do cliente
     // real sem trazer `any` para o projeto.
   } as unknown as Parameters<typeof enviarLinkAcesso>[0];
@@ -105,6 +129,7 @@ Deno.test("enviarLinkAcesso: sem tipo, e-mail SEM conta → invite", async () =>
   const r = await enviarLinkAcesso(clienteDuble(chamadas), {
     email: "novo@x.com",
     nome: "Fulano",
+    origem: "teste",
     fetchImpl: fetchDeAuth([]),
   });
   assertEquals(r.ok, true);
@@ -119,6 +144,7 @@ Deno.test("enviarLinkAcesso: sem tipo, e-mail que JÁ tem conta → recovery", a
   const r = await enviarLinkAcesso(clienteDuble(chamadas), {
     email: "tem@conta.com",
     nome: "Fulano",
+    origem: "teste",
     fetchImpl: fetchDeAuth(["tem@conta.com"]),
   });
   assertEquals(r.ok, true);
@@ -132,7 +158,7 @@ Deno.test("enviarLinkAcesso: invite recusado com email_exists é REPETIDO como r
   const chamadas: Chamada[] = [];
   const r = await enviarLinkAcesso(
     clienteDuble(chamadas, { recusaInviteComoExistente: true }),
-    { email: "corrida@x.com", nome: "Fulano", fetchImpl: fetchDeAuth([]) },
+    { email: "corrida@x.com", nome: "Fulano", origem: "teste", fetchImpl: fetchDeAuth([]) },
   );
   assertEquals(r.ok, true);
   assertEquals(r.tipoUsado, "recovery");
@@ -154,6 +180,7 @@ Deno.test("enviarLinkAcesso: tipo EXPLÍCITO não consulta o Auth", async () => 
     nome: "Fulano",
     tipo: "recovery",
     contexto: "redefinir",
+    origem: "teste",
     fetchImpl,
   });
   assertEquals(r.ok, true);
@@ -172,9 +199,103 @@ Deno.test("enviarLinkAcesso: send-email que falha devolve ok=false COM motivo", 
   const r = await enviarLinkAcesso(clienteDuble(chamadas), {
     email: "novo@x.com",
     nome: "Fulano",
+    origem: "teste",
     fetchImpl,
   });
   assertEquals(r.ok, false);
   assertEquals(r.tipoUsado, "invite");
   assertEquals(r.motivo, "smtp caiu");
+});
+
+// --- a trilha (migration 20260921005259) -------------------------------------
+
+Deno.test("enviarLinkAcesso: sucesso grava UMA linha na trilha, com os campos certos", async () => {
+  const chamadas: Chamada[] = [];
+  const trilha: Record<string, unknown>[] = [];
+  const r = await enviarLinkAcesso(clienteDuble(chamadas, { trilha }), {
+    email: "novo@x.com",
+    nome: "Fulano de Tal",
+    origem: "reivindicar-acesso",
+    colaboradorId: "11111111-1111-1111-1111-111111111111",
+    fetchImpl: fetchDeAuth([]),
+  });
+  assertEquals(r.ok, true);
+  assertEquals(trilha.length, 1);
+  assertEquals(trilha[0], {
+    colaborador_id: "11111111-1111-1111-1111-111111111111",
+    colab_nome: "Fulano de Tal",
+    email: "novo@x.com",
+    origem: "reivindicar-acesso",
+    tipo_usado: "invite",
+    sucesso: true,
+    motivo_falha: null,
+  });
+});
+
+Deno.test("enviarLinkAcesso: falha do generateLink grava sucesso=false COM o motivo", async () => {
+  // Dublê que sempre recusa o generateLink, para exercitar o primeiro `finalizar`.
+  const trilha: Record<string, unknown>[] = [];
+  const clienteQueRecusaOLink = {
+    auth: {
+      admin: {
+        generateLink: () =>
+          Promise.resolve({ data: null, error: { message: "boom no Auth" } }),
+      },
+    },
+    from: (tabela: string) => ({
+      insert: (linha: Record<string, unknown>) => {
+        assertEquals(tabela, "log_envio_link_acesso");
+        trilha.push(linha);
+        return Promise.resolve({ error: null });
+      },
+    }),
+  } as unknown as Parameters<typeof enviarLinkAcesso>[0];
+
+  const r = await enviarLinkAcesso(clienteQueRecusaOLink, {
+    email: "recusa@x.com",
+    nome: "Fulano",
+    origem: "public-create-colaborador",
+    fetchImpl: fetchDeAuth([]),
+  });
+  assertEquals(r.ok, false);
+  assertEquals(trilha.length, 1);
+  assertEquals(trilha[0].sucesso, false);
+  assertEquals(trilha[0].motivo_falha, "boom no Auth");
+  // Sem colaboradorId no chamador: grava NULL, não string vazia nem "undefined".
+  assertEquals(trilha[0].colaborador_id, null);
+});
+
+Deno.test("enviarLinkAcesso: falha do send-email grava sucesso=false COM o motivo", async () => {
+  const trilha: Record<string, unknown>[] = [];
+  const chamadas: Chamada[] = [];
+  const fetchImpl = ((url: string | URL | Request) => {
+    if (String(url).includes("/auth/v1/admin/users")) return Promise.resolve(Response.json({ users: [] }));
+    return Promise.resolve(new Response("smtp caiu de novo", { status: 500 }));
+  }) as typeof fetch;
+
+  const r = await enviarLinkAcesso(clienteDuble(chamadas, { trilha }), {
+    email: "novo2@x.com",
+    nome: "Fulano",
+    origem: "incluir-email-cadastro",
+    fetchImpl,
+  });
+  assertEquals(r.ok, false);
+  assertEquals(trilha.length, 1);
+  assertEquals(trilha[0].sucesso, false);
+  assertEquals(trilha[0].motivo_falha, "smtp caiu de novo");
+  assertEquals(trilha[0].tipo_usado, "invite");
+});
+
+Deno.test("enviarLinkAcesso: INSERT da trilha falhando NÃO derruba o envio real", async () => {
+  // 🔴 É o contrato do módulo inteiro: a trilha é best-effort. Se ela quebrar (RLS,
+  // conexão), quem pediu o e-mail continua recebendo — só o console.error registra.
+  const chamadas: Chamada[] = [];
+  const r = await enviarLinkAcesso(clienteDuble(chamadas, { trilhaFalha: true }), {
+    email: "resiliente@x.com",
+    nome: "Fulano",
+    origem: "reivindicar-acesso",
+    fetchImpl: fetchDeAuth([]),
+  });
+  assertEquals(r.ok, true);
+  assertEquals(r.tipoUsado, "invite");
 });

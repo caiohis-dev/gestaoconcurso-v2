@@ -169,11 +169,57 @@ export function registrarFalhaDeEnvio(
   );
 }
 
+/**
+ * Grava a trilha de envio (migration 20260921005259). NUM SÓ PONTO — dentro deste
+ * módulo, não em cada chamador — pela mesma razão de `registrarFalhaDeEnvio`: um
+ * `{ ok }` esquecido por um chamador já escondeu um defeito real por meses.
+ *
+ * ⚠️ BEST-EFFORT, NUNCA LANÇA. A escrita da trilha não pode derrubar o envio real —
+ * mesmo contrato de não-lançar do resto deste módulo. Se o INSERT falhar (RLS,
+ * conexão, o que for), fica só o `console.error`; o chamador nunca sabe.
+ */
+async function registrarTrilhaDeEnvio(
+  supabase: SupabaseClient,
+  row: {
+    colaboradorId?: string;
+    colabNome?: string;
+    email: string;
+    origem: string;
+    tipoUsado: TipoLink;
+    sucesso: boolean;
+    motivo?: string;
+  },
+): Promise<void> {
+  try {
+    const { error } = await supabase.from('log_envio_link_acesso').insert({
+      colaborador_id: row.colaboradorId ?? null,
+      colab_nome: row.colabNome ?? null,
+      email: row.email,
+      origem: row.origem,
+      tipo_usado: row.tipoUsado,
+      sucesso: row.sucesso,
+      motivo_falha: row.sucesso ? null : (row.motivo ?? null),
+    });
+    if (error) {
+      console.error('enviar-link-acesso: falha ao gravar a trilha de envio:', error.message);
+    }
+  } catch (e) {
+    console.error('enviar-link-acesso: exceção ao gravar a trilha de envio:', (e as Error).message);
+  }
+}
+
 export async function enviarLinkAcesso(
   supabase: SupabaseClient,
   params: {
     email: string;
     nome: string;
+    // De qual porta veio a chamada — vira `origem` na trilha. Obrigatório de
+    // propósito: sem ele, a linha gravada não diz quem disparou.
+    origem: string;
+    // Quando o chamador já tem a linha de `colaboradores` (a maioria tem). Fica de
+    // fora só quando a conta é de gestão pura (admin/coordenador sem colaborador) —
+    // ver o comentário da migration sobre por que a coluna é nullable.
+    colaboradorId?: string;
     tipo?: TipoLink | 'auto';
     contexto?: Contexto;
     fetchImpl?: FetchLike;
@@ -182,6 +228,24 @@ export async function enviarLinkAcesso(
   const siteUrl = Deno.env.get('SITE_URL') ?? 'http://127.0.0.1:8080';
   const doFetch = params.fetchImpl ?? fetch;
   const pedido = params.tipo ?? 'auto';
+
+  // Todo retorno passa por aqui — é o que garante UMA gravação por chamada, em
+  // qualquer um dos três desfechos possíveis (generateLink falhou, send-email falhou,
+  // ou deu certo), sem repetir o INSERT em cada `return`.
+  const finalizar = async (
+    resultado: { ok: boolean; tipoUsado: TipoLink; motivo?: string },
+  ) => {
+    await registrarTrilhaDeEnvio(supabase, {
+      colaboradorId: params.colaboradorId,
+      colabNome: params.nome,
+      email: params.email,
+      origem: params.origem,
+      tipoUsado: resultado.tipoUsado,
+      sucesso: resultado.ok,
+      motivo: resultado.motivo,
+    });
+    return resultado;
+  };
 
   const escolhido: TipoLink = pedido === 'auto'
     ? escolherTipoLink(await buscarContaPorEmail(params.email, { fetchImpl: doFetch }))
@@ -196,7 +260,7 @@ export async function enviarLinkAcesso(
 
   if (linkErr || !linkData?.properties?.action_link) {
     console.error('generateLink falhou:', linkErr?.message);
-    return { ok: false, tipoUsado: tipo, motivo: linkErr?.message ?? 'link vazio' };
+    return finalizar({ ok: false, tipoUsado: tipo, motivo: linkErr?.message ?? 'link vazio' });
   }
 
   const contexto = params.contexto ?? 'primeiro-acesso';
@@ -219,7 +283,7 @@ export async function enviarLinkAcesso(
   if (!sendResp.ok) {
     const texto = await sendResp.text();
     console.error('send-email falhou:', texto);
-    return { ok: false, tipoUsado: tipo, motivo: texto };
+    return finalizar({ ok: false, tipoUsado: tipo, motivo: texto });
   }
-  return { ok: true, tipoUsado: tipo };
+  return finalizar({ ok: true, tipoUsado: tipo });
 }

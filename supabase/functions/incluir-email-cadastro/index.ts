@@ -202,7 +202,12 @@ Deno.serve(async (req) => {
     registrarFalhaDeEnvio(
       'incluir-email-cadastro',
       `cadastro ${registro?.colaborador_id ?? '?'}`,
-      await enviarLinkAcesso(supabase, { email, nome }),
+      await enviarLinkAcesso(supabase, {
+        email,
+        nome,
+        origem: 'incluir-email-cadastro',
+        colaboradorId: registro?.colaborador_id as string | undefined,
+      }),
     );
 
     // O carimbo do aviso fecha o buraco de "o único sinal falhou calado": sem ele, um

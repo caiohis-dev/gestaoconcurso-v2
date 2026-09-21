@@ -1,9 +1,9 @@
 # "Último Acesso" não é evidência de nada — e o que é
 
 > **Vivo / parcialmente executado** (ver [`README.md`](./README.md)). Diagnóstico de 2026-09-20.
-> ⚠️ Este bloco dizia *"sem correção executada"* — valeu por algumas horas. **A correção 6.1 (o
-> carimbo) FOI FEITA no mesmo dia**, migration `20260921002249_carimbar_ultimo_acesso_no_login.sql`, com os casos 9 a 14 de
-> `docs/bateria-vinculo-colaborador.sql`. Continua aberta a **6.2**, a trilha de envio do link.
+> ⚠️ Este bloco dizia *"sem correção executada"*, depois *"continua aberta a 6.2"* — as duas
+> ficaram velhas no MESMO DIA. **As DUAS correções foram feitas em 2026-09-20**: o carimbo
+> (migration `20260921002249_*`) e a trilha de envio (migration `20260921005259_trilha_envio_link_acesso.sql`).
 >
 > Área: [`../estrutura/transversais/auth-e-permissoes.md`](../estrutura/transversais/auth-e-permissoes.md)
 > + [`../estrutura/modulos/aplicacao-provas/colaboradores.md`](../estrutura/modulos/aplicacao-provas/colaboradores.md)
@@ -161,15 +161,40 @@ descrevia a pergunta em aberto (o que fazer com os valores de junho/julho e se u
 é só o item acima. ⚠️ Não reabra propondo backfill "para deixar consistente": foi recusado com
 motivo.
 
-### 6.2 A trilha de envio do link, que não existe
+### 6.2 ✅ A trilha de envio do link — FEITA (migration `20260921005259_trilha_envio_link_acesso.sql`)
 
-Hoje não há **nenhuma** coluna tipo `colab_convite_enviado_em`. O envio só deixa `console.log` em
-`supabase/functions/_shared/enviar-link-acesso.ts`, e a pergunta *"o e-mail saiu?"* só se responde
-indiretamente, pelos carimbos do `auth.users` — que existem por sorte, não por desenho nosso.
+🟢 **Executado.** Nova tabela **`public.log_envio_link_acesso`**, escrita num **ponto único**: dentro
+de `enviarLinkAcesso` (`_shared/enviar-link-acesso.ts`), não em cada uma das 5 Edge Functions que a
+chamam. É a mesma lição do `registrarFalhaDeEnvio` — um `{ ok }` esquecido por um chamador já
+escondeu, por meses, o invite que morria calado em e-mail com conta. Repetir a escrita em 5 lugares
+seria repetir esse risco numa 6ª função futura.
 
-⚠️ `log_email_autoinformado` **não serve**: ela é a trilha de quem **informou o e-mail**, e o
-`aviso_admins_em` dela carimba o aviso aos admins, não o link de acesso. `email_atualizacao_log`
-também não — é de e-mail de prova, com `prova_id NOT NULL`.
+**Como funciona, por dentro:** todo `return` de `enviarLinkAcesso` passa por um `finalizar()` local
+que grava a linha antes de devolver o resultado — os três desfechos (generateLink falhou, send-email
+falhou, deu certo) gravam exatamente uma vez. `colaborador_id` é nullable: `recuperar-senha` atende
+qualquer conta do Auth, não só colaborador (admin/coordenador não têm linha em `colaboradores`).
+
+🔴 **Best-effort e nunca lança, por contrato** — a escrita da trilha não pode derrubar o envio real.
+Falsificado: um dublê cujo `.insert()` sempre falha (`docs.../enviar-link-acesso.test.ts`, caso
+*"INSERT da trilha falhando NÃO derruba o envio real"*) prova que `enviarLinkAcesso` continua
+devolvendo `ok: true` mesmo com a gravação quebrada — só um `console.error` marca o ocorrido.
+
+🟢 **Prova de ponta a ponta, não só dublê:** chamei `enviarLinkAcesso` de verdade contra o Auth local
+(sem `INSERT` manual). O Edge Runtime local estava parado, então o POST para `send-email` falhou com
+`name resolution failed` — e a função gravou sozinha `sucesso: false, motivo_falha: '{"message":
+"name resolution failed"}'`. É o caso mais importante: falha de infraestrutura vira LINHA, não
+silêncio.
+
+**RLS: SELECT só para admin**, mesmo recorte de `log_email_autoinformado`. Verificado com controle
+positivo e negativo via `SET LOCAL role` + `request.jwt.claims`: admin vê (1), colaborador comum não
+vê (0), `anon` nem chega a ler (falta `GRANT`).
+
+⚠️ **Só vale daqui para frente — sem backfill**, mesma decisão do carimbo de último acesso: envios
+de antes de 20/09 não aparecem na trilha. `log_email_autoinformado` continua sem servir para isto —
+é a trilha de quem **informou o e-mail**, não de quando o link saiu. `email_atualizacao_log` também
+não — é de e-mail de prova, com `prova_id NOT NULL`.
+
+Consulta pronta: bloco 6 de [`../../docs/consulta-acesso-colaborador.sql`](../../docs/consulta-acesso-colaborador.sql).
 
 ## 7. Confirmado em PRODUÇÃO — o caso que motivou o estudo
 

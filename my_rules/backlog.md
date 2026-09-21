@@ -141,12 +141,12 @@ hora"*) exige a tabela. Enquanto não existir, a consulta é manual.
 
 ---
 
-## ⏳ A TRILHA DE ENVIO DO LINK não existe — (o carimbo de "Último Acesso" foi FEITO em 20/09)
+## ✅ CONCLUÍDO 2026-09-20 — carimbo de "Último Acesso" + trilha de envio do link
 
-**Status:** ✅ **a parte 1 foi executada em 2026-09-20** (migration `20260921002249_carimbar_ultimo_acesso_no_login.sql`) — o carimbo
-voltou a ser escrito, com os casos 9 a 14 de `docs/bateria-vinculo-colaborador.sql`.
-⏳ **Sobra a parte 3: a trilha de envio do link**, que nunca existiu. Aberto ao investigar por que
-colaboradores que acabavam de informar o próprio e-mail apareciam como *"Nunca acessou"*.
+**Status:** ✅ **AS DUAS PARTES executadas em 2026-09-20** — o carimbo (migration
+`20260921002249_carimbar_ultimo_acesso_no_login.sql`) e a trilha de envio (migration `20260921005259_trilha_envio_link_acesso.sql`,
+tabela `log_envio_link_acesso`). Aberto ao investigar por que colaboradores que acabavam de informar
+o próprio e-mail apareciam como *"Nunca acessou"*.
 **Área:** Auth e Permissões · estudo completo em
 [`analises/analise-ultimo-acesso-e-convite.md`](./analises/analise-ultimo-acesso-e-convite.md)
 
@@ -181,9 +181,7 @@ ponta para destinatário real.
    motivo, e recusá-lo elimina o único passo manual em produção do conserto (`seed.pos.sql` não
    roda sozinho lá; esquecê-lo seria falha silenciosa). O custo aceito: os 192 com data congelada
    seguem exibindo junho/julho até logarem de novo.
-3. ⏳ **O QUE SOBRA — a trilha de envio do link, que não existe** — nenhuma coluna tipo `colab_convite_enviado_em`;
-   hoje *"o e-mail saiu?"* só se responde pelos carimbos do `auth.users`, que existem por sorte e
-   não por desenho nosso.
+3. ✅ **FEITO — a trilha de envio do link.** Tabela `log_envio_link_acesso`, escrita num ponto único dentro de `enviarLinkAcesso` (não em cada uma das 5 EFs chamadoras — mesma lição do `registrarFalhaDeEnvio`). Best-effort, nunca derruba o envio real; falsificado com dublê que sempre falha no INSERT, e provado de ponta a ponta contra o Auth local (sem dublê nenhum). RLS: SELECT só admin, com controle positivo e negativo. ⚠️ Sem backfill — só vale a partir de 20/09. Ver `analises/analise-ultimo-acesso-e-convite.md` §6.2.
 
 ### Como verificar (controle positivo obrigatório)
 
