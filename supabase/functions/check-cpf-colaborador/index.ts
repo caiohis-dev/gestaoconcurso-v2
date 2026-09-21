@@ -2,6 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { z } from 'npm:zod@3';
 import { barrarSeExcedeu } from '../_shared/rate-limit.ts';
+import { normalizarCpfOuNull } from '../_shared/cpf.ts';
 
 const BodySchema = z.object({
   cpf: z.string().min(1).max(20),
@@ -22,21 +23,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 🔴 O `.padStart(11, '0')` SAIU em 2026-08-02, e tirá-lo é o conserto de um defeito
-    // real — não é limpeza.
-    //
-    // Era exatamente o bug que `src/lib/cpf.ts` documenta como o original do
-    // `ColaboradorDialog`: preencher com zeros ANTES de conferir o tamanho faz a
-    // checagem `length !== 11` nunca falhar para entrada CURTA. Seis dígitos viravam
-    // `00000123456` — um CPF de OUTRA PESSOA — e a função consultava esse.
-    //
-    // A consequência não era só um resultado errado: se o CPF preenchido existisse, o
-    // usuário era mandado para o fluxo "você já tem cadastro", que dispara a
-    // reivindicação de acesso sobre o registro de terceiro.
-    //
-    // ⚠️ Sem o pad, `length !== 11` volta a valer para os dois lados (curto e longo).
-    const cpf = parsed.data.cpf.replace(/\D/g, '');
-    if (cpf.length !== 11) {
+    // 🔵 2026-09-21: a checagem migrou para `_shared/cpf.ts` — o defeito consertado
+    // aqui em 2026-08-02 (padStart ANTES do length, que fazia entrada curta virar o
+    // CPF de outra pessoa) sobreviveu em `reivindicar-acesso` e
+    // `incluir-email-cadastro` por sete semanas, porque cada EF reimplementava a
+    // própria versão. Agora as quatro usam a mesma função — ver o cabeçalho dela.
+    const cpf = normalizarCpfOuNull(parsed.data.cpf);
+    if (cpf === null) {
       return new Response(
         JSON.stringify({ error: 'CPF inválido' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },

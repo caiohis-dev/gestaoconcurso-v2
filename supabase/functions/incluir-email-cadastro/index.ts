@@ -4,6 +4,7 @@ import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { z } from 'npm:zod@3';
 import { enviarLinkAcesso, mascararEmail, registrarFalhaDeEnvio } from '../_shared/enviar-link-acesso.ts';
 import { barrarSeExcedeu, chaveDeOrigem, podeSeguir, TETOS } from '../_shared/rate-limit.ts';
+import { normalizarCpfOuNull } from '../_shared/cpf.ts';
 
 // O colaborador sem e-mail informa o PRÓPRIO e-mail. Porta pública, sem login.
 //
@@ -120,8 +121,15 @@ function lerEntrada(
   const parsed = BodySchema.safeParse(corpo);
   if (!parsed.success) return { erro: 'Dados inválidos' };
 
-  const cpf = parsed.data.cpf.replace(/\D/g, '').padStart(11, '0');
-  if (cpf.length !== 11) return { erro: 'CPF inválido' };
+  // 🔴 CORRIGIDO em 2026-09-21: era `padStart(11,'0')` ANTES do length check, e
+  // o Zod acima (`min(11).max(14)`) conta CARACTERES da string, não dígitos — uma
+  // entrada com pontuação e poucos dígitos reais também passava. Esta é a porta
+  // que GRAVA `colab_email` sem prova de posse (dívida aceita em
+  // dividas-auth-colaborador.md §5); a barra para atingir um estranho estava mais
+  // baixa do que aquela decisão assumiu. Medido: 88 dos 243 colaboradores
+  // sem e-mail (36%) têm CPF começando em zero. Ver `_shared/cpf.ts`.
+  const cpf = normalizarCpfOuNull(parsed.data.cpf);
+  if (cpf === null) return { erro: 'CPF inválido' };
 
   return { cpf, email: parsed.data.email.trim(), origem: parsed.data.origem ?? 'auth' };
 }

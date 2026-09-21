@@ -47,6 +47,7 @@ errada e o que cada decisão custou. Antes de reabrir qualquer tema abaixo, proc
 | ✅ 13/08 | **a v2 FOI AO AR**: `https://fevre.online` responde por nginx com TLS, e o bundle publicado aponta para o Supabase de produção |
 
 | ✅ 16–17/09 | a **v3 do módulo Editais**: 11 das 12 fatias entregues, e as duas que faltavam viraram itens aqui embaixo |
+| ✅ 21/09 | o defeito do `padStart` antes do `length` (fixo em 02/08 só na `check-cpf-colaborador`) sobrevivia em 3 outras EFs — `reivindicar-acesso`, `incluir-email-cadastro`, `public-create-colaborador`; consolidado em `_shared/cpf.ts` |
 
 ---
 

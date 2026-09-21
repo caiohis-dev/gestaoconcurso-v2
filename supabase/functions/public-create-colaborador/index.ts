@@ -3,6 +3,7 @@ import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { z } from 'npm:zod@3';
 import { enviarLinkAcesso, mascararEmail, registrarFalhaDeEnvio } from '../_shared/enviar-link-acesso.ts';
 import { barrarSeExcedeu } from '../_shared/rate-limit.ts';
+import { normalizarCpfOuNull } from '../_shared/cpf.ts';
 
 // Subetapa 2C: o cadastro público cria a linha de colaborador e dispara o link de
 // acesso (invite) para o e-mail informado — o mesmo fluxo da reivindicação. Não pede
@@ -56,8 +57,23 @@ Deno.serve(async (req) => {
       );
     }
 
-    const payload = { ...parsed.data };
-    payload.colab_cpf = payload.colab_cpf.replace(/\D/g, '').padStart(11, '0');
+    // 🔴 CORRIGIDO em 2026-09-21: era `padStart(11,'0')` sem NENHUMA checagem de
+    // tamanho depois — a mesma reimplementação quebrada de `reivindicar-acesso` e
+    // `incluir-email-cadastro`, aqui num INSERT: entrada curta virava um CPF de
+    // 11 dígitos válido-parecendo, gravado como se fosse o da pessoa que preencheu
+    // o formulário. Risco menor que as outras duas (não é busca cruzando
+    // identidade), mas ainda dado errado gravado como certo — e se colidisse com
+    // um CPF real já cadastrado, o erro '23505' viraria "CPF já cadastrado" para
+    // quem nunca digitou aquele CPF de propósito. Ver `_shared/cpf.ts`.
+    const cpfNormalizado = normalizarCpfOuNull(parsed.data.colab_cpf);
+    if (cpfNormalizado === null) {
+      return new Response(
+        JSON.stringify({ error: 'CPF inválido' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
+    const payload = { ...parsed.data, colab_cpf: cpfNormalizado };
     payload.colab_email = payload.colab_email.trim();
 
     const supabase = createClient(

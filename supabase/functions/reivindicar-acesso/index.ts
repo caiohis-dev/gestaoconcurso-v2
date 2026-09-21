@@ -4,6 +4,7 @@ import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { z } from 'npm:zod@3';
 import { enviarLinkAcesso, mascararEmail, registrarFalhaDeEnvio } from '../_shared/enviar-link-acesso.ts';
 import { barrarSeExcedeu } from '../_shared/rate-limit.ts';
+import { normalizarCpfOuNull } from '../_shared/cpf.ts';
 
 // Subetapa 2B — reivindicação do acesso do colaborador.
 //
@@ -74,8 +75,15 @@ Deno.serve(async (req) => {
     const parsed = BodySchema.safeParse(await req.json());
     if (!parsed.success) return jsonResp({ error: 'Dados inválidos' }, 400);
 
-    const cpf = parsed.data.cpf.replace(/\D/g, '').padStart(11, '0');
-    if (cpf.length !== 11) return jsonResp({ error: 'CPF inválido' }, 400);
+    // 🔴 CORRIGIDO em 2026-09-21: era `padStart(11,'0')` ANTES do length check — o
+    // mesmo defeito já consertado em `check-cpf-colaborador` (02/08), mas que
+    // sobreviveu aqui sem ninguém notar. Entrada curta (ex.: 9 dígitos, alguém que
+    // não digitou os zeros à esquerda) virava o CPF de OUTRA PESSOA, e esta função
+    // tem efeito colateral: revela o e-mail mascarado dela ou dispara um convite
+    // para a caixa dela. Medido: 275 dos 821 colaboradores (33%) têm CPF começando
+    // em zero — a colisão é real, não hipotética. Ver `_shared/cpf.ts`.
+    const cpf = normalizarCpfOuNull(parsed.data.cpf);
+    if (cpf === null) return jsonResp({ error: 'CPF inválido' }, 400);
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
