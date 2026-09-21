@@ -68,6 +68,14 @@ Versionamento semântico, com prefixo `v`:
 
   ⚠️ **Subiu sem backup novo**, por decisão do usuário; o mais recente era o de 16/09. Fica registrado porque o Free não tem backup automático nenhum.
 
+- **`v3.3.0` nasceu em 2026-09-21**, no commit `47d1aa2`. Entregou a **trilha de envio do link** (`log_envio_link_acesso`) e o conserto do **`padStart` antes do `length`** — o defeito fixo em 02/08 só na `check-cpf-colaborador` sobrevivia idêntico em `reivindicar-acesso`, `incluir-email-cadastro` e `public-create-colaborador`. MINOR (uma feature + um fix, sem quebra de contrato).
+
+  🔴 **Release de BANCO + EDGE FUNCTIONS, sem site** — e desta vez a checagem foi feita corretamente: nenhum `src/` mudou neste lote (diferença do que aconteceu na v3.2.0, quando eu errei essa mesma verificação). `deploy.sh` republicaria o mesmo bundle de sempre; quem entrega o conserto são as 6 Edge Functions.
+
+  **Verificado ao vivo, sem efeito colateral:** a `check-cpf-colaborador` (a única das 6 sem escrita nem e-mail) foi chamada em produção com a entrada de 9 dígitos que colidiria com o CPF de outra pessoa — devolveu **400 "CPF inválido"** — e com um CPF de 11 dígitos normal, que continuou respondendo **200**. É o controle positivo e o negativo, na própria produção.
+
+  Ritual: `git fetch . dev:main` (a árvore tinha 8 arquivos soltos de outras sessões, de novo) → tag → link → `prod:push:dry` (1 migration, a esperada) → `prod:push` → `prod:diff` (só o drift conhecido do `pg_net`) → `functions deploy` das 6 → prova ao vivo → `prod:unlink`.
+
 - **`v3.2.0` nasceu em 2026-09-20**, no commit `f6136f4`. Entregou o **edital padrão COMPLETO** (rodadas 15 a 19 — 19 capítulos, 377 artigos) e o conserto do **"Último Acesso"**, que estava sem escritor desde 15/07 e descrevia errado **263 de 263** pessoas em produção. MINOR: tudo aditivo.
 
   🔴 **O site FOI publicado depois, no mesmo dia, pelo usuário** — corrigindo uma leitura errada
