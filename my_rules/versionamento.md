@@ -68,6 +68,25 @@ Versionamento semântico, com prefixo `v`:
 
   ⚠️ **Subiu sem backup novo**, por decisão do usuário; o mais recente era o de 16/09. Fica registrado porque o Free não tem backup automático nenhum.
 
+- **`v3.7.3` nasceu em 2026-09-24**, no commit `ae67258`. PATCH: o rate limit do escopo `acesso`
+  (`reivindicar-acesso` + `recuperar-senha`) passou de **5/15 para 5/10 min**, e o 429 dele ganhou
+  frase fixa — *"Sistema com excesso de acessos. Tente novamente após 10 minutos."* —, na EF e no
+  `ReivindicarAcessoCard`, que escreve a própria. Decisão do usuário: o teto conta **toda**
+  requisição, e folgar a janela foi preferido a um botão de "reenviar convite", que daria mais
+  trabalho ao coordenador. Junto, um texto novo do usuário no link de correção de e-mail do
+  `ColaboradorDialog`. 🟡 **Sem banco, mas COM Edge Function** — o helper é `_shared/`, então as
+  duas EFs que o importam precisaram de `functions deploy`; só o `deploy.sh` teria deixado produção
+  em 15 min com a tela prometendo 10. Ritual: `git fetch . dev:main` → tag → push → `functions
+  deploy` das 2 (rodado pelo usuário com `!`) → `deploy.sh`. **Verificado ao vivo:** `functions list`
+  com `reivindicar-acesso` v12 e `recuperar-senha` v11 recém-publicadas, hash servido idêntico ao
+  buildado (`index-CdmljvKi.js`) e a frase nova presente no bundle publicado.
+
+- **`v3.7.2` nasceu em 2026-09-24**, no commit `1a8a43a`. PATCH: o `ColaboradorDialog` (Novo/Editar
+  Colaborador de `/colaboradores`) deixou de fechar por clique fora, em modo nenhum — antes só o
+  `publicMode` barrava, e fechar descartava o preenchimento calado. 🟢 **Só frontend.** Ritual curto:
+  `git fetch . dev:main` → tag → push → `deploy.sh`. Verificado: hash servido idêntico ao buildado
+  (`index-sThWJBSr.js`).
+
 - **`v3.7.1` nasceu em 2026-09-24**, no commit `91abf7e`. PATCH: `/gerenciar-usuarios` mostrava
   "Sem nome" para as contas nascidas pelo convite de colaborador (o `generateLink` não manda
   metadado, e `profiles.full_name` fica nulo — 40 de 58 no local); a tela passou a cair no nome do
