@@ -20,6 +20,7 @@ const ctx = (over: Partial<CtxAcesso> = {}): CtxAcesso => ({
   isAdmin: false,
   isSuperAdmin: false,
   isCoordenador: false,
+  isFinanceiro: false,
   ...over,
 });
 
@@ -28,6 +29,7 @@ const ADMIN = ctx({ isAdmin: true });
 const COORDENADOR = ctx({ isCoordenador: true });
 const USER_PURO = ctx();
 const ADMIN_E_COORDENADOR = ctx({ isAdmin: true, isCoordenador: true });
+const FINANCEIRO = ctx({ isFinanceiro: true });
 
 const idsDe = (ms: { id: string }[]) => ms.map((m) => m.id);
 
@@ -35,21 +37,31 @@ describe("modulosDoUsuario", () => {
   it("dá ao superadmin todos os módulos, inclusive os restritos a admin", () => {
     // Editais declara papeis: ['superadmin','admin']. A regra "superadmin ⊇ admin"
     // vive em papeisDoUsuario; se ela cair, o superadmin perde módulos em silêncio.
+    // Financeiro entra pela mesma razão que Editais — o módulo lista 'superadmin' em
+    // `papeis` — mas NÃO por herança de 'financeiro': `papeisDoUsuario` nunca dá
+    // 'financeiro' a quem só tem isSuperAdmin (ver o teste de ADMIN logo abaixo, que
+    // prova o contrapé).
     expect(idsDe(modulosDoUsuario(SUPERADMIN))).toEqual([
       "aplicacao-provas",
       "editais",
       "candidatos",
       "alocacao-candidatos",
+      "financeiro",
     ]);
   });
 
-  it("dá ao admin os mesmos módulos que ao superadmin", () => {
-    expect(idsDe(modulosDoUsuario(ADMIN))).toEqual([
-      "aplicacao-provas",
-      "editais",
-      "candidatos",
-      "alocacao-candidatos",
-    ]);
+  it("dá ao admin os mesmos módulos que ao superadmin, EXCETO Financeiro", () => {
+    // A assimetria do módulo Financeiro (D1 do roadmap-modulo-financeiro.yaml):
+    // diferente de todo módulo existente, admin comum NÃO ganha acesso — só
+    // superadmin e financeiro. Se este teste passar a incluir 'financeiro', a
+    // assimetria quebrou.
+    const ids = idsDe(modulosDoUsuario(ADMIN));
+    expect(ids).toEqual(["aplicacao-provas", "editais", "candidatos", "alocacao-candidatos"]);
+    expect(ids).not.toContain("financeiro");
+  });
+
+  it("dá a quem só tem `financeiro` SÓ o módulo Financeiro", () => {
+    expect(idsDe(modulosDoUsuario(FINANCEIRO))).toEqual(["financeiro"]);
   });
 
   it("dá ao coordenador só Aplicação de Provas — Editais é restrito a admin", () => {
@@ -81,6 +93,7 @@ describe("moduloDaRota", () => {
   it("casa a rota exata", () => {
     expect(moduloDaRota("/dashboard")?.id).toBe("aplicacao-provas");
     expect(moduloDaRota("/editais")?.id).toBe("editais");
+    expect(moduloDaRota("/financeiro")?.id).toBe("financeiro");
   });
 
   it("casa sub-rotas, que é como o header sabe em que módulo você está", () => {
@@ -143,6 +156,12 @@ describe("rotaEntrada", () => {
   it("leva Editais sempre para /editais, qualquer que seja o papel", () => {
     expect(editais.rotaEntrada({ isAdmin: true, isCoordenador: false })).toBe("/editais");
     expect(editais.rotaEntrada({ isAdmin: false, isCoordenador: true })).toBe("/editais");
+  });
+
+  it("leva Financeiro sempre para /financeiro, qualquer que seja o papel", () => {
+    const financeiro = MODULOS.find((m) => m.id === "financeiro")!;
+    expect(financeiro.rotaEntrada({ isAdmin: false, isCoordenador: false })).toBe("/financeiro");
+    expect(financeiro.rotaEntrada({ isAdmin: true, isCoordenador: false })).toBe("/financeiro");
   });
 });
 

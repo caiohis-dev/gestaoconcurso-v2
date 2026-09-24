@@ -56,6 +56,15 @@ describe("createUserSchema", () => {
       expect(createUserSchema.safeParse({ ...valido, role: "colaborador" }).success).toBe(false);
     });
 
+    it("rejeita `financeiro` NA CRIAÇÃO da conta — decisão de escopo da Fase 1", () => {
+      // `financeiro` existe no enum do banco e é atribuível depois, pelo toggle de
+      // /gerenciar-usuarios (ver GerenciarUsuarios.tsx, coluna Financeiro) — mas não
+      // nesta tela de criação. Diferente de `coordenador`, não é por depender de
+      // alocação: é só para não expandir o escopo da Fase 1 do roadmap-modulo-
+      // financeiro.yaml. Se este teste passar a exigir `true`, é decisão nova, não bug.
+      expect(createUserSchema.safeParse({ ...valido, role: "financeiro" }).success).toBe(false);
+    });
+
     it("rejeita papel inventado", () => {
       expect(createUserSchema.safeParse({ ...valido, role: "root" }).success).toBe(false);
     });

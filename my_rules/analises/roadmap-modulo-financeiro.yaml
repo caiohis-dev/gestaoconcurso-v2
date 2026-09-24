@@ -1,0 +1,209 @@
+# Roadmap VIVO — Acoplar o módulo Financeiro (gerador CNAB 240 / PIX)
+# Criado em 2026-09-23. Leia my_rules/analises/README.md antes de usar como guia.
+
+roadmap:
+  titulo: "Acoplar o módulo Financeiro (gerador de remessa CNAB 240 / PIX) ao gestaoconcurso"
+  criado: "2026-09-23"
+  status: "✅ CONCLUÍDO (2026-09-24)"
+
+  origem: >
+    Existe um projeto pronto e separado (/home/caio-teixeira/dev/gera_cnab_pix) que gera arquivos
+    de remessa CNAB 240 (SISPAG Itaú, forma PIX) a partir de uma planilha de recebedores: o
+    usuário sobe o .xls/.xlsx, mapeia colunas, o sistema infere e valida a chave PIX de cada
+    linha, e baixa um .REM por unidade + uma planilha de conferência. Vamos importá-lo como um
+    módulo novo do gestaoconcurso, chamado "Financeiro", reaproveitando SOMENTE o controle de
+    acesso (Supabase Auth + user_roles) do sistema atual — nenhum dado de prova/edital/candidato
+    é lido ou escrito por ele.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  medido_antes: |
+    Lido o repositório de origem inteiro (código, migrations, my_rules/*.md) em 2026-09-23:
+
+    - Lógica de negócio: ~950 linhas em 7 arquivos de `src/lib/` (mapeamento de colunas,
+      inferência/validação de chave PIX com desambiguação CPF×celular, detecção de divergência
+      de titularidade CPF×chave, montagem das linhas CNAB 240). Zero testes automatizados — não
+      há `vitest` no package.json de origem.
+    - A UI (`App.tsx`, ~700 linhas) é auto-contida: CSS próprio (`App.css`), ícones SVG inline,
+      SEM react-router, SEM TanStack Query, SEM Tailwind/Radix. Diverge do stack do
+      gestaoconcurso (Tailwind + shadcn/Radix + react-router-dom + react-hook-form/zod +
+      @tanstack/react-query, confirmado em `package.json`).
+    - Existem 7 migrations Supabase desenhando 5 tabelas (`editais`, `colaboradores` +
+      `chave_pix`, `remessas`, `transacoes`, `unidades`) para persistir o histórico dos lotes —
+      **mas o frontend não chama o Supabase em lugar nenhum** (`grep -r supabase src/` não
+      retorna nada). É desenho nunca ligado: hoje a ferramenta é 100% stateless, cada geração é
+      efêmera (download direto do navegador).
+    - RLS das 5 tabelas hoje é `USING(true) WITH CHECK(true)` para `anon` E `authenticated` —
+      "acesso total sem auth", incompatível com o padrão default-deny do gestaoconcurso.
+    - **Colisão de nomes**: `editais` e `colaboradores` já existem no gestaoconcurso com
+      semântica totalmente diferente (concurso × folha de pagamento). Portar esse schema exige
+      namespace (`financeiro_*`).
+    - `my_docs/` do repo de origem contém planilhas e `.REM` REAIS (nomes, CPF, chave PIX de
+      pessoas de verdade) — não entram no histórico do gestaoconcurso em hipótese alguma.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  decisoes_do_usuario: |
+    D1. Nova role `financeiro` em `app_role`. Acesso ao módulo é **superadmin + financeiro** —
+        diferente de todos os módulos atuais (que são superadmin+admin, ou +coordenador): aqui
+        `admin` comum NÃO entra por padrão. Isso é assimetria deliberada, não esquecimento.
+
+    D2. UI será REESCRITA nos padrões do gestaoconcurso (Tailwind + componentes shadcn/Radix já
+        existentes, react-router-dom, react-hook-form/zod onde houver formulário) — decidido
+        nesta sessão, contra a alternativa de encapsular como está.
+
+    D3. Fase inicial é STATELESS — sem persistência. As 5 tabelas do schema original NÃO entram
+        neste roadmap. Persistência de histórico (remessas/transações, namespaced
+        `financeiro_*`, com RLS restrita a superadmin+financeiro) fica para um roadmap FUTURO,
+        registrado em `backlog.md` quando for a vez.
+
+    D5. ⚠️ ABERTA — decidir na Fase 1: `has_role` hoje só faz superadmin implicar `admin`
+        (migration `20260725195530`). `financeiro` é role PARALELA a admin, não um degrau que
+        superadmin já cobre por herança. Duas opções:
+          (a) estender `has_role` para superadmin implicar também `financeiro` (mesma filosofia
+              de "hierarquia mora numa função só"), OU
+          (b) exigir que superadmin tenha uma linha literal `financeiro` em `user_roles`.
+        Recomendação: (a) — é exatamente a classe de bug "superadmin não bate em muro" que já
+        aconteceu 3x neste repo (sempre por checagem literal que esquece o superadmin). Confirmar
+        antes de escrever a migration da Fase 1.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  o_que_NAO_muda: |
+    - Nenhum dado do resto do sistema (candidatos, provas, colaboradores de Aplicação de Provas,
+      editais de concurso) é lido ou escrito pelo Financeiro — a única superfície compartilhada é
+      Supabase Auth + `user_roles`.
+    - A lógica de negócio da geração CNAB 240 (mapeamento, inferência de chave PIX, validação de
+      divergência) é PORTADA, não redesenhada — o algoritmo já é usado em produção pelo dono do
+      projeto de origem.
+    - Nenhum arquivo de `my_docs/` (planilhas e .REM reais) é commitado no gestaoconcurso.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  fases:
+    - id: 1
+      nome: "Papel financeiro + guarda de acesso (banco + front), sem UI de negócio"
+      status: "✅ concluída (2026-09-23)"
+      concluida_em: |
+        Enum `app_role` + `financeiro` (migration 20260924013236) e `has_role` estendida para
+        superadmin ⇒ financeiro (20260924013238, resolve D5 do jeito recomendado: opção a).
+        Frontend: `isFinanceiro` em `useAuth`/`RequireAcesso`/`modulos.ts`/`Inicio.tsx`; rota
+        `/financeiro` com `RequireAcesso papeis={["superadmin","financeiro"]}` e página stub
+        `src/pages/Financeiro.tsx`; card no hub restrito a superadmin+financeiro; concessão do
+        papel em `/gerenciar-usuarios` (papel puro, sem RPC). `estrutura/modulos/financeiro/
+        00-modulo.md` criado (stub da Fase 1). guards.test.tsx (26 páginas) e modulos.test.ts
+        cobrem a assimetria D1 com controle positivo E negativo (admin puro NÃO acessa).
+        Verificação: 1970 testes, tsc limpo, build ok, lint no baseline (111), docs:conferir sem
+        divergência, `db reset` aplicou as 2 migrations limpo.
+      entrega:
+        - "Migration: adiciona 'financeiro' ao enum app_role."
+        - "Resolver e implementar D5 (has_role e o novo papel)."
+        - >
+          `src/lib/modulos.ts`: `PapelGestao` ganha `'financeiro'`, `CtxAcesso` ganha
+          `isFinanceiro`, novo módulo `financeiro` com `papeis: ['superadmin', 'financeiro']`,
+          rota de entrada `/financeiro`.
+        - "`App.tsx`: rota `/financeiro` com `RequireAcesso papeis={[\"financeiro\"]}` + página placeholder."
+        - "Card do módulo aparece no hub só para superadmin/financeiro."
+      armadilha: >
+        `src/pages/guards.test.tsx` é a especificação executável (matriz página × papel). Não
+        adicionar 'financeiro' como papel na matriz deixa a rota nova sem controle positivo
+        (financeiro entra) nem negativo (admin comum não entra) — o padrão de erro descrito no
+        CLAUDE.md §1 ("item de backlog com premissa errada") se aplicaria aqui na forma inversa:
+        acesso novo sem prova de que está certo.
+
+    - id: 2
+      nome: "Port da lógica de negócio (sem UI ainda)"
+      status: "✅ concluída (2026-09-23)"
+      concluida_em: |
+        Os 7 arquivos de `gera_cnab_pix/src/lib/` portados 1:1 para `src/lib/financeiro-*.ts`
+        (nomes de arquivo prefixados, exports idênticos). 71 testes novos (nenhum existia na
+        origem), inclusive checagem posição-a-posição do layout CNAB240 contra
+        `layout-cnab240-itau.md` (portado verbatim) e a numeração de lote contra
+        `numeracao-de-lote.md` (idem). Verificado ainda contra a estrutura de um `.REM` real
+        gerado pela origem (sem copiar o arquivo, que tem PII) — bate byte a byte.
+        `estrutura/modulos/financeiro/00-modulo.md` atualizado com a tabela de arquivos da Fase 2
+        e 3 pontos frágeis novos (dadosPagador hardcoded, edital/siglaUnidade sem vínculo com o
+        resto do sistema, e o parseFloat que só troca a primeira vírgula).
+        Verificação: 2041 testes, tsc limpo, build ok, lint subiu de 111→113 (2 avisos de
+        complexity herdados da origem, documentado no CLAUDE.md §5), docs:conferir sem
+        divergência.
+      entrega:
+        - >
+          Portar os 7 arquivos de `src/lib/` do projeto de origem (mapeamento de colunas,
+          inferência de chave PIX, validação de divergência, geração das linhas CNAB 240) para
+          dentro do gestaoconcurso, sob um namespace próprio (ex.: `src/lib/financeiro/`).
+        - >
+          Testes Vitest novos cobrindo os casos sensíveis: inferência de chave PIX (CPF×celular
+          ambíguos, e-mail, chave aleatória), divergência de titularidade CPF×chave, montagem das
+          linhas CNAB (Segmento A/B) contra os campos de `campos_itau.md` e `numeracao_arquivo(lote).MD`.
+        - "Início de `estrutura/modulos/financeiro/00-modulo.md` (identidade, papéis, fronteiras)."
+      armadilha: >
+        A origem não tem NENHUM teste. Portar sem testar equivale a mover um bloco de lógica
+        financeira (formato de arquivo que o banco valida e recusa) sem rede de segurança. Medir
+        contra os arquivos de exemplo reais de `my_docs/*.REM` (só para conferência local, nunca
+        commitados) é o único jeito de confirmar que a porta preservou o comportamento.
+
+    - id: 3
+      nome: "UI reescrita nos padrões do repositório"
+      status: "✅ concluída (2026-09-24)"
+      concluida_em: |
+        `src/pages/Financeiro.tsx` reescrito por completo: fluxo linear de 3 etapas (envio,
+        correspondência de colunas, validação/geração), nos padrões do repo (Tailwind/shadcn),
+        seguindo a convenção visual de `CadastroLote.tsx` (stepper, upload por clique sem
+        drag-and-drop, `Table`+`Select` para mapeamento) — não a UI original (CSS/ícones
+        próprios). Sem abas "Geração"/"Histórico" da origem (eram placeholders vazios; D3 manteve
+        o módulo stateless). A página foi dividida em 3 subcomponentes internos (um por etapa)
+        para manter a complexidade de cada função abaixo do teto do lint.
+        5 testes novos em `Financeiro.ui.test.tsx` (sem mock de Supabase — o módulo não o toca),
+        com planilha `.xlsx` real construída em memória, cobrindo: mapeamento pré-preenchido,
+        bloqueio por coluna obrigatória sem mapear, resumo da validação, o aviso de divergência
+        CPF×chave PIX, e a geração de arquivo por unidade (`.REM` + `.xls` de conferência), com
+        `XLSX.writeFile`/`URL.createObjectURL`/`HTMLAnchorElement.click` mockados (armadilha 9 de
+        `testes.md`).
+        Verificação: 2046 testes, tsc limpo, build ok, lint no baseline (113 — a divisão em
+        subcomponentes evitou um novo aviso de `complexity` que a primeira versão, num arquivo
+        só, introduzia), docs:conferir sem divergência.
+      entrega:
+        - >
+          Telas de upload / correspondência de colunas / validação / geração usando Tailwind +
+          componentes shadcn já existentes no repo (Dialog, Table, Button, Card, Steps/Tabs),
+          `react-hook-form` onde houver formulário de fato.
+        - "Integração ao `Layout.tsx` (header/nav do sistema) e aos `navLinks` do módulo — sem duplicar navegação própria."
+      armadilha: >
+        O `App.tsx` de origem tem header e navegação PRÓPRIOS (top bar, abas Validação/Geração/
+        Histórico). Colar esse componente dentro do gestaoconcurso duplicaria header — a tela
+        tem de se encaixar dentro de `Layout.tsx`/`RequireAcesso`, como as demais páginas de
+        módulo.
+
+    - id: 4
+      nome: "Verificação e docs"
+      status: "✅ concluída (2026-09-24)"
+      concluida_em: |
+        Duas das três entregas já tinham acontecido nas fases anteriores — checado antes de
+        executar (o padrão de "item com premissa desatualizada" do CLAUDE.md §1): a linha do
+        módulo em `estrutura/00-indice.md` já existia desde a Fase 1, e `00-modulo.md` já vinha
+        completo (arquivos, papéis, rotas/guards, fronteiras, pontos frágeis) das Fases 1-3.
+        Falta real: re-rodar o gate de verificação como fechamento formal, atualizar a abertura de
+        `00-modulo.md` para "roadmap concluído", registrar o ponto frágil de que a Fase 3 não foi
+        verificada em navegador real (credencial local = produção, sem login autônomo seguro), e
+        fechar o item no `backlog.md` — o bloco inteiro moveu para
+        `analises/concluidos/backlog-itens-concluidos.md`, com uma linha só ficando no backlog.
+        Registrado também em `backlog.md` o item futuro que este roadmap deixa apontado
+        (`fases_futuras_fora_deste_roadmap`): a persistência do módulo (tabelas `financeiro_*`).
+        Verificação: 2046 testes, tsc limpo, build ok, lint no baseline (113), docs:conferir sem
+        divergência — os mesmos números da Fase 3, como esperado (nenhum código mudou aqui).
+      entrega:
+        - "npm test · npx tsc --noEmit -p tsconfig.app.json · npm run build · npm run lint · npm run docs:conferir"
+        - >
+          `estrutura/modulos/financeiro/00-modulo.md` completo (arquivos, papéis, rotas/guards,
+          fronteiras e pontos frágeis) — precisa bastar para mexer no módulo sem reler o
+          codebase, como os demais.
+        - "Linha nova na tabela de módulos de `estrutura/00-indice.md`."
+      armadilha: >
+        `docs:conferir` confere símbolo/contagem/matriz de guards, mas NÃO confere comportamento
+        — a divergência de titularidade CPF×chave e a geração correta do CNAB 240 só se
+        verificam por releitura dirigida + os testes da Fase 2.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  fases_futuras_fora_deste_roadmap: |
+    Persistência real do módulo Financeiro (tabelas `financeiro_editais`,
+    `financeiro_colaboradores`, `financeiro_remessas`, `financeiro_transacoes`,
+    `financeiro_unidades`, com RLS restrita a superadmin+financeiro e GRANT/REVOKE nos moldes do
+    resto do banco) — decisão D3. Vira roadmap próprio quando for a vez; registrar em
+    `backlog.md` ao fechar este roadmap.

@@ -48,6 +48,7 @@ errada e o que cada decisão custou. Antes de reabrir qualquer tema abaixo, proc
 
 | ✅ 16–17/09 | a **v3 do módulo Editais**: 11 das 12 fatias entregues, e as duas que faltavam viraram itens aqui embaixo |
 | ✅ 21/09 | o defeito do `padStart` antes do `length` (fixo em 02/08 só na `check-cpf-colaborador`) sobrevivia em 3 outras EFs — `reivindicar-acesso`, `incluir-email-cadastro`, `public-create-colaborador`; consolidado em `_shared/cpf.ts` |
+| ✅ 24/09 | módulo Financeiro (gerador CNAB240/PIX) acoplado por inteiro — papel + guarda de acesso, lógica de negócio portada e testada, e UI real conectada; persistência ficou fora por decisão (item novo abaixo) |
 
 ---
 
@@ -282,6 +283,25 @@ ainda não existe.
 ⚠️ **O que já está pronto e ela consome:** a numeração calculada de capítulo e artigo, a resolução de `{{cap:}}` e `{{item:}}`, o `segmentarNegrito`, e as cinco fontes de quadro renderizando de verdade. A prévia em `EditalStudio` já monta o documento na tela — a exportação é levá-lo para fora, não remontá-lo.
 
 🔴 **A armadilha que o roadmap da fatia 7 deixou avisada:** o Anexo de abrangência tem **843 logradouros** num edital, 84% do teto de 1.000 do PostgREST. A leitura já passa por `buscar-em-fatias`; **a exportação não pode contorná-la** — um select solto devolveria 1.000 e o anexo sairia com uma rua faltando, sem erro nenhum.
+
+---
+
+## 📄 Módulo Financeiro — persistência (histórico de remessas/transações)
+
+**Status:** ⏳ **não iniciado, sem roadmap escrito.** É a Decisão D3 do roadmap já concluído
+([`analises/roadmap-modulo-financeiro.yaml`](./analises/roadmap-modulo-financeiro.yaml), ver o
+fechamento em
+[`analises/concluidos/backlog-itens-concluidos.md`](./analises/concluidos/backlog-itens-concluidos.md)),
+que deixou o módulo Financeiro **100% stateless** de propósito: cada geração de remessa é download
+direto do navegador, nada é gravado.
+**Área:** módulo Financeiro — ver [`estrutura/modulos/financeiro/00-modulo.md`](./estrutura/modulos/financeiro/00-modulo.md)
+
+Quando entrar, exige tabelas **namespaced** `financeiro_editais`/`financeiro_colaboradores`/
+`financeiro_remessas`/`financeiro_transacoes`/`financeiro_unidades` — `editais` e `colaboradores`
+já existem no gestaoconcurso com significado totalmente diferente (concurso × folha de pagamento
+Financeiro), então não dá para reaproveitar o nome. RLS restrita a superadmin+financeiro, nos
+moldes do resto do banco (nunca `USING(true)` — foi assim que a origem tinha ficado, com as
+migrations desenhadas e nunca ligadas ao frontend).
 
 ---
 

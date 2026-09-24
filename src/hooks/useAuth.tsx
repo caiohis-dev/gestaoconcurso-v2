@@ -14,6 +14,9 @@ interface AuthContextType {
   isSuperAdmin: boolean;
   isCoordenador: boolean;
   isColaborador: boolean;
+  /** Papel do módulo Financeiro — dimensão paralela, como `isColaborador`: não entra
+   * na escada `resolveRoleGestao` nem compete com admin/coordenador por `role`. */
+  isFinanceiro: boolean;
   /** Colaborador sem papel de gestão que abra porta — o destino dele é `/perfil-colaborador`. */
   isColaboradorSemGestao: boolean;
   isLoggingOut: boolean;
@@ -192,6 +195,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAdmin = role === 'admin' || role === 'superadmin';
   const isCoordenador = role === 'coordenador';
   const isColaborador = roles.includes('colaborador');
+  // Papel do módulo Financeiro: superadmin também passa (has_role o herda no banco,
+  // migration 20260924013238), mas isso é decidido pela ROTA (RequireAcesso lista
+  // ["superadmin", "financeiro"]), não aqui — isFinanceiro só reflete o papel literal,
+  // igual isColaborador.
+  const isFinanceiro = roles.includes('financeiro');
   // A pergunta de DESTINO, num lugar só. `Auth`, `Inicio` e `Perfil` têm de responder
   // igual — até 2026-09-18 a expressão estava copiada nos quatro pontos, e a cópia
   // afirmava `role === null`, que o trigger `handle_new_user` torna inalcançável.
@@ -210,6 +218,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isSuperAdmin,
         isCoordenador,
         isColaborador,
+        isFinanceiro,
         isColaboradorSemGestao,
         isLoggingOut,
         signIn,

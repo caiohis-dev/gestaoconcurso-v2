@@ -243,6 +243,44 @@ describe("useUsers", () => {
       );
       expect(chamadasDe("user_roles", "delete")).toHaveLength(1);
     });
+
+    it("concede e revoga 'financeiro' como papel puro — sem RPC, sem tabela de alocação", async () => {
+      // `financeiro` (módulo Financeiro, roadmap-modulo-financeiro.yaml) não tem
+      // vínculo paralelo como `coordenadores_prova` — é papel puro em `user_roles`,
+      // igual admin/user. Este teste é o controle de que ele NUNCA precisa da RPC.
+      const { result } = await carregar();
+      setTableResultSequence("user_roles", [
+        { data: null, error: null },
+        { data: [], error: null },
+      ]);
+
+      result.current.updateRole.mutate({ userId: "u1", role: "financeiro", action: "add" });
+
+      await waitFor(() =>
+        expect(toastMock).toHaveBeenCalledWith(
+          expect.objectContaining({ title: "Permissão atualizada" }),
+        ),
+      );
+      expect(chamadasDe("user_roles", "insert")[0][0]).toEqual({
+        user_id: "u1",
+        role: "financeiro",
+      });
+
+      toastMock.mockClear();
+      setTableResultSequence("user_roles", [
+        { data: null, error: null },
+        { data: [], error: null },
+      ]);
+
+      result.current.updateRole.mutate({ userId: "u1", role: "financeiro", action: "remove" });
+
+      await waitFor(() =>
+        expect(toastMock).toHaveBeenCalledWith(
+          expect.objectContaining({ title: "Permissão atualizada" }),
+        ),
+      );
+      expect(supabaseMock.rpc).not.toHaveBeenCalled();
+    });
   });
 
   /**

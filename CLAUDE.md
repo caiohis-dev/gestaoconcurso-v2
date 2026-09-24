@@ -156,14 +156,18 @@ sg docker -c 'npx supabase db reset'    # aplica migrations + os 3 seeds
 **Não há CI.** Nada roda a suíte sozinho; cada tema fechado depende de alguém lembrar. É o item de maior alavancagem do backlog, adiado por decisão do usuário.
 
 ```bash
-npm test                                  # 1930 testes em 97 arquivos
+npm test                                  # 2046 testes em 105 arquivos
 npx tsc --noEmit -p tsconfig.app.json     # tem de sair limpo
 npm run build
-npm run lint                              # baseline 111 (56 erros, 55 avisos)
+npm run lint                              # baseline 113 (56 erros, 57 avisos)
 npm run docs:conferir                     # docs × código/banco — tem de sair sem divergência
 ```
 
-**O lint tem 111 problemas pré-existentes** (111 desde 2026-09-15, quando **caiu 1 erro de `any`** junto com a extração de `montarLinhas` para fora do `useEffect` do `PainelDadosColaboradores`; eram 112 mais cedo no mesmo dia, quando **caiu 1 erro de `any`** junto com a extração de `converterDataExcel` para `src/lib/data-planilha.ts` — o parâmetro virou `unknown`. ⚠️ O **split** estava errado aqui: media-se 113 = **58 erros + 55 avisos** em 2026-09-15 antes desse tema — esta linha dizia "57 erros, 56 avisos", e o total nunca havia mudado. Eram 113 desde 2026-09-12, quando **caíram 2 erros de `any`** junto com o `useColaboradores()` removido; eram 115 mais cedo no mesmo dia, quando **caíram 2 avisos** junto com os campos de e-mail e senha do `CoordenadoresProvaDialog`; eram 117 desde 2026-09-10, quando **caíram 5 erros de `any`** junto com os totalizadores que saíram do `ProvaCard`; eram 122 antes disso, e 120 até 02/08, quando dois saíram junto com código removido; 118 até 04/08, quando o `any` do `handleSubmit` de `UnidadesProva` virou `UnidadeProvaInsert`). Só importa se **subir** — meça o baseline com `git stash` antes de atribuir um número novo ao seu trabalho.
+**O lint tem 113 problemas pré-existentes** (113 desde 2026-09-23, quando **subiram 2 avisos de
+`complexity`** com o port da lógica do módulo Financeiro — `inferirTipoEFormatarChavePix`
+(financeiro-chave-pix.ts) e `converterPlanilhaParaPagamentoPix` (financeiro-planilha-pagamentos.ts)
+são portes 1:1 do `gera_cnab_pix`, e refatorar a complexidade agora contrariaria a decisão da Fase
+2 do roadmap-modulo-financeiro.yaml (traduzir fielmente, não redesenhar). Eram 111 desde 2026-09-15, quando **caiu 1 erro de `any`** junto com a extração de `montarLinhas` para fora do `useEffect` do `PainelDadosColaboradores`; eram 112 mais cedo no mesmo dia, quando **caiu 1 erro de `any`** junto com a extração de `converterDataExcel` para `src/lib/data-planilha.ts` — o parâmetro virou `unknown`. ⚠️ O **split** estava errado aqui: media-se 113 = **58 erros + 55 avisos** em 2026-09-15 antes desse tema — esta linha dizia "57 erros, 56 avisos", e o total nunca havia mudado. Eram 113 desde 2026-09-12, quando **caíram 2 erros de `any`** junto com o `useColaboradores()` removido; eram 115 mais cedo no mesmo dia, quando **caíram 2 avisos** junto com os campos de e-mail e senha do `CoordenadoresProvaDialog`; eram 117 desde 2026-09-10, quando **caíram 5 erros de `any`** junto com os totalizadores que saíram do `ProvaCard`; eram 122 antes disso, e 120 até 02/08, quando dois saíram junto com código removido; 118 até 04/08, quando o `any` do `handleSubmit` de `UnidadesProva` virou `UnidadeProvaInsert`). Só importa se **subir** — meça o baseline com `git stash` antes de atribuir um número novo ao seu trabalho.
 
 ### `npm run docs:conferir` — o que ele pega, e o que não pega
 
@@ -237,7 +241,7 @@ my_rules/
 
 Fora de `my_rules/`: **`docs/`** guarda as baterias de teste manual (`bateria-*.sql`) e roteiros de teste de frontend.
 
-**Módulos** são os de `src/lib/modulos.ts` — a fonte de verdade. Hoje: `aplicacao-provas`, `editais`, `candidatos`, `alocacao-candidatos`. Módulo novo lá = pasta nova em `estrutura/modulos/`.
+**Módulos** são os de `src/lib/modulos.ts` — a fonte de verdade. Hoje: `aplicacao-provas`, `editais`, `candidatos`, `alocacao-candidatos`, `financeiro` (desde 2026-09-23 — único com acesso `superadmin`+`financeiro`, sem `admin`). Módulo novo lá = pasta nova em `estrutura/modulos/`.
 
 ⚠️ **O registro de módulos é UX e NÃO alimenta os guards.** Ler papéis de lá para autorizar afrouxaria 7 rotas — proposta já rejeitada, está em `concluidos/roadmap-modulos.yaml`.
 

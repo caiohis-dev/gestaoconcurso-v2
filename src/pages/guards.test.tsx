@@ -162,6 +162,7 @@ function estado(over: Record<string, unknown> = {}) {
     isSuperAdmin: false,
     isCoordenador: false,
     isColaborador: false,
+    isFinanceiro: false,
     isLoggingOut: false,
     signIn: vi.fn(),
     signUp: vi.fn(),
@@ -201,6 +202,12 @@ const PAPEIS = {
   coordenador: () =>
     estado({ user: USUARIO, role: "coordenador", roles: ["coordenador"], isCoordenador: true }),
   admin: () => estado({ user: USUARIO, role: "admin", roles: ["admin"], isAdmin: true }),
+  /**
+   * Papel do módulo Financeiro — PARALELO a admin/coordenador, como `colaborador`.
+   * `role` fica `null` de propósito: `financeiro` não entra em `resolveRoleGestao`
+   * (useAuth.tsx), então nunca é o valor de `role` de ninguém.
+   */
+  financeiro: () => estado({ user: USUARIO, roles: ["financeiro"], isFinanceiro: true }),
   superadmin: () =>
     estado({
       user: USUARIO,
@@ -332,8 +339,8 @@ const PAGINAS: Pagina[] = [
     mod: () => import("./Inicio"),
     // `user` puro entra: ele vê o estado vazio ("fale com a administração"), que é o
     // estado real de uma conta sem papel — e não há para onde mandá-lo, porque ele não
-    // tem cadastro de colaborador.
-    permitidos: ["user", "coordenador", "admin", "superadmin"],
+    // tem cadastro de colaborador. `financeiro` entra igual e vê o card do módulo dele.
+    permitidos: ["user", "coordenador", "admin", "superadmin", "financeiro"],
     desvios: {
       // Colaborador sem gestão nunca vê o hub: o que ele veria é o estado vazio, que não
       // leva a lugar nenhum. Segue direto para o próprio cadastro. Decisão de produto,
@@ -537,7 +544,8 @@ const PAGINAS: Pagina[] = [
     // Config geral, não módulo: é a conta do Supabase Auth (nome + senha). Ganhou guard
     // em 2026-07-26 — antes não tinha nenhum e renderizava para visitante deslogado.
     // `user` puro entra, de propósito: tem conta no Auth e é aqui que troca a senha.
-    permitidos: ["user", "coordenador", "admin", "superadmin"],
+    // `financeiro` entra pela mesma regra (`!isColaboradorSemGestao`, ver Perfil.tsx).
+    permitidos: ["user", "coordenador", "admin", "superadmin", "financeiro"],
     desvios: {
       // Colaborador sem gestão tem página própria para "meus dados"; duas telas
       // concorrentes seria pior que uma recusa. Desde 2026-09-18 isso vale também para
@@ -561,7 +569,20 @@ const PAGINAS: Pagina[] = [
       coordenador: LOGIN,
       admin: LOGIN,
       superadmin: LOGIN,
+      // `financeiro` também não é colaborador — mesma regra, mesmo destino.
+      financeiro: LOGIN,
     },
+  },
+  {
+    nome: "Financeiro",
+    path: "/financeiro",
+    rota: "/financeiro",
+    mod: () => import("./Financeiro"),
+    // Assimetria D1 do roadmap-modulo-financeiro.yaml: só superadmin + financeiro.
+    // `admin` puro FICA DE FORA de propósito — é o controle negativo desta linha:
+    // diferente de todo módulo existente, aqui `isAdmin` não abre a porta.
+    exige: ["superadmin", "financeiro"],
+    permitidos: ["superadmin", "financeiro"],
   },
 ];
 
@@ -576,7 +597,9 @@ describe("guards de página — matriz papel × rota", () => {
     // 24 desde 2026-08-04, com o módulo Alocação de Candidatos (as duas rotas).
     // 25 desde 2026-09-16, com o Edital Studio (/editais/:editalId) — a v3 do módulo
     //    Editais, em que o edital deixa de ser rótulo e vira o documento do certame.
-    expect(PAGINAS.length).toBe(25);
+    // 26 desde 2026-09-24, com o módulo Financeiro (/financeiro) — a primeira rota
+    //    guardada por um papel que NÃO inclui admin (só superadmin + financeiro).
+    expect(PAGINAS.length).toBe(26);
     expect(new Set(PAGINAS.map((p) => p.nome)).size).toBe(PAGINAS.length);
   });
 

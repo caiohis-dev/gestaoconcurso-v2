@@ -1009,3 +1009,69 @@ Tabela + **FK composta** `(sala_id, prova_id)` (metade da coerência de graça �
 - ⚠️ **Os 7.591 candidatos do banco local não estão no dump** e não subiram. São playground importado por planilha. **Produção nasceu sem candidato nenhum**, e `/candidatos` vazia é o resultado **correto**.
 - ⚠️ **Segue proibido disparar e-mail em produção** até o site responder no domínio: o link nasce certo e não abre nada.
 - **Os dois riscos aceitos do free**, que não viraram passo por decisão: **pausa após 1 semana de inatividade** (sintoma idêntico ao do bundle errado — a página carrega, o login aparece, tudo falha) e **zero backup**, num banco onde `DELETE` em massa é operação normal de negócio.
+
+---
+
+## ✅ CONCLUÍDO 2026-09-24 — módulo Financeiro: as 4 fases do roadmap
+
+**Área:** módulo Financeiro (gerador de remessa CNAB 240/PIX). O registro completo — origem,
+medição prévia, decisões e o detalhe de cada fase — está em
+[`../roadmap-modulo-financeiro.yaml`](../roadmap-modulo-financeiro.yaml). Este bloco é o resumo que
+vivia no `backlog.md`.
+
+**O que é:** um projeto separado e pronto (`gera_cnab_pix`) que gera remessa de pagamento CNAB 240
+(SISPAG Itaú, PIX) a partir de uma planilha de recebedores, importado como módulo novo do
+gestaoconcurso — reaproveitando **só** o controle de acesso (Supabase Auth + `user_roles`); nenhum
+dado de prova/edital/candidato do resto do sistema é lido ou escrito por ele.
+
+### As decisões do usuário
+
+1. **D1 — assimetria central**: acesso é **superadmin + financeiro**; `admin` comum **NÃO** entra
+   — o único módulo do sistema com essa regra (todo o resto é superadmin+admin, ou +coordenador).
+2. **D2**: a UI foi **reescrita** nos padrões do gestaoconcurso (Tailwind/shadcn/react-router),
+   contra a alternativa de encapsular a UI original (CSS/ícones próprios) como estava.
+3. **D3**: persistência (histórico de remessas/transações) ficou **fora** deste roadmap — o módulo
+   é 100% stateless, cada geração é download direto do navegador. Vira roadmap próprio quando for a
+   vez (registrado como pendente em [`../../backlog.md`](../../backlog.md)).
+4. **D5**: `has_role` foi estendida para superadmin implicar também `financeiro`, no mesmo padrão
+   de `superadmin ⇒ admin` — evita a classe de bug "superadmin não bate em muro" (já tinha
+   acontecido 3× neste repo por checagem literal que esquecia o superadmin).
+
+### O que foi feito, por fase
+
+- **Fase 1** (23/09) — enum `app_role` + `financeiro`, `has_role` estendida (D5), guarda de acesso
+  completa (`useAuth`/`RequireAcesso`/`modulos.ts`/rota `/financeiro`/hub/concessão em
+  `/gerenciar-usuarios`). `guards.test.tsx` cobre o controle positivo (financeiro entra) **e**
+  negativo (admin puro não entra).
+- **Fase 2** (23/09) — as ~950 linhas de lógica de negócio da origem (que não tinha NENHUM teste)
+  portadas 1:1 para `src/lib/financeiro-*.ts`, com **71 testes novos** — inclusive o layout CNAB
+  240 conferido posição a posição contra o manual do Itaú, e a estrutura comparada com um `.REM`
+  real da origem (sem copiar o arquivo, que tem PII).
+- **Fase 3** (24/09) — `src/pages/Financeiro.tsx` deixou de ser stub: fluxo linear de 3 etapas
+  (envio → correspondência de colunas → validação/geração), nos padrões shadcn/Tailwind, seguindo a
+  convenção visual de `CadastroLote.tsx` (stepper, upload por clique sem drag-and-drop). Dividida em
+  3 subcomponentes internos por etapa — necessário para manter a complexidade de cada função abaixo
+  do teto do lint (uma função só passou de 15 para 25 na primeira versão). **5 testes novos** em
+  `Financeiro.ui.test.tsx`, sem mock de Supabase, com `.xlsx` real construído em memória.
+- **Fase 4** (24/09) — fechamento: re-verificação (nenhum código mudou), `00-modulo.md` e o próprio
+  roadmap marcados como concluídos, e este registro.
+
+### O que ficou como dívida assumida (não é esquecimento)
+
+- ⚠️ **`dadosPagador`** (CNPJ/agência/conta/DAC da FEVRE) está **hardcoded** em
+  `financeiro-cnab240-tipos.ts`, igual à origem — preservar fielmente venceu redesenhar agora.
+- ⚠️ **`parseFloat(valorStr.replace(',', '.'))`** só troca a primeira vírgula — um valor com milhar
+  em ponto (`"1.234,56"`) sairia errado. Herdado da origem, só testado com valores simples.
+- ⚠️ **2 avisos de `complexity` no lint** (baseline subiu de 111 para 113 na Fase 2) —
+  `inferirTipoEFormatarChavePix` e `converterPlanilhaParaPagamentoPix` são ports fiéis; refatorar
+  agora contrariaria a decisão de traduzir, não redesenhar.
+- 🔴 **A Fase 3 não foi verificada em navegador real logado.** O banco local carrega dado e senhas
+  de PRODUÇÃO — não há credencial de teste segura para logar sozinho como superadmin/financeiro. A
+  cobertura de comportamento vem só da suíte automatizada, que já exercita o componente de verdade
+  (sem mockar nada do módulo em si), mas ninguém viu a tela rodar num browser.
+
+### Verificação final (Fase 4)
+
+`npm test` 2046 testes (105 arquivos) · `tsc` limpo · `build` OK · `lint` no baseline (113) ·
+`docs:conferir` sem divergência. **Nada foi commitado** — decisão do usuário em todas as sessões
+do tema ("sem git por enquanto").

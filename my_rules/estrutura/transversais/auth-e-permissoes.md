@@ -187,15 +187,18 @@ Travar o campo (Etapa 1) impede o estrago novo, mas não conserta quem já está
 
 ### Módulos: o que cada papel vê no hub (2026-07-24, linha do colaborador corrigida em 2026-09-18)
 
-A tela de entrada por módulos (o mecanismo em [`arquitetura-geral.md`](./arquitetura-geral.md) §6) deriva o acesso **dos papéis que já existem** — sem tabela nem enum de módulos no banco. Hoje são quatro módulos (Aplicação de Provas, para todo gestor; Editais, Candidatos e Alocação de Candidatos, só admin/superadmin); a matriz ainda é simples, mas o que importa é a regra.
+A tela de entrada por módulos (o mecanismo em [`arquitetura-geral.md`](./arquitetura-geral.md) §6) deriva o acesso **dos papéis que já existem** — sem tabela nem enum de módulos no banco. 🔵 Desde 2026-09-23 são **cinco** módulos: Aplicação de Provas (todo gestor), Editais/Candidatos/Alocação de Candidatos (só admin/superadmin) e **Financeiro** (só **superadmin + financeiro** — `admin` comum fica de fora, a única assimetria desse tipo no registro; ver [`modulos/financeiro/00-modulo.md`](../modulos/financeiro/00-modulo.md)).
 
 | Papel | Vê o hub? | Módulos no hub | Entrada do card *Aplicação de Provas* |
 |---|---|---|---|
-| `superadmin` | sim | Aplicação de Provas + Editais + Candidatos (+ "Usuários" no header, fora dos cards) | `/dashboard` |
-| `admin` | sim | Aplicação de Provas + Editais + Candidatos | `/dashboard` |
-| `coordenador` | sim | Aplicação de Provas (Editais e Candidatos são só admin) | `/colaboradores` |
+| `superadmin` | sim | Aplicação de Provas + Editais + Candidatos + Alocação de Candidatos + Financeiro (+ "Usuários" no header, fora dos cards) | `/dashboard` |
+| `admin` | sim | Aplicação de Provas + Editais + Candidatos + Alocação de Candidatos — **não** Financeiro | `/dashboard` |
+| `coordenador` | sim | Aplicação de Provas (os demais são só admin/superadmin) | `/colaboradores` |
 | `user` puro (**sem** `colaborador`) | sim | **nenhum** — vê o estado vazio ("fale com a administração") | — |
 | **`colaborador` sem gestão** (`role` é `user` ou nulo) | **não** | — cai direto em `/perfil-colaborador` | — |
+| `financeiro` (sem outro papel de gestão) | sim | **só** Financeiro | — |
+
+⚠️ **A linha de `superadmin`/`admin` acima corrige uma omissão que já existia antes do Financeiro**: Alocação de Candidatos (criado em 2026-08-04) nunca tinha entrado nesta tabela, embora sempre tenha aparecido no hub — o doc ficou 7 semanas sem citar um módulo que já existia no código.
 
 **O combo `user` + `colaborador` é o caso MAIS COMUM do sistema — 40 das 53 contas com o papel** (medido em 2026-09-18), e é ele que a linha "colaborador" da tabela acima descreve. `resolveRoleGestao` devolve `'user'` (não `null`), mas isso **não** decide mais o destino: quem decide é `isColaboradorSemGestao`, e `user` não abre módulo nenhum.
 

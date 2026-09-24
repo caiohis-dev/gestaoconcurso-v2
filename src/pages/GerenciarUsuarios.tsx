@@ -56,6 +56,7 @@ const roleLabels: Record<AppRole, string> = {
   admin: "Administrador",
   coordenador: "Coordenador",
   user: "Usuário",
+  financeiro: "Financeiro",
 };
 
 const roleBadgeVariants: Record<AppRole, "default" | "secondary" | "outline"> = {
@@ -63,6 +64,7 @@ const roleBadgeVariants: Record<AppRole, "default" | "secondary" | "outline"> = 
   admin: "default",
   coordenador: "outline",
   user: "secondary",
+  financeiro: "outline",
 };
 
 export default function GerenciarUsuarios() {
@@ -276,6 +278,7 @@ export default function GerenciarUsuarios() {
                     <TableHead className="text-center">Super Admin</TableHead>
                     <TableHead className="text-center">Admin</TableHead>
                     <TableHead className="text-center">Coordenador</TableHead>
+                    <TableHead className="text-center">Financeiro</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -293,7 +296,7 @@ export default function GerenciarUsuarios() {
                             <Badge
                               key={role}
                               variant={roleBadgeVariants[role]}
-                              className={role === "superadmin" ? "bg-purple-600" : role === "admin" ? "bg-primary" : role === "coordenador" ? "border-primary text-primary" : ""}
+                              className={role === "superadmin" ? "bg-purple-600" : role === "admin" ? "bg-primary" : role === "coordenador" || role === "financeiro" ? "border-primary text-primary" : ""}
                             >
                               {roleLabels[role]}
                             </Badge>
@@ -344,6 +347,13 @@ export default function GerenciarUsuarios() {
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Switch
+                          checked={u.roles.includes("financeiro")}
+                          onCheckedChange={() => handleRoleToggle(u.id, "financeiro", u.roles.includes("financeiro"))}
+                          disabled={updateRole.isPending}
+                        />
                       </TableCell>
                     </TableRow>
                   ))}

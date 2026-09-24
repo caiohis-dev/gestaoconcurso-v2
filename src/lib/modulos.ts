@@ -9,6 +9,7 @@ import {
   Upload,
   Briefcase,
   DoorOpen,
+  Banknote,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -24,7 +25,7 @@ import {
  */
 
 // Cresce com o sistema. Hoje só existe um módulo.
-export type ModuloId = 'aplicacao-provas' | 'editais' | 'candidatos' | 'alocacao-candidatos';
+export type ModuloId = 'aplicacao-provas' | 'editais' | 'candidatos' | 'alocacao-candidatos' | 'financeiro';
 
 // Papéis de GESTÃO que podem receber um módulo. A dimensão 'colaborador' fica de fora:
 // colaborador sem gestão nunca vê o hub (segue direto para /perfil-colaborador), e
@@ -33,7 +34,12 @@ export type ModuloId = 'aplicacao-provas' | 'editais' | 'candidatos' | 'alocacao
 // ⚠️ 'user' também fica de fora, e é isso que torna o hub VAZIO para quem só tem ele —
 // o motivo de `colaboradorSemGestao` (src/lib/papeis.ts) contar `user` como "sem
 // gestão" na hora de escolher destino.
-export type PapelGestao = 'superadmin' | 'admin' | 'coordenador';
+//
+// 'financeiro' é PARALELO a admin/coordenador, não um degrau que superadmin herda
+// aqui (essa herança é decidida por `has_role` no banco e por listar os dois papéis
+// na rota — ver `papeisDoUsuario` abaixo e `RequireAcesso`). O módulo Financeiro
+// declara `papeis: ['superadmin', 'financeiro']` para cobrir os dois.
+export type PapelGestao = 'superadmin' | 'admin' | 'coordenador' | 'financeiro';
 
 // O que o hub/header conhecem de quem está logado — um subconjunto do useAuth, para
 // não acoplar o registro ao hook inteiro.
@@ -41,6 +47,7 @@ export interface CtxAcesso {
   isAdmin: boolean;        // true também para superadmin (ver useAuth)
   isSuperAdmin: boolean;
   isCoordenador: boolean;
+  isFinanceiro: boolean;
 }
 
 // Papéis que um link de navegação pode exigir.
@@ -48,7 +55,7 @@ export interface CtxAcesso {
 // Cadastro", que saiu do header para o menu do usuário em 2026-08-01 (ver Layout.tsx) e
 // não é mais um NavLink. Fica no union por ser um papel de navegação legítimo, não como
 // resquício: um item futuro só para colaborador volta a usá-lo sem precisar do tipo mudar.
-export type PapelNav = 'superadmin' | 'admin' | 'coordenador' | 'colaborador';
+export type PapelNav = 'superadmin' | 'admin' | 'coordenador' | 'colaborador' | 'financeiro';
 
 // Um item do header. Sem showFor = visível para todos que estão dentro do módulo.
 export interface NavLink {
@@ -171,15 +178,37 @@ const alocacaoCandidatos: Modulo = {
   ],
 };
 
-export const MODULOS: Modulo[] = [aplicacaoProvas, editais, candidatos, alocacaoCandidatos];
+// Financeiro NÃO se comunica com dado nenhum do resto do sistema — a única superfície
+// compartilhada é Auth/user_roles. Por isso é superadmin + financeiro, e NÃO admin: é
+// a assimetria D1 do roadmap (my_rules/analises/roadmap-modulo-financeiro.yaml),
+// diferente de todos os módulos acima (que são superadmin+admin, ou +coordenador).
+const financeiro: Modulo = {
+  id: 'financeiro',
+  nome: 'Financeiro',
+  descricao: 'Geração de remessas de pagamento (CNAB 240 / PIX).',
+  icone: Banknote,
+  papeis: ['superadmin', 'financeiro'],
+  rotaEntrada: () => '/financeiro',
+  prefixosRota: ['/financeiro'],
+  navLinks: [
+    { href: '/financeiro', label: 'Financeiro', icon: Banknote, showFor: ['superadmin', 'financeiro'] },
+  ],
+};
+
+export const MODULOS: Modulo[] = [aplicacaoProvas, editais, candidatos, alocacaoCandidatos, financeiro];
 
 // Papéis de gestão que o usuário efetivamente tem. superadmin ⊇ admin, então um
 // módulo restrito a ['admin'] continua visível para o superadmin.
+//
+// ⚠️ superadmin NÃO ganha 'financeiro' aqui — ao contrário de admin, que superadmin
+// sempre herda. O card do Financeiro aparece para o superadmin porque o módulo lista
+// 'superadmin' em `papeis` (acima), não porque esta função lhe atribui o papel.
 function papeisDoUsuario(ctx: CtxAcesso): PapelGestao[] {
   const papeis: PapelGestao[] = [];
   if (ctx.isSuperAdmin) papeis.push('superadmin', 'admin');
   else if (ctx.isAdmin) papeis.push('admin');
   if (ctx.isCoordenador) papeis.push('coordenador');
+  if (ctx.isFinanceiro) papeis.push('financeiro');
   return papeis;
 }
 

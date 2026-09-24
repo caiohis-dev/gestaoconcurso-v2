@@ -16,7 +16,17 @@ import { modulosDoUsuario } from "@/lib/modulos";
  * A rota só é plugada na etapa 3 (troca atômica). Aqui o arquivo só precisa compilar.
  */
 export default function Inicio() {
-  const { user, loading, rolesLoaded, isAdmin, isSuperAdmin, isCoordenador, isColaboradorSemGestao, isLoggingOut } = useAuth();
+  const {
+    user,
+    loading,
+    rolesLoaded,
+    isAdmin,
+    isSuperAdmin,
+    isCoordenador,
+    isFinanceiro,
+    isColaboradorSemGestao,
+    isLoggingOut,
+  } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -52,7 +62,7 @@ export default function Inicio() {
     return <Navigate to="/perfil-colaborador" replace />;
   }
 
-  const ctx = { isAdmin, isSuperAdmin, isCoordenador };
+  const ctx = { isAdmin, isSuperAdmin, isCoordenador, isFinanceiro };
   const modulos = modulosDoUsuario(ctx);
 
   return (

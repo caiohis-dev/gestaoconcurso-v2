@@ -33,6 +33,7 @@ import DocumentosImpressao from "./pages/DocumentosImpressao";
 import PainelDadosColaboradores from "./pages/PainelDadosColaboradores";
 import Dashboard from "./pages/Dashboard";
 import GerenciarUsuarios from "./pages/GerenciarUsuarios";
+import Financeiro from "./pages/Financeiro";
 import NotFound from "./pages/NotFound";
 import { RequireAcesso } from "@/components/RequireAcesso";
 
@@ -82,6 +83,7 @@ const App = () => (
               <Route path="/documentos-impressao/:provaId" element={<RequireAcesso papeis={["admin"]}><DocumentosImpressao /></RequireAcesso>} />
               <Route path="/painel-dados-colaboradores/:provaId" element={<RequireAcesso papeis={["admin"]}><PainelDadosColaboradores /></RequireAcesso>} />
               <Route path="/gerenciar-usuarios" element={<RequireAcesso papeis={["superadmin"]}><GerenciarUsuarios /></RequireAcesso>} />
+              <Route path="/financeiro" element={<RequireAcesso papeis={["superadmin", "financeiro"]}><Financeiro /></RequireAcesso>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

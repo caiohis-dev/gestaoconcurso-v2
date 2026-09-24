@@ -16,6 +16,7 @@ Os módulos são os de **`src/lib/modulos.ts`** — a fonte de verdade. Módulo 
 | **Editais** | [`modulos/editais/00-modulo.md`](./modulos/editais/00-modulo.md) | superadmin, admin | `/editais` |
 | **Candidatos** | [`modulos/candidatos/00-modulo.md`](./modulos/candidatos/00-modulo.md) | superadmin, admin | `/candidatos` |
 | **Alocação de Candidatos** | [`modulos/alocacao-candidatos/00-modulo.md`](./modulos/alocacao-candidatos/00-modulo.md) | superadmin, admin | `/alocacao-candidatos` |
+| **Financeiro** | [`modulos/financeiro/00-modulo.md`](./modulos/financeiro/00-modulo.md) | superadmin, financeiro (⚠️ admin comum NÃO acessa) | `/financeiro` |
 
 O `00-modulo.md` de cada pasta é o **contrato**: identidade, arquivos, tabelas, rotas e guards, RPCs, fronteiras e pontos frágeis. Módulo grande se subdivide **por feature/domínio** dentro da própria pasta — nunca por rota nem por camada técnica:
 

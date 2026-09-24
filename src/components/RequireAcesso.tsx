@@ -31,7 +31,7 @@ import { useAuth } from "@/hooks/useAuth";
  */
 
 /** Papéis que uma rota pode exigir. `admin` já inclui superadmin (ver `useAuth`). */
-export type PapelExigido = "superadmin" | "admin" | "coordenador" | "colaborador";
+export type PapelExigido = "superadmin" | "admin" | "coordenador" | "colaborador" | "financeiro";
 
 interface RequireAcessoProps {
   /** Basta ter UM destes. */
@@ -40,8 +40,17 @@ interface RequireAcessoProps {
 }
 
 export function RequireAcesso({ papeis, children }: RequireAcessoProps) {
-  const { user, loading, rolesLoaded, isAdmin, isSuperAdmin, isCoordenador, isColaborador, isLoggingOut } =
-    useAuth();
+  const {
+    user,
+    loading,
+    rolesLoaded,
+    isAdmin,
+    isSuperAdmin,
+    isCoordenador,
+    isColaborador,
+    isFinanceiro,
+    isLoggingOut,
+  } = useAuth();
 
   // O `signOut` limpa o usuário e só depois navega. Sem isto, o guard dispararia o
   // próprio redirecionamento no meio do caminho.
@@ -65,7 +74,8 @@ export function RequireAcesso({ papeis, children }: RequireAcessoProps) {
     if (papel === "superadmin") return isSuperAdmin;
     if (papel === "admin") return isAdmin; // inclui superadmin
     if (papel === "coordenador") return isCoordenador;
-    return isColaborador;
+    if (papel === "colaborador") return isColaborador;
+    return isFinanceiro;
   });
 
   // Sem o papel, volta ao hub — que é quem sabe para onde cada um vai (o colaborador

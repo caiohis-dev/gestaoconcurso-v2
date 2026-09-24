@@ -6,7 +6,7 @@
  * precisam responder IGUAL — e que até 2026-09-18 estava copiada nos quatro.
  */
 
-export type AppRole = 'admin' | 'user' | 'coordenador' | 'superadmin' | 'colaborador';
+export type AppRole = 'admin' | 'user' | 'coordenador' | 'superadmin' | 'colaborador' | 'financeiro';
 
 /**
  * É colaborador e não tem papel de gestão que abra alguma porta.
