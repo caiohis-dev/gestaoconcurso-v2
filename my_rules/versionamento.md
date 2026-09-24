@@ -68,6 +68,14 @@ Versionamento semântico, com prefixo `v`:
 
   ⚠️ **Subiu sem backup novo**, por decisão do usuário; o mais recente era o de 16/09. Fica registrado porque o Free não tem backup automático nenhum.
 
+- **`v3.7.1` nasceu em 2026-09-24**, no commit `91abf7e`. PATCH: `/gerenciar-usuarios` mostrava
+  "Sem nome" para as contas nascidas pelo convite de colaborador (o `generateLink` não manda
+  metadado, e `profiles.full_name` fica nulo — 40 de 58 no local); a tela passou a cair no nome do
+  cadastro de colaborador. 🟢 **Só frontend** — conferido `git diff v3.7.0..dev -- supabase/`
+  vazio antes de decidir. Ritual curto: `git fetch . dev:main` → tag → `deploy.sh`. **Verificado ao
+  vivo:** hash idêntico ao buildado (`index-CudCxYiE.js`), **0** `127.0.0.1`, **8** de produção, e
+  a consulta nova (`user_id, colab_nome_completo`) presente no bundle publicado.
+
 - **`v3.7.0` nasceu em 2026-09-24**, no commit `92aa413`, horas depois da v3.6.0. Entregou a
   **conta de sistema nascendo de colaborador**: a EF `create-admin` (senha escolhida pelo admin, e
   que **sobrescrevia a senha** de quem já tinha conta) virou `conceder-papel-sistema`, e o
