@@ -231,4 +231,31 @@ describe("ReivindicarAcessoCard — informar o próprio e-mail", () => {
     const [, init] = chamadasPara("incluir-email-cadastro")[0];
     expect(JSON.parse(init.body).origem).toBe("cadastro-publico");
   });
+  describe("excesso de acessos (429)", () => {
+    // Decisão do usuário em 2026-09-24: frase fixa, com a janela de `TETOS.acesso`.
+    const FRASE = "Sistema com excesso de acessos. Tente novamente após 10 minutos.";
+
+    it("pelo CPF, mostra a frase fixa", async () => {
+      fetchMock.mockResolvedValue(respostaDe({ error: "qualquer" }, false, 429));
+      const user = userEvent.setup();
+      renderWithProviders(<ReivindicarAcessoCard onClose={() => {}} permitirEmail />);
+
+      await user.type(screen.getByLabelText(/CPF/i), CPF);
+      await user.click(screen.getByRole("button", { name: /enviar|continuar|^buscar/i }));
+
+      expect(await screen.findByText(FRASE)).toBeInTheDocument();
+    });
+
+    it("pelo e-mail, mostra a MESMA frase — as duas portas dividem o orçamento", async () => {
+      fetchMock.mockResolvedValue(respostaDe({ error: "qualquer" }, false, 429));
+      const user = userEvent.setup();
+      renderWithProviders(<ReivindicarAcessoCard onClose={() => {}} permitirEmail />);
+
+      await user.type(screen.getByLabelText(/CPF/i), "joao@exemplo.com");
+      await user.click(screen.getByRole("button", { name: /enviar|continuar|^buscar/i }));
+
+      await waitFor(() => expect(chamadasPara("recuperar-senha")).toHaveLength(1));
+      expect(await screen.findByText(FRASE)).toBeInTheDocument();
+    });
+  });
 });

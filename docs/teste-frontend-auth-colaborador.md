@@ -44,7 +44,7 @@ Roteiro de teste manual da UI cobrindo a refatoração do acesso do colaborador 
 - [ ] **C4c** — Informar um e-mail que **já é de outro colaborador**, e depois um que **já tem conta no sistema** → ⚠️ **as duas recusas têm de ter o MESMO texto.** Se diferirem, a porta virou oráculo de quem tem conta.
 - [ ] **C4d** *(controle positivo)* — Repetir o C4a com o mesmo CPF → agora o cadastro tem e-mail e a resposta é a do **C1** (e-mail mascarado), não o formulário.
 - [x] **C5** — CPF **inexistente** → resposta genérica, sem revelar nada.
-- [x] **C6** — Repetir **6×** rápido (mesmo IP) → o **6º é cortado** (rate limit 5/15min).
+- [x] **C6** — Repetir **6×** rápido (mesmo IP) → o **6º é cortado** (rate limit 5/10min — era 5/15 até 2026-09-24), com a frase *"Sistema com excesso de acessos. Tente novamente após 10 minutos."*
 - [ ] **C8** *(2026-09-19 — o invite que morria calado)* — Num cadastro em **estado A**, pôr pelo *Editar Colaborador* um e-mail que **já tem conta no Auth** (use uma conta de teste sua, nunca a de outra pessoa). Reivindicar por esse CPF → **chega um link de REDEFINIÇÃO** (não o de primeiro acesso), e o log da EF **não** traz `envio do link falhou`. Antes deste tema a tela dizia "link enviado" e **nada saía**. ⚠️ O cadastro **continua em estado A nesse momento** — o vínculo só acontece quando a pessoa **logar** (gatilho `on_auth_user_signin`). Conferir depois do login: `user_id` preenchido e papel `colaborador` concedido.
 - [x] **C7** *(orçamento compartilhado)* — Gastar o teto pelo **e-mail** (bloco E) e em seguida tentar pelo **CPF** → **também 429**. As duas portas dividem a mesma tabela `reivindicacao_rate_limit` de propósito: separadas, o atacante somaria 5 + 5.
 
@@ -136,7 +136,7 @@ Roteiro de teste manual da UI cobrindo a refatoração do acesso do colaborador 
 > UPDATE profiles SET email='exemplo2@exemplo3.com' WHERE id='bee702b6-55c5-49a4-8986-4c929b593c0e';
 > ```
 
-- [x] **J1** *(estado C)* — Editar um colaborador vinculado-confirmado → clicar "O e-mail está errado e ele nunca conseguiu entrar?" → o dialog explica que a conta **já foi confirmada** e **não oferece formulário**, só "Fechar".
+- [x] **J1** *(estado C)* — Editar um colaborador vinculado-confirmado → clicar "Clique aqui caso queira corrigir o e-mail de acesso" (🔵 era "O e-mail está errado e ele nunca conseguiu entrar?" até 2026-09-24) → o dialog explica que a conta **já foi confirmada** e **não oferece formulário**, só "Fechar".
 - [x] **J2** *(estado B)* — Editar `CAIO TESTE` → mesmo link → o dialog mostra o aviso âmbar com **os dois endereços** (conta `exemplo2@exemplo3.com`, cadastro `contato@…`) e **pré-preenche** o campo com o do cadastro.
 - [x] **J3** *(a correção)* — Confirmar em J2 → **toast de sucesso, e o e-mail chega de verdade**. ⚠️ **Mudou em 2026-07-20:** este caso mandava esperar o toast de *aviso* ("o link não saiu"), porque se acreditava que o SMTP não entregava local. Não era o SMTP — era um typo no `SMTP_HOST`. Corrigido, **o aviso passou a ser sinal de problema real**, não o resultado normal. Conferir no banco: `auth.users.email` mudou, **`user_id` NÃO mudou**, `profiles.email` acompanhou, `user_roles` intactos.
 - [x] **J4** — Reabrir o dialog depois de J3 → o aviso de divergência **some** (`divergentes: false`); tentar corrigir para o mesmo e-mail → recusa "Este já é o e-mail da conta de acesso."

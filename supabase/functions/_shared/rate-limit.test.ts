@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { chaveDeOrigem, podeSeguir, TETOS } from "./rate-limit.ts";
+import { chaveDeOrigem, mensagemDoBloqueio, podeSeguir, TETOS } from "./rate-limit.ts";
 
 // Testes do lado Deno do rate limit (Etapa 1 do roadmap). Cobrem o que é lógica PURA —
 // a chave de origem — e o contrato de falha do `podeSeguir`, com um cliente dublê.
@@ -111,7 +111,8 @@ Deno.test("podeSeguir: manda escopo, chave, max e janela para a RPC", async () =
 
 Deno.test("os tetos confirmados em 2026-09-12 (decisão N1)", () => {
   // Amarra os números para que mudá-los seja um ato deliberado, não um deslize.
-  assertEquals(TETOS.acesso, { escopo: "acesso", max: 5, janelaMin: 15 });
+  // 🔵 15 → 10 min em 2026-09-24, por decisão do usuário.
+  assertEquals(TETOS.acesso, { escopo: "acesso", max: 5, janelaMin: 10 });
   assertEquals(TETOS.cadastro, { escopo: "cadastro", max: 3, janelaMin: 60 });
   assertEquals(TETOS["checagem-cpf"], { escopo: "checagem-cpf", max: 30, janelaMin: 15 });
   // 🔴 Acrescentado em 2026-09-19, e o número é folgado DE PROPÓSITO: a porta de
@@ -122,4 +123,15 @@ Deno.test("os tetos confirmados em 2026-09-12 (decisão N1)", () => {
   // O teto GLOBAL, de chave fixa: é ele que impede a auditoria daquela porta (1 convite
   // + 1 aviso por admin, a cada registro) de virar o vetor — rotação de IP é trivial.
   assertEquals(TETOS["inclusao-email-global"], { escopo: "inclusao-email-global", max: 20, janelaMin: 60 });
+});
+
+Deno.test("a frase do 429 do `acesso` cita a janela verdadeira (decisão de 2026-09-24)", () => {
+  // Derivada de TETOS: se a janela mudar e a frase não, ela passa a mentir para quem espera.
+  assertEquals(
+    mensagemDoBloqueio("acesso"),
+    "Sistema com excesso de acessos. Tente novamente após 10 minutos.",
+  );
+  // Controle positivo: as portas de 60 min NÃO herdam o "10 minutos".
+  assertEquals(mensagemDoBloqueio("cadastro"), "Muitas tentativas. Aguarde alguns minutos e tente de novo.");
+  assertEquals(mensagemDoBloqueio("inclusao-email"), "Muitas tentativas. Aguarde alguns minutos e tente de novo.");
 });

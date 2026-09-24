@@ -37,7 +37,11 @@ export interface TetoRateLimit {
 export const TETOS: Record<EscopoRateLimit, TetoRateLimit> = {
   // Compartilhado de propósito entre as duas portas de "estou sem minha senha":
   // separados, o atacante somaria 5 pelo CPF MAIS 5 pelo e-mail.
-  acesso: { escopo: 'acesso', max: 5, janelaMin: 15 },
+  // 🔵 Janela de 15 → 10 min em 2026-09-24, por decisão do usuário: o teto conta TODA
+  // requisição (a certa também), e uma coordenação disparando o acesso de vários
+  // colaboradores do mesmo IP esbarrava nele. Folgar a janela foi preferido a um botão
+  // de "reenviar convite", que daria mais trabalho ao coordenador.
+  acesso: { escopo: 'acesso', max: 5, janelaMin: 10 },
 
   // O mais apertado do sistema, e com motivo: cada chamada INSERE PII de gente real em
   // `colaboradores` e DISPARA um e-mail com SPF/DKIM da FEVRE para o endereço que o corpo
@@ -155,8 +159,21 @@ export async function barrarSeExcedeu(
   const ok = await podeSeguir(supabase, teto, chaveDeOrigem(req));
   if (ok) return null;
 
-  return jsonResp(
-    { error: 'Muitas tentativas. Aguarde alguns minutos e tente de novo.' },
-    429,
-  );
+  return jsonResp({ error: mensagemDoBloqueio(escopo) }, 429);
+}
+
+/**
+ * A frase do 429.
+ *
+ * 🔵 O escopo `acesso` tem frase própria desde 2026-09-24, por decisão do usuário, e ela
+ * cita a janela — que continua sem ser oráculo: não diz se o CPF existe nem se o teto é
+ * por IP ou por alvo. É derivada de `TETOS`, para não mentir se a janela mudar. As outras
+ * portas seguem com a genérica, porque as janelas delas são de 60 min.
+ * ⚠️ O `ReivindicarAcessoCard` NÃO lê este texto: escreve o dele. Mudou aqui, mude lá.
+ */
+export function mensagemDoBloqueio(escopo: EscopoRateLimit): string {
+  if (escopo === 'acesso') {
+    return `Sistema com excesso de acessos. Tente novamente após ${TETOS.acesso.janelaMin} minutos.`;
+  }
+  return 'Muitas tentativas. Aguarde alguns minutos e tente de novo.';
 }

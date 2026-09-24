@@ -61,10 +61,10 @@ errada e o que cada decisão custou. Antes de reabrir qualquer tema abaixo, proc
 
 ---
 
-## ⏭️ PRÓXIMA — as DUAS ressalvas restantes do "admin preenche o e-mail e o colaborador se reivindica"
+## ⏭️ PRÓXIMA — a ressalva restante do "admin preenche o e-mail e o colaborador se reivindica"
 
 **Status:** ⏳ aberto em 2026-09-18, ao conferir se um colaborador **sem e-mail** consegue concluir o acesso depois de o admin preencher o campo pelo *Editar Colaborador* de `/colaboradores`.
-✅ **A ressalva 1 — a grave — foi FECHADA em 2026-09-19** (migration `20260919121555` + `_shared/auth-lookup.ts`): o vínculo deixou de depender do nascimento da conta e o helper passou a mandar `recovery` quando o e-mail já tem conta. Ver [`analises/concluidos/backlog-itens-concluidos.md`](./analises/concluidos/backlog-itens-concluidos.md). Sobram as duas abaixo, **independentes entre si**.
+✅ **A ressalva 1 — a grave — foi FECHADA em 2026-09-19** (migration `20260919121555` + `_shared/auth-lookup.ts`): o vínculo deixou de depender do nascimento da conta e o helper passou a mandar `recovery` quando o e-mail já tem conta. Ver [`analises/concluidos/backlog-itens-concluidos.md`](./analises/concluidos/backlog-itens-concluidos.md). Sobravam as duas abaixo; a 2 (o teto) foi folgada em 2026-09-24, e resta a 1 (a mensagem da CHECK).
 **Área:** Auth e Permissões ([`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md)) + [`estrutura/modulos/aplicacao-provas/colaboradores.md`](./estrutura/modulos/aplicacao-provas/colaboradores.md)
 
 **O caminho feliz FUNCIONA e não é o item.** Linha em estado A (`user_id IS NULL`) tem `colab_email`
@@ -89,15 +89,14 @@ colaborador"*. **A CHECK `chk_colab_email_formato` não chega:** cai como mensag
 mas é o §2 do `CLAUDE.md` — a mensagem do banco tem de nomear o que fazer —, e o `CadastroLote` já
 traduz essa mesma CHECK. Um dos dois está errado.
 
-### ⚠️ 2. O teto de 5/15 min é por IP e COMPARTILHADO — cadastrar em lote esbarra nele
+### ✅ 2. ~~O teto de 5/15 min é por IP e COMPARTILHADO~~ — FOLGADO em 2026-09-24
 
-`reivindicar-acesso` e `recuperar-senha` dividem o mesmo orçamento (`barrarSeExcedeu(…, 'acesso', …)`,
-tabela `reivindicacao_rate_limit`), e o link do e-mail **expira em 1 hora**. Uma coordenação que
-preencha o e-mail de vários colaboradores e teste o acesso em série, do mesmo IP, bate no teto — e a
-resposta é genérica por anti-enumeração, então **ninguém descobre por quê**. Decidir o que fazer: nada
-(e documentar), orçamento separado para quem está autenticado como admin, ou um caminho de "reenviar
-convite" a partir de `/colaboradores`, que seria a porta certa para o admin e não passaria pela porta
-pública.
+Resolvido por decisão do usuário: janela de **15 → 10 min** (5 requisições) e o 429 do
+escopo `acesso` passou a dizer *"Sistema com excesso de acessos. Tente novamente após 10
+minutos."* — antes a resposta era genérica e ninguém descobria por quê. O "reenviar convite"
+em `/colaboradores` foi **preterido**: daria mais trabalho ao coordenador. ⚠️ O teto segue
+contando **toda** requisição, a certa também, e segue por IP — folgou, não mudou de natureza.
+Ver `auth-e-permissoes.md`.
 
 ### Como verificar (controle positivo obrigatório)
 

@@ -7,6 +7,15 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Mail, CheckCircle2 } from "lucide-react";
 import InformarEmailCard from "./InformarEmailCard";
 
+/**
+ * A frase do 429 das duas portas (CPF e e-mail), que dividem o orçamento `acesso`.
+ * ⚠️ Repete `mensagemDoBloqueio` de `supabase/functions/_shared/rate-limit.ts`, e o "10
+ * minutos" é a janela de `TETOS.acesso` — mudou lá, mude aqui. Decisão do usuário em
+ * 2026-09-24.
+ */
+const MENSAGEM_EXCESSO_DE_ACESSOS =
+  "Sistema com excesso de acessos. Tente novamente após 10 minutos.";
+
 const formatCpf = (value: string) => {
   const numbers = value.replace(/\D/g, "");
   return numbers
@@ -85,7 +94,7 @@ export default function ReivindicarAcessoCard({ onClose, initialCpf, permitirEma
       });
 
       if (res.status === 429) {
-        setError("Muitas tentativas. Aguarde alguns minutos e tente de novo.");
+        setError(MENSAGEM_EXCESSO_DE_ACESSOS);
         return;
       }
       if (res.status === 400) {
@@ -136,7 +145,7 @@ export default function ReivindicarAcessoCard({ onClose, initialCpf, permitirEma
       const data = await res.json().catch(() => ({} as Record<string, unknown>));
 
       if (res.status === 429) {
-        setError("Muitas tentativas. Aguarde alguns minutos e tente de novo.");
+        setError(MENSAGEM_EXCESSO_DE_ACESSOS);
         return;
       }
       if (!res.ok) {
