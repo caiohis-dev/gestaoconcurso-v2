@@ -287,7 +287,9 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           className="max-w-2xl max-h-[90vh] overflow-y-auto"
-          onPointerDownOutside={(e) => publicMode && e.preventDefault()}
+          // Clique fora NUNCA fecha, em modo nenhum: descartaria o preenchimento calado.
+          // `onInteractOutside` cobre clique e foco fora; o Esc só fecha no administrativo.
+          onInteractOutside={(e) => e.preventDefault()}
           onEscapeKeyDown={(e) => publicMode && e.preventDefault()}
         >
           <DialogHeader>

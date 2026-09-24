@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/utils";
 
@@ -500,6 +500,30 @@ describe("ColaboradorDialog (interação)", () => {
 
       abrir({ colaborador: COLABORADOR });
       expect(screen.getByRole("heading", { name: "Editar Colaborador" })).toBeInTheDocument();
+    });
+
+    it("não se fecha por clique fora, nem na edição nem na criação", async () => {
+      // Clique fora descartaria o preenchimento sem aviso. `fireEvent`, não `user.click`: o
+      // modal põe `pointer-events: none` no body e o user-event recusa. Controle positivo: o botão
+      // Cancelar continua fechando.
+      // O Radix só registra o listener de "fora" num `setTimeout(0)` depois de montar —
+      // disparar antes disso passa verde com ou sem a proteção (falsificado).
+      const cliqueFora = async () => {
+        await new Promise((r) => setTimeout(r, 0));
+        fireEvent.pointerDown(document.body);
+      };
+      const user = userEvent.setup();
+      const { unmount } = abrir({ colaborador: COLABORADOR });
+      await cliqueFora();
+      expect(onOpenChange).not.toHaveBeenCalled();
+      unmount();
+
+      abrir();
+      await cliqueFora();
+      expect(onOpenChange).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole("button", { name: "Cancelar" }));
+      expect(onOpenChange).toHaveBeenCalledWith(false);
     });
 
     it("fecha sozinho depois de gravar", async () => {
