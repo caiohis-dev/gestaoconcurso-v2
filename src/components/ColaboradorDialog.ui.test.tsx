@@ -130,7 +130,7 @@ describe("ColaboradorDialog (interação)", () => {
 
       expect(screen.queryByTestId("dialogo-corrigir-email")).not.toBeInTheDocument();
       await user.click(
-        screen.getByRole("button", { name: /O e-mail está errado e ele nunca conseguiu entrar/ }),
+        screen.getByRole("button", { name: /Clique aqui caso queira corrigir o e-mail de acesso/ }),
       );
       expect(screen.getByTestId("dialogo-corrigir-email")).toBeInTheDocument();
     });

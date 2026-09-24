@@ -487,7 +487,7 @@ export default function ColaboradorDialog({ open, onOpenChange, colaborador, pub
                       className="h-auto p-0 text-xs"
                       onClick={() => setCorrigirEmailOpen(true)}
                     >
-                      O e-mail está errado e ele nunca conseguiu entrar?
+                      Clique aqui caso queira corrigir o e-mail de acesso<br />
                     </Button>
                   </>
                 ) : (
