@@ -68,6 +68,29 @@ Versionamento semântico, com prefixo `v`:
 
   ⚠️ **Subiu sem backup novo**, por decisão do usuário; o mais recente era o de 16/09. Fica registrado porque o Free não tem backup automático nenhum.
 
+- **`v3.7.0` nasceu em 2026-09-24**, no commit `92aa413`, horas depois da v3.6.0. Entregou a
+  **conta de sistema nascendo de colaborador**: a EF `create-admin` (senha escolhida pelo admin, e
+  que **sobrescrevia a senha** de quem já tinha conta) virou `conceder-papel-sistema`, e o
+  colaborador promovido a financeiro passou a ver o hub. MINOR.
+
+  🔴 **Banco antes do site, EF antes do site, e a EF velha apagada só DEPOIS do site** — o bundle
+  anterior ainda chamava a `create-admin`. Ritual: commit → `git fetch . dev:main` → tag → `link` →
+  `prod:push:dry` (1 migration, a esperada) → `prod:push` → `functions deploy
+  conceder-papel-sistema` → prova ao vivo → `deploy.sh` → `functions delete create-admin` →
+  `prod:unlink`. Sem `prod:diff` desta vez: a única migration só troca a CHECK de `origem` da
+  trilha por um superconjunto — **nenhuma linha escrita**, e o re-ADD valida as existentes, que
+  cabiam na regra mais estreita.
+
+  ⚠️ **Subiu sem backup novo**; o mais recente é o de 16/09. Risco sobre dado: nulo pelo
+  desenho da migration.
+
+  **Verificado ao vivo:** a função nova responde **401** sem header e **401 "Não autenticado"**
+  com a anon key (o caso que prova que `verify_jwt` não autoriza); hash do bundle publicado
+  idêntico ao buildado (`index-DZL3IeA6.js`), **0** `127.0.0.1`, **8** do projeto de produção,
+  `conceder-papel-sistema` presente e `create-admin` **ausente** no bundle; e a `create-admin`
+  passou a responder **404** em produção. ⚠️ O ramo do convite (conta nascendo pela EF) **não** foi
+  exercitado nem local nem em produção — ele envia e-mail real.
+
 - **`v3.6.0` nasceu em 2026-09-24**, no commit `0c81276`. Entregou o **módulo Financeiro** (gerador
   de remessa CNAB 240/PIX, importado de um projeto separado — ver
   `estrutura/modulos/financeiro/00-modulo.md`): papel `financeiro` (só superadmin+financeiro, o

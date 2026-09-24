@@ -58,7 +58,7 @@ A `create-admin` foi **removida do repo** e substituída. Ela tinha dois defeito
 
 A substituta parte do **colaborador**, não de um e-mail digitado (decisão do usuário): o e-mail vem do cadastro, como a conta vem do cadastro na `conceder_coordenador`. ⚠️ **Não há rollback de conta**: se o convite criou a conta e o e-mail não saiu, o papel fica concedido e a resposta diz `convite-falhou` — `deleteUser` apagaria `profiles`/`user_roles` em CASCADE. ⚠️ **Consequência aceita:** deixa de existir caminho no app para criar conta de sistema que **não** seja colaborador.
 
-⚠️ **Remover do repo não remove de produção** — mesma nota da `create-coordenador`: enquanto a `create-admin` não for apagada lá (`supabase functions delete create-admin`, no próximo deploy consciente), o caminho antigo, **inclusive a sobrescrita de senha**, segue chamável por um superadmin. E a `conceder-papel-sistema` precisa ser publicada **junto com** a migration `20260924112512` (a origem nova na CHECK da trilha), senão os convites dela saem sem registro.
+🟢 **No ar desde a v3.7.0 (2026-09-24), e a `create-admin` foi APAGADA de produção no mesmo passe** — conferido: responde **404**. A ordem importou: migration `20260924112512` (a origem nova na CHECK da trilha, senão os convites saem sem registro) → EF nova → site → só então o `delete`, porque o bundle anterior ainda chamava a velha. ⚠️ A `create-coordenador` **continua publicada** lá (ver a nota dela acima e o backlog).
 
 ### `create-admin` — fechada em 2026-07-25 (era o buraco mais grave do sistema)
 
