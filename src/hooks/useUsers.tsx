@@ -38,6 +38,21 @@ export function useUsers() {
 
       if (rolesError) throw rolesError;
 
+      // `profiles.full_name` só nasce preenchido quando a conta vem com nome nos metadados —
+      // e a conta criada pelo convite de colaborador (generateLink) vem sem. Medido em
+      // 2026-09-24: 40 de 58 contas sem nome no perfil, todas com nome no cadastro. O nome
+      // de verdade é o do cadastro de colaborador, então é ele o reserva aqui.
+      const { data: colaboradores, error: colabError } = await supabase
+        .from("colaboradores")
+        .select("user_id, colab_nome_completo")
+        .not("user_id", "is", null);
+
+      if (colabError) throw colabError;
+
+      const nomeDoCadastro = new Map(
+        (colaboradores || []).map((c) => [c.user_id as string, c.colab_nome_completo as string]),
+      );
+
       // Map roles to users
       const usersWithRoles: UserWithRole[] = (profiles || []).map((profile) => {
         const userRoles = (roles || [])
@@ -47,7 +62,7 @@ export function useUsers() {
         return {
           id: profile.id,
           email: profile.email || "",
-          full_name: profile.full_name,
+          full_name: profile.full_name?.trim() || nomeDoCadastro.get(profile.id) || null,
           created_at: profile.created_at || "",
           roles: userRoles.length > 0 ? userRoles : ["user"],
         };

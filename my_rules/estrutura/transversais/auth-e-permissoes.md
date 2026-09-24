@@ -204,6 +204,8 @@ O diálogo busca o colaborador (`useBuscarColaboradoresParaAcesso`, mesmo filtro
 
 ⚠️ **Por que a busca é separada da de `/colaboradores`:** ela precisa de `colab_email`, e a listagem compartilhada roda no navegador de coordenador e **não pode trazê-lo** (teste "NÃO seleciona `*`" em `useColaboradores.test.tsx`). A primeira tentativa desta entrega ampliou a listagem compartilhada, e foi esse teste que recusou.
 
+⚠️ **O nome exibido na tabela vem de DOIS lugares, nesta ordem:** `profiles.full_name` e, se vazio, `colaboradores.colab_nome_completo` do cadastro vinculado (`useUsers`). 🔴 **Até 2026-09-24 era só o primeiro**, e a tela dizia "Sem nome" para **40 de 58** contas (medido no local): `handle_new_user` copia o nome de `raw_user_meta_data.full_name`, e a conta que nasce pelo `generateLink` do convite de colaborador **não traz metadado nenhum**. Conserto só na leitura, por decisão — nenhuma linha de produção reescrita, e o cadastro, onde o nome é editado, segue a fonte. ⚠️ **Os outros leitores de `profiles.full_name` não ganharam o reserva:** o "Criado por" do `ProvaCard`/`GerenciarProva` e o "finalizada por" de `GerenciarColaboradoresProva` — hoje quem cria e finaliza prova é admin, com nome no perfil, mas um colaborador promovido a admin pela `conceder-papel-sistema` apareceria ali como "Desconhecido".
+
 ⚠️ **O que ficou de fora, por decisão:** criar conta de sistema para quem **não** é colaborador. As 3 contas `user` puras que existem hoje continuam existindo; uma nova passaria antes pelo cadastro de colaborador.
 
 ### Módulos: o que cada papel vê no hub (2026-07-24, linha do colaborador corrigida em 2026-09-18)

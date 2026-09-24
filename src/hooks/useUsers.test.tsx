@@ -48,9 +48,40 @@ describe("useUsers", () => {
     setTableResult("profiles", { data: [], error: null });
     setTableResult("user_roles", { data: [], error: null });
     setTableResult("coordenadores_prova", { data: [], error: null });
+    setTableResult("colaboradores", { data: [], error: null });
   });
 
   describe("listagem", () => {
+    it("perfil sem nome usa o nome do CADASTRO de colaborador — e o do perfil tem precedência", async () => {
+      // Conta criada pelo convite de colaborador (generateLink) nasce com
+      // `profiles.full_name` NULL: 40 de 58 contas, medido em 2026-09-24. A tela dizia
+      // "Sem nome" para gente que tem nome no cadastro.
+      setTableResult("profiles", {
+        data: [perfil("u1", "Nome do Perfil"), perfil("u2", null as unknown as string), perfil("u3", "  "), perfil("u4", null as unknown as string)],
+        error: null,
+      });
+      setTableResult("colaboradores", {
+        data: [
+          { user_id: "u1", colab_nome_completo: "Nome do Cadastro 1" },
+          { user_id: "u2", colab_nome_completo: "Maria da Silva" },
+          { user_id: "u3", colab_nome_completo: "João Souza" },
+        ],
+        error: null,
+      });
+
+      const { result } = await carregar();
+      const nomes = Object.fromEntries(result.current.users.map((u) => [u.id, u.full_name]));
+
+      expect(nomes).toEqual({
+        u1: "Nome do Perfil", // controle positivo: o perfil com nome NÃO é sobrescrito
+        u2: "Maria da Silva",
+        u3: "João Souza", // só espaços conta como sem nome
+        u4: null, // sem perfil nem cadastro: a tela segue mostrando "Sem nome"
+      });
+      // Só contas vinculadas — cadastro sem conta não tem linha nesta tabela.
+      expect(chamadasDe("colaboradores", "not")[0]).toEqual(["user_id", "is", null]);
+    });
+
     it("junta perfis e papéis no cliente", async () => {
       setTableResult("profiles", { data: [perfil("u1", "Ana"), perfil("u2", "Bruno")], error: null });
       setTableResult("user_roles", {
