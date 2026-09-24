@@ -123,6 +123,10 @@ roadmap:
         Verificação: 2041 testes, tsc limpo, build ok, lint subiu de 111→113 (2 avisos de
         complexity herdados da origem, documentado no CLAUDE.md §5), docs:conferir sem
         divergência.
+
+        ⚠️ O QUE MUDOU DEPOIS (2026-09-24): o parseFloat que só trocava a primeira vírgula foi
+        CORRIGIDO (virou `parseValorMonetario`, com 2 testes novos) — deixou de ser dívida aberta.
+        Ver `estrutura/modulos/financeiro/00-modulo.md`.
       entrega:
         - >
           Portar os 7 arquivos de `src/lib/` do projeto de origem (mapeamento de colunas,

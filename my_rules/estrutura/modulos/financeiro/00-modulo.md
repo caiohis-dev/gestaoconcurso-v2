@@ -144,11 +144,11 @@ writeFile` e `URL.createObjectURL`/`HTMLAnchorElement.click` mockados — armadi
   lint de 111 para 113** (2 avisos de `complexity`, ver CLAUDE.md §5). São ports fiéis da origem —
   refatorar a complexidade agora não é escopo da Fase 2 (traduzir, não redesenhar) e mexeria em
   lógica que decide o TIPO de chave PIX de um pagamento real.
-- ⚠️ **`parseFloat(valorStr.replace(',', '.'))` (em `converterPlanilhaParaPagamentoPix`) só troca a
-  PRIMEIRA vírgula.** Um valor com separador de milhar em ponto (`"1.234,56"`) vira `1.234` (para
-  em `parseFloat` no segundo ponto), não `1234.56`. Herdado da origem, não testado como "correto"
-  — só os valores simples (`"150,50"`) foram exercitados na Fase 2. Medir o formato real da
-  planilha de pagamento antes de confiar nisso com valores de 4+ dígitos.
+- 🔵 **Corrigido em 2026-09-24.** O parser de valor era `parseFloat(valorStr.replace(',', '.'))` —
+  só trocava a PRIMEIRA vírgula, então `"1.234,56"` virava `1.234` em vez de `1234.56`. Virou
+  `parseValorMonetario` (remove os pontos de milhar antes de trocar a vírgula pelo decimal), com 2
+  casos novos em `financeiro-planilha-pagamentos.test.ts` (`"1.234,56"` e `"10.000,00"`). Escopo
+  estrito: não trata símbolo de moeda (`"R$"`) nem sinal negativo, que não foram relatados.
 - ⚠️ **A Fase 3 não foi verificada em navegador real logado.** O banco local carrega dado e hashes
   de senha de PRODUÇÃO (`desenvolvimento-local.md`) — não há credencial de teste segura para logar
   sozinho como superadmin/financeiro e conferir a tela visualmente. A cobertura de comportamento

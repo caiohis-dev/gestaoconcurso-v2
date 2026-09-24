@@ -1062,6 +1062,10 @@ dado de prova/edital/candidato do resto do sistema é lido ou escrito por ele.
   `financeiro-cnab240-tipos.ts`, igual à origem — preservar fielmente venceu redesenhar agora.
 - ⚠️ **`parseFloat(valorStr.replace(',', '.'))`** só troca a primeira vírgula — um valor com milhar
   em ponto (`"1.234,56"`) sairia errado. Herdado da origem, só testado com valores simples.
+  > 🔵 **CORRIGIDO em 2026-09-24**, a pedido do usuário (era o único dos pontos frágeis do módulo
+  > que era bug real e silencioso, não decisão consciente). Virou `parseValorMonetario` em
+  > `financeiro-planilha-pagamentos.ts`, com 2 casos novos de teste. Ver
+  > [`../../estrutura/modulos/financeiro/00-modulo.md`](../../estrutura/modulos/financeiro/00-modulo.md).
 - ⚠️ **2 avisos de `complexity` no lint** (baseline subiu de 111 para 113 na Fase 2) —
   `inferirTipoEFormatarChavePix` e `converterPlanilhaParaPagamentoPix` são ports fiéis; refatorar
   agora contrariaria a decisão de traduzir, não redesenhar.

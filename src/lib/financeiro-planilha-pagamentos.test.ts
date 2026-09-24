@@ -51,6 +51,18 @@ describe('converterPlanilhaParaPagamentoPix', () => {
     expect(pagamentos[0].dataPagamento).toBe('24092026')
   })
 
+  it('🔴 valor com separador de milhar em ponto ("1.234,56") não perde a casa decimal', () => {
+    const m = matriz([{ ...LINHA_VALIDA, 'Valor Líquido': '1.234,56' }])
+    const pagamentos = converterPlanilhaParaPagamentoPix(m, '24092026')
+    expect(pagamentos[0].valorPagamento).toBe(1234.56)
+  })
+
+  it('valor com dois separadores de milhar ("10.000,00")', () => {
+    const m = matriz([{ ...LINHA_VALIDA, 'Valor Líquido': '10.000,00' }])
+    const pagamentos = converterPlanilhaParaPagamentoPix(m, '24092026')
+    expect(pagamentos[0].valorPagamento).toBe(10000)
+  })
+
   it('matriz vazia devolve lista vazia, sem erro', () => {
     expect(converterPlanilhaParaPagamentoPix([], '24092026')).toEqual([])
   })

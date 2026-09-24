@@ -117,6 +117,12 @@ const normalizarRotulo = (texto: string): string =>
 const linhaVazia = (linha: string[]): boolean => linha.every((c) => c.trim() === '')
 
 /**
+ * Converte um valor monetário no formato brasileiro ("1.234,56") para number.
+ * Ponto é separador de milhar (removido) e vírgula é o separador decimal.
+ */
+const parseValorMonetario = (valorStr: string): number => parseFloat(valorStr.replace(/\./g, '').replace(',', '.'))
+
+/**
  * Lê o cabeçalho (primeira linha) da planilha e devolve os nomes de coluna já limpos.
  */
 export const lerCabecalho = (matriz: Matriz): string[] => (matriz[0] ?? []).map((col) => col.trim())
@@ -222,7 +228,7 @@ export const converterPlanilhaParaPagamentoPix = (
       continue // Ignora linhas inconsistentes
     }
 
-    const valorNumerico = parseFloat(valorStr.replace(',', '.'))
+    const valorNumerico = parseValorMonetario(valorStr)
 
     // Valor bruto da chave Pix (se não houver coluna própria, assume o CPF do favorecido)
     const chavePixBruta = chavePixOriginal !== '' ? chavePixOriginal : cpfSanitizado
