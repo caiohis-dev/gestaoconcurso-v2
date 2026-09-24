@@ -3,6 +3,7 @@ import { waitFor } from "@testing-library/react";
 import {
   supabaseMock,
   setTableResult,
+  setRpcResult,
   resetSupabaseMock,
   buildersDaTabela,
   builderQueChamou,
@@ -32,6 +33,9 @@ const ocorrencia = (id: string, provaUnidadeId: string) => ({
   data_ocorrencia: "2026-07-25",
   substituido: 0,
   substituto_id: null,
+  falta: false,
+  funcao_id_congelada: null,
+  valor_pagamento_congelado: null,
   created_by: "user-teste-1",
   created_at: "2026-07-25T10:00:00Z",
   updated_at: "2026-07-25T10:00:00Z",
@@ -157,15 +161,22 @@ describe("useOcorrencias", () => {
   });
 
   describe("criação", () => {
-    it("carimba created_by com o usuário logado", async () => {
+    const RPC_CRIAR = "registrar_ocorrencia_colaborador";
+
+    it("passa pelo RPC, que resolve autoria e efeito na alocação dentro da transação", async () => {
+      // A autoria (`created_by`) e o efeito sobre `colaboradores_prova` (substituição
+      // ou falta) não são mais responsabilidade do cliente — ver a migration
+      // 20260923232343_falta_remove_colaborador_da_prova. O cliente só repassa os
+      // parâmetros; o RPC resolve `auth.uid()` e a transação do lado do banco.
+      setRpcResult(RPC_CRIAR, { data: { id: "o-nova" }, error: null });
       const { result } = renderHookWithProviders(() => useOcorrencias("prova-1"));
       await waitFor(() => expect(result.current.isLoading).toBe(false));
 
       result.current.create({
         colaborador_id: "colab-1",
-        prova_id: "prova-1",
         prova_unidade_id: "pu-1",
         descricao: "Faltou",
+        efeito: "falta",
       });
 
       await waitFor(() =>
@@ -174,26 +185,25 @@ describe("useOcorrencias", () => {
         ),
       );
 
-      // A autoria não vem do formulário: é lida do Auth no momento da gravação.
-      expect(supabaseMock.auth.getUser).toHaveBeenCalled();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const insert = (builderQueChamou(TABELA, "insert").insert as any).mock.calls[0][0];
-      expect(insert).toMatchObject({
-        colaborador_id: "colab-1",
-        descricao: "Faltou",
-        created_by: "user-teste-1",
-      });
+      expect(supabaseMock.rpc).toHaveBeenCalledWith(
+        RPC_CRIAR,
+        expect.objectContaining({
+          p_colaborador_id: "colab-1",
+          p_prova_unidade_id: "pu-1",
+          p_descricao: "Faltou",
+          p_efeito: "falta",
+        }),
+      );
     });
 
     it("avisa com toast destrutivo quando a gravação falha", async () => {
-      setTableResult(TABELA, { data: null, error: erroPostgrest("23503", "prova_unidade inválida") });
+      setRpcResult(RPC_CRIAR, { data: null, error: erroPostgrest("23503", "prova_unidade inválida") });
 
       const { result } = renderHookWithProviders(() => useOcorrencias("prova-1"));
       await waitFor(() => expect(result.current.isLoading).toBe(false));
 
       result.current.create({
         colaborador_id: "colab-1",
-        prova_id: "prova-1",
         prova_unidade_id: "pu-1",
         descricao: "Faltou",
       });
@@ -230,7 +240,11 @@ describe("useOcorrencias", () => {
       expect((builder.eq as any).mock.calls[0]).toEqual(["id", "o1"]);
     });
 
-    it("exclui pelo id e confirma com toast", async () => {
+    it("exclui pelo id via RPC, que reverte o efeito na alocação antes de apagar", async () => {
+      // A reversão (reinstalar o colaborador em `colaboradores_prova` quando a
+      // ocorrência era substituição ou falta) mora no RPC, na mesma transação — ver
+      // `excluir_ocorrencia_colaborador`.
+      setRpcResult("excluir_ocorrencia_colaborador", { data: true, error: null });
       const { result } = renderHookWithProviders(() => useOcorrencias("prova-1"));
       await waitFor(() => expect(result.current.isLoading).toBe(false));
 
@@ -242,15 +256,16 @@ describe("useOcorrencias", () => {
         ),
       );
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((builderQueChamou(TABELA, "delete").eq as any).mock.calls[0]).toEqual(["id", "o1"]);
+      expect(supabaseMock.rpc).toHaveBeenCalledWith("excluir_ocorrencia_colaborador", {
+        p_ocorrencia_id: "o1",
+      });
     });
 
     it("avisa com toast destrutivo quando a exclusão falha", async () => {
       const { result } = renderHookWithProviders(() => useOcorrencias("prova-1"));
       await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-      setTableResult(TABELA, { data: null, error: erroPostgrest("42501", "sem permissão") });
+      setRpcResult("excluir_ocorrencia_colaborador", { data: null, error: erroPostgrest("42501", "sem permissão") });
       result.current.remove("o1");
 
       await waitFor(() =>

@@ -99,3 +99,37 @@ FROM editais e
 WHERE p.edital_id IS NULL
   AND p.prova_edital IS NOT NULL
   AND lower(btrim(p.prova_edital)) = lower(btrim(e.nome));
+
+-- ---------------------------------------------------------------------------
+-- Backfill do congelamento de função/valor (20260923232343_falta_remove_colaborador_da_prova).
+--
+-- A migration criou `ocorrencias_colaborador.funcao_id_congelada` /
+-- `valor_pagamento_congelado`, mas só o RPC novo os preenche — ocorrências de
+-- substituição criadas ANTES dela ficam com as duas colunas NULL. Sem backfill, excluir
+-- uma dessas ocorrências antigas reinstalaria o colaborador SEM função e SEM valor,
+-- pior que o comportamento anterior (que lia do substituto vivo).
+--
+-- Reconstrução: para cada ocorrência antiga com `substituido = 1`, a melhor
+-- aproximação disponível é a alocação ATUAL do substituto na mesma unidade — é
+-- exatamente o que o código antigo lia no momento da reversão. Se o substituto não
+-- estiver mais alocado ali (foi removido, teve sua própria ocorrência depois), não há
+-- de onde reconstruir: fica NULL, mesmo estado de hoje, sem piorar nada.
+--
+-- Só toca `substituido = 1`: não existe ocorrência de `falta` antes desta migration
+-- (a coluna nasceu com ela), então não há nada para reconstruir nesse ramo.
+--
+-- Idempotente (o `WHERE ... IS NULL` não reprocessa linha já preenchida) e seguro
+-- contra base vazia (sem ocorrência de substituição, no-op). Não tem migration
+-- correspondente rodando isto: rodaria contra `ocorrencias_colaborador` ainda vazia no
+-- `db reset` local (a tabela só ganha linhas com o dump, que carrega DEPOIS).
+-- ---------------------------------------------------------------------------
+
+UPDATE ocorrencias_colaborador oc
+SET funcao_id_congelada = cp.funcao_id,
+    valor_pagamento_congelado = cp.valor_pagamento
+FROM colaboradores_prova cp
+WHERE oc.substituido = 1
+  AND oc.funcao_id_congelada IS NULL
+  AND oc.valor_pagamento_congelado IS NULL
+  AND cp.prova_unidade_id = oc.prova_unidade_id
+  AND cp.colaborador_id = oc.substituto_id;

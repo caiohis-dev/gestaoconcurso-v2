@@ -2,6 +2,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
+/** O que `handleSubmit` decide para a alocação — ver `registrar_ocorrencia_colaborador`. */
+export type EfeitoOcorrencia = "nenhum" | "substituicao" | "falta";
+
 export interface Ocorrencia {
   id: string;
   colaborador_id: string;
@@ -12,6 +15,9 @@ export interface Ocorrencia {
   data_ocorrencia: string;
   substituido: number;
   substituto_id: string | null;
+  falta: boolean;
+  funcao_id_congelada: string | null;
+  valor_pagamento_congelado: number | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -35,12 +41,11 @@ export interface Ocorrencia {
 
 export interface OcorrenciaInsert {
   colaborador_id: string;
-  prova_id: string;
   prova_unidade_id: string;
   descricao: string;
   tipo_ocorrencia?: string | null;
   data_ocorrencia?: string;
-  substituido?: number;
+  efeito?: EfeitoOcorrencia;
   substituto_id?: string | null;
 }
 
@@ -96,14 +101,21 @@ export function useOcorrencias(provaId: string, provaUnidadeIds?: string[]) {
     queryClient.invalidateQueries({ queryKey: ["ocorrencias_colaborador", provaId] });
   };
 
+  // Passa pelo RPC `registrar_ocorrencia_colaborador` mesmo quando `efeito` é "nenhum":
+  // é o único caminho, e o que garante `prova_id` correto (derivado da unidade no
+  // banco) e a autorização por unidade — ver o cabeçalho da migration
+  // 20260923232343_falta_remove_colaborador_da_prova.
   const create = useMutation({
     mutationFn: async (data: OcorrenciaInsert) => {
-      const { data: userData } = await supabase.auth.getUser();
-      const { data: result, error } = await supabase
-        .from("ocorrencias_colaborador")
-        .insert({ ...data, created_by: userData.user?.id })
-        .select()
-        .single();
+      const { data: result, error } = await supabase.rpc("registrar_ocorrencia_colaborador", {
+        p_prova_unidade_id: data.prova_unidade_id,
+        p_colaborador_id: data.colaborador_id,
+        p_tipo_ocorrencia: data.tipo_ocorrencia ?? null,
+        p_data_ocorrencia: data.data_ocorrencia ?? null,
+        p_descricao: data.descricao,
+        p_efeito: data.efeito ?? "nenhum",
+        p_substituto_id: data.substituto_id ?? null,
+      });
       if (error) throw error;
       return result;
     },
@@ -136,9 +148,12 @@ export function useOcorrencias(provaId: string, provaUnidadeIds?: string[]) {
     },
   });
 
+  // Reverte, dentro da mesma transação, o efeito que a ocorrência teve sobre
+  // `colaboradores_prova` (substituição ou falta) antes de excluí-la — ver
+  // `excluir_ocorrencia_colaborador`.
   const remove = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("ocorrencias_colaborador").delete().eq("id", id);
+      const { error } = await supabase.rpc("excluir_ocorrencia_colaborador", { p_ocorrencia_id: id });
       if (error) throw error;
     },
     onSuccess: () => {

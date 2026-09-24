@@ -340,6 +340,27 @@ Medido em 08/09 contra o banco local: das 53 funções de `public`, **38** eram 
 
 **O conserto** (migration `20260908231620`): `REVOKE EXECUTE ... FROM PUBLIC` (revogar só de `anon` não faz nada — o acesso dele vem de ser membro de `PUBLIC`, e o Postgres não subtrai de `PUBLIC`), `GRANT` de volta a `authenticated`/`service_role`, `ALTER DEFAULT PRIVILEGES` para não renascer, e `DROP` da `verify_user_password`.
 
+🔴 **Corrigido em 2026-09-23 — o "para não renascer" NÃO estava funcionando.** Esta linha
+afirmava que o `ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE
+EXECUTE ON FUNCTIONS FROM PUBLIC` bastava para que **toda função nova** já nascesse sem
+`PUBLIC`/`anon`. **Medido, e é falso**: criei uma função de teste (`LANGUAGE sql`, sem
+nada especial) como `postgres` bem depois daquela migration, e ela nasceu com
+`anon`/`authenticated` executáveis — `proacl` saiu `NULL` (o default embutido do
+Postgres, PUBLIC=EXECUTE), como se o `ALTER DEFAULT PRIVILEGES` não existisse. A migration
+`20260923232343_falta_remove_colaborador_da_prova.sql` reproduziu o mesmo: as duas RPCs
+novas nasceram com `anon` podendo chamá-las, até eu acrescentar `REVOKE ALL ON FUNCTION
+... FROM PUBLIC` explícito antes do `GRANT ... TO authenticated`.
+
+⚠️ **Não investiguei a causa raiz** (por que o default registrado em `pg_default_acl` não
+se aplica) — só o efeito, reproduzido duas vezes. `conceder_coordenador` (12/09) já fazia
+esse `REVOKE ALL ... FROM PUBLIC` explícito antes de cada `GRANT`; quem escreveu aquela
+migration parece ter topado com o mesmo problema e contornado, sem documentar. **A partir
+de agora, toda `SECURITY DEFINER` nova PRECISA do `REVOKE ALL ON FUNCTION ... FROM
+PUBLIC` explícito, na própria migration — não confie no `ALTER DEFAULT PRIVILEGES` para
+isso.** `has_role(auth.uid(), ...)` dentro da função ainda barraria um `anon` que
+chamasse mesmo assim (devolve `false` com `auth.uid()` nulo), mas isso é rede de baixo:
+o `anon` não deveria alcançar o RPC pela ACL, ponto.
+
 ⚠️ **O `GRANT` de volta é em bloco, e isso foi medido antes:** havia **uma única** função que `authenticated` não podia executar. Devolver em bloco preserva o estado de quem está logado sem afrouxar nada. **Estreitar `authenticated` função a função é outro tema** — misturá-lo aqui trocaria um conserto verificável por uma refatoração ampla.
 
 **`verify_user_password` era o pior achado, e não era o que o nome dizia.** Ela **nunca conferiu senha** — `p_password` não era lido. Fazia `IF v_user_id IS NULL OR v_user_id != auth.uid() THEN RETURN FALSE`; para um anônimo, `auth.uid()` é `NULL`, `v_user_id != NULL` avalia como **`NULL`**, o `IF` não dispara e cai em `RETURN TRUE`. Medido: e-mail real → `true`, inexistente → `false` — **oráculo de enumeração de contas**. Era órfã e foi **dropada**.

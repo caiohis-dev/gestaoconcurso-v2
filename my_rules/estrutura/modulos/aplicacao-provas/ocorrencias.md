@@ -17,11 +17,70 @@ A guarda era `if (ids && ids.length > 0)`, então `[]` não aplicava filtro e de
 
 **Corrigido nas duas pontas:** o hook distingue os casos (falha fechado), e a página passou a **esperar** o escopo do coordenador resolver — senão o "nenhuma ocorrência" que aparece na janela seria mentira.
 
+## Falta: um terceiro estado que também remove da lista, sem substituto
+
+🔵 **Desde 2026-09-23** o campo antes chamado "Substituído" (0/1) virou um seletor de três
+opções na tela: *Não* / *Sim, substituído* / *Falta — remover da lista, sem substituto*.
+Registrar falta faz **a mesma coisa que a substituição faz com o colaborador original**
+— sai de `colaboradores_prova` daquela unidade —, só que sem inserir substituto nenhum.
+Como `colaboradores_prova` tem `UNIQUE (prova_unidade_id, colaborador_id)` e o trigger
+`check_colaborador_prova_unique` impede alocação em mais de uma unidade da mesma prova,
+sair da única linha que a pessoa tinha ali É sair da lista de trabalhadores **da prova**,
+não só daquela unidade.
+
+**Os dois efeitos (substituição e falta) e a criação/exclusão da ocorrência viram uma
+única transação**, no RPC `registrar_ocorrencia_colaborador` / `excluir_ocorrencia_colaborador`
+(migration `20260923232343_falta_remove_colaborador_da_prova`). Antes, a substituição
+fazia SELECT + INSERT + DELETE soltos, direto em `OcorrenciasProva.tsx` — se o DELETE
+falhasse (por exemplo, o colaborador que sai também é coordenador vinculado, RESTRICT de
+`20260726250000`), o substituto já tinha sido inserido e a ocorrência nunca chegava a ser
+criada: estado inconsistente, sem transação para desfazer o INSERT. Virar RPC fecha isso.
+
+⚠️ **A autorização dos dois RPCs é POR UNIDADE** (`get_coordenador_prova_unidade_ids`),
+não por prova inteira como a policy de leitura/escrita de `ocorrencias_colaborador`
+(`is_coordenador_prova`). Isso não estreita o que a tela já oferece: `allowedUnidades` em
+`OcorrenciasProva.tsx` já vem de `useCoordenadorUnidades`, que chama a mesma
+`get_coordenador_prova_unidade_ids` — o RPC só formaliza no banco o que o combobox de
+unidade já restringia no cliente.
+
+**Congelamento:** `ocorrencias_colaborador` ganhou `funcao_id_congelada` e
+`valor_pagamento_congelado`, preenchidas no momento da remoção (substituição OU falta) e
+usadas para reinstalar o colaborador se a ocorrência for excluída depois. **Não são
+relidas de outra linha na hora da reversão** — o defeito que isso evita: a reversão de uma
+substituição antiga lia função/valor da linha do SUBSTITUTO no momento da exclusão; se o
+substituto tivesse mudado de função nesse meio-tempo (editado em `GerenciarColaboradoresProva`),
+o original voltava com o valor errado.
+
+🔴 `funcao_id_congelada` é **RESTRICT**, não `SET NULL` — mesma decisão de
+`20260726210000_colaborador_com_historico_nao_se_exclui` para `substituto_id`: ser citada
+numa ocorrência (mesmo congelada) é histórico. Com RESTRICT, uma função só referenciada
+por uma ocorrência congelada não pode ser excluída do catálogo, e a coluna só é `NULL`
+quando a alocação original de fato não tinha função — sem ambiguidade a resolver na
+reversão (ver bateria abaixo, caso 8).
+
+O CHECK `chk_ocorrencia_falta_substituicao_mutuamente_exclusivas` garante que
+`substituido = 1` e `falta = true` nunca coexistem na mesma linha.
+
+⚠️ **`GRANT EXECUTE ... TO authenticated` sozinho NÃO basta.** Medido ao escrever esta
+migration: uma função nova, criada como `postgres` depois de
+`20260908231620_revogar_execute_de_anon_em_funcoes.sql` (que devia ter fechado isso para
+sempre via `ALTER DEFAULT PRIVILEGES`), nasceu com `anon` podendo executá-la mesmo assim.
+Os dois RPCs novos levam `REVOKE ALL ... FROM PUBLIC` explícito, e qualquer RPC nova
+`SECURITY DEFINER` neste repo precisa do mesmo — ver
+[`../../transversais/auth-e-permissoes.md`](../../transversais/auth-e-permissoes.md).
+
+🧪 `docs/bateria-falta-e-substituicao-ocorrencia.sql` — 12 casos: os dois controles
+positivos (falta e reversão), dois negativos de autorização (unidade errada; titular do
+vínculo de coordenação), a substituição como regressão (criar e reverter, com o
+congelamento provado pelo caso 6), o CHECK de exclusividade, a RESTRICT da função
+congelada, admin sem vínculo, `efeito = 'nenhum'` como regressão mínima, `p_efeito`
+inválido recusado por nome, e exclusão fora de escopo recusada.
+
 ## Entidade `ocorrencias_colaborador`
 
 > 🔵 **O picker "Selecionar Substituto" busca NO SERVIDOR desde 2026-09-12.** Ele abria com duas consultas sem teto — todos os colaboradores (771) mais todas as alocações da prova — e filtrava em memória; o PostgREST corta em `max_rows` (1000) **sem erro**, então um colaborador sumiria da lista calado. Hoje usa a RPC `buscar_colaboradores_para_alocacao` (a mesma do picker de alocação), sem `p_excluir_prova_unidade_id`: aqui se vê todo mundo, e quem já está alocado aparece com a sigla e o botão desabilitado. Ver [`alocacao-e-funcoes.md`](./alocacao-e-funcoes.md).
 
-`useOcorrencias.tsx` (página `OcorrenciasProva.tsx`, rota `/ocorrencias-prova/:provaId`): registra um incidente ligado a um `colaborador_id`, dentro de uma `prova_id`/`prova_unidade_id`, com `descricao`, `tipo_ocorrencia`, `data_ocorrencia`, e um flag `substituido` + `substituto_id` (FK para outro colaborador que o substituiu).
+`useOcorrencias.tsx` (página `OcorrenciasProva.tsx`, rota `/ocorrencias-prova/:provaId`): registra um incidente ligado a um `colaborador_id`, dentro de uma `prova_id`/`prova_unidade_id`, com `descricao`, `tipo_ocorrencia`, `data_ocorrencia`, um flag `substituido` + `substituto_id` (FK para outro colaborador que o substituiu), um flag `falta` (🔵 2026-09-23 — remove o colaborador da lista SEM substituto) e `funcao_id_congelada`/`valor_pagamento_congelado` (o estado da alocação no momento da remoção, usado para reinstalar se a ocorrência for excluída — ver seção "Falta" acima). `create`/`remove` do hook não inserem/apagam a linha direto: chamam os RPCs `registrar_ocorrencia_colaborador`/`excluir_ocorrencia_colaborador`.
 
 ## Regra não óbvia: quem aparece no combobox de "Nova Ocorrência"
 

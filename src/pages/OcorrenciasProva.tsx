@@ -5,12 +5,13 @@ import { useAuth } from "@/hooks/useAuth";
 import { useProvas } from "@/hooks/useProvas";
 import { useProvaUnidades } from "@/hooks/useProvaUnidades";
 import { useCoordenadorUnidades } from "@/hooks/useCoordenadorUnidades";
-import { useOcorrencias, Ocorrencia, OcorrenciaInsert } from "@/hooks/useOcorrencias";
+import { useOcorrencias, Ocorrencia, OcorrenciaInsert, EfeitoOcorrencia } from "@/hooks/useOcorrencias";
 import { supabase } from "@/integrations/supabase/client";
 import { useBuscarColaboradoresParaAlocacao } from "@/hooks/useColaboradores";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useToast } from "@/hooks/use-toast";
 import { PasswordConfirmDialog } from "@/components/PasswordConfirmDialog";
+import { useSalasDoFiscal, avisoFiscalDeSala } from "@/hooks/useSalasDistribuidas";
 
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
@@ -62,7 +63,7 @@ interface FormState {
   tipo_ocorrencia: string;
   data_ocorrencia: string; // ISO local
   descricao: string;
-  substituido: number;
+  efeito: EfeitoOcorrencia;
 }
 
 const emptyForm: FormState = {
@@ -71,7 +72,7 @@ const emptyForm: FormState = {
   tipo_ocorrencia: "",
   data_ocorrencia: "",
   descricao: "",
-  substituido: 0,
+  efeito: "nenhum",
 };
 
 function todayISO() {
@@ -156,7 +157,14 @@ export default function OcorrenciasProva() {
 
 
   const [colaboradoresUnidade, setColaboradoresUnidade] = useState<
-    { id: string; colab_nome_completo: string; colab_cpf: string; sigla_alocada: string; disabled: boolean }[]
+    {
+      id: string;
+      colaborador_prova_id: string;
+      colab_nome_completo: string;
+      colab_cpf: string;
+      sigla_alocada: string;
+      disabled: boolean;
+    }[]
   >([]);
   const [loadingColabs, setLoadingColabs] = useState(false);
   const [colabSearch, setColabSearch] = useState("");
@@ -173,17 +181,17 @@ export default function OcorrenciasProva() {
       setLoadingColabs(true);
       const { data } = await supabase
         .from("colaboradores_prova")
-        .select("colaboradores ( id, colab_nome_completo, colab_cpf )")
+        .select("id, colaboradores ( id, colab_nome_completo, colab_cpf )")
         .eq("prova_unidade_id", form.prova_unidade_id);
       if (cancelled) return;
 
       const list = (((data as any[]) || [])
-        .map((row) => row?.colaboradores)
-        .filter((c) => c && c.id)
-        .map((c) => ({
-          id: c.id,
-          colab_nome_completo: c.colab_nome_completo,
-          colab_cpf: c.colab_cpf,
+        .filter((row) => row?.colaboradores?.id)
+        .map((row) => ({
+          id: row.colaboradores.id,
+          colaborador_prova_id: row.id,
+          colab_nome_completo: row.colaboradores.colab_nome_completo,
+          colab_cpf: row.colaboradores.colab_cpf,
           sigla_alocada: "",
           disabled: false,
         }))
@@ -212,6 +220,14 @@ export default function OcorrenciasProva() {
     () => colaboradoresUnidade.find((c) => c.id === form.colaborador_id),
     [colaboradoresUnidade, form.colaborador_id],
   );
+
+  // Aviso de fiscal de sala quando o efeito é "falta": a remoção de `colaboradores_prova`
+  // esvazia `sala_fiscal_1/2` em silêncio (ON DELETE SET NULL) — mesmo padrão de
+  // `GerenciarColaboradoresProva.tsx`, reaproveitado aqui em vez de duplicado.
+  const { data: salasDoFiscalFalta = [] } = useSalasDoFiscal(
+    form.efeito === "falta" ? selectedColab?.colaborador_prova_id ?? null : null,
+  );
+  const avisoFaltaFiscal = avisoFiscalDeSala(selectedColab?.colab_nome_completo, salasDoFiscalFalta);
 
   // O escopo do coordenador entra na espera: `useCoordenadorUnidades` devolve `[]`
   // enquanto carrega, e `[]` agora significa "nenhuma unidade" — correto para a
@@ -247,7 +263,7 @@ export default function OcorrenciasProva() {
     e.preventDefault();
     if (!form.prova_unidade_id || !form.colaborador_id || !form.descricao.trim()) return;
 
-    if (form.substituido === 1 && !substitutoNome.trim()) {
+    if (form.efeito === "substituicao" && !substitutoNome.trim()) {
       toast({
         variant: "destructive",
         title: "Substituto obrigatório",
@@ -256,63 +272,29 @@ export default function OcorrenciasProva() {
       return;
     }
 
+    // O efeito sobre `colaboradores_prova` (substituição ou falta) acontece dentro do
+    // RPC `registrar_ocorrencia_colaborador`, numa única transação — ver
+    // `useOcorrencias.tsx`. Não há mais passos manuais aqui.
     const payload: OcorrenciaInsert = {
-      prova_id: provaId!,
       prova_unidade_id: form.prova_unidade_id,
       colaborador_id: form.colaborador_id,
       descricao: form.descricao.trim(),
       tipo_ocorrencia: form.tipo_ocorrencia.trim() || null,
-      substituido: form.substituido ? 1 : 0,
-      substituto_id: form.substituido === 1 && substitutoId ? substitutoId : null,
+      efeito: form.efeito,
+      substituto_id: form.efeito === "substituicao" ? substitutoId : null,
       data_ocorrencia: form.data_ocorrencia || todayISO(),
     };
 
-    if (form.substituido === 1 && substitutoId) {
-      const { data: original, error: fetchErr } = await supabase
-        .from("colaboradores_prova")
-        .select("id, funcao_id, valor_pagamento")
-        .eq("prova_unidade_id", form.prova_unidade_id)
-        .eq("colaborador_id", form.colaborador_id)
-        .maybeSingle();
-
-      if (fetchErr || !original) {
-        toast({
-          variant: "destructive",
-          title: "Erro ao substituir",
-          description: "Não foi possível localizar o vínculo do colaborador nesta unidade.",
-        });
-        return;
-      }
-
-      const { error: insErr } = await supabase.from("colaboradores_prova").insert({
-        prova_unidade_id: form.prova_unidade_id,
-        colaborador_id: substitutoId,
-        funcao_id: original.funcao_id,
-        valor_pagamento: original.valor_pagamento,
-      });
-
-      if (insErr) {
-        toast({
-          variant: "destructive",
-          title: "Erro ao adicionar substituto",
-          description: insErr.message,
-        });
-        return;
-      }
-
-      const { error: delErr } = await supabase.from("colaboradores_prova").delete().eq("id", original.id);
-
-      if (delErr) {
-        toast({
-          variant: "destructive",
-          title: "Erro ao remover substituído",
-          description: delErr.message,
-        });
-        return;
-      }
-    }
-
     create(payload, { onSuccess: () => setDialogOpen(false) });
+  };
+
+  // O que aconteceu com a alocação por causa desta ocorrência — "Falta" tem prioridade
+  // porque, embora mutuamente exclusiva de `substituido` no banco (CHECK), as duas
+  // colunas descrevem o MESMO eixo (o que ocorreu com `colaboradores_prova`).
+  const descricaoAlocacao = (o: Ocorrencia) => {
+    if (o.falta) return "Falta";
+    if (o.substituto_id && o.substituto?.colab_nome_completo) return o.substituto.colab_nome_completo;
+    return "Não";
   };
 
   const formatDateDDMMYYYY = (iso: string) => {
@@ -353,7 +335,7 @@ export default function OcorrenciasProva() {
         o.prova_unidades?.unidades_prova?.unid_sigla?.trim() || "—",
         o.colaboradores?.colab_nome_completo || "—",
         o.tipo_ocorrencia || "—",
-        o.substituto_id && o.substituto?.colab_nome_completo ? o.substituto.colab_nome_completo : "Não",
+        descricaoAlocacao(o),
         o.descricao || "",
       ]);
 
@@ -517,11 +499,7 @@ export default function OcorrenciasProva() {
                         <TableCell>{o.prova_unidades?.unidades_prova?.unid_sigla?.trim() || "—"}</TableCell>
                         <TableCell>{o.colaboradores?.colab_nome_completo || "—"}</TableCell>
                         <TableCell>{o.tipo_ocorrencia || "—"}</TableCell>
-                        <TableCell>
-                          {o.substituto_id && o.substituto?.colab_nome_completo
-                            ? o.substituto.colab_nome_completo
-                            : "Não"}
-                        </TableCell>
+                        <TableCell>{descricaoAlocacao(o)}</TableCell>
                         <TableCell className="max-w-md">
                           <div className="line-clamp-2 whitespace-pre-wrap">{o.descricao}</div>
                         </TableCell>
@@ -673,34 +651,53 @@ export default function OcorrenciasProva() {
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="substituido">Substituído *</Label>
+              <div className="col-span-2 space-y-2">
+                <Label htmlFor="efeito">Resultado *</Label>
                 <Select
-                  value={String(form.substituido)}
-                  onValueChange={(v) => setForm((f) => ({ ...f, substituido: Number(v) }))}
+                  value={form.efeito}
+                  onValueChange={(v: EfeitoOcorrencia) => {
+                    setForm((f) => ({ ...f, efeito: v }));
+                    if (v !== "substituicao") {
+                      setSubstitutoNome("");
+                      setSubstitutoId("");
+                    }
+                  }}
                 >
-                  <SelectTrigger id="substituido">
+                  <SelectTrigger id="efeito">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="0">Não</SelectItem>
-                    <SelectItem value="1">Sim</SelectItem>
+                    <SelectItem value="nenhum">Não</SelectItem>
+                    <SelectItem value="substituicao">Sim, substituído</SelectItem>
+                    <SelectItem value="falta">Falta — remover da lista, sem substituto</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="mt-2 gap-2"
-                  disabled={form.substituido !== 1}
-                  onClick={openSubstituto}
-                >
-                  <UserPlus className="h-4 w-4" />
-                  Substituto
-                </Button>
-                {substitutoNome && (
-                  <p className="text-sm text-muted-foreground">
-                    Substituto selecionado: <span className="font-medium text-foreground">{substitutoNome}</span>
-                  </p>
+                {form.efeito === "substituicao" && (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="mt-2 gap-2"
+                      onClick={openSubstituto}
+                    >
+                      <UserPlus className="h-4 w-4" />
+                      Substituto
+                    </Button>
+                    {substitutoNome && (
+                      <p className="text-sm text-muted-foreground">
+                        Substituto selecionado: <span className="font-medium text-foreground">{substitutoNome}</span>
+                      </p>
+                    )}
+                  </>
+                )}
+                {form.efeito === "falta" && (
+                  <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-foreground">
+                    <p>
+                      Ao salvar, {selectedColab?.colab_nome_completo || "o colaborador"} será removido da lista de
+                      trabalhadores desta prova.
+                    </p>
+                    {avisoFaltaFiscal && <p className="mt-2">{avisoFaltaFiscal}</p>}
+                  </div>
                 )}
               </div>
             </div>
@@ -744,58 +741,11 @@ export default function OcorrenciasProva() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              onClick={async () => {
+              onClick={() => {
                 if (!deleteId) return;
-                const oc = ocorrencias.find((x) => x.id === deleteId);
-                if (oc && oc.substituto_id) {
-                  // Find substitute's colaboradores_prova row to preserve funcao/valor
-                  const { data: subRow, error: fetchErr } = await supabase
-                    .from("colaboradores_prova")
-                    .select("id, funcao_id, valor_pagamento")
-                    .eq("prova_unidade_id", oc.prova_unidade_id)
-                    .eq("colaborador_id", oc.substituto_id)
-                    .maybeSingle();
-
-                  if (fetchErr) {
-                    toast({
-                      variant: "destructive",
-                      title: "Erro ao reverter substituição",
-                      description: fetchErr.message,
-                    });
-                    return;
-                  }
-
-                  const funcaoId = subRow?.funcao_id ?? null;
-                  const valorPag = subRow?.valor_pagamento ?? null;
-
-                  if (subRow) {
-                    const { error: delErr } = await supabase.from("colaboradores_prova").delete().eq("id", subRow.id);
-                    if (delErr) {
-                      toast({
-                        variant: "destructive",
-                        title: "Erro ao remover substituto",
-                        description: delErr.message,
-                      });
-                      return;
-                    }
-                  }
-
-                  const { error: insErr } = await supabase.from("colaboradores_prova").insert({
-                    prova_unidade_id: oc.prova_unidade_id,
-                    colaborador_id: oc.colaborador_id,
-                    funcao_id: funcaoId,
-                    valor_pagamento: valorPag,
-                  });
-                  if (insErr) {
-                    toast({
-                      variant: "destructive",
-                      title: "Erro ao reinserir colaborador",
-                      description: insErr.message,
-                    });
-                    return;
-                  }
-                }
-
+                // Reverter o efeito sobre `colaboradores_prova` (substituição ou falta)
+                // é responsabilidade do RPC `excluir_ocorrencia_colaborador`, dentro da
+                // mesma transação — ver `useOcorrencias.tsx`.
                 remove(deleteId, { onSuccess: () => setDeleteId(null) });
               }}
               disabled={isRemoving}

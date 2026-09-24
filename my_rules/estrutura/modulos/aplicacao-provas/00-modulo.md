@@ -130,6 +130,7 @@ Todas `SECURITY DEFINER`, chamadas via `supabase.rpc(...)`:
 | `finalizar_prova`, `finalizar_prova_unidade` | ciclo de vida | |
 | `reabrir_prova`, `reabrir_prova_unidade` | ciclo de vida | só superadmin **ou** quem finalizou |
 | `encerrar_ocorrencias_unidade` | `OcorrenciasProva` | **sem RPC simétrica de reabertura** — ver `ocorrencias.md` |
+| `registrar_ocorrencia_colaborador`, `excluir_ocorrencia_colaborador` | `useOcorrencias` (`OcorrenciasProva`) | 🔵 **23/09** — substituição e falta (novo terceiro estado) numa transação só; autorização POR UNIDADE, não por prova — ver `ocorrencias.md` |
 | `acquire_prova_unidade_lock`, `update_prova_unidade_lock_activity`, `release_prova_unidade_lock` | `useProvaUnidadeLock` | 🔵 **16/09** — por UNIDADE, e funcionando pela primeira vez; **parâmetro único `p_prova_unidade_id`**, identidade por `auth.uid()`; tipadas, sem cast (ver abaixo) |
 | `get_coordenador_colaboradores` | `useColaboradores` | recorte do coordenador |
 | `get_coordenador_prova_unidade_ids` | `useCoordenadorUnidades` | idem |

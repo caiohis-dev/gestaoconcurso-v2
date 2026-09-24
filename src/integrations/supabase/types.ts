@@ -1306,6 +1306,91 @@ export type Database = {
           },
         ]
       }
+      log_email_autoinformado: {
+        Row: {
+          aviso_admins_em: string | null
+          chave_origem: string | null
+          colab_nome: string
+          colaborador_id: string | null
+          criado_em: string
+          email_informado: string
+          id: string
+          origem: string
+        }
+        Insert: {
+          aviso_admins_em?: string | null
+          chave_origem?: string | null
+          colab_nome: string
+          colaborador_id?: string | null
+          criado_em?: string
+          email_informado: string
+          id?: string
+          origem: string
+        }
+        Update: {
+          aviso_admins_em?: string | null
+          chave_origem?: string | null
+          colab_nome?: string
+          colaborador_id?: string | null
+          criado_em?: string
+          email_informado?: string
+          id?: string
+          origem?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "log_email_autoinformado_colaborador_id_fkey"
+            columns: ["colaborador_id"]
+            isOneToOne: false
+            referencedRelation: "colaboradores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      log_envio_link_acesso: {
+        Row: {
+          colab_nome: string | null
+          colaborador_id: string | null
+          criado_em: string
+          email: string
+          id: string
+          motivo_falha: string | null
+          origem: string
+          sucesso: boolean
+          tipo_usado: string
+        }
+        Insert: {
+          colab_nome?: string | null
+          colaborador_id?: string | null
+          criado_em?: string
+          email: string
+          id?: string
+          motivo_falha?: string | null
+          origem: string
+          sucesso: boolean
+          tipo_usado: string
+        }
+        Update: {
+          colab_nome?: string | null
+          colaborador_id?: string | null
+          criado_em?: string
+          email?: string
+          id?: string
+          motivo_falha?: string | null
+          origem?: string
+          sucesso?: boolean
+          tipo_usado?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "log_envio_link_acesso_colaborador_id_fkey"
+            columns: ["colaborador_id"]
+            isOneToOne: false
+            referencedRelation: "colaboradores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       meta_colaboradores_unidade: {
         Row: {
           created_at: string | null
@@ -1358,6 +1443,8 @@ export type Database = {
           created_by: string | null
           data_ocorrencia: string
           descricao: string
+          falta: boolean
+          funcao_id_congelada: string | null
           id: string
           prova_id: string
           prova_unidade_id: string
@@ -1365,6 +1452,7 @@ export type Database = {
           substituto_id: string | null
           tipo_ocorrencia: string | null
           updated_at: string
+          valor_pagamento_congelado: number | null
         }
         Insert: {
           colaborador_id: string
@@ -1372,6 +1460,8 @@ export type Database = {
           created_by?: string | null
           data_ocorrencia?: string
           descricao: string
+          falta?: boolean
+          funcao_id_congelada?: string | null
           id?: string
           prova_id: string
           prova_unidade_id: string
@@ -1379,6 +1469,7 @@ export type Database = {
           substituto_id?: string | null
           tipo_ocorrencia?: string | null
           updated_at?: string
+          valor_pagamento_congelado?: number | null
         }
         Update: {
           colaborador_id?: string
@@ -1386,6 +1477,8 @@ export type Database = {
           created_by?: string | null
           data_ocorrencia?: string
           descricao?: string
+          falta?: boolean
+          funcao_id_congelada?: string | null
           id?: string
           prova_id?: string
           prova_unidade_id?: string
@@ -1393,6 +1486,7 @@ export type Database = {
           substituto_id?: string | null
           tipo_ocorrencia?: string | null
           updated_at?: string
+          valor_pagamento_congelado?: number | null
         }
         Relationships: [
           {
@@ -1407,6 +1501,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ocorrencias_colaborador_funcao_id_congelada_fkey"
+            columns: ["funcao_id_congelada"]
+            isOneToOne: false
+            referencedRelation: "funcoes_colaboradores"
             referencedColumns: ["id"]
           },
           {
@@ -2462,6 +2563,12 @@ export type Database = {
         Args: { p_prova_unidade_id: string }
         Returns: undefined
       }
+      emails_dos_admins: {
+        Args: never
+        Returns: {
+          email: string
+        }[]
+      }
       encerrar_ocorrencias_unidade: {
         Args: { p_prova_unidade_id: string; p_user_id: string }
         Returns: boolean
@@ -2478,6 +2585,10 @@ export type Database = {
           sala_especial: string
           sala_id: string
         }[]
+      }
+      excluir_ocorrencia_colaborador: {
+        Args: { p_ocorrencia_id: string }
+        Returns: boolean
       }
       finalizar_prova: { Args: { p_prova_id: string }; Returns: boolean }
       finalizar_prova_unidade: {
@@ -2555,6 +2666,53 @@ export type Database = {
         Returns: undefined
       }
       registrar_batida_saude: { Args: never; Returns: string }
+      registrar_email_do_proprio_cadastro: {
+        Args: {
+          p_chave_origem?: string
+          p_cpf: string
+          p_email: string
+          p_origem?: string
+        }
+        Returns: {
+          auditoria_id: string
+          colaborador_id: string
+          nome: string
+        }[]
+      }
+      registrar_ocorrencia_colaborador: {
+        Args: {
+          p_colaborador_id: string
+          p_data_ocorrencia: string
+          p_descricao: string
+          p_efeito?: string
+          p_prova_unidade_id: string
+          p_substituto_id?: string
+          p_tipo_ocorrencia: string
+        }
+        Returns: {
+          colaborador_id: string
+          created_at: string
+          created_by: string | null
+          data_ocorrencia: string
+          descricao: string
+          falta: boolean
+          funcao_id_congelada: string | null
+          id: string
+          prova_id: string
+          prova_unidade_id: string
+          substituido: number
+          substituto_id: string | null
+          tipo_ocorrencia: string | null
+          updated_at: string
+          valor_pagamento_congelado: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "ocorrencias_colaborador"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       registrar_tentativa: {
         Args: {
           p_chave: string
@@ -2638,6 +2796,10 @@ export type Database = {
       update_prova_unidade_lock_activity: {
         Args: { p_prova_unidade_id: string }
         Returns: boolean
+      }
+      vincular_colaborador_a_conta: {
+        Args: { p_email: string; p_user_id: string }
+        Returns: string
       }
       vincular_unidade_a_prova: {
         Args: { p_prova_id: string; p_unidade_id: string }
