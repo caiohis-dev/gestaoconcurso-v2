@@ -53,12 +53,11 @@ errada e o que cada decisão custou. Antes de reabrir qualquer tema abaixo, proc
 
 ---
 
-## 🧹 `create-coordenador` ainda publicada em produção
+## ⏳ Pendente da v3.7.0: o passo do convite não rodou
 
-**Status:** ⏳ aberto desde 2026-09-12. Saiu do repo naquele dia, mas **remover do repo não remove de produção** — ela segue chamável por um admin, com o fluxo antigo (conta criada com senha escolhida pelo admin). A irmã, `create-admin`, foi apagada de lá na v3.7.0 (24/09); esta ficou fora daquele passe por não fazer parte da release.
-**O que fazer:** `npx supabase functions delete create-coordenador --project-ref zugigdpuxbpogoepdawm` — nada no bundle a chama desde 12/09. Conferir depois: 404.
+❌ *Aqui havia, por algumas horas de 2026-09-24, um item "`create-coordenador` ainda publicada em produção". **Premissa falsa**, a quinta deste backlog: conferido pela lista oficial de funções do projeto, ela **já não existia** lá (404). O item saiu no mesmo dia, sem nada a executar — ver `integracoes-externas.md`.*
 
-⚠️ **Também pendente da v3.7.0:** o passo do convite no teste da `conceder-papel-sistema` não rodou (`EF_TESTE_ENVIA_EMAIL=1`, envia e-mail real para domínio `.invalid`). O caminho que ele cobre (conta nascendo por invite, vínculo, trilha) é o que a `reivindicar-acesso` já exercita em produção; a parte nova é o INSERT do papel depois.
+⚠️ O passo do convite no teste da `conceder-papel-sistema` não rodou (`EF_TESTE_ENVIA_EMAIL=1`, envia e-mail real para domínio `.invalid`). O caminho que ele cobre (conta nascendo por invite, vínculo, trilha) é o que a `reivindicar-acesso` já exercita em produção; a parte nova é o INSERT do papel depois.
 
 ---
 
