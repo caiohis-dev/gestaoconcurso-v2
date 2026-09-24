@@ -156,14 +156,18 @@ sg docker -c 'npx supabase db reset'    # aplica migrations + os 3 seeds
 **Não há CI.** Nada roda a suíte sozinho; cada tema fechado depende de alguém lembrar. É o item de maior alavancagem do backlog, adiado por decisão do usuário.
 
 ```bash
-npm test                                  # 2048 testes em 105 arquivos
+npm test                                  # 2078+ testes em 105 arquivos
 npx tsc --noEmit -p tsconfig.app.json     # tem de sair limpo
 npm run build
-npm run lint                              # baseline 113 (56 erros, 57 avisos)
+npm run lint                              # baseline 110 (54 erros, 56 avisos)
 npm run docs:conferir                     # docs × código/banco — tem de sair sem divergência
 ```
 
-**O lint tem 113 problemas pré-existentes** (113 desde 2026-09-23, quando **subiram 2 avisos de
+**O lint tem 110 problemas pré-existentes** (110 desde 2026-09-24, quando a `create-admin` virou
+`conceder-papel-sistema`: **caíram 2 erros de `any`** do teste antigo e **1 aviso** de
+`react-refresh` do `createUserSchema` que a página exportava — medido arquivo a arquivo contra o
+HEAD. ⚠️ O split antes era **56 erros + 57 avisos**, e a atribuição de 113 abaixo é a daquela
+época. Eram 113 desde 2026-09-23, quando **subiram 2 avisos de
 `complexity`** com o port da lógica do módulo Financeiro — `inferirTipoEFormatarChavePix`
 (financeiro-chave-pix.ts) e `converterPlanilhaParaPagamentoPix` (financeiro-planilha-pagamentos.ts)
 são portes 1:1 do `gera_cnab_pix`, e refatorar a complexidade agora contrariaria a decisão da Fase
@@ -261,7 +265,7 @@ Fora de `my_rules/`: **`docs/`** guarda as baterias de teste manual (`bateria-*.
 - ⚠️ **CHECK nova pode OFUSCAR CHECK antiga.** Em 03/08 uma CHECK de coerência passou a barrar `sala_numero = -1` antes da CHECK de sinal: a linha seguia recusada, mas por outra regra, e a cobertura da antiga virou fantasma. Quem pegou foi a bateria — porque ela afirma **o NOME de quem barrou**, não só que houve recusa. Vale o padrão: ao apertar uma regra, veja quais casos existentes deixaram de exercitar o que diziam exercitar.
 - 🔴 **Se a TELA precisa antecipar uma recusa do banco, ela tem de reimplementar a regra FIELMENTE — ou não reimplementar.** É o outro lado do §2. Em 05/08 a regra "cada bloco abre sala nova" deixa vagas ociosas nas salas de fronteira; a tela calculava `capacidade − alocados` e ofereceu **152** onde o banco tinha **120**, deixando montar um plano inteiro que morreu no `AL004`. Conta simplificada de regra do banco é promessa que o banco não honra. **Ao escrever a versão da tela, traduza o laço, não o resultado** — e teste com os números do caso real.
 - 🔴 **Id da tabela errada numa coluna com FK é o defeito mais silencioso que já apareceu aqui.** O lock de edição passava um `prova_unidades.id` para uma coluna com FK para `provas(id)`: 23503 em **toda** abertura da tela, 500+/dia no log de produção, **desde o commit inicial** — e nada na tela, porque o erro do hook não era renderizado em lugar nenhum. Três coisas o mantiveram vivo por 8 meses: o **nome** (`useProvaLock`/`provaId` num lock que é por unidade), um **`as any`** que desligava o `tsc` naquela chamada, e a **suíte mockando o Supabase** (o mock aceita qualquer string por uuid). ⚠️ Ausência de reclamação NÃO é evidência de que a proteção não faz falta quando a falha é silenciosa — não havia como notar. Ao mexer em algo assim, **olhe o log do banco**: ele sabia o tempo todo. 🔵 No mesmo passe caiu o irmão dele: as RPCs do lock recebiam `p_user_id`/`p_user_name` do cliente — **parâmetro que o chamador envia não é identidade**, nem sob `SECURITY DEFINER` (§8, e o precedente é `20260912191749`).
-- ⚠️ **`verify_jwt` NÃO é autorização** — a anon key é um JWT válido e público. A mesma falha já apareceu 2× (`send-email`, `create-admin`).
+- ⚠️ **`verify_jwt` NÃO é autorização** — a anon key é um JWT válido e público. A mesma falha já apareceu 2× (`send-email`, `create-admin` — esta substituída em 2026-09-24 pela `conceder-papel-sistema`, que herdou a checagem do chamador).
 
 ---
 

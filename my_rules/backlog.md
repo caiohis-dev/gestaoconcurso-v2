@@ -49,6 +49,22 @@ errada e o que cada decisão custou. Antes de reabrir qualquer tema abaixo, proc
 | ✅ 16–17/09 | a **v3 do módulo Editais**: 11 das 12 fatias entregues, e as duas que faltavam viraram itens aqui embaixo |
 | ✅ 21/09 | o defeito do `padStart` antes do `length` (fixo em 02/08 só na `check-cpf-colaborador`) sobrevivia em 3 outras EFs — `reivindicar-acesso`, `incluir-email-cadastro`, `public-create-colaborador`; consolidado em `_shared/cpf.ts` |
 | ✅ 24/09 | módulo Financeiro (gerador CNAB240/PIX) acoplado por inteiro — papel + guarda de acesso, lógica de negócio portada e testada, e UI real conectada; persistência ficou fora por decisão (item novo abaixo) |
+| ✅ 24/09 | papel de sistema passou a nascer de COLABORADOR: `create-admin` (que sobrescrevia a senha de quem já tinha conta) virou `conceder-papel-sistema`, e colaborador + financeiro passou a ver o hub — pendência de produção logo abaixo |
+
+---
+
+## 🚀 Na próxima release: `conceder-papel-sistema` em produção
+
+**Status:** ⏳ aberto em 2026-09-24. O código está em `dev`; produção ainda tem a `create-admin`.
+**Área:** [`estrutura/transversais/integracoes-externas.md`](./estrutura/transversais/integracoes-externas.md) · [`banco-producao.md`](./banco-producao.md)
+
+Três passos, **nesta ordem** (banco antes do site, como sempre):
+
+1. `prod:push` com a migration `20260924112512` — sem ela, a CHECK da trilha recusa a origem nova e os convites saem **sem registro**, calados (a gravação é best-effort).
+2. `supabase functions deploy conceder-papel-sistema`, e só então o site.
+3. 🔴 `supabase functions delete create-admin`. **Remover do repo não remove de produção:** enquanto ela existir lá, um superadmin segue podendo chamá-la — **inclusive o ramo que sobrescreve a senha de quem já tem conta**. A `create-coordenador` (saída do repo em 12/09) tem a mesma pendência; vale apagar as duas no mesmo passe.
+
+⚠️ **O passo do convite no teste da EF não rodou** (`EF_TESTE_ENVIA_EMAIL=1`, envia e-mail real para domínio `.invalid`) — ficou para decisão do usuário. O que ele cobre (conta nascendo por invite, vínculo, trilha) é o caminho que a `reivindicar-acesso` já exercita em produção; a parte nova é só o INSERT do papel depois.
 
 ---
 

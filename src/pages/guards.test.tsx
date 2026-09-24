@@ -171,7 +171,7 @@ function estado(over: Record<string, unknown> = {}) {
   };
   return {
     ...base,
-    isColaboradorSemGestao: colaboradorSemGestao(base.isColaborador, base.role),
+    isColaboradorSemGestao: colaboradorSemGestao(base.isColaborador, base.role, base.isFinanceiro),
   };
 }
 
@@ -208,6 +208,19 @@ const PAPEIS = {
    * (useAuth.tsx), então nunca é o valor de `role` de ninguém.
    */
   financeiro: () => estado({ user: USUARIO, roles: ["financeiro"], isFinanceiro: true }),
+  /**
+   * Colaborador promovido a financeiro — o caso REAL do papel, já que conta de sistema
+   * nasce de colaborador. `role` é `user` (financeiro não entra na escada). Até
+   * 2026-09-24 era mandado ao portal e nunca via o card do próprio módulo.
+   */
+  colaboradorFinanceiro: () =>
+    estado({
+      user: USUARIO,
+      role: "user",
+      roles: ["user", "colaborador", "financeiro"],
+      isColaborador: true,
+      isFinanceiro: true,
+    }),
   superadmin: () =>
     estado({
       user: USUARIO,
@@ -339,8 +352,9 @@ const PAGINAS: Pagina[] = [
     mod: () => import("./Inicio"),
     // `user` puro entra: ele vê o estado vazio ("fale com a administração"), que é o
     // estado real de uma conta sem papel — e não há para onde mandá-lo, porque ele não
-    // tem cadastro de colaborador. `financeiro` entra igual e vê o card do módulo dele.
-    permitidos: ["user", "coordenador", "admin", "superadmin", "financeiro"],
+    // tem cadastro de colaborador. `financeiro` entra igual e vê o card do módulo dele —
+    // inclusive quando também é colaborador (`colaboradorFinanceiro`).
+    permitidos: ["user", "coordenador", "admin", "superadmin", "financeiro", "colaboradorFinanceiro"],
     desvios: {
       // Colaborador sem gestão nunca vê o hub: o que ele veria é o estado vazio, que não
       // leva a lugar nenhum. Segue direto para o próprio cadastro. Decisão de produto,
@@ -545,7 +559,7 @@ const PAGINAS: Pagina[] = [
     // em 2026-07-26 — antes não tinha nenhum e renderizava para visitante deslogado.
     // `user` puro entra, de propósito: tem conta no Auth e é aqui que troca a senha.
     // `financeiro` entra pela mesma regra (`!isColaboradorSemGestao`, ver Perfil.tsx).
-    permitidos: ["user", "coordenador", "admin", "superadmin", "financeiro"],
+    permitidos: ["user", "coordenador", "admin", "superadmin", "financeiro", "colaboradorFinanceiro"],
     desvios: {
       // Colaborador sem gestão tem página própria para "meus dados"; duas telas
       // concorrentes seria pior que uma recusa. Desde 2026-09-18 isso vale também para
@@ -559,7 +573,7 @@ const PAGINAS: Pagina[] = [
     path: "/perfil-colaborador",
     rota: "/perfil-colaborador",
     mod: () => import("./PerfilColaborador"),
-    permitidos: ["colaborador", "colaboradorUser"],
+    permitidos: ["colaborador", "colaboradorUser", "colaboradorFinanceiro"],
     desvios: {
       // Quem NÃO é colaborador vai para `/auth`, não para o hub: o guard trata "não é
       // colaborador" no mesmo ramo de "não está logado". Na prática o usuário volta ao
@@ -582,7 +596,7 @@ const PAGINAS: Pagina[] = [
     // `admin` puro FICA DE FORA de propósito — é o controle negativo desta linha:
     // diferente de todo módulo existente, aqui `isAdmin` não abre a porta.
     exige: ["superadmin", "financeiro"],
-    permitidos: ["superadmin", "financeiro"],
+    permitidos: ["superadmin", "financeiro", "colaboradorFinanceiro"],
   },
 ];
 

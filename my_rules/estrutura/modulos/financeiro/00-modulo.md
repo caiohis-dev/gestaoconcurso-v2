@@ -54,9 +54,13 @@ compartilhada é **Supabase Auth + `user_roles`** — o papel `financeiro` em si
   módulo lista `'superadmin'`.
 - Concessão/revogação do papel é em `/gerenciar-usuarios` (coluna "Financeiro", `useUsers.tsx`) —
   papel puro, DELETE/INSERT direto em `user_roles`, sem RPC (não tem tabela de alocação paralela
-  como `coordenador`). **Fora de escopo da Fase 1**: conceder `financeiro` já na criação da conta
-  (o `z.enum` de `GerenciarUsuarios.tsx` e o `validRoles` da Edge Function `create-admin` não
-  incluem `financeiro` de propósito — dá para conceder depois, pelo toggle).
+  como `coordenador`). 🔵 **Desde 2026-09-24 também pelo diálogo "Conceder acesso"**, que parte
+  do colaborador e cria a conta por convite se ela não existir (EF `conceder-papel-sistema`, ver
+  `transversais/auth-e-permissoes.md`). ⚠️ Esta linha dizia que conceder `financeiro` na criação
+  da conta estava fora de escopo da Fase 1 — deixou de valer com a substituição da `create-admin`.
+- 🔴 **Colaborador + financeiro vai ao hub** desde 2026-09-24: `colaboradorSemGestao`
+  (`src/lib/papeis.ts`) recebe `isFinanceiro`. Antes, esse combo — o caso real do papel, já que
+  a conta nasce de colaborador — caía em `/perfil-colaborador` e nunca via o card do módulo.
 
 ## Arquivos — acesso (Fase 1)
 

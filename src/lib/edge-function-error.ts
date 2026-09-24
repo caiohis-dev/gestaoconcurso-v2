@@ -18,7 +18,7 @@
  * jogava a explicação fora, e o admin ficava sem saber por que a correção falhou.
  *
  * ONDE SE APLICA: só em quem usa `functions.invoke`. As EFs chamadas com `fetch` cru
- * (`create-admin`, `recuperar-senha`, `reivindicar-acesso`, `public-create-colaborador`,
+ * (`conceder-papel-sistema`, `recuperar-senha`, `reivindicar-acesso`, `public-create-colaborador`,
  * `check-cpf-colaborador`) leem `response.json()` e já enxergam o `error` do corpo — não
  * precisam disto.
  */

@@ -13,7 +13,7 @@
 - **`colaborador` NÃO entra nessa hierarquia** — é dimensão paralela, exposta como **`isColaborador`** (`roles.includes('colaborador')`), não como valor de `role`. O hook guarda o array `roles` completo justamente porque uma pessoa acumula gestão + colaborador. Espremer num papel único rebaixaria os 11 coordenadores que também são colaboradores.
 - **`rolesLoaded`**: há uma janela entre `setUser` e o fim do fetch de papéis em que o usuário existe e os papéis ainda não. Quem decide para onde navegar (o `/auth`, as guardas de rota) **espera `rolesLoaded`**, senão decide sobre um conjunto vazio.
 - Logout força `window.location.href = '/auth'` (reload completo, para não deixar estado React fantasma) e limpa as chaves `sb-*`/`supabase` do `localStorage`. **Cuidado herdado:** esse reload duro destrói qualquer `navigate(..., { state })` chamado logo depois de `signOut()` — foi o bug que sumiu com a mensagem de sucesso ao salvar o perfil, na 2A.
-- **`isColaboradorSemGestao`**: é colaborador e **não** tem papel de gestão que abra alguma porta (`coordenador`, `admin`, `superadmin`). Mora em [`src/lib/papeis.ts`](../../../src/lib/papeis.ts) como função pura e é exposto pelo hook; o `Auth.tsx`, o `Inicio.tsx` e o `Perfil.tsx` consomem **esse** campo, nunca uma cópia da expressão.
+- **`isColaboradorSemGestao`**: é colaborador e **não** tem papel de gestão que abra alguma porta (`coordenador`, `admin`, `superadmin` — e, 🔵 desde 2026-09-24, **`financeiro`**, que é paralelo e por isso entra como terceiro parâmetro obrigatório; até então o colaborador promovido a financeiro ia ao portal e nunca via o card do módulo). Mora em [`src/lib/papeis.ts`](../../../src/lib/papeis.ts) como função pura e é exposto pelo hook; o `Auth.tsx`, o `Inicio.tsx` e o `Perfil.tsx` consomem **esse** campo, nunca uma cópia da expressão.
 - Roteamento pós-login (em `Auth.tsx`): **colaborador sem gestão → `/perfil-colaborador`; todo o resto → `/`** (o hub por módulos — ver [`arquitetura-geral.md`](./arquitetura-geral.md) §6). Antes o admin ia direto a `/dashboard`; agora todo gestor passa pelo hub. Os 13 gestor+colaborador caem no hub e chegam ao cadastro pelo item de menu "Meu Cadastro".
 
 > 🔴 **Isto MUDOU em 2026-09-18, e o que havia antes nunca funcionou.** A condição era `isColaborador && role === null` — a tal "colaborador puro" —, copiada em quatro pontos. Ela **nunca disparou para ninguém**: o trigger `handle_new_user` insere `'user'` em **toda** conta nova antes de conceder `'colaborador'`, então `role` nunca é `null`. Medido no banco local em 18/09: das **53** contas com papel `colaborador`, **nenhuma** está sem `user`, e **40** não têm gestão alguma — todas caíam no **hub vazio** ("Nenhum módulo disponível. Fale com a administração"), sem chegar ao próprio cadastro. O destino desenhado para elas existia e era inalcançável por construção.
@@ -185,6 +185,27 @@ Travar o campo (Etapa 1) impede o estrago novo, mas não conserta quem já está
 - `coordenador` é a role mais restrita das "de equipe": um coordenador só enxerga as provas/unidades a que foi explicitamente vinculado via `coordenadores_prova` (ver `useCoordenadorUnidades.tsx`, que resolve os `prova_unidade_id`s permitidos via RPC `get_coordenador_prova_unidade_ids`). Páginas de gestão (`GerenciarProva`, `OcorrenciasProva`) filtram listas no client usando esse resultado — a filtragem client-side é só UX; a proteção real está nas policies/RPCs que também checam `is_coordenador_prova`.
 - Gestão de usuários/roles é feita em `/gerenciar-usuarios` (`useUsers.tsx`), restrita a `superadmin` na navegação.
 
+### Papel de sistema nasce de COLABORADOR (desde 2026-09-24)
+
+`/gerenciar-usuarios` tem **dois caminhos**, e eles não se sobrepõem:
+
+| Caminho | Para quem | Mecânica |
+|---|---|---|
+| **Switches da tabela** (Super Admin / Admin / Financeiro) | quem **já tem conta** — a tabela lista `profiles`, ou seja, contas | `INSERT`/`DELETE` direto em `user_roles`; senha e vínculo intocados |
+| **"Conceder acesso"** (diálogo) | qualquer **colaborador**, com ou sem conta | EF `conceder-papel-sistema` — ver [`integracoes-externas.md`](./integracoes-externas.md) |
+
+O diálogo busca o colaborador (`useBuscarColaboradoresParaAcesso`, mesmo filtro sem acento de `/colaboradores`) e mostra, **antes do clique**, o que vai acontecer — a regra é `situacaoAcesso` em `src/lib/acesso-sistema.ts`, espelho da decisão da EF:
+
+| Situação | O que a EF faz |
+|---|---|
+| `tem-conta` (`user_id` preenchido) | só o papel. Nenhum e-mail, **nenhuma senha tocada** |
+| `convite` (sem conta, com e-mail) | `invite` **cria a conta na hora**, `handle_new_user` vincula e concede `colaborador`, e o papel entra na mesma chamada. A pessoa aparece na tabela já com o papel e cria a própria senha pelo link |
+| `sem-email` | aparece **desabilitado com o motivo** (sumir seria perda silenciosa); a EF recusaria com 400 nomeando a providência |
+
+⚠️ **Por que a busca é separada da de `/colaboradores`:** ela precisa de `colab_email`, e a listagem compartilhada roda no navegador de coordenador e **não pode trazê-lo** (teste "NÃO seleciona `*`" em `useColaboradores.test.tsx`). A primeira tentativa desta entrega ampliou a listagem compartilhada, e foi esse teste que recusou.
+
+⚠️ **O que ficou de fora, por decisão:** criar conta de sistema para quem **não** é colaborador. As 3 contas `user` puras que existem hoje continuam existindo; uma nova passaria antes pelo cadastro de colaborador.
+
 ### Módulos: o que cada papel vê no hub (2026-07-24, linha do colaborador corrigida em 2026-09-18)
 
 A tela de entrada por módulos (o mecanismo em [`arquitetura-geral.md`](./arquitetura-geral.md) §6) deriva o acesso **dos papéis que já existem** — sem tabela nem enum de módulos no banco. 🔵 Desde 2026-09-23 são **cinco** módulos: Aplicação de Provas (todo gestor), Editais/Candidatos/Alocação de Candidatos (só admin/superadmin) e **Financeiro** (só **superadmin + financeiro** — `admin` comum fica de fora, a única assimetria desse tipo no registro; ver [`modulos/financeiro/00-modulo.md`](../modulos/financeiro/00-modulo.md)).
@@ -197,6 +218,9 @@ A tela de entrada por módulos (o mecanismo em [`arquitetura-geral.md`](./arquit
 | `user` puro (**sem** `colaborador`) | sim | **nenhum** — vê o estado vazio ("fale com a administração") | — |
 | **`colaborador` sem gestão** (`role` é `user` ou nulo) | **não** | — cai direto em `/perfil-colaborador` | — |
 | `financeiro` (sem outro papel de gestão) | sim | **só** Financeiro | — |
+| `colaborador` + `financeiro` (🔵 2026-09-24) | sim | **só** Financeiro (+ "Meu Cadastro" no menu) | — |
+
+> 🔴 **A última linha era "não vê o hub" até 2026-09-24.** `role` desse combo é `user` (financeiro não entra na escada), e o predicado de destino só contava a escada — então o colaborador promovido a financeiro caía em `/perfil-colaborador`, com a rota `/financeiro` aberta mas sem nada na tela que levasse até ela. Era o "degrau novo" que o comentário de `papeis.ts` previa, só que num papel **paralelo**. Controle na matriz de `guards.test.tsx` (papel `colaboradorFinanceiro`), falsificado: sem o conserto caem exatamente os casos dele.
 
 ⚠️ **A linha de `superadmin`/`admin` acima corrige uma omissão que já existia antes do Financeiro**: Alocação de Candidatos (criado em 2026-08-04) nunca tinha entrado nesta tabela, embora sempre tenha aparecido no hub — o doc ficou 7 semanas sem citar um módulo que já existia no código.
 
@@ -252,7 +276,7 @@ A RPC exige, nesta ordem, e cada recusa **nomeia a providência**: chamador `adm
 
 > **Por que recusar em vez de só ignorar o papel:** o papel sozinho não é inofensivo. `RequireAcesso` deriva `isCoordenador` de `user_roles` — quem o recebesse sem vínculo **passaria pelos guards** das rotas de coordenação e entraria, para ver listas vazias (as consultas se apoiam em `coordenadores_prova`). Rebaixar em silêncio para `user` seria pior: papel errado, sem sinal.
 >
-> ⚠️ Quem mexer na `create-admin` roda a bateria manual [`../../../docs/bateria-create-admin-autorizacao.md`](../../../docs/bateria-create-admin-autorizacao.md), casos **A9/A10** — conferindo a **contagem** das duas tabelas antes e depois, porque o 400 sozinho não prova nada.
+> ⚠️ Quem mexer na `conceder-papel-sistema` (sucessora da `create-admin` desde 2026-09-24) roda `npm run test:ef -- supabase/functions/conceder-papel-sistema/`, cujo caso **A9/A10** confere a **contagem** de `colaboradores_prova`, `coordenadores_prova` e `user_roles` antes e depois, porque o 400 sozinho não prova nada.
 
 **Revogar** acontece no mesmo diálogo: o `deleteMutation` do `useCoordenadoresProva` apaga o vínculo e, **se era o último**, remove também o papel. A ordem é a segura — apaga o acesso antes do papel, então falhar no fim deixa papel sem acesso, que não concede nada (`is_coordenador_prova` lê só `coordenadores_prova`).
 

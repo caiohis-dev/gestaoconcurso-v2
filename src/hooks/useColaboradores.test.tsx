@@ -29,6 +29,7 @@ import {
   useColaboradoresMutations,
   useBuscarColaboradores,
   useBuscarColaboradoresParaAlocacao,
+  useBuscarColaboradoresParaAcesso,
   LIMITE_PICKER_ALOCACAO,
   POR_PAGINA_COLABORADORES,
   mensagemErroExclusaoColaborador,
@@ -407,6 +408,43 @@ describe("useBuscarColaboradores", () => {
       ascending: true,
       nullsFirst: false,
     });
+  });
+});
+
+describe("useBuscarColaboradoresParaAcesso", () => {
+  beforeEach(() => {
+    resetSupabaseMock();
+    authMock.user = { id: "u1" };
+  });
+
+  it("critério vazio não consulta nada", async () => {
+    const { result } = renderHookWithProviders(() => useBuscarColaboradoresParaAcesso("  "));
+    await waitFor(() => expect(result.current.buscou).toBe(false));
+    expect(supabaseMock.from).not.toHaveBeenCalled();
+  });
+
+  it("usa o MESMO filtro da busca de /colaboradores — nome sem acento", async () => {
+    // As duas buscas compartilham `filtroBuscaColaborador`. Se esta ganhasse cópia
+    // própria, "jose" deixaria de achar "José" só aqui, sem erro.
+    setTableResult("colaboradores", { data: [], error: null, count: 0 });
+    const { result } = renderHookWithProviders(() => useBuscarColaboradoresParaAcesso("José Antônio"));
+    await waitFor(() => expect(result.current.buscou).toBe(true));
+
+    const expressao = (buildersDe("colaboradores")[0].or as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(expressao.split(",")[0]).toBe("colab_nome_busca.ilike.%jose antonio%");
+  });
+
+  it("traz o que a tela precisa para antecipar a EF — e nada de dado bancário", async () => {
+    setTableResult("colaboradores", { data: [], error: null, count: 0 });
+    const { result } = renderHookWithProviders(() => useBuscarColaboradoresParaAcesso("maria"));
+    await waitFor(() => expect(result.current.buscou).toBe(true));
+
+    const colunas = (buildersDe("colaboradores")[0].select as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(colunas).toContain("colab_email");
+    expect(colunas).toContain("user_id");
+    for (const proibida of ["colab_pis", "agencia", "conta", "codigo_banco", "colab_cpf", "chave_pix"]) {
+      expect(colunas).not.toContain(proibida);
+    }
   });
 });
 

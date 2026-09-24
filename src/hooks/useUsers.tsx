@@ -4,6 +4,10 @@ import { useToast } from "@/hooks/use-toast";
 
 export type AppRole = "admin" | "user" | "coordenador" | "superadmin" | "financeiro";
 
+/** Os papéis que `conceder-papel-sistema` aceita. Coordenador é concedido pela prova. */
+export const PAPEIS_SISTEMA = ["superadmin", "admin", "financeiro"] as const;
+export type PapelSistema = (typeof PAPEIS_SISTEMA)[number];
+
 export interface UserWithRole {
   id: string;
   email: string;
@@ -141,31 +145,30 @@ export function useUsers() {
   // ✅ A cópia da EF `create-admin` também foi apagada em 2026-07-26, e a EF passou a
   // RECUSAR role "coordenador" com 400. Não existe mais caminho que fabrique alocação.
 
-  const createUser = useMutation({
-    mutationFn: async ({ 
-      email, 
-      password, 
-      fullName, 
+  // Conta de sistema nasce de COLABORADOR (2026-09-24). A EF deriva o e-mail do cadastro
+  // e nunca recebe senha: vinculado ganha só o papel; sem conta recebe o convite e define
+  // a própria senha. Substitui o "criar usuário" da `create-admin`, que sobrescrevia a
+  // senha de quem já tinha conta.
+  const concederPapelSistema = useMutation({
+    mutationFn: async ({
+      colaboradorId,
       role,
-    }: { 
-      email: string; 
-      password: string; 
-      fullName: string; 
-      role: AppRole;
-    }) => {
-      // Manda o token DA SESSÃO, não a anon key. A `create-admin` cria conta e concede
-      // papel com service_role (inclusive superadmin) e, desde 2026-07-25, exige que o
-      // chamador seja superadmin — o que só é verificável se o JWT identificar uma
-      // pessoa. A anon key é um JWT válido mas anônimo e público: mandá-la aqui era o
-      // que permitia a qualquer um criar um superadmin.
+    }: {
+      colaboradorId: string;
+      role: PapelSistema;
+    }): Promise<{ message: string; situacao: string }> => {
+      // Manda o token DA SESSÃO, não a anon key. A EF concede papel com service_role
+      // (inclusive superadmin) e exige que o chamador seja superadmin — o que só é
+      // verificável se o JWT identificar uma pessoa. A anon key é um JWT válido mas
+      // anônimo e público: mandá-la era o que permitia a qualquer um criar um superadmin.
       const { data: sessao } = await supabase.auth.getSession();
       const accessToken = sessao.session?.access_token;
       if (!accessToken) {
-        throw new Error("Sessão expirada. Entre novamente para criar usuários.");
+        throw new Error("Sessão expirada. Entre novamente para conceder acesso.");
       }
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-admin`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/conceder-papel-sistema`,
         {
           method: "POST",
           headers: {
@@ -175,29 +178,32 @@ export function useUsers() {
             apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
             Authorization: `Bearer ${accessToken}`,
           },
-          body: JSON.stringify({ email, password, fullName, role }),
+          body: JSON.stringify({ colaborador_id: colaboradorId, role }),
         }
       );
 
       const data = await response.json();
-      
+
       if (!response.ok) {
-        throw new Error(data.error || "Erro ao criar usuário");
+        throw new Error(data.error || "Erro ao conceder acesso");
       }
 
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
-      queryClient.invalidateQueries({ queryKey: ["user-coordenador-provas"] });
+      queryClient.invalidateQueries({ queryKey: ["colaboradores", "busca-acesso"] });
+      // O papel entrou, mas o e-mail não saiu: é sucesso com providência, não erro —
+      // desfazer a concessão não ajudaria ninguém.
       toast({
-        title: "Usuário criado",
-        description: "O novo usuário foi cadastrado com sucesso.",
+        title: data.situacao === "convite-falhou" ? "Acesso concedido — e-mail não enviado" : "Acesso concedido",
+        description: data.message,
+        variant: data.situacao === "convite-falhou" ? "destructive" : undefined,
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Erro ao criar usuário",
+        title: "Erro ao conceder acesso",
         description: error.message,
         variant: "destructive",
       });
@@ -209,7 +215,7 @@ export function useUsers() {
     isLoading,
     error,
     updateRole,
-    createUser,
+    concederPapelSistema,
     userCoordenadorProvas,
   };
 }

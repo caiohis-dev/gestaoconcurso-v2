@@ -37,19 +37,10 @@ import {
 import { Loader2, Plus, Shield, User, Users, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { z } from "zod";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-
-export const createUserSchema = z.object({
-  email: z.string().email("Email inválido"),
-  password: z.string().min(6, "Senha deve ter no mínimo 6 caracteres"),
-  fullName: z.string().min(2, "Nome deve ter no mínimo 2 caracteres"),
-  // `coordenador` saiu daqui em 2026-07-26: coordenação depende de ALOCAÇÃO numa
-  // prova, e conceder por esta tela obrigava a fabricar uma alocação falsa só para
-  // satisfazer a FK de `coordenadores_prova`. O papel passa a ser concedido no
-  // CoordenadoresProvaDialog, dentro da gestão da prova. Aqui se concede papel PURO.
-  role: z.enum(["admin", "user", "superadmin"]),
-});
+import { useBuscarColaboradoresParaAcesso } from "@/hooks/useColaboradores";
+import type { PapelSistema } from "@/hooks/useUsers";
+import { concederPapelSchema, DESCRICAO_SITUACAO, situacaoAcesso } from "@/lib/acesso-sistema";
 
 const roleLabels: Record<AppRole, string> = {
   superadmin: "Super Admin",
@@ -70,44 +61,45 @@ const roleBadgeVariants: Record<AppRole, "default" | "secondary" | "outline"> = 
 export default function GerenciarUsuarios() {
   const { user, loading, isSuperAdmin } = useAuth();
   const navigate = useNavigate();
-  const { users, isLoading, updateRole, createUser, userCoordenadorProvas } = useUsers();
+  const { users, isLoading, updateRole, concederPapelSistema, userCoordenadorProvas } = useUsers();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [formData, setFormData] = useState({
-    email: "",
-    password: "",
-    fullName: "",
-    role: "user" as AppRole,
-  });
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [termoColaborador, setTermoColaborador] = useState("");
+  const [colaboradorId, setColaboradorId] = useState("");
+  const [papel, setPapel] = useState<PapelSistema>("admin");
+  const [formErro, setFormErro] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const busca = useBuscarColaboradoresParaAcesso(termoColaborador);
+  const selecionado = busca.colaboradores.find((c) => c.id === colaboradorId);
 
-  const handleCreateUser = async (e: React.FormEvent) => {
+  const fecharDialogo = (aberto: boolean) => {
+    setDialogOpen(aberto);
+    if (!aberto) {
+      setTermoColaborador("");
+      setColaboradorId("");
+      setPapel("admin");
+      setFormErro("");
+    }
+  };
+
+  const handleConceder = async (e: React.FormEvent) => {
     e.preventDefault();
-    setFormErrors({});
+    setFormErro("");
 
-    try {
-      createUserSchema.parse(formData);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const errors: Record<string, string> = {};
-        error.errors.forEach((err) => {
-          if (err.path[0]) {
-            errors[err.path[0] as string] = err.message;
-          }
-        });
-        setFormErrors(errors);
-        return;
-      }
+    const r = concederPapelSchema.safeParse({ colaboradorId, role: papel });
+    if (!r.success) {
+      setFormErro(r.error.issues[0].message);
+      return;
     }
 
     setIsSubmitting(true);
     try {
-      await createUser.mutateAsync(formData);
-      setDialogOpen(false);
-      setFormData({ email: "", password: "", fullName: "", role: "user" });
+      await concederPapelSistema.mutateAsync({ colaboradorId, role: papel });
+      fecharDialogo(false);
+    } catch {
+      // O toast de erro já foi mostrado pelo `onError` do hook; o diálogo fica aberto.
     } finally {
       setIsSubmitting(false);
     }
@@ -151,87 +143,112 @@ export default function GerenciarUsuarios() {
               Gerencie os usuários do sistema e suas permissões
             </p>
           </div>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <Dialog open={dialogOpen} onOpenChange={fecharDialogo}>
             <DialogTrigger asChild>
               <Button className="gap-2">
                 <Plus className="h-4 w-4" />
-                Novo Usuário
+                Conceder acesso
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Criar Novo Usuário</DialogTitle>
+                <DialogTitle>Conceder acesso a colaborador</DialogTitle>
                 <DialogDescription>
-                  Preencha os dados para cadastrar um novo usuário no sistema.
+                  Escolha o colaborador e o papel. Quem ainda não tem conta recebe, no e-mail do
+                  cadastro, o link para criar a própria senha.
                 </DialogDescription>
               </DialogHeader>
-              <form onSubmit={handleCreateUser} className="space-y-4">
+              <form onSubmit={handleConceder} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="fullName">Nome Completo</Label>
+                  <Label htmlFor="busca-colaborador">Colaborador</Label>
                   <Input
-                    id="fullName"
-                    value={formData.fullName}
-                    onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                    placeholder="Nome do usuário"
+                    id="busca-colaborador"
+                    value={termoColaborador}
+                    onChange={(e) => {
+                      setTermoColaborador(e.target.value);
+                      setColaboradorId("");
+                    }}
+                    placeholder="Nome, CPF ou matrícula"
+                    autoComplete="off"
                   />
-                  {formErrors.fullName && (
-                    <p className="text-sm text-destructive">{formErrors.fullName}</p>
+                  {busca.isFetching && (
+                    <p className="text-sm text-muted-foreground flex items-center gap-2">
+                      <Loader2 className="h-3 w-3 animate-spin" /> Buscando...
+                    </p>
+                  )}
+                  {busca.error && (
+                    <p className="text-sm text-destructive">Não foi possível buscar: {busca.error.message}</p>
+                  )}
+                  {busca.buscou && busca.colaboradores.length === 0 && (
+                    <p className="text-sm text-muted-foreground">Nenhum colaborador encontrado.</p>
+                  )}
+                  {busca.colaboradores.length > 0 && (
+                    <div role="listbox" aria-label="Colaboradores encontrados" className="max-h-56 overflow-y-auto rounded-md border">
+                      {busca.colaboradores.map((c) => {
+                        const situacao = situacaoAcesso(c);
+                        const desabilitado = situacao === "sem-email";
+                        const ativo = c.id === colaboradorId;
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            role="option"
+                            aria-selected={ativo}
+                            disabled={desabilitado}
+                            onClick={() => setColaboradorId(c.id)}
+                            className={`w-full text-left px-3 py-2 border-b last:border-b-0 text-sm ${
+                              ativo ? "bg-primary/10" : "hover:bg-muted"
+                            } ${desabilitado ? "opacity-60 cursor-not-allowed" : ""}`}
+                          >
+                            <div className="font-medium">{c.colab_nome_completo}</div>
+                            <div className={`text-xs ${desabilitado ? "text-destructive" : "text-muted-foreground"}`}>
+                              {DESCRICAO_SITUACAO[situacao]}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {busca.total > busca.colaboradores.length && (
+                    <p className="text-xs text-muted-foreground">
+                      Mostrando {busca.colaboradores.length} de {busca.total} — refine a busca.
+                    </p>
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="email@exemplo.com"
-                  />
-                  {formErrors.email && (
-                    <p className="text-sm text-destructive">{formErrors.email}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">Senha</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    placeholder="••••••"
-                  />
-                  {formErrors.password && (
-                    <p className="text-sm text-destructive">{formErrors.password}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="role">Permissão Inicial</Label>
-                  <Select
-                    value={formData.role}
-                    onValueChange={(value: AppRole) => setFormData({ ...formData, role: value })}
-                  >
-                    <SelectTrigger>
+                  <Label htmlFor="role">Papel</Label>
+                  <Select value={papel} onValueChange={(value: PapelSistema) => setPapel(value)}>
+                    <SelectTrigger id="role">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="superadmin">Super Admin</SelectItem>
                       <SelectItem value="admin">Administrador</SelectItem>
-                      <SelectItem value="user">Usuário</SelectItem>
+                      <SelectItem value="financeiro">Financeiro</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+                {selecionado && (
+                  <Alert>
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      {selecionado.colab_nome_completo}: {DESCRICAO_SITUACAO[situacaoAcesso(selecionado)]}.
+                    </AlertDescription>
+                  </Alert>
+                )}
+                {formErro && <p className="text-sm text-destructive">{formErro}</p>}
                 <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                  <Button type="button" variant="outline" onClick={() => fecharDialogo(false)}>
                     Cancelar
                   </Button>
-                  <Button type="submit" disabled={isSubmitting}>
+                  <Button type="submit" disabled={isSubmitting || !selecionado}>
                     {isSubmitting ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Criando...
+                        Concedendo...
                       </>
                     ) : (
-                      "Criar Usuário"
+                      "Conceder acesso"
                     )}
                   </Button>
                 </DialogFooter>

@@ -17,13 +17,15 @@
 # válido e público (a falha que já apareceu em `send-email` e `create-admin`).
 #
 # ⚠️ ESTES TESTES SÃO DE INTEGRAÇÃO e o banco local é CÓPIA DE PRODUÇÃO. Eles criam e
-# apagam usuários reais no Auth local. O de `create-admin` tem teardown e foi verificado
-# sem deixar resíduo — mas se um passo estourar antes dele, sobra conta `test_runner_*`.
+# apagam usuários reais no Auth local. O de `conceder-papel-sistema` (que substituiu a
+# `create-admin` em 2026-09-24) tem teardown num `finally` e foi verificado sem deixar
+# resíduo — mas se o processo morrer no meio, sobra conta `test_runner_*`.
 #
 # ⚠️ ANTES DE ESCREVER TESTE PARA OUTRA EF: `public-create-colaborador`,
 # `reivindicar-acesso`, `recuperar-senha` e `send-email` ENVIAM E-MAIL DE VERDADE deste
-# ambiente, e a base tem 771 endereços reais. `create-admin` não envia — por isso ele é o
-# único que roda sem combinado prévio. ⚠️ Desde 2026-09-19 a lista tem mais uma:
+# ambiente, e a base tem 771 endereços reais. `conceder-papel-sistema` também envia no
+# ramo "colaborador sem conta" — por isso aquele caso só roda com EF_TESTE_ENVIA_EMAIL=1
+# (e usa domínio `.invalid`); o resto dele roda sem combinado prévio. ⚠️ Desde 2026-09-19 a lista tem mais uma:
 # `incluir-email-cadastro` manda o convite E um aviso para CADA admin — e ainda escreve
 # `colab_email` numa pessoa real, fora de transação. Ver estrutura/transversais/integracoes-externas.md.
 set -euo pipefail

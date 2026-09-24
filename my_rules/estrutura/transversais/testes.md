@@ -326,7 +326,7 @@ Duas coisas a fazer nesse momento, e as duas são fáceis de esquecer:
 | Registro de módulos | `lib/modulos.test.ts` — inclui invariantes que rodam sobre `MODULOS` inteiro |
 | **Importação de candidatos** | `lib/candidatos-import.test.ts` (40) — **puro, sem mock**: pareamento por índice, conversores, erro-vs-aviso e deduplicação. Os casos de dado sujo são medidos no arquivo real de 7.416 inscritos |
 | Acessibilidade | `components/dialogos-acessibilidade.test.ts` — invariante **estática**: lê o fonte e exige `DialogDescription` em cada um dos 31 `DialogContent` (contando as variantes AlertDialog/Sheet) |
-| Schemas Zod (9) | `*Dialog.test.ts`, `pages/Auth.test.ts`, `pages/GerenciarUsuarios.test.ts` |
+| Schemas Zod (9) | `*Dialog.test.ts`, `pages/Auth.test.ts`, `lib/acesso-sistema.test.ts` (🔵 era `pages/GerenciarUsuarios.test.ts` até 2026-09-24, quando o schema saiu da página junto com a senha) |
 | Auth | `useAuth.test.tsx` — hierarquia, `colaborador` paralelo, `rolesLoaded`, `signOut` |
 | Hooks de dados | `useEditais`, `useColaboradores`, `useColaboradoresProva`, `useCoordenadoresProva`, `useValoresFuncaoProva`, `useMetaColaboradoresUnidade`, `useProvaUnidadeLock`, `useOcorrencias`, `useCoordenadorUnidades`, `useProvas`, `useProvaUnidades`, `useSalasDistribuidas` (+ `useSalasDistribuidasCapacidade` e `useFiscaisSala`), `useFuncoesColaboradores`, `useFuncoesAssociadas`, `useUsers`, `useUnidadesProva`, `useSalasProva` (+ `useCapacidadeTemplateUnidades`), `useUnidadeCapacidade`, `useBancos` — **a camada está fechada** |
 | UI | `EditalDialog.ui.test.tsx`, `ProvaDialog.ui.test.tsx`, **`PasswordConfirmDialog.ui.test.tsx`** (16 — a barreira das ações destrutivas), **`CoordenadoresProvaDialog.ui.test.tsx`** (16 — a concessão de acesso de coordenador; eram 23 até 2026-09-12, quando o diálogo parou de criar conta), **`ValoresFuncaoProvaDialog`** + **`MetaColaboradoresDialog`** (20 + 13 — o caminho do dinheiro), **`CorrigirEmailAcessoDialog`** (16 — a âncora de identidade), **`UnidadeProvaDialog`** · **`FuncaoColaboradorDialog`** · **`SalaProvaDialog`** · **`SalaExtraDialog`** (42 no total) |
@@ -363,7 +363,7 @@ O coração dessa infraestrutura é o `supabase/functions/_shared/test-utils.ts`
 
 | Função | Cobertura |
 |---|---|
-| `create-admin` | `index.test.ts` (8 cenários). Garante recusas (`401`/`403`) para tokens anônimos, lixos ou de administradores não-super. Impede concessões ilícitas (ex: criar papel "coordenador" avulso que corromperia o painel), verificando no próprio banco se o dado foi preservado intacto. |
+| `conceder-papel-sistema` | `index.test.ts` (9 passos; 🔵 substituiu o de `create-admin` em 2026-09-24). Recusas `401`/`403`, coordenador e sem-e-mail recusados **com contagem igual antes e depois**, e o controle do defeito que derrubou a `create-admin`: no colaborador **vinculado**, a pessoa **ainda entra com a senha dela** depois da concessão, e nenhum e-mail sai. ⚠️ O passo "sem conta → convite" **envia e-mail**: só roda com `EF_TESTE_ENVIA_EMAIL=1`, para domínio `.invalid`. |
 
 *(Baterias manuais prévias, como a `docs/bateria-create-admin-autorizacao.md`, tornaram-se obsoletas com esta infraestrutura e são mantidas apenas para registro histórico.)*
 
@@ -375,7 +375,7 @@ Com a stack de pé, é só isso:
 
 ```bash
 npm run test:ef                      # todos os testes de EF
-npm run test:ef -- supabase/functions/create-admin/index.test.ts   # um arquivo
+npm run test:ef -- supabase/functions/conceder-papel-sistema/index.test.ts   # um arquivo
 ```
 
 🔴 **E um caso em que a suíte NÃO avisou nada, que vale mais que qualquer número:** ao consertar a autorização de `finalizar_prova`/`reabrir_prova` (12/09), previa-se que "os testes que exercitam essas RPCs vão cair". **Nenhum caiu** — ninguém afirmava o corpo da chamada, e o `tsc` também não impede reintroduzir o parâmetro (medido). A testemunha que faltava virou bateria: `docs/bateria-finalizacao-autorizacao.sql`. **Teste que não existe não avisa, e a ausência dele não dá sinal nenhum.**
@@ -395,7 +395,7 @@ O script (`scripts/test-ef.sh`) lê as três variáveis do próprio `supabase st
 > export SUPABASE_URL="http://127.0.0.1:54321"
 > export SUPABASE_ANON_KEY="<ANON_KEY>"
 > export SUPABASE_SERVICE_ROLE_KEY="<SERVICE_ROLE_KEY>"
-> deno test --allow-net --allow-env supabase/functions/create-admin/index.test.ts
+> deno test --allow-net --allow-env supabase/functions/conceder-papel-sistema/index.test.ts
 > ```
 
 🔴 **As três variáveis são obrigatórias, e desde 2026-07-31 a ausência LANÇA.** Antes, `callFunction` omitia o header `Authorization` quando `SUPABASE_ANON_KEY` faltava — e o caso *"A1 — Anon Key crua (401)"* passava a exercitar **"requisição sem header nenhum"**, que também dá 401. O teste seguia verde afirmando outro cenário, e o que ele existe para guardar — que **`verify_jwt` não é autorização**, porque a anon key *é* um JWT válido e público, a falha que já apareceu em `send-email` e `create-admin` — deixava de ser coberto. `getAdminClient` já lançava; `callFunction` passou a fazer igual.
@@ -404,13 +404,15 @@ Para testar de propósito a ausência de header, passe `""` como token — é ex
 
 ### 🔴 Antes de escrever teste para OUTRA Edge Function
 
-São **9 EFs e apenas 1 tem teste** (`create-admin`). Expandir esbarra numa condição deste ambiente que não vale a pena descobrir do jeito errado:
+São **9 EFs e apenas 1 tem teste de integração** (`conceder-papel-sistema`, que herdou o lugar da `create-admin` em 2026-09-24). Expandir esbarra numa condição deste ambiente que não vale a pena descobrir do jeito errado:
 
 ⚠️ **`public-create-colaborador`, `reivindicar-acesso`, `recuperar-senha` e `send-email` ENVIAM E-MAIL DE VERDADE daqui**, e o banco local é cópia de produção — 771 endereços reais. Um teste que dispare qualquer uma delas contra a linha errada manda e-mail com SPF/DKIM da FEVRE para a caixa de uma pessoa real. Ver [`integracoes-externas.md`](./integracoes-externas.md).
 
-**`create-admin` é o único que roda sem combinado prévio: ele não envia e-mail** (verificado em 02/08), e o teste usa endereços `@exemplo.com` com `email_confirm: true`, que suprime a confirmação nativa.
+⚠️ **Esta linha dizia que a `create-admin` era a única que rodava sem combinado prévio, por não enviar e-mail.** A sucessora **envia** no ramo "colaborador sem conta" (é o convite). O teste dela resolve isso cortando o passo: ele só roda com `EF_TESTE_ENVIA_EMAIL=1` e usa um cadastro de teste com e-mail `@….invalid` (RFC 2606, não entrega a ninguém). Os outros 8 passos não enviam nada e rodam sempre.
 
-⚠️ **Estes testes são de INTEGRAÇÃO e criam/apagam usuários reais no Auth local.** O de `create-admin` tem teardown e foi verificado sem deixar resíduo; se um passo estourar antes dele, sobra conta `test_runner_*` num banco que é cópia de prod.
+⚠️ **Estes testes são de INTEGRAÇÃO e criam/apagam usuários e cadastros reais no Auth/banco local.** O de `conceder-papel-sistema` faz o teardown num `finally` e foi verificado sem deixar resíduo; se o processo morrer no meio, sobra conta `test_runner_*` num banco que é cópia de prod.
+
+⚠️ **A função nova só existe para o runtime local depois de recriá-lo.** O container `supabase_edge_runtime_*` fixa a lista de funções ao nascer: com uma EF nova (ou renomeada), ele responde 404, e se estiver parado, **503 em todas** — que parece erro do teste e não é. `npx supabase functions serve` (em segundo plano, via `sg docker`) relê o diretório. Aconteceu em 2026-09-24.
 **Das páginas, o que está coberto é o guard, não o comportamento.** A bateria afirma quem entra e para onde o recusado é mandado; ela não exercita formulário, listagem nem ação de página nenhuma. As **4 páginas fora da matriz** são as que não têm guard a testar, todas públicas por natureza: `/auth`, `/cadastro-publico`, `/redefinir-senha` e `NotFound`.
 
 O inventário completo, com ordem de prioridade e o que **não** se testa aqui, está no [`backlog.md`](../../backlog.md) → "Completar a suíte de testes (Vitest)".

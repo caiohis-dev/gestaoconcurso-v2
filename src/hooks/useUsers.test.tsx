@@ -293,108 +293,112 @@ describe("useUsers", () => {
    * `supabase/functions/create-admin/index.ts` (`createCoordenadorAccess`) também saiu,
    * e a EF passou a RECUSAR `role: "coordenador"` com 400.
    *
-   * ⚠️ MAS A COBERTURA NÃO VOLTOU. Aquilo é Deno, fora do alcance desta suíte — um teste
-   * aqui afirmaria o mock, não a function. Quem mexer na `create-admin` roda a bateria
-   * manual `docs/bateria-create-admin-autorizacao.md` (casos A9/A10), e confere a
-   * CONTAGEM de colaboradores_prova/coordenadores_prova antes e depois: o 400 sozinho
-   * não prova que nada foi escrito.
+   * 🔵 A cobertura da EF vive em Deno: `supabase/functions/conceder-papel-sistema/
+   * index.test.ts` (`npm run test:ef`), que substituiu a `create-admin` em 2026-09-24 e
+   * confere a CONTAGEM de colaboradores_prova/coordenadores_prova/user_roles antes e
+   * depois da recusa de coordenador — o 400 sozinho não prova que nada foi escrito.
    */
 
-  describe("criar usuário (Edge Function)", () => {
+  describe("conceder papel de sistema a colaborador (Edge Function)", () => {
     afterEach(() => vi.restoreAllMocks());
 
-    it("manda o token DA SESSÃO no Authorization, nunca a anon key", async () => {
-      // REGRESSÃO (corrigida em 2026-07-25): o hook mandava
-      // `Authorization: Bearer ${VITE_SUPABASE_PUBLISHABLE_KEY}` — a chave pública, que
-      // vai no bundle do frontend. Como a `create-admin` cria conta e concede papel com
-      // service_role (aceitando "superadmin" do corpo) e não checava o chamador,
-      // qualquer um com aquela chave criava um superadmin.
-      //
-      // O conserto tem dois lados e ESTE TESTE cobre só o daqui: mandar o JWT da
-      // sessão, que identifica a pessoa. O outro lado é a EF exigir superadmin — não
-      // testável por Vitest (roda em Deno), coberto pela bateria manual em docs/.
-      //
-      // A `apikey` continua sendo a pública de propósito: ela identifica o PROJETO no
-      // gateway. Quem identifica a PESSOA é o Authorization.
+    const comSessao = () =>
       supabaseMock.auth.getSession.mockResolvedValueOnce({
         data: { session: { access_token: "jwt-da-sessao" } },
         error: null,
       } as never);
+
+    it("manda o token DA SESSÃO e SÓ colaborador + papel — nada de e-mail ou senha", async () => {
+      // REGRESSÃO (corrigida em 2026-07-25): o hook mandava a anon key como
+      // Authorization, e qualquer um com o bundle criava um superadmin. A `apikey`
+      // continua sendo a pública de propósito: identifica o PROJETO, não a pessoa.
+      //
+      // 🔴 E desde 2026-09-24 o corpo não leva e-mail nem senha: a EF deriva o e-mail do
+      // cadastro. A `create-admin` recebia a senha do admin e a gravava por cima da
+      // senha de quem já tinha conta.
+      comSessao();
       const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-        new Response(JSON.stringify({ ok: true }), { status: 200 }),
+        new Response(JSON.stringify({ success: true, situacao: "concedido", message: "Papel admin concedido a Maria." }), { status: 200 }),
       );
 
       const { result } = await carregar();
-      result.current.createUser.mutate({
-        email: "novo@fevre.test",
-        password: "senha123",
-        fullName: "Novo",
-        role: "superadmin",
-      });
+      result.current.concederPapelSistema.mutate({ colaboradorId: "c-1", role: "admin" });
 
       await waitFor(() =>
         expect(toastMock).toHaveBeenCalledWith(
-          expect.objectContaining({ title: "Usuário criado" }),
+          expect.objectContaining({ title: "Acesso concedido", description: "Papel admin concedido a Maria." }),
         ),
       );
 
       const [url, init] = fetchMock.mock.calls[0];
-      expect(url).toBe("http://localhost:54321/functions/v1/create-admin");
+      expect(url).toBe("http://localhost:54321/functions/v1/conceder-papel-sistema");
       const headers = init?.headers as Record<string, string>;
       expect(headers.Authorization).toBe("Bearer jwt-da-sessao");
       expect(headers.Authorization).not.toContain("test-anon-key");
       expect(headers.apikey).toBe("test-anon-key");
+      expect(JSON.parse(init?.body as string)).toEqual({ colaborador_id: "c-1", role: "admin" });
+    });
+
+    it("convite que não saiu é SUCESSO com providência, não erro", async () => {
+      // O papel entrou; só o e-mail falhou. A mensagem da EF diz o que fazer, e ela
+      // tem de chegar inteira — destacada, mas sem virar "Erro ao conceder".
+      comSessao();
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(
+          JSON.stringify({ success: true, situacao: "convite-falhou", message: 'Peça que ele use "Estou sem minha senha".' }),
+          { status: 200 },
+        ),
+      );
+
+      const { result } = await carregar();
+      result.current.concederPapelSistema.mutate({ colaboradorId: "c-1", role: "financeiro" });
+
+      await waitFor(() =>
+        expect(toastMock).toHaveBeenCalledWith(
+          expect.objectContaining({
+            title: "Acesso concedido — e-mail não enviado",
+            description: 'Peça que ele use "Estou sem minha senha".',
+            variant: "destructive",
+          }),
+        ),
+      );
     });
 
     it("recusa sem sessão, sem chegar a chamar a Edge Function", async () => {
-      // `getSession` do mock devolve `session: null` por padrão. Falha fechada: melhor
-      // erro claro do que uma requisição que a EF vai recusar com 401.
+      // `getSession` do mock devolve `session: null` por padrão. Falha fechada.
       const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
         new Response(JSON.stringify({ ok: true }), { status: 200 }),
       );
 
       const { result } = await carregar();
-      result.current.createUser.mutate({
-        email: "novo@fevre.test",
-        password: "senha123",
-        fullName: "Novo",
-        role: "admin",
-      });
+      result.current.concederPapelSistema.mutate({ colaboradorId: "c-1", role: "admin" });
 
       await waitFor(() =>
         expect(toastMock).toHaveBeenCalledWith(
           expect.objectContaining({
-            title: "Erro ao criar usuário",
-            description: "Sessão expirada. Entre novamente para criar usuários.",
+            title: "Erro ao conceder acesso",
+            description: "Sessão expirada. Entre novamente para conceder acesso.",
           }),
         ),
       );
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it("propaga a mensagem de erro da Edge Function", async () => {
-      // Precisa de sessão: sem ela o hook nem chega a chamar a function (caso acima).
-      supabaseMock.auth.getSession.mockResolvedValueOnce({
-        data: { session: { access_token: "jwt-da-sessao" } },
-        error: null,
-      } as never);
+    it("propaga a mensagem de erro da Edge Function — ela nomeia a providência", async () => {
+      comSessao();
+      const msg = "Este colaborador não tem e-mail no cadastro. Cadastre o e-mail dele em /colaboradores antes de conceder o acesso.";
       vi.spyOn(globalThis, "fetch").mockResolvedValue(
-        new Response(JSON.stringify({ error: "E-mail já cadastrado" }), { status: 400 }),
+        new Response(JSON.stringify({ error: msg }), { status: 400 }),
       );
 
       const { result } = await carregar();
-      result.current.createUser.mutate({
-        email: "existente@fevre.test",
-        password: "senha123",
-        fullName: "Existente",
-        role: "admin",
-      });
+      result.current.concederPapelSistema.mutate({ colaboradorId: "c-1", role: "admin" });
 
       await waitFor(() =>
         expect(toastMock).toHaveBeenCalledWith(
           expect.objectContaining({
-            title: "Erro ao criar usuário",
-            description: "E-mail já cadastrado",
+            title: "Erro ao conceder acesso",
+            description: msg,
             variant: "destructive",
           }),
         ),

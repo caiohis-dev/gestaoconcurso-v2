@@ -203,7 +203,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // A pergunta de DESTINO, num lugar só. `Auth`, `Inicio` e `Perfil` têm de responder
   // igual — até 2026-09-18 a expressão estava copiada nos quatro pontos, e a cópia
   // afirmava `role === null`, que o trigger `handle_new_user` torna inalcançável.
-  const isColaboradorSemGestao = colaboradorSemGestao(isColaborador, role);
+  const isColaboradorSemGestao = colaboradorSemGestao(isColaborador, role, isFinanceiro);
 
   return (
     <AuthContext.Provider

@@ -26,8 +26,18 @@ export type AppRole = 'admin' | 'user' | 'coordenador' | 'superadmin' | 'colabor
  * não casaria, e a pessoa ficaria no hub em vez de ser mandada calada para o portal.
  * Pelo mesmo motivo NÃO troque por `!isAdmin && !isCoordenador`, que hoje é
  * equivalente e amanhã não seria.
+ *
+ * ⚠️ `financeiro` é dimensão PARALELA (não entra em `role`), então precisa vir à parte:
+ * até 2026-09-24 ele não vinha, e colaborador + financeiro era mandado ao portal sem
+ * nunca ver o card do módulo que o papel existe para abrir. É obrigatório de propósito —
+ * um papel paralelo novo tem de passar por aqui, não cair num default calado.
  */
-export function colaboradorSemGestao(isColaborador: boolean, role: AppRole | null): boolean {
+export function colaboradorSemGestao(
+  isColaborador: boolean,
+  role: AppRole | null,
+  isFinanceiro: boolean,
+): boolean {
   if (!isColaborador) return false;
+  if (isFinanceiro) return false;
   return role === null || role === 'user';
 }

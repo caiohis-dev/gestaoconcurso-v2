@@ -6,7 +6,7 @@
 > Para o que o sistema É, veja `my_rules/estrutura/`; para o que FALTA, `my_rules/backlog.md`.
 
 > **🚨 ATENÇÃO:** Esta bateria manual via curl foi **substituída** pelos testes automatizados em Deno. 
-> Veja `supabase/functions/create-admin/index.test.ts` e `supabase/functions/_shared/test-utils.ts`. 
+> Veja `supabase/functions/conceder-papel-sistema/index.test.ts` (🔵 a `create-admin` foi substituída por ela em 2026-09-24) e `supabase/functions/_shared/test-utils.ts`. 
 > O histórico abaixo é mantido apenas como referência de como as coisas eram antes da automação (2026-07-28).
 
 Prova que a `create-admin` só aceita chamada de um **superadmin autenticado**. Fechada em 2026-07-25; antes disso a função não checava nada e **qualquer um com a anon key criava uma conta `superadmin`** (ver [`../my_rules/estrutura/transversais/integracoes-externas.md`](../my_rules/estrutura/transversais/integracoes-externas.md)).

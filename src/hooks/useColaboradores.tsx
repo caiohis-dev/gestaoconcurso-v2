@@ -118,6 +118,19 @@ export type ColaboradorListagem = Pick<
 >;
 
 /**
+ * O filtro da busca por nome/matrícula/CPF — um lugar só, porque depende de DOIS lados
+ * casarem (ver `useBuscarColaboradores`) e duas cópias divergiriam em silêncio.
+ */
+function filtroBuscaColaborador(criterio: string): string {
+  // Mesmo escape de `useCandidatos`: `%`, `,` e parênteses são sintaxe do `or` do
+  // PostgREST, e um deles digitado na busca quebraria a expressão inteira.
+  const escapado = criterio.replace(/[%,()]/g, ' ');
+  // O termo sem acento só serve para o NOME, que é o lado normalizado no banco.
+  const semAcento = removerAcentos(escapado);
+  return `colab_nome_busca.ilike.%${semAcento}%,colab_matricula.ilike.%${escapado}%,colab_cpf.ilike.%${escapado}%`;
+}
+
+/**
  * Só as escritas, sem consulta nenhuma.
  *
  * 🔴 Existe porque `ColaboradorDialog` usava `useColaboradores()` apenas pelas mutations
@@ -311,20 +324,12 @@ export function useBuscarColaboradores({
     queryKey: ['colaboradores', 'busca', user?.id, criterio, pagina, porPagina, ordenarPor, direcao],
     enabled: !!user && criterio.length > 0,
     queryFn: async () => {
-      // Mesmo escape de `useCandidatos`: `%`, `,` e parênteses são sintaxe do `or` do
-      // PostgREST, e um deles digitado na busca quebraria a expressão inteira.
-      const escapado = criterio.replace(/[%,()]/g, ' ');
-      // O termo sem acento só serve para o NOME, que é o lado normalizado no banco.
-      const semAcento = removerAcentos(escapado);
-
       const coluna = ordenarPor ? COLUNA_ORDEM[ordenarPor] : 'colab_nome_completo';
 
       const { data, error, count } = await supabase
         .from('colaboradores')
         .select(COLUNAS_LISTAGEM, { count: 'exact' })
-        .or(
-          `colab_nome_busca.ilike.%${semAcento}%,colab_matricula.ilike.%${escapado}%,colab_cpf.ilike.%${escapado}%`
-        )
+        .or(filtroBuscaColaborador(criterio))
         // `nullsFirst: false` põe quem NUNCA acessou no fim, não no topo — ordenar por
         // "último acesso" existe justamente para achar essa gente, e o padrão do Postgres
         // (NULLS FIRST no DESC) entregaria a lista ao contrário do esperado.
@@ -348,6 +353,45 @@ export function useBuscarColaboradores({
     isFetching: query.isFetching,
     error: query.error,
     /** Houve uma busca concluída? Distingue "ainda não buscou" de "não achou nada". */
+    buscou: query.isSuccess,
+  };
+}
+
+/** Uma linha da busca de conceder papel de sistema. */
+export type ColaboradorParaAcesso = Pick<Colaborador, 'id' | 'colab_nome_completo' | 'colab_email' | 'user_id'>;
+
+/**
+ * Busca para o diálogo de conceder papel de sistema (`/gerenciar-usuarios`, só
+ * superadmin). Existe à parte de `useBuscarColaboradores` por causa de `colab_email`:
+ * a listagem compartilhada roda no navegador de COORDENADOR e não pode trazê-lo (o
+ * teste "NÃO seleciona `*`" guarda isso). Aqui ele é preciso para dizer, antes do
+ * clique, se a pessoa tem conta, vai receber convite ou não pode (sem e-mail).
+ */
+export function useBuscarColaboradoresParaAcesso(termo: string, limite = 10) {
+  const { user } = useAuth();
+  const criterio = termo.trim();
+
+  const query = useQuery({
+    queryKey: ['colaboradores', 'busca-acesso', user?.id, criterio, limite],
+    enabled: !!user && criterio.length > 0,
+    queryFn: async () => {
+      const { data, error, count } = await supabase
+        .from('colaboradores')
+        .select('id, colab_nome_completo, colab_email, user_id', { count: 'exact' })
+        .or(filtroBuscaColaborador(criterio))
+        .order('colab_nome_completo', { ascending: true })
+        .order('id', { ascending: true })
+        .range(0, limite - 1);
+      if (error) throw error;
+      return { colaboradores: (data ?? []) as ColaboradorParaAcesso[], total: count ?? 0 };
+    },
+  });
+
+  return {
+    colaboradores: query.data?.colaboradores ?? [],
+    total: query.data?.total ?? 0,
+    isFetching: query.isFetching,
+    error: query.error,
     buscou: query.isSuccess,
   };
 }
