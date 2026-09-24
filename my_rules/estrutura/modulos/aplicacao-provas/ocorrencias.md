@@ -20,7 +20,8 @@ A guarda era `if (ids && ids.length > 0)`, então `[]` não aplicava filtro e de
 ## Falta: um terceiro estado que também remove da lista, sem substituto
 
 🔵 **Desde 2026-09-23** o campo antes chamado "Substituído" (0/1) virou um seletor de três
-opções na tela: *Não* / *Sim, substituído* / *Falta — remover da lista, sem substituto*.
+opções na tela — rotulado **"Situação do colaborador"** desde 2026-09-24 (era "Resultado",
+nome vago demais: resultado de quê?): *Sem alteração* / *Substituído* / *Falta (sem substituto)*.
 Registrar falta faz **a mesma coisa que a substituição faz com o colaborador original**
 — sai de `colaboradores_prova` daquela unidade —, só que sem inserir substituto nenhum.
 Como `colaboradores_prova` tem `UNIQUE (prova_unidade_id, colaborador_id)` e o trigger
@@ -108,6 +109,12 @@ Logo, o recorte por unidade existe **só no cliente**, no `provaUnidadeIds` de `
 
 1. **Não trate esse filtro como segurança.** Ele é UX. Se o recorte por unidade precisar virar garantia, tem de descer para a policy (ou para uma RPC), e isso é trabalho de banco, não de front.
 2. **Hoje ele tem um furo aberto:** lista **vazia** de unidades não filtra nada, e `useCoordenadorUnidades` devolve `[]` enquanto carrega — então toda abertura da página por um coordenador tem uma janela sem filtro. Detalhe e conserto no [`backlog.md`](../../../backlog.md); há teste marcando o defeito em `useOcorrencias.test.tsx`.
+
+## Ordenação da tabela — cliente, não servidor
+
+🔵 **Desde 2026-09-24** as seis colunas de "Registro de Ocorrências" são clicáveis (asc/desc), no mesmo componente visual de `/colaboradores` — `SortableTableHead` (`src/components/SortableTableHead.tsx`), extraído de `ColaboradoresList.tsx` para as duas telas compartilharem o mesmo padrão em vez de reimplementar.
+
+⚠️ **A ordenação aqui é NO CLIENTE, ao contrário de `/colaboradores`.** Lá ordenar vai ao servidor porque a busca pagina o resultado; aqui `useOcorrencias` já traz a lista inteira da prova/unidades permitidas de uma vez (sem paginação), então reordenar em memória é suficiente e mais simples. Sem coluna escolhida, a ordem é a que já vem do hook (`data_ocorrencia` decrescente — a mais recente no topo); só muda quando alguém clica num cabeçalho. O PDF exportado segue a mesma ordem da tela no momento do clique em "Exportar PDF".
 
 ## Exportação
 

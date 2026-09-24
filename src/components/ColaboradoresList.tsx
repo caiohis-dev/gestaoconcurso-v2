@@ -33,7 +33,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Search, Pencil, Trash2, Users, Loader2, Clock, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { SortableTableHead } from '@/components/SortableTableHead';
+import { Search, Pencil, Trash2, Users, Loader2, Clock } from 'lucide-react';
 import { ESTADO_CIVIL_MAP } from '@/lib/constants';
 import ColaboradorDialog from './ColaboradorDialog';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -54,37 +55,6 @@ function formatTelefone(tel: number | null): string {
   return str;
 }
 
-
-interface SortableHeaderProps {
-  label: string;
-  column: 'nome' | 'ultimo_acesso';
-  currentColumn: 'nome' | 'ultimo_acesso' | null;
-  direction: 'asc' | 'desc';
-  onSort: (column: 'nome' | 'ultimo_acesso') => void;
-}
-
-function SortableHeader({ label, column, currentColumn, direction, onSort }: SortableHeaderProps) {
-  const isActive = currentColumn === column;
-  return (
-    <TableHead
-      className="font-semibold cursor-pointer select-none hover:bg-muted/50 transition-colors"
-      onClick={() => onSort(column)}
-    >
-      <div className="flex items-center gap-1">
-        {label}
-        {isActive ? (
-          direction === 'asc' ? (
-            <ArrowUp className="h-3 w-3 text-primary" />
-          ) : (
-            <ArrowDown className="h-3 w-3 text-primary" />
-          )
-        ) : (
-          <ArrowUpDown className="h-3 w-3 opacity-50" />
-        )}
-      </div>
-    </TableHead>
-  );
-}
 
 interface PaginacaoProps {
   buscou: boolean;
@@ -369,7 +339,7 @@ export default function ColaboradoresList() {
                       </TableHead>
                     )}
                     <TableHead className="font-semibold">Matrícula</TableHead>
-                    <SortableHeader
+                    <SortableTableHead
                       label="Nome"
                       column="nome"
                       currentColumn={sortColumn}
@@ -378,7 +348,7 @@ export default function ColaboradoresList() {
                     />
                     <TableHead className="font-semibold">CPF</TableHead>
                     <TableHead className="font-semibold">Telefone</TableHead>
-                    <SortableHeader
+                    <SortableTableHead
                       label="Último Acesso"
                       column="ultimo_acesso"
                       currentColumn={sortColumn}

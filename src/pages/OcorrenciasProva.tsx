@@ -11,6 +11,7 @@ import { useBuscarColaboradoresParaAlocacao } from "@/hooks/useColaboradores";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useToast } from "@/hooks/use-toast";
 import { PasswordConfirmDialog } from "@/components/PasswordConfirmDialog";
+import { SortableTableHead } from "@/components/SortableTableHead";
 import { useSalasDoFiscal, avisoFiscalDeSala } from "@/hooks/useSalasDistribuidas";
 
 import Layout from "@/components/Layout";
@@ -66,6 +67,8 @@ interface FormState {
   efeito: EfeitoOcorrencia;
 }
 
+type ColunaOcorrencia = "data" | "unidade" | "colaborador" | "tipo" | "situacao" | "descricao";
+
 const emptyForm: FormState = {
   prova_unidade_id: "",
   colaborador_id: "",
@@ -81,6 +84,32 @@ function todayISO() {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+// Funções puras de `Ocorrencia` — vivem fora do componente de propósito: usadas dentro
+// de um `useMemo` (ordenação), precisam de identidade estável para não entrar como
+// dependência a cada render.
+//
+// O que aconteceu com a alocação por causa desta ocorrência — "Falta" tem prioridade
+// porque, embora mutuamente exclusiva de `substituido` no banco (CHECK), as duas
+// colunas descrevem o MESMO eixo (o que ocorreu com `colaboradores_prova`).
+function descricaoAlocacao(o: Ocorrencia) {
+  if (o.falta) return "Falta";
+  if (o.substituto_id && o.substituto?.colab_nome_completo) return o.substituto.colab_nome_completo;
+  return "Sem alteração";
+}
+
+const ACESSORES_ORDENACAO_OCORRENCIA: Record<ColunaOcorrencia, (o: Ocorrencia) => string> = {
+  data: (o) => o.data_ocorrencia || "",
+  unidade: (o) => o.prova_unidades?.unidades_prova?.unid_sigla?.trim() || "",
+  colaborador: (o) => o.colaboradores?.colab_nome_completo || "",
+  tipo: (o) => o.tipo_ocorrencia || "",
+  situacao: descricaoAlocacao,
+  descricao: (o) => o.descricao || "",
+};
+
+function valorOrdenavel(o: Ocorrencia, coluna: ColunaOcorrencia): string {
+  return ACESSORES_ORDENACAO_OCORRENCIA[coluna](o);
 }
 
 export default function OcorrenciasProva() {
@@ -135,6 +164,32 @@ export default function OcorrenciasProva() {
   const [encerrarUnidadeId, setEncerrarUnidadeId] = useState<string | null>(null);
   const logoBase64 = useLogoBase64();
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [sortColumn, setSortColumn] = useState<ColunaOcorrencia | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+
+  // Diferente de /colaboradores, a ordenação aqui é NO CLIENTE: a lista de ocorrências já
+  // vem inteira do hook (sem paginação), então não há por que ir ao servidor de novo.
+  const handleSort = (column: ColunaOcorrencia) => {
+    if (sortColumn === column) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortColumn(column);
+      setSortDirection("asc");
+    }
+  };
+
+  // 🔴 Precisa vir ANTES dos `return` condicionais mais abaixo — hook não pode ser
+  // chamado condicionalmente. A ordem padrão (sem coluna escolhida) é a que já vem do
+  // hook — data_ocorrencia decrescente, a mais recente no topo.
+  const ocorrenciasOrdenadas = useMemo(() => {
+    if (!sortColumn) return ocorrencias;
+    const copia = [...ocorrencias];
+    copia.sort((a, b) => {
+      const cmp = valorOrdenavel(a, sortColumn).localeCompare(valorOrdenavel(b, sortColumn), "pt-BR");
+      return sortDirection === "asc" ? cmp : -cmp;
+    });
+    return copia;
+  }, [ocorrencias, sortColumn, sortDirection]);
 
   const openSubstituto = () => {
     setSubstitutoOpen(true);
@@ -288,15 +343,6 @@ export default function OcorrenciasProva() {
     create(payload, { onSuccess: () => setDialogOpen(false) });
   };
 
-  // O que aconteceu com a alocação por causa desta ocorrência — "Falta" tem prioridade
-  // porque, embora mutuamente exclusiva de `substituido` no banco (CHECK), as duas
-  // colunas descrevem o MESMO eixo (o que ocorreu com `colaboradores_prova`).
-  const descricaoAlocacao = (o: Ocorrencia) => {
-    if (o.falta) return "Falta";
-    if (o.substituto_id && o.substituto?.colab_nome_completo) return o.substituto.colab_nome_completo;
-    return "Não";
-  };
-
   const formatDateDDMMYYYY = (iso: string) => {
     if (!iso) return "";
     const s = String(iso).slice(0, 10);
@@ -330,7 +376,9 @@ export default function OcorrenciasProva() {
           titulo: `REGISTRO DE OCORRÊNCIAS${dataProva ? ` - ${dataProva}` : ""}`,
         }) + 7;
 
-      const body = ocorrencias.map((o) => [
+      // Mesma ordem que a tela está mostrando — inclusive se o usuário tiver ordenado
+      // por uma coluna antes de exportar.
+      const body = ocorrenciasOrdenadas.map((o) => [
         formatDateDDMMYYYY(o.data_ocorrencia),
         o.prova_unidades?.unidades_prova?.unid_sigla?.trim() || "—",
         o.colaboradores?.colab_nome_completo || "—",
@@ -341,7 +389,7 @@ export default function OcorrenciasProva() {
 
       autoTable(doc, {
         startY,
-        head: [["Data", "Unidade", "Colaborador", "Tipo", "Substituído", "Descrição"]],
+        head: [["Data", "Unidade", "Colaborador", "Tipo", "Situação", "Descrição"]],
         body: body.length > 0 ? body : [["—", "—", "Nenhuma ocorrência registrada", "—", "—", "—"]],
         theme: "grid",
         margin: { left: MARGEM_LATERAL, right: MARGEM_LATERAL, bottom: 15 },
@@ -483,17 +531,17 @@ export default function OcorrenciasProva() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Data</TableHead>
-                      <TableHead>Unidade</TableHead>
-                      <TableHead>Colaborador</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Substituído</TableHead>
-                      <TableHead>Descrição</TableHead>
+                      <SortableTableHead label="Data" column="data" currentColumn={sortColumn} direction={sortDirection} onSort={handleSort} />
+                      <SortableTableHead label="Unidade" column="unidade" currentColumn={sortColumn} direction={sortDirection} onSort={handleSort} />
+                      <SortableTableHead label="Colaborador" column="colaborador" currentColumn={sortColumn} direction={sortDirection} onSort={handleSort} />
+                      <SortableTableHead label="Tipo" column="tipo" currentColumn={sortColumn} direction={sortDirection} onSort={handleSort} />
+                      <SortableTableHead label="Situação" column="situacao" currentColumn={sortColumn} direction={sortDirection} onSort={handleSort} />
+                      <SortableTableHead label="Descrição" column="descricao" currentColumn={sortColumn} direction={sortDirection} onSort={handleSort} />
                       <TableHead className="w-[110px] text-right">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {ocorrencias.map((o) => (
+                    {ocorrenciasOrdenadas.map((o) => (
                       <TableRow key={o.id}>
                         <TableCell className="whitespace-nowrap">{formatDateDDMMYYYY(o.data_ocorrencia)}</TableCell>
                         <TableCell>{o.prova_unidades?.unidades_prova?.unid_sigla?.trim() || "—"}</TableCell>
@@ -652,7 +700,7 @@ export default function OcorrenciasProva() {
               </div>
 
               <div className="col-span-2 space-y-2">
-                <Label htmlFor="efeito">Resultado *</Label>
+                <Label htmlFor="efeito">Situação do colaborador *</Label>
                 <Select
                   value={form.efeito}
                   onValueChange={(v: EfeitoOcorrencia) => {
@@ -667,9 +715,9 @@ export default function OcorrenciasProva() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="nenhum">Não</SelectItem>
-                    <SelectItem value="substituicao">Sim, substituído</SelectItem>
-                    <SelectItem value="falta">Falta — remover da lista, sem substituto</SelectItem>
+                    <SelectItem value="nenhum">Sem alteração</SelectItem>
+                    <SelectItem value="substituicao">Substituído</SelectItem>
+                    <SelectItem value="falta">Falta (sem substituto)</SelectItem>
                   </SelectContent>
                 </Select>
                 {form.efeito === "substituicao" && (
