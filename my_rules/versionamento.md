@@ -68,6 +68,22 @@ Versionamento semântico, com prefixo `v`:
 
   ⚠️ **Subiu sem backup novo**, por decisão do usuário; o mais recente era o de 16/09. Fica registrado porque o Free não tem backup automático nenhum.
 
+- **`v3.5.0` nasceu em 2026-09-23**, no commit `2ec0634`, poucas horas depois da v3.4.0. Entregou a renomeação do rótulo "Resultado" (pouco claro — resultado de quê?) para **"Situação do colaborador"** em Nova Ocorrência, e **ordenação clicável (asc/desc)** nas seis colunas de "Registro de Ocorrências" — mesmo padrão visual de `/colaboradores`, via `SortableTableHead` (`src/components/SortableTableHead.tsx`), extraído para as duas telas compartilharem. MINOR: funcionalidade nova, sem quebra.
+
+  🟢 **Release SÓ DE FRONTEND — nenhuma migration.** Ritual mais curto: sem `link`/`prod:push:dry`/`prod:push`/`prod:diff`/`prod:unlink`, só commit → `git fetch . dev:main` → tag → push → `deploy.sh`. Vale checar `git status` das migrations antes de assumir que uma release precisa do banco — nem toda uma precisa.
+
+  ⚠️ **Um bug meu foi pego pelo próprio checklist, antes de eu considerar a tarefa pronta.** A ordenação usava um `useMemo` colocado DEPOIS dos `return` condicionais do componente — violação de Rules of Hooks. Só apareceu porque medi o lint com `git stash` contra o baseline (CLAUDE.md §5) em vez de olhar só "subiu ou não subiu o total". Corrigido movendo a lógica pura para fora do componente e o hook para antes de qualquer `return`.
+
+  **Verificado ao vivo:** hash do bundle publicado idêntico ao buildado (`index-BgcWsKGf.js`), **0** ocorrências de `127.0.0.1`, e o texto "Situação do colaborador" presente no bundle em produção.
+
+- **`v3.4.0` nasceu em 2026-09-23**, no commit `20f7ba0`. Entregou **falta em Nova Ocorrência remove o colaborador da lista de trabalhadores da prova** (Aplicação de Provas) — terceiro estado ao lado de "substituído", e dois RPCs transacionais novos (`registrar_ocorrencia_colaborador` / `excluir_ocorrencia_colaborador`) que também corrigem um defeito latente na substituição (SELECT+INSERT+DELETE soltos, sem transação). MINOR: tudo aditivo.
+
+  🔴 **Achado no caminho:** `GRANT EXECUTE ... TO authenticated` sozinho **não** impede `anon` de chamar uma função nova — o `ALTER DEFAULT PRIVILEGES` de `20260908231620` não segura isso, ao contrário do que aquela migration prometia. Os dois RPCs levam `REVOKE ALL ... FROM PUBLIC` explícito; achado e conserto documentados em [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md).
+
+  Ritual: commit → `git fetch . dev:main` → tag → `link` → `prod:push:dry` (1 migration, a esperada) → `prod:push` → `prod:diff` (só o drift conhecido do `pg_net`) → `prod:unlink` → `deploy.sh`. ⚠️ **`prod:diff` precisou de `supabase stop`/`start` do ambiente local antes/depois** — ele sobe um banco "sombra" na mesma porta (`54320`) que o Supabase de dev já ocupa, e os dois colidem.
+
+  **Verificado ao vivo:** hash do bundle publicado idêntico ao buildado (`index-Csm9DuJi.js`), **0** ocorrências de `127.0.0.1`, e `registrar_ocorrencia_colaborador` presente no bundle publicado — prova de que o RPC novo (não só a migration) chegou a produção.
+
 - **`v3.3.0` nasceu em 2026-09-21**, no commit `47d1aa2`. Entregou a **trilha de envio do link** (`log_envio_link_acesso`) e o conserto do **`padStart` antes do `length`** — o defeito fixo em 02/08 só na `check-cpf-colaborador` sobrevivia idêntico em `reivindicar-acesso`, `incluir-email-cadastro` e `public-create-colaborador`. MINOR (uma feature + um fix, sem quebra de contrato).
 
   🔴 **Release de BANCO + EDGE FUNCTIONS, sem site** — e desta vez a checagem foi feita corretamente: nenhum `src/` mudou neste lote (diferença do que aconteceu na v3.2.0, quando eu errei essa mesma verificação). `deploy.sh` republicaria o mesmo bundle de sempre; quem entrega o conserto são as 6 Edge Functions.
