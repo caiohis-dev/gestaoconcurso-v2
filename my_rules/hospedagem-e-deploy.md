@@ -6,7 +6,18 @@ Como o gestaoconcurso vai ao ar. Par de [`banco-producao.md`](./banco-producao.m
 >
 > O deploy foi executado em outra sessão; o ferramental vive fora deste repo, em `configura_server_gestaoconcurso`. 🟢 **O secret `SITE_URL` e as redirect URLs — que ficaram como ressalva aqui desde 13/08 — foram CONFIRMADOS em 2026-09-09**, por uma recuperação de senha real: o e-mail chegou com o visual da FEVRE e o link abriu `fevre.online/redefinir-senha`.
 >
-> 🟢 **Deploy mais recente: 2026-09-19, release `v3.1.0`** (commit `c9d1dff`) — o autosserviço de e-mail, os três becos sem saída da rota de acesso e as rodadas 13–14 do edital padrão. 3 migrations, 2 edge functions (`incluir-email-cadastro` **nasceu aqui**, v1) e 14 arquivos de `src/`. Conferido: hash no ar `index-Bsx_1KWY.js` idêntico ao buildado, **0** de `127.0.0.1`, `prod:diff` vazio, e as 2 funções novas respondendo **42501** ao `anon`. ⚠️ Sem backup novo, por decisão — o mais recente segue sendo o de 16/09.
+> 🟢 **Deploy mais recente: 2026-09-24, release `v3.6.0`** (commit `0c81276`) — o módulo Financeiro
+> (gerador CNAB 240/PIX): papel de acesso, lógica portada e a UI real (`/financeiro`). 2 migrations,
+> nenhuma Edge Function nova, `src/pages/Financeiro.tsx` + `src/lib/financeiro-*.ts` novos. Ritual
+> inteiro: `prod:push` das 2 migrations antes do `deploy.sh`. Conferido: hash no ar
+> (`index-B_paDCJl.js`) idêntico ao buildado (sha256 comparado), **0** ocorrências de `127.0.0.1`,
+> **4** da URL de produção, o texto "Geração de remessas de pagamento" presente 2× no bundle, HTTPS
+> 200, logo 200. ⚠️ Sem backup novo, por decisão — o mais recente segue sendo o de 16/09.
+> ⚠️ **Esta linha dizia "mais recente" a v3.1.0 (19/09)** — as releases v3.2.0/v3.4.0/v3.5.0
+> também rodaram `deploy.sh` no meio tempo sem que ninguém atualizasse esta nota; o registro delas
+> vive em `versionamento.md`, que é mantido à parte.
+>
+> 🟢 **Deploy de 2026-09-19, release `v3.1.0`** (commit `c9d1dff`) — o autosserviço de e-mail, os três becos sem saída da rota de acesso e as rodadas 13–14 do edital padrão. 3 migrations, 2 edge functions (`incluir-email-cadastro` **nasceu aqui**, v1) e 14 arquivos de `src/`. Conferido: hash no ar `index-Bsx_1KWY.js` idêntico ao buildado, **0** de `127.0.0.1`, `prod:diff` vazio, e as 2 funções novas respondendo **42501** ao `anon`. ⚠️ Sem backup novo, por decisão — o mais recente segue sendo o de 16/09.
 >
 > *(A release anterior, do mesmo dia.)* 🟢 **2026-09-19, `v3.0.0`** (commit `ebfa19a`) — o módulo Editais v3 (26 migrations) e o vínculo colaborador↔conta. Ritual inteiro na ordem: merge fast-forward, tag, `prod:push`, `functions deploy` das 3 que mudaram, `deploy.sh`, `prod:unlink`. Conferido depois: hash do bundle no ar **idêntico** ao buildado (`index-CfqKTUa4.js`), **0** ocorrências de `127.0.0.1` e 7 do projeto de produção, HTTPS 200, HTTP 301, logo 200. ⚠️ **Subiu SEM backup novo**, por decisão do usuário — o mais recente é o de 16/09.
 >

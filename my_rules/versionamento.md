@@ -68,6 +68,29 @@ Versionamento semântico, com prefixo `v`:
 
   ⚠️ **Subiu sem backup novo**, por decisão do usuário; o mais recente era o de 16/09. Fica registrado porque o Free não tem backup automático nenhum.
 
+- **`v3.6.0` nasceu em 2026-09-24**, no commit `0c81276`. Entregou o **módulo Financeiro** (gerador
+  de remessa CNAB 240/PIX, importado de um projeto separado — ver
+  `estrutura/modulos/financeiro/00-modulo.md`): papel `financeiro` (só superadmin+financeiro, o
+  único módulo a que `admin` comum não acessa), ~950 linhas de lógica portadas com 73 testes, e a
+  UI real (upload → correspondência de colunas → validação/geração) — 78 testes novos nos arquivos
+  `financeiro-*` (71 da lógica pura, 5 da tela, 2 de uma correção de parser no mesmo dia), além do
+  que `guards.test.tsx` ganhou na Fase 1 para cobrir o papel. MINOR, seguindo a regra
+  escrita (MAJOR é só para quebra de contrato/schema) — decisão explícita do usuário de não abrir
+  exceção, mesmo sendo módulo novo (o único precedente de módulo virar MAJOR, a v3.0.0, foi por
+  **escala**, não por ser módulo novo).
+
+  🔴 **Banco antes do site:** 2 migrations (enum `app_role` + `has_role` estendida). Ritual
+  completo: commit → push `dev` → `git fetch . dev:main` → tag → `link` → `prod:push:dry` (2
+  migrations, as esperadas) → `prod:push` → `prod:diff` (só o drop conhecido do `pg_net`) →
+  `prod:unlink` → `deploy.sh`.
+
+  ⚠️ **Subiu sem backup novo**, por decisão do usuário; o mais recente é o de 16/09. A migration é
+  puramente aditiva (enum + função), risco baixo.
+
+  **Verificado ao vivo:** hash do bundle publicado idêntico ao buildado (`index-B_paDCJl.js`), **0**
+  ocorrências de `127.0.0.1`, **4** da URL de produção, e o texto "Geração de remessas de pagamento"
+  (a descrição da tela `/financeiro`) presente 2× no bundle publicado.
+
 - **`v3.5.0` nasceu em 2026-09-23**, no commit `2ec0634`, poucas horas depois da v3.4.0. Entregou a renomeação do rótulo "Resultado" (pouco claro — resultado de quê?) para **"Situação do colaborador"** em Nova Ocorrência, e **ordenação clicável (asc/desc)** nas seis colunas de "Registro de Ocorrências" — mesmo padrão visual de `/colaboradores`, via `SortableTableHead` (`src/components/SortableTableHead.tsx`), extraído para as duas telas compartilharem. MINOR: funcionalidade nova, sem quebra.
 
   🟢 **Release SÓ DE FRONTEND — nenhuma migration.** Ritual mais curto: sem `link`/`prod:push:dry`/`prod:push`/`prod:diff`/`prod:unlink`, só commit → `git fetch . dev:main` → tag → push → `deploy.sh`. Vale checar `git status` das migrations antes de assumir que uma release precisa do banco — nem toda uma precisa.

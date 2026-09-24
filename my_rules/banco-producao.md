@@ -226,6 +226,13 @@ Medido depois da volta, com `docs/diagnostico-io-banco-producao.sql` (100% leitu
 
 > 🟢 **ESTE ROTEIRO JÁ FOI EXECUTADO — 2026-08-08 (passos 0 a 5, 7 a 9) e 2026-08-10 (passo 6 + o login real).** O banco de produção da v2 existe em **`zugigdpuxbpogoepdawm`** (us-west-2, PG 17.6.1.155, plano Free), com as 122 migrations, os dados carregados (controle positivo 12/12), as 8 edge functions com secrets, o Auth parametrizado e o **login real aprovado**. O repo terminou **deslinkado**.
 >
+> 🟢 **Lote mais recente: 2026-09-24, release `v3.6.0`** (commit `0c81276`) — **2 migrations**: enum
+> `app_role` ganha `financeiro` e `has_role` estendida (superadmin ⇒ financeiro), para o módulo
+> Financeiro novo. `prod:push:dry` listou exatamente as 2 esperadas, `prod:diff` depois só mostrou
+> o drop conhecido do `pg_net`. `deploy.sh` rodou no mesmo evento (o módulo tem UI nova). Verificado
+> ao vivo: hash do bundle idêntico ao buildado, 0 ocorrências de `127.0.0.1`. Subiu sem backup novo
+> (mais recente é o de 16/09) — migration puramente aditiva, risco baixo.
+
 > 🟢 **Lote mais recente: 2026-09-21, release `v3.3.0`** (commit `47d1aa2`) — 1 migration (`log_envio_link_acesso`) + 6 Edge Functions redeployadas (`check-cpf-colaborador`, `corrigir-email-acesso`, `incluir-email-cadastro`, `public-create-colaborador`, `recuperar-senha`, `reivindicar-acesso`). Verificado ao vivo contra produção, sem efeito colateral: `check-cpf-colaborador` com a entrada de 9 dígitos do exploit devolveu 400, com CPF normal devolveu 200. **Nenhum `src/` mudou** — `deploy.sh` não precisa rodar para este lote.
 
 > 🟢 **Lote mais recente: 2026-09-20, release `v3.2.0`** (commit `f6136f4`) — **6 migrations**: as 5 do edital padrão (rodadas 15 a 19, conteúdo do edital-modelo) e o carimbo de `colab_ultimo_acesso` no gatilho de login. Ritual inteiro, na ordem: commit → `git fetch . dev:main` → tag → link → `prod:push:dry` → `prod:push` → `prod:diff` → `prod:unlink`. **O site subiu depois, no mesmo dia, pelo usuário** (`deploy.sh`, conferido: hash do bundle idêntico ao build, sem `127.0.0.1`, gzip, HTTPS, e o marcador novo do edital presente). ⚠️ Eu tinha concluído "release de banco apenas" sem checar o diff de `src/` — a rodada 15 do edital trazia código de app junto. Ver `versionamento.md`.
