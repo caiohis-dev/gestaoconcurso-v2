@@ -71,9 +71,9 @@ Mapa completo e a seção "Como manter": `my_rules/estrutura/00-indice.md`.
 
 ### 🔴 O padrão que mais se repete: item de backlog com premissa errada
 
-Aconteceu **quatro vezes**: guards lendo papéis de `modulos.ts` (teria **afrouxado** o acesso), papel `coordenador` sem vínculo ser "inofensivo", "dois `useEffect`" que eram **três**, e `anon` "cair em default deny" quando **8 policies o deixavam ler dado real**.
+Aconteceu **quatro vezes**: guards lendo papéis de `modulos.ts` (teria **afrouxado** o acesso), papel `coordenador` sem vínculo ser "inofensivo", "dois `useEffect`" que eram **três**, e `anon` "cair em default deny" quando **8 policies o deixavam ler dado real**. 🔵 E uma quinta, em 2026-09-24: o item "apagar a `create-coordenador` de produção" — ela **já não existia lá**, e a afirmação vinha de doc, não de consulta.
 
-**Conferir a premissa no código antes de executar o item é obrigatório.** Na última vez, foi a diferença entre revogar um TRUNCATE e achar dado legível sem login.
+**Conferir a premissa no código antes de executar o item é obrigatório.** Na última vez, foi a diferença entre revogar um TRUNCATE e achar dado legível sem login. ⚠️ **Para o que está em PRODUÇÃO, a premissa se confere na produção** — `npx supabase functions list --project-ref <REF>` diz quais Edge Functions existem lá (não precisa de link), e a doc não substitui essa consulta.
 
 ---
 
@@ -156,7 +156,7 @@ sg docker -c 'npx supabase db reset'    # aplica migrations + os 3 seeds
 **Não há CI.** Nada roda a suíte sozinho; cada tema fechado depende de alguém lembrar. É o item de maior alavancagem do backlog, adiado por decisão do usuário.
 
 ```bash
-npm test                                  # 2078+ testes em 105 arquivos
+npm test                                  # 2079 testes em 105 arquivos
 npx tsc --noEmit -p tsconfig.app.json     # tem de sair limpo
 npm run build
 npm run lint                              # baseline 110 (54 erros, 56 avisos)
