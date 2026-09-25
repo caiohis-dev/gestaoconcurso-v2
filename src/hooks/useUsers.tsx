@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { buscarEmFatias } from "@/lib/buscar-em-fatias";
 
 export type AppRole = "admin" | "user" | "coordenador" | "superadmin" | "financeiro";
 
@@ -23,31 +24,40 @@ export function useUsers() {
   const { data: users = [], isLoading, error } = useQuery({
     queryKey: ["admin-users"],
     queryFn: async () => {
-      // Fetch profiles
-      const { data: profiles, error: profilesError } = await supabase
-        .from("profiles")
-        .select("id, email, full_name, created_at")
-        .order("created_at", { ascending: false });
+      // 🔴 As três leituras vão EM FATIAS desde 2026-09-24: o PostgREST corta em `max_rows`
+      // (1000) SEM ERRO. `user_roles` é a que dói — ~2 linhas por conta, e 526 colaboradores
+      // prontos para reivindicar a sua. Cortada, ela esconderia papéis, e quem ficasse sem
+      // linha nenhuma apareceria como "user" (ver o ramo abaixo): um admin exibido como
+      // usuário comum. Cada consulta ordena por coluna ÚNICA, ou o laço repete e pula linhas.
+      const profiles = await buscarEmFatias((de, ate) =>
+        supabase
+          .from("profiles")
+          .select("id, email, full_name, created_at")
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: true })
+          .range(de, ate),
+      );
 
-      if (profilesError) throw profilesError;
-
-      // Fetch all roles
-      const { data: roles, error: rolesError } = await supabase
-        .from("user_roles")
-        .select("user_id, role");
-
-      if (rolesError) throw rolesError;
+      const roles = await buscarEmFatias((de, ate) =>
+        supabase
+          .from("user_roles")
+          .select("user_id, role")
+          .order("id", { ascending: true })
+          .range(de, ate),
+      );
 
       // `profiles.full_name` só nasce preenchido quando a conta vem com nome nos metadados —
       // e a conta criada pelo convite de colaborador (generateLink) vem sem. Medido em
       // 2026-09-24: 40 de 58 contas sem nome no perfil, todas com nome no cadastro. O nome
       // de verdade é o do cadastro de colaborador, então é ele o reserva aqui.
-      const { data: colaboradores, error: colabError } = await supabase
-        .from("colaboradores")
-        .select("user_id, colab_nome_completo")
-        .not("user_id", "is", null);
-
-      if (colabError) throw colabError;
+      const colaboradores = await buscarEmFatias((de, ate) =>
+        supabase
+          .from("colaboradores")
+          .select("user_id, colab_nome_completo")
+          .not("user_id", "is", null)
+          .order("id", { ascending: true })
+          .range(de, ate),
+      );
 
       const nomeDoCadastro = new Map(
         (colaboradores || []).map((c) => [c.user_id as string, c.colab_nome_completo as string]),
@@ -76,19 +86,22 @@ export function useUsers() {
   const { data: userCoordenadorProvas = {} } = useQuery({
     queryKey: ["user-coordenador-provas"],
     queryFn: async () => {
-      const { data: coordenadoresProva, error: coordError } = await supabase
-        .from("coordenadores_prova")
-        .select(`
-          user_id,
-          prova_id,
-          provas:prova_id (
-            editais:edital_id (
-              nome
+      // Em fatias pelo mesmo motivo — é a lista de TODAS as coordenações de todas as provas.
+      const coordenadoresProva = await buscarEmFatias((de, ate) =>
+        supabase
+          .from("coordenadores_prova")
+          .select(`
+            user_id,
+            prova_id,
+            provas:prova_id (
+              editais:edital_id (
+                nome
+              )
             )
-          )
-        `);
-
-      if (coordError) throw coordError;
+          `)
+          .order("id", { ascending: true })
+          .range(de, ate),
+      );
 
       // Agrupar por user_id
       const provasByUser: Record<string, string[]> = {};

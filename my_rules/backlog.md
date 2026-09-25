@@ -366,20 +366,26 @@ O que **existe** hoje é verificação manual da autorização de duas delas, em
 
 ---
 
-## 🔴 Selects sem teto: o PostgREST trunca em 1000 EM SILÊNCIO
+## 🟡 Selects sem teto: o PostgREST trunca em 1000 EM SILÊNCIO — varrido em 2026-09-24, resta conferir o `max_rows` de produção
 
 Achado em 2026-09-10, ao consertar `/colaboradores`. `supabase/config.toml:22` define
 `max_rows = 1000` e o PostgREST **corta a resposta sem erro nenhum** — a tela recebe
 1.000 linhas achando que recebeu todas. ⚠️ Esse é o valor do ambiente **local**; o de
 produção fica nas API settings do dashboard e precisa ser conferido lá.
 
-`/colaboradores` saiu da lista (passou a buscar sob demanda, paginado). O resto continua:
+`/colaboradores` saiu da lista (passou a buscar sob demanda, paginado).
+
+🔵 **Varredura completa em 2026-09-24:** todo `.from().select()` e todo `.rpc()` de conjunto do `src/`, cruzados com o tamanho real das tabelas. Os três pontos que restavam fecharam no mesmo dia (tabela abaixo). **O que ficou de fora, por ser pequeno por construção:** recortes por prova, unidade ou sala (máx. medido 531 por prova, 110 por unidade), catálogos (provas, editais, funções, bancos, `sala_prova` com 57) e RPCs que devolvem agregados. ⚠️ **Isso é uma foto:** recorte "pequeno" hoje pode não ser amanhã — a maior prova tem 531 alocações, e a próxima grande passa de 1000. ⚠️ **O `max_rows` de PRODUÇÃO segue não conferido** (fica nas API settings do dashboard do Supabase); tudo aqui supõe o padrão, 1000.
+
+Estado por ponto:
 
 | Onde | Tabela | Por que dói |
 |---|---|---|
 | ✅ ~~`useFuncoesAssociadas.tsx`~~ | — | **FECHADO em 2026-09-10** pela RPC `funcoes_em_uso`: 42,8 kB em 3 requisições viraram 680 bytes em uma, e o teto de 1000 deixou de alcançar a tela |
 | ✅ ~~`OcorrenciasProva.tsx`~~ (picker de substituto) | — | **FECHADO em 2026-09-12** pela RPC `buscar_colaboradores_para_alocacao` |
-| `Dashboard.tsx:81-87` e `:109-113` | `colaboradores_prova`, `sala_prova` | agrega no cliente (`new Set(...).size`, soma). Acima de 1000 o card mostra número **errado, sem erro**. Medido em 12/09: 555 e 42 linhas — o que sobra de risco ativo nesta tabela |
+| ✅ ~~`Dashboard.tsx`~~ (2 cards) | — | **FECHADO em 2026-09-24** pela RPC `totais_do_dashboard` (migration `20260925005346`). Chegou a tempo por pouco: `colaboradores_prova` estava com **977** linhas (555 em 12/09) |
+| ✅ ~~`useEspeciaisDaProva`~~ | — | **FECHADO em 2026-09-24**, achado na varredura do dia: a RPC `especiais_da_prova` não tem `LIMIT`; passou a ser lida em fatias. Tamanho em produção **não medido** (`candidatos` vazia no local) |
+| ✅ ~~`useUsers.tsx`~~ (`/gerenciar-usuarios`) | — | **FECHADO em 2026-09-24**, achado na mesma varredura: 4 leituras sem teto, a pior `user_roles` (127, ~2 por conta). Cortada, um admin apareceria como `user` |
 | ✅ ~~`GerenciarProva.tsx`~~ (as **3** exportações) | — | **FECHADO em 2026-09-10** por `src/lib/buscar-em-fatias.ts`. ⚠️ Junto saiu um erro de doc: as duas primeiras eram descritas como PDF e são **planilha** |
 | ✅ ~~`useColaboradores.tsx` (picker)~~ | — | **FECHADO em 2026-09-12**: o hook de listagem inteira foi REMOVIDO (ficou órfão), e `GerenciarColaboradoresProva` passou a buscar no servidor |
 

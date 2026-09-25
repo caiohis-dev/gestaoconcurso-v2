@@ -3,6 +3,7 @@ import {
   supabaseMock,
   setTableResult,
   setTableResultSequence,
+  setRpcResultSequence,
   setRpcResult,
   setFunctionResult,
   resetSupabaseMock,
@@ -75,6 +76,31 @@ describe("mock do client do Supabase", () => {
     await expect(supabaseMock.from("tabela_qualquer").select("*")).resolves.toEqual({
       data: null,
       error: null,
+    });
+  });
+
+  describe("sequência por RPC", () => {
+    it("devolve resultados em ordem e repete o último depois de esgotada", async () => {
+      setRpcResultSequence("especiais_da_prova", [
+        { data: [{ id: "a" }], error: null },
+        { data: [{ id: "b" }], error: null },
+      ]);
+
+      const primeira = await supabaseMock.rpc("especiais_da_prova").range(0, 999);
+      const segunda = await supabaseMock.rpc("especiais_da_prova").range(1000, 1999);
+      const terceira = await supabaseMock.rpc("especiais_da_prova");
+
+      expect(primeira.data).toEqual([{ id: "a" }]);
+      expect(segunda.data).toEqual([{ id: "b" }]);
+      expect(terceira.data).toEqual([{ id: "b" }]);
+    });
+
+    it("é resetada pelo resetSupabaseMock e não vaza para o setRpcResult", async () => {
+      setRpcResultSequence("x", [{ data: [{ id: "a" }], error: null }]);
+      resetSupabaseMock();
+      setRpcResult("x", { data: [{ id: "fixo" }], error: null });
+
+      await expect(supabaseMock.rpc("x")).resolves.toEqual({ data: [{ id: "fixo" }], error: null });
     });
   });
 

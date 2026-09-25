@@ -11,6 +11,7 @@ import {
   erroPostgrest,
 } from "@/test/supabase-mock";
 import { renderHookWithProviders } from "@/test/utils";
+import { TAMANHO_FATIA } from "@/lib/buscar-em-fatias";
 
 vi.mock("@/integrations/supabase/client", async () => {
   const { supabaseMock } = await import("@/test/supabase-mock");
@@ -113,6 +114,41 @@ describe("useUsers", () => {
       const { result } = await carregar();
 
       expect(result.current.users[0].roles).toEqual(["user"]);
+    });
+
+    it("🔴 papel que chega na 2ª FATIA de user_roles não some — admin não vira 'user'", async () => {
+      // 🔵 2026-09-24. O PostgREST corta em 1000 linhas SEM ERRO. Antes das fatias, os
+      // papéis depois da milésima linha sumiam, e quem ficava sem linha nenhuma caía no
+      // ramo "user" — um admin exibido como usuário comum.
+      const outros = Array.from({ length: TAMANHO_FATIA }, (_, i) => ({
+        user_id: `outro-${i}`,
+        role: "colaborador",
+      }));
+      setTableResult("profiles", { data: [perfil("adm", "Admin Tardio")], error: null });
+      setTableResultSequence("user_roles", [
+        { data: outros, error: null },
+        { data: [{ user_id: "adm", role: "admin" }], error: null },
+      ]);
+
+      const { result } = await carregar();
+
+      expect(result.current.users[0].roles).toEqual(["admin"]);
+      expect(chamadasDe("user_roles", "range")).toEqual([
+        [0, TAMANHO_FATIA - 1],
+        [TAMANHO_FATIA, 2 * TAMANHO_FATIA - 1],
+      ]);
+    });
+
+    it("cada leitura ordena por coluna ÚNICA — sem isso o laço de fatias repete e pula", async () => {
+      await carregar();
+      expect(chamadasDe("user_roles", "order")).toContainEqual(["id", { ascending: true }]);
+      expect(chamadasDe("colaboradores", "order")).toContainEqual(["id", { ascending: true }]);
+      expect(chamadasDe("coordenadores_prova", "order")).toContainEqual(["id", { ascending: true }]);
+      // O perfil mantém a ordem da tela e desempata pelo id.
+      expect(chamadasDe("profiles", "order")).toEqual([
+        ["created_at", { ascending: false }],
+        ["id", { ascending: true }],
+      ]);
     });
 
     it("ordena do perfil mais recente para o mais antigo", async () => {

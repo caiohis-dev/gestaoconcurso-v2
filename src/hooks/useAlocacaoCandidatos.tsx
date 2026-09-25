@@ -4,6 +4,7 @@ import type { Json } from "@/integrations/supabase/types";
 import { useToast } from "@/hooks/use-toast";
 import { mensagemErroAlocacao } from "@/lib/alocacao-candidatos";
 import type { EntradaPlano } from "@/lib/alocacao-dnd";
+import { buscarEmFatias } from "@/lib/buscar-em-fatias";
 
 /**
  * O módulo Alocação de Candidatos — o vínculo candidato ↔ sala (`candidatos_alocacao`).
@@ -81,11 +82,19 @@ export function useEspeciaisDaProva(provaId: string) {
     queryKey: ["candidatos_alocacao", provaId, "especiais"],
     enabled: !!provaId,
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("especiais_da_prova", {
-        p_prova_id: provaId,
-      });
-      if (error) throw error;
-      return (data ?? []).map((e) => ({
+      // 🔴 EM FATIAS desde 2026-09-24: a RPC devolve TODOS os especiais do edital, sem
+      // LIMIT, e o PostgREST corta em `max_rows` (1000) SEM ERRO — a lista perderia gente
+      // calada. A ordem de FORA não é cosmética: o ORDER BY de dentro da função não garante
+      // ordem estável sob LIMIT/OFFSET, e o `candidato_id` (único) é o desempate que impede
+      // o laço de repetir uma linha e pular outra. Mantém a ordem por nome da tela.
+      const data = await buscarEmFatias((de, ate) =>
+        supabase
+          .rpc("especiais_da_prova", { p_prova_id: provaId })
+          .order("nome", { ascending: true })
+          .order("candidato_id", { ascending: true })
+          .range(de, ate),
+      );
+      return data.map((e) => ({
         candidatoId: e.candidato_id,
         nInscricao: e.n_inscricao,
         nome: e.nome,

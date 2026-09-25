@@ -53,6 +53,7 @@ A fábrica é `async` porque `vi.mock` é **içado**: referência direta a `supa
 | `setTableResult(tabela, r)` | o que `from(tabela)` resolve |
 | `setTableResultSequence(tabela, [r1, r2…])` | resultados em ordem, para chamadas sucessivas à mesma tabela |
 | `setRpcResult(nome, r)` / `setFunctionResult(nome, r)` | RPC e Edge Function |
+| `setRpcResultSequence(nome, [r1, r2…])` | 🔵 2026-09-24. Como a de tabela, para `rpc(nome)` — é o que permite exercitar `buscarEmFatias` sobre uma RPC (com resultado fixo de 1000 linhas o laço nunca terminaria) |
 | `erroPostgrest(code, msg)` + `CODIGOS_POSTGREST` | erros por código (`23505`, `23503`) |
 | `buildersDaTabela(t)` | todos os builders, na ordem |
 | `builderQueChamou(t, metodo)` | **o builder da mutation** — ver armadilha 2 |

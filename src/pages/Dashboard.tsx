@@ -74,20 +74,25 @@ export default function Dashboard() {
     enabled: isAdmin,
   });
 
-  // Fetch colaboradores que já atuaram (têm registro em colaboradores_prova)
-  const { data: colaboradoresAtuaram = 0, isLoading: loadingAtuaram } = useQuery({
-    queryKey: ["dashboard-colaboradores-atuaram"],
+  // "Já atuaram" e a capacidade total vêm AGREGADOS DO BANCO (RPC `totais_do_dashboard`).
+  // 🔴 Não troque por `select` da tabela + conta no cliente: era assim até 2026-09-24, e o
+  // PostgREST corta em `max_rows` (1000) SEM ERRO — `colaboradores_prova` já tinha 977
+  // linhas, e o card passaria a mostrar número errado sem ninguém perceber.
+  const { data: totais, isLoading: loadingTotais } = useQuery({
+    queryKey: ["dashboard-totais"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("colaboradores_prova")
-        .select("colaborador_id");
+      const { data, error } = await supabase.rpc("totais_do_dashboard");
       if (error) throw error;
-      // Get unique colaborador_ids
-      const uniqueIds = new Set(data?.map(cp => cp.colaborador_id) || []);
-      return uniqueIds.size;
+      const linha = data?.[0];
+      return {
+        colaboradoresAtuaram: Number(linha?.colaboradores_atuaram ?? 0),
+        capacidadeTotal: Number(linha?.capacidade_total ?? 0),
+      };
     },
     enabled: isAdmin,
   });
+  const colaboradoresAtuaram = totais?.colaboradoresAtuaram ?? 0;
+  const capacidadeTotal = totais?.capacidadeTotal ?? 0;
 
   // Fetch total de salas
   const { data: totalSalas = 0, isLoading: loadingSalas } = useQuery({
@@ -98,19 +103,6 @@ export default function Dashboard() {
         .select("*", { count: "exact", head: true });
       if (error) throw error;
       return count || 0;
-    },
-    enabled: isAdmin,
-  });
-
-  // Fetch capacidade total de todas as salas
-  const { data: capacidadeTotal = 0, isLoading: loadingCapacidade } = useQuery({
-    queryKey: ["dashboard-capacidade-total"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("sala_prova")
-        .select("sala_capacidade");
-      if (error) throw error;
-      return data?.reduce((acc, sala) => acc + (sala.sala_capacidade || 0), 0) || 0;
     },
     enabled: isAdmin,
   });
@@ -131,7 +123,7 @@ export default function Dashboard() {
 
 
   const isLoadingAny = loadingProvas || loadingProvasFinalizadas || loadingUnidades || 
-    loadingColaboradores || loadingAtuaram || loadingSalas || loadingCapacidade;
+    loadingColaboradores || loadingTotais || loadingSalas;
 
   if (loading) {
     return (

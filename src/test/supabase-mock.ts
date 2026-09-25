@@ -85,6 +85,8 @@ const resultadosPorFunction = new Map<string, FunctionResult>();
 // Indexar só por tabela devolveria o mesmo resultado nas duas e quebraria a segunda.
 const sequenciasPorTabela = new Map<string, QueryResult[]>();
 const contadorPorTabela = new Map<string, number>();
+const sequenciasPorRpc = new Map<string, QueryResult[]>();
+const contadorPorRpc = new Map<string, number>();
 
 /**
  * Métodos do PostgrestFilterBuilder que devolvem o próprio builder (encadeáveis).
@@ -161,9 +163,19 @@ export const supabaseMock = {
   }),
 
   // Assinatura espelha a real: rpc(nome, params?). Vários hooks passam params.
-  rpc: vi.fn((nome: string, _params?: Record<string, unknown>) =>
-    criarQueryBuilder(() => resultadosPorRpc.get(nome) ?? RESULTADO_VAZIO),
-  ),
+  // A sequência funciona como a de `from`: o índice é fixado na chamada, e esgotada, a
+  // última entrada se repete. Existe para exercitar `buscarEmFatias` sobre uma RPC — com
+  // resultado fixo de 1000 linhas, o laço nunca terminaria.
+  rpc: vi.fn((nome: string, _params?: Record<string, unknown>) => {
+    const sequencia = sequenciasPorRpc.get(nome);
+    if (!sequencia) {
+      return criarQueryBuilder(() => resultadosPorRpc.get(nome) ?? RESULTADO_VAZIO);
+    }
+    const i = contadorPorRpc.get(nome) ?? 0;
+    contadorPorRpc.set(nome, i + 1);
+    const resultado = sequencia[Math.min(i, sequencia.length - 1)] ?? RESULTADO_VAZIO;
+    return criarQueryBuilder(() => resultado);
+  }),
 
   auth: {
     getUser: vi.fn(async () => ({
@@ -208,6 +220,12 @@ export function setTableResultSequence(tabela: string, resultados: QueryResult[]
 /** Define o que `supabase.rpc(<nome>)` vai resolver. */
 export function setRpcResult<T>(nome: string, resultado: QueryResult<T>): void {
   resultadosPorRpc.set(nome, resultado as QueryResult);
+}
+
+/** Como `setTableResultSequence`, para chamadas sucessivas de `rpc(<nome>)`. */
+export function setRpcResultSequence(nome: string, resultados: QueryResult[]): void {
+  sequenciasPorRpc.set(nome, resultados);
+  contadorPorRpc.set(nome, 0);
 }
 
 /** Define o que `supabase.functions.invoke(<nome>)` vai resolver. */
@@ -260,6 +278,8 @@ export function resetSupabaseMock(): void {
   resultadosPorFunction.clear();
   sequenciasPorTabela.clear();
   contadorPorTabela.clear();
+  sequenciasPorRpc.clear();
+  contadorPorRpc.clear();
   supabaseMock.from.mockClear();
   supabaseMock.rpc.mockClear();
   supabaseMock.functions.invoke.mockClear();

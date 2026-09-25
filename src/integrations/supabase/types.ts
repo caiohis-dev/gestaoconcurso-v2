@@ -2746,6 +2746,13 @@ export type Database = {
           unidade_finalizada: boolean
         }[]
       }
+      totais_do_dashboard: {
+        Args: never
+        Returns: {
+          capacidade_total: number
+          colaboradores_atuaram: number
+        }[]
+      }
       trocar_candidatos_do_edital: {
         Args: {
           p_edital_id: string

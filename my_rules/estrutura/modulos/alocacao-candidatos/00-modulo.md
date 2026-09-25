@@ -164,7 +164,7 @@ candidatos_fora_do_automatico                     -- decisão 6 (05/08)
 | `candidatos_da_prova(prova, busca, cargo, pagina, por_pagina, sem_sala)` | A listagem paginada de TODOS os inscritos, com o bloco calculado, a sala e o marcador. `total` por window function | — |
 | `contar_alocados_por_unidade(p_prova_id)` | Ocupação por unidade, separando `manuais` (que o plano preserva) do `total` | — |
 | `contar_alocados_por_sala(p_prova_id)` | Ocupação por sala (PostgREST não agrega) | — |
-| `especiais_da_prova(p_prova_id)` | TODOS os especiais, com a sala se já alocados (`sala_id` nulo = pendente). Anti-join não é exprimível em PostgREST | — |
+| `especiais_da_prova(p_prova_id)` | TODOS os especiais, com a sala se já alocados (`sala_id` nulo = pendente). Anti-join não é exprimível em PostgREST. 🔵 **Sem `LIMIT`, e por isso `useEspeciaisDaProva` a lê EM FATIAS desde 2026-09-24** (`buscarEmFatias` + `.order('nome').order('candidato_id')`): o PostgREST corta em 1000 sem erro, e a lista de especiais perderia gente calada. O desempate por `candidato_id` é obrigatório — o `ORDER BY` de dentro da função não garante ordem estável sob `LIMIT/OFFSET` | — |
 
 🔴 **A ORDEM do plano é significativa.** Quando um cargo se divide entre unidades, a 1ª entrada leva os primeiros N alfabéticos e a 2ª os N seguintes. Dois planos com os mesmos blocos em ordens diferentes produzem salas diferentes — por isso o rascunho guarda `ordem` em cada bloco (`src/lib/alocacao-dnd.ts`) e `montarPlano` achata **antes** de ordenar.
 
