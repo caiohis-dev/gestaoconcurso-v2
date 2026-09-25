@@ -140,6 +140,91 @@ describe("useColaboradores", () => {
     });
   });
 
+  /**
+   * 🔵 2026-09-24. Mensagem e DETAIL REAIS, capturados do banco local num UPDATE desfeito com
+   * ROLLBACK. O DETAIL traz a linha inteira — por isso o helper não o lê.
+   */
+  describe("tradução de recusa por CHECK", () => {
+    const erroCheck = (constraint: string) => ({
+      code: "23514",
+      message: `new row for relation "colaboradores" violates check constraint "${constraint}"`,
+      details: "Failing row contains (062e265c-…, 1658, FULANO, 00262605732, …, sem-arroba, …).",
+    });
+
+    async function gravarComErro(
+      acao: "create" | "update",
+      error: { code?: string; message: string; details?: string },
+    ) {
+      setTableResult("colaboradores", { data: null, error: error as never });
+      const { result } = renderHookWithProviders(() => useColaboradoresMutations());
+      if (acao === "create") result.current.create({ colab_cpf: "12345678901" } as never);
+      else result.current.update({ id: "colab-1", colab_email: "sem-arroba" } as never);
+      await waitFor(() => expect(toastMock).toHaveBeenCalled());
+      return toastMock.mock.calls.at(-1)?.[0] as { title: string; description: string };
+    }
+
+    it("na EDIÇÃO, o e-mail fora de formato nomeia o campo — o caso do backlog", async () => {
+      const toast = await gravarComErro("update", erroCheck("chk_colab_email_formato"));
+      expect(toast.title).toBe("Erro ao atualizar");
+      expect(toast.description).toBe(
+        "E-mail com formato inválido. Use o formato nome@dominio.com, sem espaços.",
+      );
+    });
+
+    it("no CADASTRO, a mesma CHECK chega traduzida", async () => {
+      const toast = await gravarComErro("create", erroCheck("chk_colab_email_formato"));
+      expect(toast.title).toBe("Erro ao cadastrar");
+      expect(toast.description).toMatch(/^E-mail com formato inválido/);
+    });
+
+    it.each([
+      ["chk_colab_cpf_numerico", /^CPF inválido/],
+      ["chk_agencia_apenas_numeros", /^Agência inválida/],
+      ["chk_conta_dv_formato", /^Dígito da conta inválido/],
+      ["colaboradores_tipo_chave_pix_check", /^Tipo de chave PIX inválido/],
+    ])("mapeia %s", async (constraint, esperado) => {
+      const toast = await gravarComErro("update", erroCheck(constraint));
+      expect(toast.description).toMatch(esperado);
+    });
+
+    it("CHECK desconhecida cai numa frase genérica, nunca no texto cru", async () => {
+      const toast = await gravarComErro("update", erroCheck("chk_que_ainda_nao_existe"));
+      expect(toast.description).toBe(
+        "Um dos campos está fora do formato aceito. Revise os dados e tente novamente.",
+      );
+      expect(toast.description).not.toContain("violates");
+    });
+
+    it("não lê o DETAIL: a linha com PII não decide nem aparece", async () => {
+      // O DETAIL cita outra constraint (texto que a pessoa poderia ter digitado); quem
+      // manda é a `message`.
+      const toast = await gravarComErro("update", {
+        ...erroCheck("chk_colab_email_formato"),
+        details: 'Failing row contains (…, chk_colab_cpf_numerico, 00262605732, …).',
+      });
+      expect(toast.description).toMatch(/^E-mail com formato inválido/);
+      expect(toast.description).not.toContain("00262605732");
+    });
+
+    it("🟢 CONTROLE POSITIVO: o e-mail duplicado segue traduzido na edição", async () => {
+      const toast = await gravarComErro("update", {
+        code: "23505",
+        message: 'duplicate key value violates unique constraint "colaboradores_colab_email_key"',
+      });
+      expect(toast.description).toBe(
+        "Este e-mail já está cadastrado para outro colaborador. Verifique o endereço e tente novamente.",
+      );
+    });
+
+    it("🟢 CONTROLE POSITIVO: a recusa da RLS segue com a frase de permissão", async () => {
+      const toast = await gravarComErro("update", {
+        code: "42501",
+        message: 'new row violates row-level security policy for table "colaboradores"',
+      });
+      expect(toast.description).toBe("Você não tem permissão para editar este colaborador.");
+    });
+  });
+
   describe("delete — a trava passou do cliente para o banco", () => {
     /**
      * Havia aqui três testes do PRÉ-CHECK client-side (SELECT em colaboradores_prova e

@@ -21,6 +21,48 @@ function mensagemDuplicidade(error: Error): string | null {
 }
 
 /**
+ * Traduz a recusa de uma CHECK de `colaboradores` numa frase que nomeia o campo e diz o que
+ * corrigir. Devolve null quando o erro não é de CHECK, para o chamador seguir adiante.
+ *
+ * 🔵 Existe desde 2026-09-24. Até ali só a duplicidade era traduzida, e as 12 CHECKs da
+ * tabela chegavam cruas no toast (`new row for relation "colaboradores" violates check
+ * constraint "chk_…"`) — o `CadastroLote` já traduzia as mesmas CHECKs, este hook não.
+ *
+ * ⚠️ Casa o nome SÓ em `message`, nunca em `details`: numa violação de CHECK o Postgres põe
+ * em `details` a LINHA INTEIRA (`Failing row contains (…)`), com PII e com o que a pessoa
+ * digitou — que pode conter qualquer texto.
+ *
+ * ⚠️ A lista espelha `pg_constraint` de 2026-09-24. CHECK nova em `colaboradores` sem ramo
+ * aqui cai na frase genérica, que ainda orienta, mas não nomeia o campo.
+ */
+const CHECKS_COLABORADOR: Record<string, string> = {
+  chk_colab_email_formato: 'E-mail com formato inválido. Use o formato nome@dominio.com, sem espaços.',
+  chk_colab_cpf_numerico: 'CPF inválido: informe os 11 dígitos, só números.',
+  chk_colab_nome_preenchido: 'O nome completo não pode ficar em branco.',
+  chk_colab_telefone_positivo: 'Telefone inválido: informe só os números, com DDD.',
+  chk_colab_numero_casa_nao_negativo: 'O número da casa não pode ser negativo.',
+  chk_codigo_banco_numeros: 'Código do banco inválido: selecione o banco na lista.',
+  chk_agencia_apenas_numeros: 'Agência inválida: use só números, até 8 dígitos.',
+  chk_agencia_dv_formato: 'Dígito da agência inválido: use 1 ou 2 caracteres, números ou X.',
+  chk_conta_apenas_numeros: 'Conta inválida: use só números, até 20 dígitos.',
+  chk_conta_dv_formato: 'Dígito da conta inválido: use 1 ou 2 caracteres, números ou X.',
+  chk_tipo_conta_valido: 'Tipo de conta inválido: escolha corrente ou poupança.',
+  colaboradores_tipo_chave_pix_check: 'Tipo de chave PIX inválido: escolha CPF, CNPJ, e-mail, telefone ou aleatória.',
+};
+
+export function mensagemRecusaCheck(error: { message: string; code?: string }): string | null {
+  if (error.code !== '23514' && !error.message.includes('violates check constraint')) return null;
+  const nome = error.message.match(/check constraint "([^"]+)"/)?.[1];
+  return (nome && CHECKS_COLABORADOR[nome])
+    ?? 'Um dos campos está fora do formato aceito. Revise os dados e tente novamente.';
+}
+
+/** O que os toasts de cadastro e edição mostram: CHECK, depois duplicidade, depois o cru. */
+function mensagemRecusaGravacao(error: Error): string {
+  return mensagemRecusaCheck(error) ?? mensagemDuplicidade(error) ?? error.message;
+}
+
+/**
  * Traduz a recusa do banco ao excluir um colaborador com histórico (migration
  * 20260726210000, que trocou CASCADE/SET NULL por RESTRICT nas FKs de participação).
  *
@@ -166,7 +208,7 @@ export function useColaboradoresMutations() {
     onError: (error: Error) => {
       toast({
         title: 'Erro ao cadastrar',
-        description: mensagemDuplicidade(error) ?? error.message,
+        description: mensagemRecusaGravacao(error),
         variant: 'destructive',
       });
     },
@@ -197,7 +239,7 @@ export function useColaboradoresMutations() {
       if (error.message.includes('row-level security policy')) {
         message = 'Você não tem permissão para editar este colaborador.';
       } else {
-        message = mensagemDuplicidade(error) ?? message;
+        message = mensagemRecusaGravacao(error);
       }
 
       toast({
