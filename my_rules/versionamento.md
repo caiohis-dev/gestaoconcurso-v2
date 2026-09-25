@@ -68,6 +68,18 @@ Versionamento semântico, com prefixo `v`:
 
   ⚠️ **Subiu sem backup novo**, por decisão do usuário; o mais recente era o de 16/09. Fica registrado porque o Free não tem backup automático nenhum.
 
+- **`v3.7.5` nasceu em 2026-09-24**, no commit `d98315f`. PATCH de **banco**: a RPC
+  `update_meu_colaborador` (migration `20260925002742`) deixou de completar o CPF com zeros antes de
+  conferir o tamanho — aceitava `123` como `00000000123`, cortava 12 dígitos nos 11 primeiros e
+  aceitava `11111111111` —, ganhou dígito verificador exigido **só quando o CPF muda**, e a
+  duplicidade passou a nomear o campo (antes, sempre "e-mail ou chave PIX"). Bateria nova,
+  `docs/bateria-update-meu-colaborador.sql` (18 casos; 8 falham contra a versão antiga). Ritual:
+  commit → `git fetch . dev:main` → tag → push → `link` → `prod:push:dry` (1 migration, a esperada)
+  → `prod:push` (esses três pelo usuário, com `!`) → `prod:push:dry` de novo (*"Remote database is up
+  to date"*) → `prod:unlink`. **Sem `deploy.sh`**: o site só mudou num comentário e num teste.
+  **Verificado ao vivo:** `anon` chamando a RPC recebe **42501** — a função existe e o `REVOKE` segue
+  valendo. ⚠️ O corpo novo **não** foi exercitado em produção (exigiria login real de colaborador).
+
 - **`v3.7.4` nasceu em 2026-09-24**, no commit `5ea3d29`. PATCH: as recusas do banco passaram
   a chegar à pessoa. No `ColaboradorDialog`, as **12** CHECKs de `colaboradores` ganharam frase
   que nomeia o campo (`mensagemRecusaCheck`); até ali só a duplicidade era traduzida. No
