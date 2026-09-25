@@ -150,13 +150,14 @@ describe("PerfilColaborador — a recusa do banco chega à pessoa", () => {
   }
 
   it("a duplicidade relançada pela RPC (P0001) chega como a RPC escreveu", async () => {
+    // Frase real da RPC desde a migration 20260925002742 (antes: sempre "e-mail ou chave PIX").
     setRpcResult("update_meu_colaborador", {
       data: null,
-      error: { code: "P0001", message: "Este e-mail ou chave PIX já está em uso por outro colaborador." } as never,
+      error: { code: "P0001", message: "Este CPF já está cadastrado para outro colaborador." } as never,
     });
     const toast = await salvar();
     expect(toast.title).toBe("Erro ao salvar");
-    expect(toast.description).toBe("Este e-mail ou chave PIX já está em uso por outro colaborador.");
+    expect(toast.description).toBe("Este CPF já está cadastrado para outro colaborador.");
   });
 
   it("a CHECK dos dados pessoais nomeia o campo, em vez da frase genérica", async () => {

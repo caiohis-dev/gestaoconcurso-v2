@@ -22,8 +22,8 @@ import { mensagemRecusaCheck } from '@/hooks/useColaboradores';
  * 🔵 2026-09-24, medido no banco local chamando as RPCs como colaborador. Elas recusam de
  * dois jeitos, e esta tela só entendia um terceiro, que não acontece:
  * - **`P0001`** — frase já escrita para a pessoa pela própria RPC (nome, CPF, data em branco;
- *   e a duplicidade, que a RPC CAPTURA e relança como *"Este e-mail ou chave PIX já está em
- *   uso…"*). Até aqui era DESCARTADA em favor de "Não foi possível salvar".
+ *   e a duplicidade, que a RPC CAPTURA e relança nomeando o campo — CPF, PIS, e-mail ou PIX,
+ *   desde a migration 20260925002742). Até aqui era DESCARTADA em favor de "Não foi possível salvar".
  * - **`23514`** — CHECK de `colaboradores`, que a RPC não captura. Até aqui virava a frase
  *   genérica (dados pessoais) ou ia CRUA para o toast (dados bancários).
  * - ~~`23505`~~ — a tela tinha um ramo por índice (matrícula, PIS, e-mail, PIX) que **nunca

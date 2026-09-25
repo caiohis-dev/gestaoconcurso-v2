@@ -52,6 +52,7 @@ errada e o que cada decisão custou. Antes de reabrir qualquer tema abaixo, proc
 | ✅ 24/09 | papel de sistema passou a nascer de COLABORADOR: `create-admin` (que sobrescrevia a senha de quem já tinha conta) virou `conceder-papel-sistema`, e colaborador + financeiro passou a ver o hub — **no ar na v3.7.0**, com a `create-admin` apagada de produção |
 | ✅ 24/09 | as ressalvas do "admin preenche o e-mail e o colaborador se reivindica": o teto do `acesso` folgou para 5/10 min com frase fixa (**v3.7.3**), e as 12 CHECKs de `colaboradores` passaram a chegar traduzidas no cadastro e na edição |
 | ✅ 24/09 | o `PerfilColaborador` passou a mostrar a recusa do banco: a frase `P0001` das RPCs (que era descartada, inclusive a da duplicidade) e as CHECKs traduzidas — o ramo `23505` da tela nunca rodava |
+| ✅ 24/09 | a `update_meu_colaborador` deixou de completar o CPF com zeros antes de conferir o tamanho (aceitava `123`, cortava 12 dígitos), ganhou dígito verificador na MUDANÇA e passou a nomear o campo duplicado — migration `20260925002742`, bateria `docs/bateria-update-meu-colaborador.sql` |
 
 ---
 
@@ -60,28 +61,6 @@ errada e o que cada decisão custou. Antes de reabrir qualquer tema abaixo, proc
 ❌ *Aqui havia, por algumas horas de 2026-09-24, um item "`create-coordenador` ainda publicada em produção". **Premissa falsa**, a quinta deste backlog: conferido pela lista oficial de funções do projeto, ela **já não existia** lá (404). O item saiu no mesmo dia, sem nada a executar — ver `integracoes-externas.md`.*
 
 ⚠️ O passo do convite no teste da `conceder-papel-sistema` não rodou (`EF_TESTE_ENVIA_EMAIL=1`, envia e-mail real para domínio `.invalid`). O caminho que ele cobre (conta nascendo por invite, vínculo, trilha) é o que a `reivindicar-acesso` já exercita em produção; a parte nova é o INSERT do papel depois.
-
----
-
-## ⏳ `update_meu_colaborador`: frase de duplicidade imprecisa e `LPAD` antes do tamanho
-
-**Status:** ⏳ aberto em 2026-09-24, medido ao consertar as mensagens do `PerfilColaborador`.
-**Área:** [`estrutura/modulos/aplicacao-provas/colaboradores.md`](./estrutura/modulos/aplicacao-provas/colaboradores.md) — conserto é **migration**
-
-A RPC que o colaborador usa para editar o próprio cadastro tem dois defeitos, ambos no banco:
-
-1. **O `EXCEPTION WHEN unique_violation` responde sempre *"Este e-mail ou chave PIX já está em
-   uso por outro colaborador."*** — mas os índices únicos são **quatro** (CPF, PIS, e-mail, PIX),
-   e o colaborador edita o CPF nessa tela. CPF repetido recebe a frase errada. O conserto é ler
-   `CONSTRAINT_NAME` via `GET STACKED DIAGNOSTICS` e nomear o campo.
-2. **`LPAD(…, 11, '0')` roda ANTES do `length <> 11`** — o mesmo defeito corrigido em 3 Edge
-   Functions em 2026-09-20 (`_shared/cpf.ts`). `LPAD` também **trunca**: 3 dígitos viram
-   `00000000123` e 12 dígitos viram os 11 primeiros, e os dois passam. A tela exige 11 dígitos,
-   então só chamada direta à RPC chega aqui — mas a RPC é a barreira, não a tela. Também não há
-   dígito verificador.
-
-⚠️ Mudar a mensagem muda o texto que o `PerfilColaborador` mostra **como está** (`P0001`); ver o
-teste *"a duplicidade relançada pela RPC"* em `PerfilColaborador.ui.test.tsx`.
 
 ---
 
