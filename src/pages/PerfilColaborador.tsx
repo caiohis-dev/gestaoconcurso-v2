@@ -14,6 +14,25 @@ import { GRAU_INSTRUCAO_OPTIONS, ESTADO_CIVIL_OPTIONS, RACA_OPTIONS } from '@/li
 import { maskDateBR, brDateToIso, isoToBrDate, maskCPF, maskPIS, onlyDigits } from '@/lib/utils';
 import { useBancos, TIPO_CONTA_OPTIONS } from '@/hooks/useBancos';
 import AlterarSenhaCard from '@/components/AlterarSenhaCard';
+import { mensagemRecusaCheck } from '@/hooks/useColaboradores';
+
+/**
+ * A frase de uma recusa das RPCs `update_meu_colaborador` / `update_meus_dados_bancarios`.
+ *
+ * 🔵 2026-09-24, medido no banco local chamando as RPCs como colaborador. Elas recusam de
+ * dois jeitos, e esta tela só entendia um terceiro, que não acontece:
+ * - **`P0001`** — frase já escrita para a pessoa pela própria RPC (nome, CPF, data em branco;
+ *   e a duplicidade, que a RPC CAPTURA e relança como *"Este e-mail ou chave PIX já está em
+ *   uso…"*). Até aqui era DESCARTADA em favor de "Não foi possível salvar".
+ * - **`23514`** — CHECK de `colaboradores`, que a RPC não captura. Até aqui virava a frase
+ *   genérica (dados pessoais) ou ia CRUA para o toast (dados bancários).
+ * - ~~`23505`~~ — a tela tinha um ramo por índice (matrícula, PIS, e-mail, PIX) que **nunca
+ *   rodava**: a RPC engole o `unique_violation`. E a matrícula nem é mais única.
+ */
+function mensagemRecusaPerfil(error: { message: string; code?: string }, generica: string): string {
+  if (error.code === 'P0001') return error.message;
+  return mensagemRecusaCheck(error) ?? generica;
+}
 
 interface ColaboradorData {
   id: string;
@@ -291,23 +310,11 @@ export default function PerfilColaborador() {
     if (error) {
       console.error('Erro ao salvar:', error);
       
-      let errorMessage = 'Não foi possível salvar suas alterações. Tente novamente.';
-      
-      // Check for specific constraint violations
-      if (error.code === '23505') {
-        if (error.message?.includes('colab_matricula') || error.details?.includes('colab_matricula')) {
-          errorMessage = 'Esta matrícula já está cadastrada para outro colaborador. Verifique o número e tente novamente.';
-        } else if (error.message?.includes('colab_chave_pix') || error.details?.includes('colab_chave_pix')) {
-          errorMessage = 'Esta chave PIX já está cadastrada para outro colaborador. Cada chave pertence a uma única pessoa — verifique e tente novamente.';
-        } else if (error.message?.includes('colab_pis') || error.details?.includes('colab_pis')) {
-          errorMessage = 'Este PIS já está cadastrado para outro colaborador. Verifique o número e tente novamente.';
-        } else if (error.message?.includes('colab_email') || error.details?.includes('colab_email')) {
-          errorMessage = 'Este e-mail já está cadastrado para outro colaborador. Verifique o endereço e tente novamente.';
-        } else {
-          errorMessage = 'Um dos dados informados já está cadastrado para outro colaborador.';
-        }
-      }
-      
+      const errorMessage = mensagemRecusaPerfil(
+        error,
+        'Não foi possível salvar suas alterações. Tente novamente.',
+      );
+
       toast({
         title: 'Erro ao salvar',
         description: errorMessage,
@@ -320,7 +327,10 @@ export default function PerfilColaborador() {
         variant: 'destructive',
       });
     } else if (bankError) {
-      const msg = (bankError as { message?: string })?.message || 'Não foi possível salvar os dados bancários.';
+      const msg = mensagemRecusaPerfil(
+        bankError as { message: string; code?: string },
+        'Não foi possível salvar os dados bancários.',
+      );
       toast({ title: 'Erro nos dados bancários', description: msg, variant: 'destructive' });
     } else {
       // Sucesso: confirma e mantém a sessão. Antes, salvar deslogava e mandava para

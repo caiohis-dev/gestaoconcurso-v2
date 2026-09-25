@@ -50,6 +50,8 @@ errada e o que cada decisão custou. Antes de reabrir qualquer tema abaixo, proc
 | ✅ 21/09 | o defeito do `padStart` antes do `length` (fixo em 02/08 só na `check-cpf-colaborador`) sobrevivia em 3 outras EFs — `reivindicar-acesso`, `incluir-email-cadastro`, `public-create-colaborador`; consolidado em `_shared/cpf.ts` |
 | ✅ 24/09 | módulo Financeiro (gerador CNAB240/PIX) acoplado por inteiro — papel + guarda de acesso, lógica de negócio portada e testada, e UI real conectada; persistência ficou fora por decisão (item novo abaixo) |
 | ✅ 24/09 | papel de sistema passou a nascer de COLABORADOR: `create-admin` (que sobrescrevia a senha de quem já tinha conta) virou `conceder-papel-sistema`, e colaborador + financeiro passou a ver o hub — **no ar na v3.7.0**, com a `create-admin` apagada de produção |
+| ✅ 24/09 | as ressalvas do "admin preenche o e-mail e o colaborador se reivindica": o teto do `acesso` folgou para 5/10 min com frase fixa (**v3.7.3**), e as 12 CHECKs de `colaboradores` passaram a chegar traduzidas no cadastro e na edição |
+| ✅ 24/09 | o `PerfilColaborador` passou a mostrar a recusa do banco: a frase `P0001` das RPCs (que era descartada, inclusive a da duplicidade) e as CHECKs traduzidas — o ramo `23505` da tela nunca rodava |
 
 ---
 
@@ -61,57 +63,25 @@ errada e o que cada decisão custou. Antes de reabrir qualquer tema abaixo, proc
 
 ---
 
-## ⏭️ PRÓXIMA — a ressalva restante do "admin preenche o e-mail e o colaborador se reivindica"
+## ⏳ `update_meu_colaborador`: frase de duplicidade imprecisa e `LPAD` antes do tamanho
 
-**Status:** ⏳ aberto em 2026-09-18, ao conferir se um colaborador **sem e-mail** consegue concluir o acesso depois de o admin preencher o campo pelo *Editar Colaborador* de `/colaboradores`.
-✅ **A ressalva 1 — a grave — foi FECHADA em 2026-09-19** (migration `20260919121555` + `_shared/auth-lookup.ts`): o vínculo deixou de depender do nascimento da conta e o helper passou a mandar `recovery` quando o e-mail já tem conta. Ver [`analises/concluidos/backlog-itens-concluidos.md`](./analises/concluidos/backlog-itens-concluidos.md). Sobravam as duas abaixo; a 2 (o teto) foi folgada em 2026-09-24, e resta a 1 (a mensagem da CHECK).
-**Área:** Auth e Permissões ([`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md)) + [`estrutura/modulos/aplicacao-provas/colaboradores.md`](./estrutura/modulos/aplicacao-provas/colaboradores.md)
+**Status:** ⏳ aberto em 2026-09-24, medido ao consertar as mensagens do `PerfilColaborador`.
+**Área:** [`estrutura/modulos/aplicacao-provas/colaboradores.md`](./estrutura/modulos/aplicacao-provas/colaboradores.md) — conserto é **migration**
 
-**O caminho feliz FUNCIONA e não é o item.** Linha em estado A (`user_id IS NULL`) tem `colab_email`
-editável (`isVinculado` em `src/components/ColaboradorDialog.tsx`); depois disso `/auth` → *"Estou sem
-minha senha"* atende pelos dois campos (CPF → `reivindicar-acesso`; e-mail → o ramo de estado A da
-`recuperar-senha`), o `generateLink('invite')` **cria a conta** e o trigger `handle_new_user`
-(migration `20260714201650`) preenche `user_id` e concede o papel `colaborador`. O item são as
-bordas que esse caminho não cobre — eram três, restam **duas**.
+A RPC que o colaborador usa para editar o próprio cadastro tem dois defeitos, ambos no banco:
 
-**Medido em 2026-09-18, no banco local:** 821 colaboradores · **243 sem e-mail** (todos os 243 sem
-conta) · **526 em estado A já com e-mail** · e **0** cadastros em estado A cujo `colab_email` já tenha
-conta no `auth.users`. A ressalva 1 era, portanto, risco **prospectivo** — e foi fechada antes de
-produzir um caso real.
+1. **O `EXCEPTION WHEN unique_violation` responde sempre *"Este e-mail ou chave PIX já está em
+   uso por outro colaborador."*** — mas os índices únicos são **quatro** (CPF, PIS, e-mail, PIX),
+   e o colaborador edita o CPF nessa tela. CPF repetido recebe a frase errada. O conserto é ler
+   `CONSTRAINT_NAME` via `GET STACKED DIAGNOSTICS` e nomear o campo.
+2. **`LPAD(…, 11, '0')` roda ANTES do `length <> 11`** — o mesmo defeito corrigido em 3 Edge
+   Functions em 2026-09-20 (`_shared/cpf.ts`). `LPAD` também **trunca**: 3 dígitos viram
+   `00000000123` e 12 dígitos viram os 11 primeiros, e os dois passam. A tela exige 11 dígitos,
+   então só chamada direta à RPC chega aqui — mas a RPC é a barreira, não a tela. Também não há
+   dígito verificador.
 
-### ⚠️ 1. A recusa do banco chega ao usuário pela metade
-
-A **duplicidade** já chega traduzida: `mensagemDuplicidade` (`src/hooks/useColaboradores.tsx`) casa o
-nome do índice — que é mesmo `colaboradores_colab_email_key`, ainda que funcional
-(`UNIQUE (lower(trim(colab_email)))`) — e devolve *"Este e-mail já está cadastrado para outro
-colaborador"*. **A CHECK `chk_colab_email_formato` não chega:** cai como mensagem crua do Postgres no
-`else` do `onError` do update. O risco prático hoje é baixo (o zod do dialog valida `.email()` antes),
-mas é o §2 do `CLAUDE.md` — a mensagem do banco tem de nomear o que fazer —, e o `CadastroLote` já
-traduz essa mesma CHECK. Um dos dois está errado.
-
-### ✅ 2. ~~O teto de 5/15 min é por IP e COMPARTILHADO~~ — FOLGADO em 2026-09-24
-
-Resolvido por decisão do usuário: janela de **15 → 10 min** (5 requisições) e o 429 do
-escopo `acesso` passou a dizer *"Sistema com excesso de acessos. Tente novamente após 10
-minutos."* — antes a resposta era genérica e ninguém descobria por quê. O "reenviar convite"
-em `/colaboradores` foi **preterido**: daria mais trabalho ao coordenador. ⚠️ O teto segue
-contando **toda** requisição, a certa também, e segue por IP — folgou, não mudou de natureza.
-Ver `auth-e-permissoes.md`.
-
-### Como verificar (controle positivo obrigatório)
-
-1. E-mail **fora de formato** (o que o zod deixaria passar, ou um `UPDATE` direto) → mensagem que
-   **nomeia o campo**, não o texto cru do Postgres. Comparar com o que o `CadastroLote` já mostra —
-   um dos dois está errado.
-2. E-mail duplicado de outro colaborador → continua recusando **nomeando o e-mail**. É o controle
-   positivo: `mensagemDuplicidade` já acerta esse caso e não pode regredir.
-
-🔵 **Os casos de vínculo saíram daqui em 19/09** — viraram `docs/bateria-vinculo-colaborador.sql`
-(10 casos, com controle positivo) e `supabase/functions/_shared/enviar-link-acesso.test.ts`.
-
-⚠️ A suíte **mocka o Supabase** e não alcança nada disso (trigger, índice funcional, CHECK) — ver §5
-do `CLAUDE.md`. `npm run test:ef` alcança as EFs, mas **`reivindicar-acesso` e `recuperar-senha`
-enviam e-mail de verdade** a partir do banco local (que é cópia de produção, com PII real).
+⚠️ Mudar a mensagem muda o texto que o `PerfilColaborador` mostra **como está** (`P0001`); ver o
+teste *"a duplicidade relançada pela RPC"* em `PerfilColaborador.ui.test.tsx`.
 
 ---
 

@@ -30,6 +30,72 @@ ler dado real. **Conferir a premissa no código antes de executar o item é obri
 
 ---
 
+## ✅ CONCLUÍDO 2026-09-24 — as ressalvas do "admin preenche o e-mail e o colaborador se reivindica"
+
+**Status:** ⏳ aberto em 2026-09-18, ao conferir se um colaborador **sem e-mail** consegue concluir o acesso depois de o admin preencher o campo pelo *Editar Colaborador* de `/colaboradores`.
+✅ **A ressalva 1 — a grave — foi FECHADA em 2026-09-19** (migration `20260919121555` + `_shared/auth-lookup.ts`): o vínculo deixou de depender do nascimento da conta e o helper passou a mandar `recovery` quando o e-mail já tem conta. Ver [`analises/concluidos/backlog-itens-concluidos.md`](./analises/concluidos/backlog-itens-concluidos.md). Sobravam as duas abaixo; a 2 (o teto) foi folgada em 2026-09-24, e resta a 1 (a mensagem da CHECK).
+**Área:** Auth e Permissões ([`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md)) + [`estrutura/modulos/aplicacao-provas/colaboradores.md`](./estrutura/modulos/aplicacao-provas/colaboradores.md)
+
+**O caminho feliz FUNCIONA e não é o item.** Linha em estado A (`user_id IS NULL`) tem `colab_email`
+editável (`isVinculado` em `src/components/ColaboradorDialog.tsx`); depois disso `/auth` → *"Estou sem
+minha senha"* atende pelos dois campos (CPF → `reivindicar-acesso`; e-mail → o ramo de estado A da
+`recuperar-senha`), o `generateLink('invite')` **cria a conta** e o trigger `handle_new_user`
+(migration `20260714201650`) preenche `user_id` e concede o papel `colaborador`. O item são as
+bordas que esse caminho não cobre — eram três, restam **duas**.
+
+**Medido em 2026-09-18, no banco local:** 821 colaboradores · **243 sem e-mail** (todos os 243 sem
+conta) · **526 em estado A já com e-mail** · e **0** cadastros em estado A cujo `colab_email` já tenha
+conta no `auth.users`. A ressalva 1 era, portanto, risco **prospectivo** — e foi fechada antes de
+produzir um caso real.
+
+### ✅ 1. ~~A recusa do banco chega ao usuário pela metade~~ — FECHADA em 2026-09-24
+
+🔵 **Como fechou:** `mensagemRecusaCheck` em `useColaboradores.tsx` traduz as **12** CHECKs de
+`colaboradores` (medidas em `pg_constraint` no dia — o item citava só a do e-mail, e as 12
+chegavam cruas, no cadastro **e** na edição), nomeando o campo e o que corrigir; CHECK
+desconhecida cai numa frase genérica, nunca no texto cru. Casa o nome **só em `message`**:
+o `details` de uma violação de CHECK traz a **linha inteira** (`Failing row contains (…)`),
+com PII. Falsificado: com a edição voltando ao código antigo, 7 testes caem e os controles
+positivos (duplicidade, RLS) seguem verdes. ⚠️ **O irmão ficou aberto:** o
+`PerfilColaborador` tem o mesmo defeito — ver o item novo no backlog.
+
+O texto original do item segue abaixo.
+
+
+A **duplicidade** já chega traduzida: `mensagemDuplicidade` (`src/hooks/useColaboradores.tsx`) casa o
+nome do índice — que é mesmo `colaboradores_colab_email_key`, ainda que funcional
+(`UNIQUE (lower(trim(colab_email)))`) — e devolve *"Este e-mail já está cadastrado para outro
+colaborador"*. **A CHECK `chk_colab_email_formato` não chega:** cai como mensagem crua do Postgres no
+`else` do `onError` do update. O risco prático hoje é baixo (o zod do dialog valida `.email()` antes),
+mas é o §2 do `CLAUDE.md` — a mensagem do banco tem de nomear o que fazer —, e o `CadastroLote` já
+traduz essa mesma CHECK. Um dos dois está errado.
+
+### ✅ 2. ~~O teto de 5/15 min é por IP e COMPARTILHADO~~ — FOLGADO em 2026-09-24
+
+Resolvido por decisão do usuário: janela de **15 → 10 min** (5 requisições) e o 429 do
+escopo `acesso` passou a dizer *"Sistema com excesso de acessos. Tente novamente após 10
+minutos."* — antes a resposta era genérica e ninguém descobria por quê. O "reenviar convite"
+em `/colaboradores` foi **preterido**: daria mais trabalho ao coordenador. ⚠️ O teto segue
+contando **toda** requisição, a certa também, e segue por IP — folgou, não mudou de natureza.
+Ver `auth-e-permissoes.md`.
+
+### Como verificar (controle positivo obrigatório)
+
+1. E-mail **fora de formato** (o que o zod deixaria passar, ou um `UPDATE` direto) → mensagem que
+   **nomeia o campo**, não o texto cru do Postgres. Comparar com o que o `CadastroLote` já mostra —
+   um dos dois está errado.
+2. E-mail duplicado de outro colaborador → continua recusando **nomeando o e-mail**. É o controle
+   positivo: `mensagemDuplicidade` já acerta esse caso e não pode regredir.
+
+🔵 **Os casos de vínculo saíram daqui em 19/09** — viraram `docs/bateria-vinculo-colaborador.sql`
+(10 casos, com controle positivo) e `supabase/functions/_shared/enviar-link-acesso.test.ts`.
+
+⚠️ A suíte **mocka o Supabase** e não alcança nada disso (trigger, índice funcional, CHECK) — ver §5
+do `CLAUDE.md`. `npm run test:ef` alcança as EFs, mas **`reivindicar-acesso` e `recuperar-senha`
+enviam e-mail de verdade** a partir do banco local (que é cópia de produção, com PII real).
+
+---
+
 ## ✅ CONCLUÍDO 2026-09-19 — o EDITAL PADRÃO, em 19 rodadas de capítulo
 
 Um edital modelo no banco (`eh_modelo = true`, UUID fixo), clonável por um clique, com o dado
