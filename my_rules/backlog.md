@@ -53,6 +53,7 @@ errada e o que cada decisão custou. Antes de reabrir qualquer tema abaixo, proc
 | ✅ 24/09 | as ressalvas do "admin preenche o e-mail e o colaborador se reivindica": o teto do `acesso` folgou para 5/10 min com frase fixa (**v3.7.3**), e as 12 CHECKs de `colaboradores` passaram a chegar traduzidas no cadastro e na edição |
 | ✅ 24/09 | o `PerfilColaborador` passou a mostrar a recusa do banco: a frase `P0001` das RPCs (que era descartada, inclusive a da duplicidade) e as CHECKs traduzidas — o ramo `23505` da tela nunca rodava |
 | ✅ 24/09 | a `update_meu_colaborador` deixou de completar o CPF com zeros antes de conferir o tamanho (aceitava `123`, cortava 12 dígitos), ganhou dígito verificador na MUDANÇA e passou a nomear o campo duplicado — migration `20260925002742`, bateria `docs/bateria-update-meu-colaborador.sql` |
+| ❌ 24/09 | o diálogo "Nova Ocorrência" em assistente de etapas — **não será feito**, decisão do usuário. A outra metade do item (a falta tirar o colaborador da lista da prova) já tinha entrado na v3.4.0 |
 
 ---
 
@@ -483,21 +484,6 @@ A rota `/treinamento` e o `src/pages/Treinamento.tsx` (1547 linhas) foram removi
 **Ponta solta:** `framer-motion` (`^12.27.0`, em `package.json`) era usado **só** por essa página e agora é dependência órfã. Manter, se a página nova for usar animação; remover, se não — decisão para o momento da reescrita.
 
 O conteúdo antigo continua recuperável no histórico do git (última versão em `cd86219`; a exclusão é de 2026-07-25).
-
----
-
-## Refatorar diálogo "Nova Ocorrência" para modelo wizard
-
-**Status:** pendente
-**Área:** Ocorrências (ver [`estrutura/modulos/aplicacao-provas/ocorrencias.md`](./estrutura/modulos/aplicacao-provas/ocorrencias.md))
-
-Refatorar o diálogo de Nova Ocorrência (`src/pages/OcorrenciasProva.tsx`) para um fluxo em wizard (passos), em vez do formulário único atual.
-
-Junto com a refatoração, **corrigir a funcionalidade de "Faltou"**: quando uma ocorrência marca que o colaborador faltou, ele deve ser **retirado da unidade daquela prova** (o vínculo em `colaboradores_prova` some para aquela prova+unidade). Hoje esse efeito não acontece.
-
-> ⚠️ **Corrigido na auditoria de 2026-07-26 — não existe "Faltou" no modelo.** `tipo_ocorrencia` é **texto livre**: o campo é um `Input` cujo placeholder apenas sugere *"Ex: Atraso, Falta, Elogio"*. Não há enum, lista fechada nem flag. O que existe de estruturado é `substituido` (0/1) com `substituto_id`.
->
-> Consequência para quem for implementar: **não há em que se apoiar**. O primeiro passo é tornar o tipo estruturado (select com valores fixos, ou coluna própria), senão a regra dependeria de casar string digitada à mão — que muda com a grafia de quem preenche.
 
 ---
 
