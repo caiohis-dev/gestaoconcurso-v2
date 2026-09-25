@@ -68,6 +68,14 @@ Versionamento semântico, com prefixo `v`:
 
   ⚠️ **Subiu sem backup novo**, por decisão do usuário; o mais recente era o de 16/09. Fica registrado porque o Free não tem backup automático nenhum.
 
+- **`v3.7.4` nasceu em 2026-09-24**, no commit `5ea3d29`. PATCH: as recusas do banco passaram
+  a chegar à pessoa. No `ColaboradorDialog`, as **12** CHECKs de `colaboradores` ganharam frase
+  que nomeia o campo (`mensagemRecusaCheck`); até ali só a duplicidade era traduzida. No
+  `PerfilColaborador`, a frase `P0001` das RPCs — que a tela **descartava** — passou a aparecer, e
+  a CHECK bancária deixou de ir crua. 🟢 **Só frontend** — `git diff v3.7.3..dev -- supabase/`
+  vazio. Ritual curto: `git fetch . dev:main` → tag → push → `deploy.sh`. **Verificado ao vivo:**
+  hash servido idêntico ao buildado (`index-C9d7YD-m.js`) e as frases novas presentes no bundle.
+
 - **`v3.7.3` nasceu em 2026-09-24**, no commit `ae67258`. PATCH: o rate limit do escopo `acesso`
   (`reivindicar-acesso` + `recuperar-senha`) passou de **5/15 para 5/10 min**, e o 429 dele ganhou
   frase fixa — *"Sistema com excesso de acessos. Tente novamente após 10 minutos."* —, na EF e no
