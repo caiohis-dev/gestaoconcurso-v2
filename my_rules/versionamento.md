@@ -68,6 +68,19 @@ Versionamento semântico, com prefixo `v`:
 
   ⚠️ **Subiu sem backup novo**, por decisão do usuário; o mais recente era o de 16/09. Fica registrado porque o Free não tem backup automático nenhum.
 
+- **`v3.8.0` nasceu em 2026-09-24**, no commit `0e6d411`. MINOR: fecha o teto de 1000 do
+  PostgREST em três pontos, achados numa varredura de todo `select`/`rpc` do `src/`. O
+  `/dashboard` passou a agregar no banco pela RPC nova `totais_do_dashboard` (migration
+  `20260925005346`, `SECURITY INVOKER`, bateria `docs/bateria-totais-do-dashboard.sql`) —
+  `colaboradores_prova` estava com 977 linhas, a 23 do corte; `useEspeciaisDaProva` e
+  `/gerenciar-usuarios` passaram a ler em fatias. 🔴 **Banco antes do site**: o bundle chama a
+  RPC nova. Ritual completo: commit → `git fetch . dev:main` → tag → push → `link` →
+  `prod:push:dry` (1 migration, a esperada) → `prod:push` (os três pelo usuário, com `!`) →
+  `prod:push:dry` de conferência → `prod:unlink` → `deploy.sh`. **Medido antes e depois, sem
+  login:** `totais_do_dashboard` respondia **PGRST202** (não existe) e passou a **42501** (existe,
+  `anon` barrado). Bundle servido idêntico ao buildado (`index-Bnh9Z7R2.js`), com a RPC nova
+  dentro e **0** `127.0.0.1`.
+
 - **`v3.7.5` nasceu em 2026-09-24**, no commit `d98315f`. PATCH de **banco**: a RPC
   `update_meu_colaborador` (migration `20260925002742`) deixou de completar o CPF com zeros antes de
   conferir o tamanho — aceitava `123` como `00000000123`, cortava 12 dígitos nos 11 primeiros e
