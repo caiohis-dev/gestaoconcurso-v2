@@ -1,0 +1,198 @@
+# Roadmap VIVO — o `_` do e-mail vira CURINGA na busca por cadastro
+# Criado em 2026-09-28. Leia my_rules/analises/README.md antes de usar como guia.
+# 🟡 CÓDIGO PRONTO E VERIFICADO em 2026-09-28 (etapas 0–3 e docs). Falta commit + deploy.
+
+roadmap:
+  titulo: "Busca por e-mail com ilike: o `_` casa qualquer caractere"
+  criado: "2026-09-28"
+  status: >
+    🟡 **Código pronto e verificado (2026-09-28).** Produção limpa (o furo nunca foi
+    usado); escape em _shared/ilike.ts aplicado nas 3 buscas; provado pelo PostgREST e pela
+    EF real. Falta: commit e deploy (recuperar-senha + corrigir-email-acesso, sem site).
+
+  origem: >
+    Pergunta do usuário em 2026-09-28: "à exceção do risco de uma conta sem e-mail ser
+    roubada, temos mais problemas na rota 'Estou sem minha senha'?". Pedido seguinte:
+    "monte o roadmap do conserto".
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  o_defeito: |
+    PostgREST `ilike` vira ILIKE do Postgres, onde `_` = um caractere qualquer e `%` =
+    qualquer sequência. O e-mail digitado entra CRU como padrão.
+
+    recuperar-senha/index.ts:105 — ramo de estado A (sem conta no Auth):
+      .ilike('colab_email', email).is('user_id', null).maybeSingle()
+      e então enviarLinkAcesso({ email, tipo: 'invite', colaboradorId: colabA.id, nome })
+      🔴 o convite vai para o e-mail DIGITADO, não para o do cadastro encontrado.
+
+    O ataque, passo a passo:
+      1. Vítima em estado A com colab_email `maria.souza@hotmail.com`.
+      2. Atacante digita `maria_souza@hotmail.com` (endereço DELE) no caminho do e-mail.
+      3. O ilike casa o cadastro da vítima → invite gerado para o endereço do atacante.
+      4. Efeitos: (a) uma CONTA NASCE no Auth para o atacante, embora o signup esteja
+         DESLIGADO em produção; (b) o e-mail sai com o nome da vítima ("Olá, Maria!");
+         (c) a trilha log_envio_link_acesso grava o envio no cadastro da VÍTIMA.
+      5. O que ele NÃO consegue: tomar o cadastro. vincular_colaborador_a_conta compara
+         lower(trim()) EXATO (migration 20260919121555) — a conta nasce solta, papel `user`.
+      6. Mas conta solta não é inofensiva: qualquer `authenticated` lê 32 tabelas por
+         policy USING (true) (provas, unidades_prova, sala_prova, coordenadores_prova,
+         editais…). Ver `fora_de_escopo`.
+
+    Irmãos do mesmo defeito:
+      - recuperar-senha/index.ts:150 — ramo de conta existente: o ilike só busca nome e
+        id do cadastro. Casar o cadastro ERRADO põe o nome errado no e-mail e a trilha no
+        cadastro errado; casar DOIS derruba o maybeSingle e o nome vira ''.
+      - corrigir-email-acesso/index.ts:184 — checagem "e-mail já é de outro colaborador"
+        (só admin/coordenador). Aqui o efeito é o INVERSO: um `_` pode RECUSAR uma
+        correção legítima ("já está no cadastro de outro"), ou dar 500 se casar dois.
+
+  premissas_conferidas_em_2026_09_28: |
+    - `SELECT 'joao.silva@hotmail.com' ILIKE 'joao_silva@hotmail.com'` → true (local).
+    - zod `.email()` (o BodySchema da recuperar-senha): ACEITA `_`, `'` e `+`; RECUSA `%`,
+      `*` e `\` (medido com deno). Hoje o único curinga que chega à consulta é o `_`.
+      ⚠️ Não conte com isso: se o schema mudar, `%` (ou o `*`, que o PostgREST traduz
+      para `%`) abriria a busca inteira. O conserto escapa todos.
+    - Exposição no banco local (cópia de prod de 16/09): 526 cadastros em estado A com
+      e-mail; 120 com `.` ou `-` antes do `@` (trocáveis por `_`); 84 em domínio
+      Microsoft. ⚠️ O ataque exige que o atacante REGISTRE o endereço com `_` no mesmo
+      provedor. Suposição NÃO conferida: o Outlook aceita `_`; o Gmail não.
+    - 23 e-mails reais já contêm `_`; nenhum deles casa com outro cadastro hoje (medido),
+      então o efeito colateral sobre usuários legítimos é zero agora — mas não por regra.
+    - O vínculo é exato: o furo NÃO toma cadastro (confirmado na função).
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  decisoes_a_confirmar: |
+    D1. COMO COMPARAR. Recomendo ESCAPAR: um helper `_shared/` que troca `\`, `%` e `_`
+        por `\\`, `\%`, `\_` antes do `.ilike()`. Mantém a comparação sem caixa, que é o
+        que o índice único funcional (lower(trim(colab_email))) já assume, e é uma linha
+        por chamada.
+        Alternativas recusadas por ora:
+          - `.eq('colab_email', email)` — sensível a caixa. 🔵 MEDIDO (local, 16/09):
+            13 de 578 colab_email têm maiúscula — o `.eq` os deixaria sem link, em
+            silêncio. Descartada.
+          - RPC com `lower(trim(colab_email)) = lower(trim(p_email))` — a mais correta,
+            mas é migration + deploy de banco para um conserto que cabe na EF.
+        ⚠️ O escape tem de ser verificado PELO POSTGREST, não só por SQL (testes.md,
+        "Verificar pelo POSTGREST"): a barra passa pela URL e pelo parser do PostgREST.
+
+    D2. O QUE FAZER COM CONTAS JÁ CRIADAS PELO FURO, se a Etapa 0 achar alguma. Recomendo
+        só RELATAR e decidir caso a caso (feedback: escopo de correção de dados = o que
+        o usuário mandar; produção não tem backup automático).
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  etapas:
+
+    - id: 0
+      titulo: "Medir — em produção, se o furo já foi usado"
+      status: "✅ CONCLUÍDA em 2026-09-28 — PRODUÇÃO: 0 linhas (nenhuma conta criada pelo furo). A D2 não se aplica."
+      onde: >
+        SQL Editor do dashboard de PRODUÇÃO, somente leitura (sem `supabase link`).
+        O usuário roda; não é algo que eu rode.
+      consulta: |
+        -- Contas do Auth SEM vínculo cujo e-mail casa, pelo padrão, o e-mail de um
+        -- cadastro — mas NÃO é igual a ele. É a assinatura exata do furo.
+        SELECT u.id, u.email, u.created_at, u.invited_at, u.last_sign_in_at,
+               c.colab_nome_completo, c.colab_email
+        FROM auth.users u
+        JOIN public.colaboradores c
+          ON c.colab_email ILIKE u.email
+         AND lower(trim(c.colab_email)) <> lower(trim(u.email))
+        WHERE NOT EXISTS (SELECT 1 FROM public.colaboradores v WHERE v.user_id = u.id);
+      tambem_medir: |
+        - Quantos colab_email têm maiúscula (decide se `.eq` seria alternativa — D1).
+        - A trilha: linhas de log_envio_link_acesso com origem 'recuperar-senha' cujo
+          `email` difere do colab_email do cadastro apontado. Mesma assinatura, pelo lado
+          do envio (só existe desde 20/09).
+      ⚠️: "Zero linhas é o esperado e NÃO prova ausência antes de 20/09 pela trilha — a consulta do Auth é que cobre desde sempre."
+
+    - id: 1
+      titulo: "Helper de escape em _shared/, com teste"
+      status: "✅ CONCLUÍDA em 2026-09-28 — _shared/ilike.ts (padraoLiteral) + ilike.test.ts, 6 casos"
+      o_que_fazer: |
+        `_shared/ilike.ts` (nome a decidir): `padraoLiteral(s)` escapa `\`, `%`, `_`.
+        Deno test com os três caracteres, com e-mail real sem nenhum deles (controle
+        positivo: sai igual) e com `\` primeiro (a ordem do escape importa — escapar `_`
+        antes de `\` duplicaria a barra).
+
+    - id: 2
+      titulo: "Aplicar nas três buscas"
+      status: "✅ CONCLUÍDA em 2026-09-28"
+      depende_de: 1
+      arquivos:
+        - "supabase/functions/recuperar-senha/index.ts (:105 e :150)"
+        - "supabase/functions/corrigir-email-acesso/index.ts (:184)"
+      o_que_fazer: |
+        `.ilike('colab_email', padraoLiteral(email))`. Varrer `supabase/functions/` e
+        `src/` por outro `.ilike(` com valor vindo de usuário — a varredura de hoje olhou
+        só as EFs.
+
+    - id: 3
+      titulo: "Verificar pelo PostgREST e por HTTP"
+      status: "✅ CONCLUÍDA em 2026-09-28 — PostgREST 4/4 e EF 2/2, ver evolucao"
+      o_que_fazer: |
+        a) PostgREST local direto (curl em /rest/v1/colaboradores?colab_email=ilike.…
+           com service_role): o padrão escapado de `joao_silva@x` NÃO casa `joao.silva@x`,
+           e CASA `JOAO_SILVA@x` se existir (controle positivo da caixa).
+        b) EF local, com cadastro de teste em estado A com `.` no e-mail (caixa do
+           usuário) e chamada com `_` → resposta genérica e NENHUMA conta criada, nenhuma
+           linha na trilha. Controle positivo: o e-mail exato ainda recebe o convite.
+        ⚠️ Envio local é REAL; limpar o cadastro e a conta de teste no fim.
+
+    - id: 4
+      titulo: "Documentação e deploy"
+      status: "🟡 DOCS FEITAS em 2026-09-28 — falta o deploy"
+      o_que_fazer: |
+        - estrutura/transversais/integracoes-externas.md: linhas da recuperar-senha e da
+          corrigir-email-acesso.
+        - estrutura/transversais/testes.md: o teste novo.
+        - Release PATCH só de EF: recuperar-senha + corrigir-email-acesso, sem site e sem
+          banco (ritual da v3.8.1).
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  fora_de_escopo: |
+    ⚠️ CONTA LOGADA SEM PAPEL LÊ 32 TABELAS. Medido em 2026-09-28 (banco local): 32
+    policies de SELECT com USING (true) para authenticated/public — provas,
+    unidades_prova, sala_prova, coordenadores_prova, editais, cargos… Uma conta só com o
+    papel `user` (a que este furo cria, e também as 2 contas soltas do item 3 do backlog)
+    lê tudo isso. NÃO avaliado: quais colunas dessas tabelas são dado pessoal, e se o
+    colaborador comum precisa de cada uma. É tema próprio — decidir se vira item de
+    backlog. Não misturar com este conserto: aqui o furo é CRIAR a conta; lá é o que
+    uma conta qualquer alcança.
+
+    Hipóteses da mesma revisão, NÃO verificadas e fora deste roadmap:
+      - scanner de e-mail (Outlook Safe Links etc.) consumindo o link de uso único —
+        conferível nos logs do Auth de produção por `otp_expired`;
+      - o "expira em 1 hora" do texto do e-mail contra a config de Auth de produção;
+      - se o 1º link morre quando o 2º é gerado.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  evolucao: |
+    2026-09-28 — roadmap criado. Nada executado.
+    2026-09-28 — a consulta da Etapa 0 foi VALIDADA no banco local (roda, 0 linhas — a
+                 cópia é de 16/09 e o banco local nunca foi exposto). Falta rodá-la em
+                 PRODUÇÃO. Medida junto a caixa: 13 de 578 e-mails com maiúscula, o que
+                 descarta o `.eq` da D1.
+    2026-09-28 — Etapa 0 em PRODUÇÃO (usuário, SQL Editor, somente leitura): 0 linhas.
+                 Nenhuma conta solta cujo e-mail case o de um cadastro pelo padrão sem ser
+                 igual — o furo não foi usado. D2 não se aplica. A consulta da trilha
+                 (`tambem_medir`) não foi rodada: com o Auth limpo, ela não mudaria nada.
+                 Próxima: Etapa 1.
+    2026-09-28 — Etapas 1–3.
+                 1: padraoLiteral RECUSA `*` (o PostgREST o traduz para `%` e a barra não o
+                    segura) — nunca dispara hoje, o zod `.email()` das duas EFs o barra antes.
+                    Falsificado: escapando a barra por último, caem 4 de 6.
+                 2: aplicado em recuperar-senha :113 e :158 e corrigir-email-acesso :185.
+                    Varredura de `ilike` fora das EFs: src/useColaboradores, useCandidatos,
+                    useAlocacaoCandidatos e a RPC de 20260805205719 — todas caixa de BUSCA de
+                    quem já tem papel (curinga só alarga a busca), e as de src/ já escapam.
+                    Fora de escopo.
+                 3a PostgREST local, via supabase-js (o mesmo caminho das EFs), cadastro de
+                    teste `caioteixeira.coach@…`: cru com `_` → 1 linha (o defeito);
+                    escapado com `_` → 0; escapado exato → 1; escapado em MAIÚSCULA → 1
+                    (a comparação sem caixa sobreviveu).
+                 3b EF real: `caioteixeira_coach@…` → genérica, log "sem conta e sem
+                    cadastro", 0 contas, 0 trilha. Controle positivo com o exato → convite
+                    enviado, conta VINCULADA, 1 linha na trilha.
+                 Limpeza verificada: cadastro, contas e trilha = 0.
+                 Verificação: test:ef _shared 58 · lint 110 (baseline) · docs:conferir ok ·
+                 deno check das 2 EFs limpo (cópia sem o import de cors, pré-existente).

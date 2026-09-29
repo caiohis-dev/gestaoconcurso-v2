@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient, type User } from 'npm:@supabase/supa
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { z } from 'npm:zod@3';
 import { enviarLinkAcesso, mascararEmail } from '../_shared/enviar-link-acesso.ts';
+import { padraoLiteral } from '../_shared/ilike.ts';
 
 // Etapa 2 da edição de colab_email sensível à identidade — reconciliação do estado B.
 //
@@ -181,7 +182,7 @@ Deno.serve(async (req) => {
     const { data: donoEmail, error: donoErr } = await supabase
       .from('colaboradores')
       .select('id')
-      .ilike('colab_email', email)
+      .ilike('colab_email', padraoLiteral(email))
       .neq('id', colaborador_id)
       .maybeSingle();
 

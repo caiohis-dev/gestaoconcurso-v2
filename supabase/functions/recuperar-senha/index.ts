@@ -5,6 +5,7 @@ import { enviarLinkAcesso } from '../_shared/enviar-link-acesso.ts';
 import { barrarSeExcedeu } from '../_shared/rate-limit.ts';
 import { buscarContaPorEmail } from '../_shared/auth-lookup.ts';
 import { emCooldown } from '../_shared/cooldown-link.ts';
+import { padraoLiteral } from '../_shared/ilike.ts';
 
 // Recuperação de senha pelo caminho da casa.
 //
@@ -98,11 +99,18 @@ Deno.serve(async (req) => {
     // mesmo raciocínio que o servidor já faz pelo CPF na reivindicar-acesso, aplicado
     // ao e-mail. Sem este ramo, a porta única prometeria justamente para a maioria e
     // não entregaria: resposta genérica e nenhum e-mail saindo.
+    //
+    // 🔴 ATÉ 2026-09-28 O E-MAIL ENTRAVA CRU NO ILIKE, e o `_` era curinga: quem digitasse
+    // `maria_souza@…` casava o cadastro de `maria.souza@…`, e o invite abaixo — que vai
+    // para o e-mail DIGITADO — criava conta para ele, com o signup desligado. Não tomava
+    // o cadastro (o vínculo compara exato), mas a conta solta lê as tabelas de
+    // `authenticated`. Medido em produção: nunca foi usado. `padraoLiteral` fecha isso;
+    // o `ilike` fica porque é ele que compara sem caixa.
     if (!user) {
       const { data: colabA } = await supabase
         .from('colaboradores')
         .select('id, colab_nome_completo')
-        .ilike('colab_email', email)
+        .ilike('colab_email', padraoLiteral(email))
         .is('user_id', null)
         .maybeSingle();
 
@@ -147,7 +155,7 @@ Deno.serve(async (req) => {
     const { data: colab } = await supabase
       .from('colaboradores')
       .select('id, colab_nome_completo')
-      .ilike('colab_email', email)
+      .ilike('colab_email', padraoLiteral(email))
       .maybeSingle();
 
     const { ok } = await enviarLinkAcesso(supabase, {

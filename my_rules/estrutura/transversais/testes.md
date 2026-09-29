@@ -385,6 +385,8 @@ npm run test:ef -- supabase/functions/conceder-papel-sistema/index.test.ts   # u
 
 🔵 **Desde 2026-09-28: `_shared/cooldown-link.test.ts`** (8 casos) — o cooldown de 2 min por conta, puro, agora compartilhado por `recuperar-senha` e `reivindicar-acesso`. O caso que importa é o do **convite recém-enviado** (só `confirmation_sent_at`/`invited_at`, `recovery_sent_at` NULL): falsificado olhando só o recovery, caem 3 dos 8. No mesmo tema, `enviar-link-acesso.test.ts` ganhou 5 casos de `contextoParaContaExistente` (o texto do e-mail para conta existente; o corte de 1 s, falsificado com corte 0). Pela mesma razão do arquivo acima, as EFs em si **não** são exercitadas.
 
+🔵 **Desde 2026-09-28 (mais tarde): `_shared/ilike.test.ts`** (6 casos) — `padraoLiteral`, o escape do valor digitado antes do `.ilike()`. O caso que importa é a **ordem** (a barra primeiro): falsificado escapando a barra por último, caem 4 dos 6. ⚠️ Ele prova a string, não o caminho: que o escape sobrevive a supabase-js → URL → PostgREST → ILIKE foi provado **à parte**, contra o PostgREST local, com o controle positivo da caixa (roadmap `ilike-curinga-email`, Etapa 3).
+
 O script (`scripts/test-ef.sh`) lê as três variáveis do próprio `supabase status`, então elas não vivem copiadas em lugar nenhum. **Executado em 02/08: 8 passos, todos verdes, sem resíduo no banco** — o teste tinha 4 dias sem nunca ter rodado.
 
 **A decisão de instalar o Deno**, com o que foi medido, está em [`../../analises/concluidos/backlog-itens-concluidos.md`](../../analises/concluidos/backlog-itens-concluidos.md).
