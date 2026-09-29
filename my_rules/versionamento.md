@@ -68,6 +68,23 @@ Versionamento semântico, com prefixo `v`:
 
   ⚠️ **Subiu sem backup novo**, por decisão do usuário; o mais recente era o de 16/09. Fica registrado porque o Free não tem backup automático nenhum.
 
+- **`v3.8.1` nasceu em 2026-09-28**, no commit `3fc06a2`. PATCH: a porta "Estou sem minha
+  senha" pelo CPF passou a mandar o link a quem **já tem conta** (ao e-mail da conta; o
+  divergente segue com a coordenação), com o **cooldown de 2 min por conta** agora em
+  `_shared/cooldown-link.ts` (compartilhado com a `recuperar-senha`), e o envio que falha chega
+  à tela em vez de "link enviado". Roadmap: `analises/roadmap-cpf-link-para-conta-existente.yaml`.
+  🟡 **Sem banco, com Edge Function** — o mesmo formato da v3.7.3. Ritual: commit →
+  `git fetch . dev:main` → tag → push (main + tag) → `functions deploy reivindicar-acesso
+  recuperar-senha --project-ref …` (pelo usuário, com `!`; sem `link`) → `deploy.sh`.
+  ⚠️ **Só essas duas subiram, de propósito:** `_shared/enviar-link-acesso.ts` também é importado
+  por `public-create-colaborador`, `corrigir-email-acesso`, `incluir-email-cadastro` e
+  `conceder-papel-sistema`, mas a mudança nele só **acrescentou** um export — o que elas usam
+  não mudou, e elas seguem com o bundle anterior. **Verificado ao vivo:** `functions list` com
+  `reivindicar-acesso` v13 e `recuperar-senha` v12 (eram v12/v11), HTTPS 200, logo 200, bundle
+  servido `index-BVEag_VV.js` idêntico ao buildado, a frase "Não conseguimos enviar o link
+  agora" presente, **0** de `127.0.0.1` e 8 do projeto de produção. ⚠️ A EF de produção **não**
+  foi exercitada — chamá-la envia e-mail real; a prova com e-mail foi feita no ambiente local.
+
 - **`v3.8.0` nasceu em 2026-09-24**, no commit `0e6d411`. MINOR: fecha o teto de 1000 do
   PostgREST em três pontos, achados numa varredura de todo `select`/`rpc` do `src/`. O
   `/dashboard` passou a agregar no banco pela RPC nova `totais_do_dashboard` (migration

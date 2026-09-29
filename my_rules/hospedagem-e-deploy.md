@@ -6,7 +6,14 @@ Como o gestaoconcurso vai ao ar. Par de [`banco-producao.md`](./banco-producao.m
 >
 > O deploy foi executado em outra sessão; o ferramental vive fora deste repo, em `configura_server_gestaoconcurso`. 🟢 **O secret `SITE_URL` e as redirect URLs — que ficaram como ressalva aqui desde 13/08 — foram CONFIRMADOS em 2026-09-09**, por uma recuperação de senha real: o e-mail chegou com o visual da FEVRE e o link abriu `fevre.online/redefinir-senha`.
 >
-> 🟢 **Deploy mais recente: 2026-09-24, release `v3.6.0`** (commit `0c81276`) — o módulo Financeiro
+> 🟢 **Deploy mais recente: 2026-09-28, release `v3.8.1`** (commit `3fc06a2`) — a porta do CPF
+> manda link a quem já tem conta. Sem migration; 2 Edge Functions (`reivindicar-acesso`,
+> `recuperar-senha`) antes do `deploy.sh`. Conferido: bundle servido `index-BVEag_VV.js` igual ao
+> buildado, **0** de `127.0.0.1`, **8** da URL de produção, HTTPS 200, logo 200. Detalhe em
+> `versionamento.md`. ⚠️ **As linhas abaixo dizem "mais recente" de releases anteriores** — entre
+> a v3.6.0 e esta houve v3.7.0 a v3.8.0, registradas só em `versionamento.md`.
+>
+> 🟢 **Deploy de 2026-09-24, release `v3.6.0`** (commit `0c81276`) — o módulo Financeiro
 > (gerador CNAB 240/PIX): papel de acesso, lógica portada e a UI real (`/financeiro`). 2 migrations,
 > nenhuma Edge Function nova, `src/pages/Financeiro.tsx` + `src/lib/financeiro-*.ts` novos. Ritual
 > inteiro: `prod:push` das 2 migrations antes do `deploy.sh`. Conferido: hash no ar

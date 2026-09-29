@@ -1,7 +1,7 @@
 # Roadmap VIVO — "Estou sem minha senha" pelo CPF: mandar o link a quem JÁ TEM CONTA
 # Criado em 2026-09-28. Leia my_rules/analises/README.md antes de usar como guia.
-# 🟢 CÓDIGO E VERIFICAÇÃO COMPLETOS em 2026-09-28 (etapas 0–6). Falta o DEPLOY (EF antes
-# do site). D1 a D3 aceitas pelo usuário ("comece"). NADA commitado.
+# ✅ EXECUTADO E NO AR em 2026-09-28 — release v3.8.1 (commit 3fc06a2). Pronto para ir a
+# concluidos/. D1 a D3 aceitas pelo usuário ("comece").
 #
 # Fecha também a ETAPA 4 (cooldown por alvo na reivindicar-acesso) do
 # roadmap-rate-limit-fluxos-de-acesso.yaml — ver a etapa 1 abaixo.
@@ -10,9 +10,10 @@ roadmap:
   titulo: "Porta do CPF: link para conta existente + não dizer 'enviado' quando o envio falhou"
   criado: "2026-09-28"
   status: >
-    🟢 **Etapas 0–6 completas (2026-09-28)**, com a bateria manual passada por e-mail
-    real (C9, C10, C11 — pela EF, não pela tela; o C12 fica com o Vitest). Nada
-    commitado, nada em produção: falta o deploy — EF antes do site.
+    ✅ **NO AR desde 2026-09-28, release v3.8.1** (commit 3fc06a2). Etapas 0–6 completas,
+    com a bateria manual passada por e-mail real no ambiente local (C9, C10, C11 — pela
+    EF, não pela tela; o C12 fica com o Vitest). Em produção a EF não foi exercitada
+    (enviaria e-mail real); o bundle servido foi conferido.
 
   origem: >
     Pergunta do usuário em 2026-09-28: "a rota 'Estou sem minha senha' para quem informa
@@ -254,3 +255,7 @@ roadmap:
                  Limpeza verificada: cadastro, conta, papéis, perfil e trilha de teste = 0.
                  Não testado: se o 1º link (convite) ficou inválido após o 2º; e a TELA
                  destes casos (coberta só pelo Vitest).
+    2026-09-28 — DEPLOY, release v3.8.1: git fetch . dev:main → tag → push (main + tag) →
+                 functions deploy reivindicar-acesso recuperar-senha (usuário, com `!`) →
+                 deploy.sh. Produção: reivindicar-acesso v13, recuperar-senha v12; bundle
+                 index-BVEag_VV.js servido = buildado, frase nova presente, 0 de 127.0.0.1.
