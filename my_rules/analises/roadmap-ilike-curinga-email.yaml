@@ -160,11 +160,30 @@ roadmap:
     backlog. Não misturar com este conserto: aqui o furo é CRIAR a conta; lá é o que
     uma conta qualquer alcança.
 
-    Hipóteses da mesma revisão, NÃO verificadas e fora deste roadmap:
-      - scanner de e-mail (Outlook Safe Links etc.) consumindo o link de uso único —
-        conferível nos logs do Auth de produção por `otp_expired`;
-      - o "expira em 1 hora" do texto do e-mail contra a config de Auth de produção;
-      - se o 1º link morre quando o 2º é gerado.
+    Hipóteses da mesma revisão, fora deste roadmap — 🔵 DUAS VERIFICADAS em 2026-09-28:
+      - ✅ "expira em 1 hora": produção tem Email OTP Expiration = 3600 s (lido no painel
+        pelo usuário), igual ao local (config.toml, otp_expiry = 3600). O texto é verdade.
+      - ✅ scanner de e-mail consumindo o link de uso único — MECANISMO CONFIRMADO, USO NÃO:
+          • Auth local, conta fictícia .invalid, generateLink (não envia e-mail): o 1º GET
+            simples, sem JS, abre a sessão; o 2º cai em otp_expired ("Email link is invalid
+            or has expired"). Vale para recovery e invite. /redefinir-senha mostra "Este
+            link não é válido ou já expirou".
+            ⚠️ Armadilha do teste: um User-Agent com "º" (byte 0xBA) derruba o /verify com
+            "Database error granting user" — foi artefato do teste, não do sistema.
+          • Produção (usuário, SQL Editor): as 70 sessões abertas depois de envios de
+            log_envio_link_acesso (21 a 26/09) têm TODAS User-Agent de navegador real e IP
+            residencial brasileiro; nenhuma de datacenter; a mais rápida, 35 s depois do
+            envio. Público quase todo Gmail (que não pré-abre link); os 5 Hotmail, abertos
+            em 60–228 s por navegador.
+          • Limite: o RedefinirSenha faz signOut() (padrão do supabase-js: global), o que
+            apagaria também a sessão de um scanner se a pessoa depois entrou por outro link
+            — esse caso é invisível. O caso que importa (travou e desistiu) deixaria a
+            sessão do scanner visível, e não há nenhuma. (A limpeza global não foi
+            conferida no Auth local.)
+          • DECISÃO: não construir a página intermediária com botão agora. Reabrir se
+            entrarem usuários de e-mail CORPORATIVO (sobretudo órgão público com Microsoft
+            365) — é o filtro que costuma pré-abrir link. Rodar a mesma consulta de novo.
+      - ⏳ se o 1º link morre quando o 2º é gerado — segue não testado.
 
   # ═══════════════════════════════════════════════════════════════════════════
   evolucao: |
