@@ -68,6 +68,21 @@ Versionamento semântico, com prefixo `v`:
 
   ⚠️ **Subiu sem backup novo**, por decisão do usuário; o mais recente era o de 16/09. Fica registrado porque o Free não tem backup automático nenhum.
 
+- **`v3.8.2` nasceu em 2026-09-28**, no commit `c4abcb3`. PATCH de segurança, **só Edge
+  Function** — sem banco, sem site, sem `deploy.sh`. O e-mail digitado entrava cru no `.ilike()`
+  e o `_` era curinga: na `recuperar-senha`, `maria_souza@…` casava o cadastro de
+  `maria.souza@…` em estado A e o convite criava conta para o endereço digitado, com o signup
+  desligado. Conserto: `_shared/ilike.ts` (`padraoLiteral`) nas duas buscas da
+  `recuperar-senha` e na checagem de duplicidade da `corrigir-email-acesso`. Roadmap:
+  `analises/roadmap-ilike-curinga-email.yaml`. Antes do conserto, a consulta de assinatura rodou
+  em **produção** (pelo usuário, somente leitura): **0 contas** — o furo nunca foi usado.
+  ⚠️ **A ordem saiu invertida:** o usuário rodou o `functions deploy` antes do commit, a partir
+  da árvore já verificada; o commit, o `git fetch . dev:main`, a tag e o push vieram depois.
+  Sem efeito prático — o código publicado é o mesmo do commit —, mas o ritual é commit primeiro.
+  **Verificado ao vivo:** `functions list` com `recuperar-senha` v13 e `corrigir-email-acesso` v9
+  (eram v12/v8). A EF de produção não foi exercitada (enviaria e-mail real); a prova por
+  PostgREST e por HTTP foi no ambiente local.
+
 - **`v3.8.1` nasceu em 2026-09-28**, no commit `3fc06a2`. PATCH: a porta "Estou sem minha
   senha" pelo CPF passou a mandar o link a quem **já tem conta** (ao e-mail da conta; o
   divergente segue com a coordenação), com o **cooldown de 2 min por conta** agora em

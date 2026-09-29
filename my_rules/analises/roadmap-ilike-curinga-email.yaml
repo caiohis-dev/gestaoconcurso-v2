@@ -1,14 +1,15 @@
 # Roadmap VIVO — o `_` do e-mail vira CURINGA na busca por cadastro
 # Criado em 2026-09-28. Leia my_rules/analises/README.md antes de usar como guia.
-# 🟡 CÓDIGO PRONTO E VERIFICADO em 2026-09-28 (etapas 0–3 e docs). Falta commit + deploy.
+# ✅ EXECUTADO E NO AR em 2026-09-28 — release v3.8.2 (commit c4abcb3). Pronto para ir a
+# concluidos/.
 
 roadmap:
   titulo: "Busca por e-mail com ilike: o `_` casa qualquer caractere"
   criado: "2026-09-28"
   status: >
-    🟡 **Código pronto e verificado (2026-09-28).** Produção limpa (o furo nunca foi
-    usado); escape em _shared/ilike.ts aplicado nas 3 buscas; provado pelo PostgREST e pela
-    EF real. Falta: commit e deploy (recuperar-senha + corrigir-email-acesso, sem site).
+    ✅ **NO AR desde 2026-09-28, release v3.8.2** (commit c4abcb3). Produção limpa antes do
+    conserto (o furo nunca foi usado); escape em _shared/ilike.ts nas 3 buscas; provado pelo
+    PostgREST e pela EF real no ambiente local.
 
   origem: >
     Pergunta do usuário em 2026-09-28: "à exceção do risco de uma conta sem e-mail ser
@@ -140,7 +141,7 @@ roadmap:
 
     - id: 4
       titulo: "Documentação e deploy"
-      status: "🟡 DOCS FEITAS em 2026-09-28 — falta o deploy"
+      status: "✅ CONCLUÍDA em 2026-09-28 — docs + release v3.8.2 (só EF)"
       o_que_fazer: |
         - estrutura/transversais/integracoes-externas.md: linhas da recuperar-senha e da
           corrigir-email-acesso.
@@ -196,3 +197,8 @@ roadmap:
                  Limpeza verificada: cadastro, contas e trilha = 0.
                  Verificação: test:ef _shared 58 · lint 110 (baseline) · docs:conferir ok ·
                  deno check das 2 EFs limpo (cópia sem o import de cors, pré-existente).
+    2026-09-28 — DEPLOY, release v3.8.2, só EF: o usuário rodou `functions deploy
+                 recuperar-senha corrigir-email-acesso` ANTES do commit (ordem invertida,
+                 sem efeito: publicou a árvore já verificada); depois commit c4abcb3 →
+                 git fetch . dev:main → tag → push. Produção: recuperar-senha v13,
+                 corrigir-email-acesso v9 (eram v12/v8).
