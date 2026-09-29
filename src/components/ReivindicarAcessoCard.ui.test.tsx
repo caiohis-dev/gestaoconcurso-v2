@@ -194,6 +194,9 @@ describe("ReivindicarAcessoCard — informar o próprio e-mail", () => {
   it("🟢 CONTROLE POSITIVO: vinculado SEM divergência segue mandando informar o e-mail", async () => {
     // O caso comum não pode ter regredido junto: quem tem cadastro e conta no mesmo
     // endereço continua sendo mandado ao caminho do e-mail, que funciona para ele.
+    // 🔵 2026-09-28: a resposta abaixo, SEM o campo `envio`, passou a ser a da EF
+    // ANTERIOR — hoje a EF envia neste ramo (ver os casos de `envio` abaixo). O caso
+    // fica: é o que garante que o site novo não quebra enquanto a EF velha estiver no ar.
     fetchMock.mockResolvedValue(
       respostaDe({
         existe: true,
@@ -211,6 +214,62 @@ describe("ReivindicarAcessoCard — informar o próprio e-mail", () => {
     await waitFor(() => expect(screen.getByText("jo***@exemplo.com")).toBeInTheDocument());
     expect(screen.getByText(/informe esse e-mail neste mesmo campo/i)).toBeInTheDocument();
     expect(screen.queryByText(/procure o coordenador/i)).not.toBeInTheDocument();
+  });
+
+  describe("o campo `envio` (2026-09-28)", () => {
+    const pedirPeloCpf = async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<ReivindicarAcessoCard onClose={() => {}} permitirEmail />);
+      await user.type(screen.getByLabelText(/CPF/i), CPF);
+      await user.click(screen.getByRole("button", { name: /enviar|continuar|^buscar/i }));
+    };
+
+    it("🔴 vinculado COM envio mostra 'Link enviado' — não 'já tem acesso'", async () => {
+      // O defeito: quem pediu, não achou o convite e pediu de novo caía em "Este
+      // cadastro já tem acesso", sem nunca ter definido senha. Agora a EF manda o link
+      // ao e-mail da conta e a tela diz isso.
+      fetchMock.mockResolvedValue(
+        respostaDe({
+          existe: true,
+          ja_vinculado: true,
+          email_mascarado: "jo***@exemplo.com",
+          divergente: false,
+          envio: "enviado",
+        }),
+      );
+      await pedirPeloCpf();
+
+      await waitFor(() => expect(screen.getByText("Link enviado")).toBeInTheDocument());
+      expect(screen.getByText("jo***@exemplo.com")).toBeInTheDocument();
+      expect(screen.queryByText(/já tem acesso/i)).not.toBeInTheDocument();
+    });
+
+    it.each([
+      ["cadastro sem conta", { existe: true, ja_vinculado: false, email_mascarado: "jo***@x.com" }],
+      [
+        "cadastro vinculado",
+        { existe: true, ja_vinculado: true, email_mascarado: "jo***@x.com", divergente: false },
+      ],
+    ])("🔴 %s com envio FALHOU não diz 'Link enviado'", async (_, corpo) => {
+      fetchMock.mockResolvedValue(respostaDe({ ...corpo, envio: "falhou" }));
+      await pedirPeloCpf();
+
+      await waitFor(() =>
+        expect(screen.getByText(/não conseguimos enviar o link agora/i)).toBeInTheDocument(),
+      );
+      expect(screen.queryByText("Link enviado")).not.toBeInTheDocument();
+      expect(screen.queryByText(/já tem acesso/i)).not.toBeInTheDocument();
+    });
+
+    it("🟢 CONTROLE POSITIVO: cadastro sem conta com envio OK segue em 'Link enviado'", async () => {
+      fetchMock.mockResolvedValue(
+        respostaDe({ existe: true, ja_vinculado: false, email_mascarado: "jo***@x.com", envio: "enviado" }),
+      );
+      await pedirPeloCpf();
+
+      await waitFor(() => expect(screen.getByText("Link enviado")).toBeInTheDocument());
+      expect(screen.getByText("jo***@x.com")).toBeInTheDocument();
+    });
   });
 
   it("no /cadastro-publico a origem informada é 'cadastro-publico'", async () => {

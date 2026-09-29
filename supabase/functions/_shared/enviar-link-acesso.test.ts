@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { enviarLinkAcesso, escolherTipoLink } from "./enviar-link-acesso.ts";
+import { contextoParaContaExistente, enviarLinkAcesso, escolherTipoLink } from "./enviar-link-acesso.ts";
 import { buscarContaPorEmail } from "./auth-lookup.ts";
 
 // Testes do lado Deno do envio do link de acesso (tema de 2026-09-19: o invite que
@@ -298,4 +298,36 @@ Deno.test("enviarLinkAcesso: INSERT da trilha falhando NÃO derruba o envio real
   });
   assertEquals(r.ok, true);
   assertEquals(r.tipoUsado, "invite");
+});
+
+// --- texto do e-mail para conta existente (2026-09-28, porta do CPF) ---------
+// Os três primeiros são os grupos medidos em 16/09 (5 convite nunca aberto, 7 só
+// clicaram, 40 usam o sistema). O 'redefinir' diz "sua senha atual continua valendo":
+// mandá-lo a quem nunca definiu senha é o erro que esta função existe para evitar.
+
+Deno.test("contexto: convite nunca aberto → primeiro-acesso", () => {
+  const user = { confirmation_sent_at: "2026-09-10T10:00:00Z", email_confirmed_at: null, last_sign_in_at: null };
+  assertEquals(contextoParaContaExistente(user), "primeiro-acesso");
+});
+
+Deno.test("contexto: só clicou no convite (Δ de 8 ms) → primeiro-acesso", () => {
+  const user = { email_confirmed_at: "2026-09-10T10:00:00.000Z", last_sign_in_at: "2026-09-10T10:00:00.008Z" };
+  assertEquals(contextoParaContaExistente(user), "primeiro-acesso");
+});
+
+// Controle positivo: sem ele, uma função que sempre devolvesse 'primeiro-acesso'
+// passaria nos casos acima.
+Deno.test("contexto: voltou e entrou (Δ de 90 s) → redefinir", () => {
+  const user = { email_confirmed_at: "2026-09-10T10:00:00Z", last_sign_in_at: "2026-09-10T10:01:30Z" };
+  assertEquals(contextoParaContaExistente(user), "redefinir");
+});
+
+Deno.test("contexto: fronteira de 1 s já é uso", () => {
+  const user = { email_confirmed_at: "2026-09-10T10:00:00.000Z", last_sign_in_at: "2026-09-10T10:00:01.000Z" };
+  assertEquals(contextoParaContaExistente(user), "redefinir");
+});
+
+Deno.test("contexto: carimbo ausente ou ilegível → primeiro-acesso (o lado inofensivo)", () => {
+  assertEquals(contextoParaContaExistente({}), "primeiro-acesso");
+  assertEquals(contextoParaContaExistente({ email_confirmed_at: "lixo", last_sign_in_at: "2026-09-10T10:00:00Z" }), "primeiro-acesso");
 });

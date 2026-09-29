@@ -4,6 +4,7 @@ import { z } from 'npm:zod@3';
 import { enviarLinkAcesso } from '../_shared/enviar-link-acesso.ts';
 import { barrarSeExcedeu } from '../_shared/rate-limit.ts';
 import { buscarContaPorEmail } from '../_shared/auth-lookup.ts';
+import { emCooldown } from '../_shared/cooldown-link.ts';
 
 // Recuperação de senha pelo caminho da casa.
 //
@@ -28,13 +29,11 @@ const BodySchema = z.object({
   email: z.string().email().max(255),
 });
 
-// Janela mínima entre dois envios para a MESMA conta. Cobre dois problemas de uma
-// vez: bombardear de e-mail quem tem cadastro, e a rotação de token — cada
-// generateLink invalida o link anterior, então clicar "enviar" duas vezes mataria o
-// link do primeiro e-mail, que costuma ser justamente o que a pessoa abre.
+// Janela mínima entre dois envios para a MESMA conta: `emCooldown`, em
+// _shared/cooldown-link.ts (🔵 extraída daqui em 2026-09-28, quando a
+// reivindicar-acesso passou a precisar da mesma regra). O porquê mora lá.
 //
 // ⚠️ Sozinho ele NÃO basta — ver o teto por IP logo abaixo, e o porquê lá.
-const COOLDOWN_MIN = 2;
 
 // Teto por IP, além do cooldown por conta. Passou a ser necessário quando esta função
 // ganhou o ramo de estado A: ali o invite CRIA conta, e o cooldown por conta não
@@ -138,13 +137,7 @@ Deno.serve(async (req) => {
     // ramo de estado A logo abaixo, ou pela reivindicar-acesso) pediria de novo e
     // receberia um recovery na hora, e esse segundo link INVALIDA o primeiro. A pessoa
     // então abre o e-mail do invite, que é o que costuma chegar primeiro, e ele já morreu.
-    const carimbos = [user.recovery_sent_at, user.confirmation_sent_at, user.invited_at]
-      .filter(Boolean)
-      .map((t) => new Date(String(t)).getTime())
-      .filter((t) => !Number.isNaN(t));
-    const ultimoEnvio = carimbos.length ? new Date(Math.max(...carimbos)) : null;
-
-    if (ultimoEnvio && Date.now() - ultimoEnvio.getTime() < COOLDOWN_MIN * 60_000) {
+    if (emCooldown(user)) {
       console.log('recuperar-senha: em cooldown, envio suprimido (resposta genérica)');
       return jsonResp(RESPOSTA_GENERICA);
     }

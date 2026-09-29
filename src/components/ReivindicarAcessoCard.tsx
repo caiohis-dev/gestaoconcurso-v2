@@ -32,6 +32,34 @@ type Resultado =
   | { tipo: "nao_encontrado" }
   | { tipo: "generico" };
 
+/**
+ * O que a tela faz com a resposta de 200 da `reivindicar-acesso`. Pura, fora do
+ * componente, para o `handleSubmit` não acumular os ramos.
+ */
+function resultadoDaResposta(data: Record<string, unknown>): Resultado | { erro: string } {
+  // 🔵 2026-09-28: a EF passou a dizer se o envio falhou. Até então a resposta era a do
+  // sucesso mesmo com o envio falhando, e a tela dizia "link enviado" sem nada sair.
+  // Não vaza nada que esta porta já não revele (ver o aviso do componente).
+  if (data.envio === "falhou") {
+    return { erro: "Não conseguimos enviar o link agora. Tente novamente em alguns minutos." };
+  }
+  if (!data.existe) return { tipo: "nao_encontrado" };
+
+  const emailMascarado = (data.email_mascarado as string | null) ?? null;
+  if (data.ja_vinculado) {
+    // 🔵 2026-09-28: quem já tem conta passou a RECEBER o link pelo CPF. Até então este
+    // ramo só informava — e prendia quem pediu, não achou o convite e pediu de novo: o
+    // convite já tinha criado a conta, e a tela dizia "já tem acesso" a quem nunca
+    // definiu senha.
+    if (data.envio === "enviado" && emailMascarado) return { tipo: "enviado", emailMascarado };
+    // Sem `envio`: e-mail divergente (a coordenação resolve) ou EF anterior a
+    // 2026-09-28, que nunca enviava neste ramo — a tela de antes serve aos dois.
+    return { tipo: "ja_vinculado", emailMascarado, divergente: data.divergente === true };
+  }
+  if (!emailMascarado) return { tipo: "sem_email" };
+  return { tipo: "enviado", emailMascarado };
+}
+
 interface Props {
   onClose: () => void;
   initialCpf?: string;
@@ -53,7 +81,9 @@ interface Props {
  *
  * ⚠️ AS DUAS RESPOSTAS SÃO ASSIMÉTRICAS DE PROPÓSITO — não uniformize:
  *   - **CPF** (reivindicar-acesso) REVELA: mostra o e-mail MASCARADO, e distingue
- *     "sem e-mail no cadastro" de "CPF não encontrado". É concessão consciente, já
+ *     "sem e-mail no cadastro" de "CPF não encontrado". 🔵 Desde 2026-09-28 também diz
+ *     se o envio FALHOU (`envio`), e manda o link a quem JÁ TEM CONTA (ao e-mail da
+ *     conta) em vez de só informar. É concessão consciente, já
  *     registrada como dívida contida e segurada por rate limit por IP. O mascarado é
  *     o que diz à pessoa QUAL caixa abrir — quem tem três e-mails depende disso.
  *   - **E-mail** (recuperar-senha) NÃO REVELA NADA: resposta idêntica para conta
@@ -153,20 +183,13 @@ export default function ReivindicarAcessoCard({ onClose, initialCpf, permitirEma
         return;
       }
 
-      if (!data.existe) {
-        setResultado({ tipo: "nao_encontrado" });
-      } else if (data.ja_vinculado) {
-        setResultado({
-          tipo: "ja_vinculado",
-          emailMascarado: (data.email_mascarado as string | null) ?? null,
-          divergente: data.divergente === true,
-        });
-      } else if (!data.email_mascarado) {
-        setCpfSemEmail(cpfClean);
-        setResultado({ tipo: "sem_email" });
-      } else {
-        setResultado({ tipo: "enviado", emailMascarado: data.email_mascarado as string });
+      const r = resultadoDaResposta(data);
+      if ("erro" in r) {
+        setError(r.erro);
+        return;
       }
+      if (r.tipo === "sem_email") setCpfSemEmail(cpfClean);
+      setResultado(r);
     } catch {
       setError("Falha de conexão. Tente novamente.");
     } finally {
@@ -184,7 +207,7 @@ export default function ReivindicarAcessoCard({ onClose, initialCpf, permitirEma
             </div>
             <h3 className="text-lg font-semibold">Link enviado</h3>
             <p className="text-muted-foreground">
-              Enviamos um link para <strong>{resultado.emailMascarado}</strong>. Abra-o para criar a
+              Enviamos um link para <strong>{resultado.emailMascarado}</strong>. Abra-o para definir a
               sua senha e acessar o sistema.
             </p>
             <p className="text-sm text-muted-foreground">Não esqueça de conferir a caixa de spam.</p>

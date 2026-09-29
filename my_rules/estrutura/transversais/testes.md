@@ -383,6 +383,8 @@ npm run test:ef -- supabase/functions/conceder-papel-sistema/index.test.ts   # u
 
 🔵 **Terceiro arquivo desde 2026-09-12: `_shared/rate-limit.test.ts`** (13 casos) — a chave de origem (IPv6 colapsado no `/64`, o primeiro elemento do `X-Forwarded-For`) e o **contrato de falha**: erro da RPC tem de BLOQUEAR. ⚠️ Ele usa um **cliente dublê**, e isso é deliberado: as quatro Edge Functions que consomem o helper **não** são exercitadas, porque três delas enviam e-mail de verdade — o banco local é cópia de produção, com endereços reais. O que o teto faz no banco é a bateria `docs/bateria-rate-limit.sql`.
 
+🔵 **Desde 2026-09-28: `_shared/cooldown-link.test.ts`** (8 casos) — o cooldown de 2 min por conta, puro, agora compartilhado por `recuperar-senha` e `reivindicar-acesso`. O caso que importa é o do **convite recém-enviado** (só `confirmation_sent_at`/`invited_at`, `recovery_sent_at` NULL): falsificado olhando só o recovery, caem 3 dos 8. No mesmo tema, `enviar-link-acesso.test.ts` ganhou 5 casos de `contextoParaContaExistente` (o texto do e-mail para conta existente; o corte de 1 s, falsificado com corte 0). Pela mesma razão do arquivo acima, as EFs em si **não** são exercitadas.
+
 O script (`scripts/test-ef.sh`) lê as três variáveis do próprio `supabase status`, então elas não vivem copiadas em lugar nenhum. **Executado em 02/08: 8 passos, todos verdes, sem resíduo no banco** — o teste tinha 4 dias sem nunca ter rodado.
 
 **A decisão de instalar o Deno**, com o que foi medido, está em [`../../analises/concluidos/backlog-itens-concluidos.md`](../../analises/concluidos/backlog-itens-concluidos.md).

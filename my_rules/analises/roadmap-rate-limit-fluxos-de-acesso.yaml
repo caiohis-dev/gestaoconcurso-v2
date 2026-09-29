@@ -13,8 +13,9 @@ roadmap:
     ✅ **ETAPAS 1 e 2 EXECUTADAS em 2026-09-12**, com os tetos da N1 confirmados pelo
     usuário. As quatro premissas do roadmap foram CONFERIDAS contra o código antes de
     executar (ele é de 13/08) e as quatro continuavam valendo, letra por letra.
-    ⏭️ Abertas: Etapa 3 (senha mínima, é config de dashboard), Etapa 4 (cooldown por
-    alvo) e Etapa 5 (contar os 429 — que é o que transforma os números chutados em
+    ✅ Etapa 4 (cooldown por alvo) CONCLUÍDA em 2026-09-28, dentro de
+    roadmap-cpf-link-para-conta-existente.yaml.
+    ⏭️ Abertas: Etapa 3 (senha mínima, é config de dashboard) e Etapa 5 (contar os 429 — que é o que transforma os números chutados em
     números medidos, na primeira convocação).
 
   origem: >
@@ -171,7 +172,8 @@ roadmap:
 
     - id: 4
       titulo: "Cooldown por ALVO na reivindicar-acesso"
-      status: "⏳ não iniciado — ver decisão N2"
+      status: "✅ CONCLUÍDA em 2026-09-28 dentro de roadmap-cpf-link-para-conta-existente.yaml (etapas 1–2) — _shared/cooldown-link.ts"
+      # O 🔴 abaixo foi respeitado: no cooldown a resposta é "enviado" (D3 de lá), sem estado novo.
       depende_de: 1
       por_que: >
         A recuperar-senha já tem (2 min por conta, lido dos TRÊS carimbos do Auth). A

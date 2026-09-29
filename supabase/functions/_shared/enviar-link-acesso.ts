@@ -36,7 +36,31 @@ import { buscarContaPorEmail, type ContaNoAuth, type FetchLike } from './auth-lo
 // do link: a correção de e-mail (corrigir-email-acesso) usa link 'recovery' por razão
 // técnica — o invite falha em conta existente — mas para a pessoa continua sendo o
 // primeiro acesso. Por isso o contexto é um parâmetro à parte.
-type Contexto = 'primeiro-acesso' | 'redefinir';
+export type Contexto = 'primeiro-acesso' | 'redefinir';
+
+/**
+ * Qual texto mandar a quem JÁ TEM CONTA (2026-09-28, porta do CPF).
+ *
+ * 'redefinir' só com PROVA de uso: o login mais recente veio ≥ 1 s depois da
+ * confirmação do e-mail. O corte de 1 s é o medido em 2026-09-20 (distribuição
+ * bimodal: o clique no convite fica em 4–13 ms; quem voltou e entrou, de 24,8 s em
+ * diante). Qualquer outro caso — convite nunca aberto, só clicou, carimbo ausente —
+ * recebe 'primeiro-acesso'.
+ *
+ * Por que errar para esse lado: 'redefinir' diz "sua senha atual continua valendo",
+ * falso para quem nunca definiu senha (medido: 12 de 52 vinculados em 16/09);
+ * "criar a sua senha" é inofensivo para quem já tem. ⚠️ NÃO usar encrypted_password
+ * (o GoTrue grava hash até para convidado) nem last_sign_in_at sozinho (o clique no
+ * link abre sessão). ⚠️ Imperfeição aceita: quem abriu um link de redefinição e
+ * desistiu também avança last_sign_in_at e passa a receber 'redefinir' — o link
+ * funciona igual, só o texto erra.
+ */
+export function contextoParaContaExistente(user: Record<string, unknown>): Contexto {
+  const confirmado = Date.parse(String(user.email_confirmed_at ?? ''));
+  const login = Date.parse(String(user.last_sign_in_at ?? ''));
+  if (Number.isNaN(confirmado) || Number.isNaN(login)) return 'primeiro-acesso';
+  return login - confirmado >= 1000 ? 'redefinir' : 'primeiro-acesso';
+}
 
 const COPY: Record<Contexto, { intro: string; botao: string; ignorar: string }> = {
   'primeiro-acesso': {

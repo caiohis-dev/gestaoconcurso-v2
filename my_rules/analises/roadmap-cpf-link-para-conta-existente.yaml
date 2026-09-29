@@ -1,0 +1,256 @@
+# Roadmap VIVO — "Estou sem minha senha" pelo CPF: mandar o link a quem JÁ TEM CONTA
+# Criado em 2026-09-28. Leia my_rules/analises/README.md antes de usar como guia.
+# 🟢 CÓDIGO E VERIFICAÇÃO COMPLETOS em 2026-09-28 (etapas 0–6). Falta o DEPLOY (EF antes
+# do site). D1 a D3 aceitas pelo usuário ("comece"). NADA commitado.
+#
+# Fecha também a ETAPA 4 (cooldown por alvo na reivindicar-acesso) do
+# roadmap-rate-limit-fluxos-de-acesso.yaml — ver a etapa 1 abaixo.
+
+roadmap:
+  titulo: "Porta do CPF: link para conta existente + não dizer 'enviado' quando o envio falhou"
+  criado: "2026-09-28"
+  status: >
+    🟢 **Etapas 0–6 completas (2026-09-28)**, com a bateria manual passada por e-mail
+    real (C9, C10, C11 — pela EF, não pela tela; o C12 fica com o Vitest). Nada
+    commitado, nada em produção: falta o deploy — EF antes do site.
+
+  origem: >
+    Pergunta do usuário em 2026-09-28: "a rota 'Estou sem minha senha' para quem informa
+    CPF — parece tudo normal? O usuário recebe o e-mail?". A leitura do código achou dois
+    problemas; o usuário pediu plano para o primeiro, com a opção de juntar o segundo.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # OS DOIS PROBLEMAS
+  # ═══════════════════════════════════════════════════════════════════════════
+  problemas: |
+    P1. 🔴 QUEM TENTA DE NOVO FICA PRESO (o principal).
+        A 1ª chamada pelo CPF, em cadastro sem conta, faz generateLink('invite') — que
+        CRIA a conta no Auth. O handle_new_user roda vincular_colaborador_a_conta e
+        preenche colaboradores.user_id NA HORA (migration 20260919121555).
+        Se a pessoa não acha o e-mail (spam, demora) e pede de novo pelo CPF, cai no ramo
+        `ja_vinculado`: NADA é enviado, e a tela diz "Este cadastro já tem acesso… se não
+        lembra a senha, volte e informe esse e-mail". Ela nunca teve senha, e só conhece
+        o e-mail MASCARADO — precisa redigitá-lo inteiro no caminho do e-mail.
+        É a inferência falsa nº 1 da memória dos carimbos do GoTrue: user_id preenchido
+        NÃO prova acesso; prova só que o convite foi gerado.
+
+    P2. "LINK ENVIADO" MESMO QUANDO O ENVIO FALHOU.
+        No ramo de estado A, o resultado do enviarLinkAcesso vai só para o log
+        (registrarFalhaDeEnvio) e para log_envio_link_acesso; a resposta ao cliente é a
+        mesma do sucesso. Rastreável, mas para a pessoa é perda silenciosa.
+
+  premissas_conferidas_em_2026_09_28: |
+    - reivindicar-acesso/index.ts:125 — `if (jaVinculado)` devolve estadoDoCadastroVinculado
+      sem enviar nada.
+    - reivindicar-acesso/index.ts:142-153 — envio no estado A; o { ok } só é logado, a
+      resposta é sempre `email_mascarado` (= "enviado" na tela).
+    - reivindicar-acesso NÃO tem cooldown por conta — só o teto por IP (escopo `acesso`,
+      5/10 min, compartilhado com a recuperar-senha).
+    - recuperar-senha/index.ts:37 e :141 — COOLDOWN_MIN = 2, lido de TRÊS carimbos
+      (recovery_sent_at, confirmation_sent_at, invited_at). "Cada generateLink invalida o
+      link anterior" — é o motivo do cooldown.
+    - ReivindicarAcessoCard.tsx:158 e :235 — o ramo ja_vinculado e a tela "Este cadastro
+      já tem acesso".
+    - 🔵 A justificativa antiga para NÃO enviar ("fechar esbarra no estado B", ver
+      auth-e-permissoes.md) CAIU em 2026-09-19: a EF já resolve o e-mail DA CONTA por
+      getUserById e devolve `divergente`. Mandar recovery para esse endereço é o mesmo
+      destino que a pessoa alcançaria digitando-o no caminho do e-mail.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  decisoes_a_confirmar: |
+    D1. JUNTAR P1 E P2 NUM PLANO SÓ. Recomendo SIM: o P1 cria um envio novo, e sem decidir
+        o que a tela mostra quando ele falha, o caminho novo nasce repetindo o P2. P2 é
+        etapa própria (3) e pode ser destacada.
+
+    D2. E-MAIL DIVERGENTE (conta ≠ cadastro) FICA COMO ESTÁ — encaminha à coordenação.
+        Recomendo manter: mandar o link à conta pode entregá-lo na caixa de outra pessoa,
+        que é exatamente o caso que a tela avisa hoje. Mexer nisso é outro tema.
+
+    D3. 🔴 O QUE RESPONDER NO COOLDOWN. Conflita com o roadmap de rate limit, etapa 4:
+        "A RESPOSTA AO CLIENTE NÃO PODE MUDAR" — um estado novo vazaria informação.
+        Na conversa eu propus um estado `recente` ("enviamos há pouco"). Ele revela que
+        ALGUÉM pediu para aquele CPF nos últimos 2 min — pouco, mas é informação nova
+        sobre o alvo. Recomendo NÃO criar o estado: no cooldown, responder `enviado`,
+        que é VERDADE (um link saiu há menos de 2 min) e mantém o contrato.
+        ⚠️ Custo aceito: se o envio anterior FALHOU depois do generateLink (que já
+        carimbou), a pessoa ouve "enviado" por até 2 min sem nada ter saído. Depois disso
+        o pedido seguinte envia normalmente.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  etapas:
+
+    - id: 0
+      titulo: "Medir antes de desenhar"
+      status: "✅ CONCLUÍDA em 2026-09-28"
+      onde: "banco local (cópia de produção de 2026-09-16) — sem tocar produção"
+      o_que_medir: |
+        a) Colaboradores vinculados cuja conta tem confirmation_sent_at preenchido
+           (= convite NUNCA aberto — o grupo preso hoje pelo P1).
+        b) Vinculados com e-mail divergente (D2).
+        c) Vinculados que de fato definiram senha (delta last_sign_in_at −
+           email_confirmed_at ≥ 1 s — ver docs/consulta-acesso-colaborador.sql).
+      ⚠️: >
+        O ramo ja_vinculado NÃO grava trilha: não há como medir quantas pessoas bateram
+        nele. Só os envios (log_envio_link_acesso) são mensuráveis.
+      resultado: |
+        Banco local, cópia de produção — conta mais recente do Auth: 2026-09-16 02:27 UTC.
+        ⚠️ Produção está 12 dias à frente: os números são ORDEM DE GRANDEZA. A trilha
+        log_envio_link_acesso nasceu em 20/09, então localmente está VAZIA — o volume de
+        envios só se mede em produção.
+
+          sem conta, SEM e-mail ....................... 243   (vão ao InformarEmailCard)
+          sem conta, com e-mail (estado A) ............ 526   (recebem hoje; P2 os afeta)
+          vinculado, CONVITE NUNCA ABERTO .............   5   ← o núcleo do P1
+          vinculado, só abriu o link (Δ < 1 s) ........   7   ← também presos, e o sinal
+                                                              da Etapa 2 NÃO os pega
+          vinculado, usa o sistema ....................  40   (1 divergente: o caso de 19/09)
+          vinculado sem convite pendente/sem confirmação  0
+          user_id apontando para conta inexistente ....   0
+
+        Leitura: TODOS os 52 vinculados caem hoje no ramo que não envia nada — os 40 que
+        usam o sistema também, quando esquecem a senha. Os 12 dos grupos 2 e 4
+        provavelmente nunca definiram senha.
+
+        🔴 O QUE ISSO MUDOU NO PLANO — o sinal do texto do e-mail estava INCOMPLETO.
+        A Etapa 2 escolhia 'primeiro-acesso' só por confirmation_sent_at preenchido. Os 7
+        do grupo 4 clicaram o convite (o que LIMPA esse carimbo) mas não há prova de que
+        definiram senha: receberiam "sua senha atual continua valendo". Não há sinal que
+        separe "definiu senha e nunca mais entrou" de "só clicou" (encrypted_password não
+        serve — inferência falsa nº 3). Regra nova: na DÚVIDA, 'primeiro-acesso', que é o
+        texto inofensivo para os dois casos. Ver a Etapa 2.
+
+    - id: 1
+      titulo: "Cooldown por conta num lugar só (_shared/)"
+      status: "✅ CONCLUÍDA em 2026-09-28 — _shared/cooldown-link.ts; recuperar-senha sem mudança de comportamento (mesma expressão, só movida)"
+      fecha: "roadmap-rate-limit-fluxos-de-acesso.yaml, etapa 4"
+      o_que_fazer: |
+        Extrair da recuperar-senha a leitura dos três carimbos + COOLDOWN_MIN para uma
+        função pura em _shared/ (ex.: `emCooldown(user, agora)`), testável em Deno.
+        A recuperar-senha passa a usá-la SEM MUDAR DE COMPORTAMENTO.
+      verificacao: "bloco E de docs/teste-frontend-auth-colaborador.md é a regressão"
+
+    - id: 2
+      titulo: "reivindicar-acesso: enviar link a quem já tem conta (P1)"
+      status: "✅ CÓDIGO PRONTO em 2026-09-28 — responderCadastroVinculado + contextoParaContaExistente (enviar-link-acesso.ts)"
+      depende_de: 1
+      o_que_fazer: |
+        No ramo ja_vinculado:
+          - divergente → como hoje (D2).
+          - não divergente, em cooldown → não gera link; responde `enviado` (D3).
+          - não divergente, fora do cooldown → enviarLinkAcesso com tipo 'recovery' para o
+            e-mail DA CONTA, origem 'reivindicar-acesso' (já está na CHECK
+            log_envio_link_acesso_origem_check), colaboradorId do cadastro.
+        Texto do e-mail (contexto) — 🔵 REVISTO pela medição da Etapa 0:
+          - 'redefinir' SÓ quando há prova de uso: email_confirmed_at preenchido E
+            last_sign_in_at − email_confirmed_at ≥ 1 s (o corte bimodal medido em 20/09).
+          - qualquer outro caso (convite nunca aberto, só clicou, carimbos ausentes) →
+            'primeiro-acesso'.
+          Motivo: 'redefinir' diz "sua senha atual continua valendo" — errado para quem
+          nunca teve senha. 'primeiro-acesso' ("criar a sua senha") é inofensivo para quem
+          já tem. Errar para o lado inofensivo.
+          ⚠️ NÃO usar encrypted_password (inferência falsa nº 3). O last_sign_in_at SÓ
+          vale comparado ao email_confirmed_at, nunca sozinho (inferência falsa nº 2).
+        Resposta: acrescenta `envio: 'enviado' | 'falhou'`; demais campos intactos.
+      🔴: >
+        Recovery em conta com convite não aberto: o clique também confirma o endereço
+        (comentário do enviar-link-acesso.ts). CONFERIR na bateria local, não presumir.
+
+    - id: 3
+      titulo: "Não dizer 'enviado' quando falhou (P2)"
+      status: "✅ CÓDIGO PRONTO em 2026-09-28"
+      o_que_fazer: |
+        O ramo de estado A passa a devolver o mesmo `envio` a partir do { ok } do
+        enviarLinkAcesso. registrarFalhaDeEnvio continua (o log não sai).
+      por_que_nao_vaza: >
+        A porta do CPF já revela existência e e-mail mascarado por desenho. "Não
+        conseguimos enviar" não acrescenta nada sobre o alvo. (A porta do E-MAIL continua
+        genérica — não tocar.)
+
+    - id: 4
+      titulo: "Tela: ReivindicarAcessoCard"
+      status: "✅ CÓDIGO PRONTO em 2026-09-28 — resultadoDaResposta (função pura, extraída para o lint não subir)"
+      o_que_fazer: |
+        - ja_vinculado + envio 'enviado' → a tela "Link enviado" que já existe.
+        - envio 'falhou' (qualquer ramo) → erro "Não conseguimos enviar agora; tente em
+          alguns minutos."
+        - divergente → tela de hoje.
+        - SEM o campo `envio` (EF antiga) → comportamento de hoje. É o que deixa a ordem
+          de deploy segura.
+        Revisar o texto "se não lembra a senha, volte e informe esse e-mail" — deixa de
+        ser o caminho principal.
+
+    - id: 5
+      titulo: "Testes"
+      status: "✅ CONCLUÍDA em 2026-09-28 — automatizado verde e falsificado; bateria manual C9, C10 e C11 aprovadas por e-mail real, chamando a EF (a TELA desses casos está só no Vitest; C12 também)"
+      antes: "ler as 12 armadilhas de estrutura/transversais/testes.md"
+      o_que_fazer: |
+        - Deno (npm run test:ef): emCooldown e a escolha de contexto.
+        - Vitest: ReivindicarAcessoCard.ui.test.tsx — estados novos e o fallback sem `envio`.
+        - Bateria manual, bloco C: "pedi, não vi, pedi de novo" (dentro do cooldown →
+          enviado sem novo link; depois → link novo, texto de primeiro acesso) e
+          CONTROLE POSITIVO: o link recebido abre /redefinir-senha e a senha é definida.
+        ⚠️ O envio local é REAL: só com colaborador de teste de caixa própria.
+
+    - id: 6
+      titulo: "Documentação no mesmo passe"
+      status: "✅ FEITA em 2026-09-28"
+      o_que_fazer: |
+        - estrutura/transversais/auth-e-permissoes.md: ⚠️ na frase "o CPF de quem já tem
+          conta informa em vez de mandar o link"; atualizar a tabela da assimetria.
+        - estrutura/transversais/integracoes-externas.md: linha da reivindicar-acesso.
+        - roadmap-rate-limit-fluxos-de-acesso.yaml: etapa 4 → concluída por este.
+        - backlog.md: a menção à etapa 4 do rate limit.
+        - Docstring do ReivindicarAcessoCard.
+        - docs/teste-frontend-auth-colaborador.md: casos novos no bloco C.
+
+  deploy: |
+    Sem migration. Só a EF reivindicar-acesso (+ recuperar-senha, pela etapa 1) e o site.
+    Ordem: EF ANTES do site — a etapa 4 tolera a EF antiga, o inverso não se aplica.
+
+  risco_aceito: >
+    Quem conhece um CPF passa a poder fazer chegar um e-mail de redefinição ao dono da
+    conta. Já acontece hoje no estado A; fica contido pelo teto por IP (5/10 min) e pelo
+    cooldown por conta (novo nesta porta).
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  evolucao: |
+    2026-09-28 — roadmap criado. D1–D3 aceitas.
+    2026-09-28 — Etapa 0: 52 vinculados sem saída pelo CPF (5 convite nunca aberto, 7 só
+                 clicaram, 40 usam o sistema). O grupo dos 7 mudou a regra do texto na
+                 Etapa 2.
+    2026-09-28 — Etapas 1–4 e 6. Verificação: npm test 2112/107 · tsc limpo · build ok ·
+                 lint 110 (baseline; subiu a 111 com a complexidade do handleSubmit e
+                 voltou com a extração de resultadoDaResposta) · test:ef _shared 52 verdes ·
+                 docs:conferir sem divergência. Falsificações, cada uma derrubando só o
+                 que devia: cooldown olhando só recovery (−3), corte de 1 s → 0 (−1),
+                 sem o ramo `falhou` na tela (−2), sem o ramo `ja_vinculado+enviado` (−1).
+                 ⚠️ deno check das EFs acusa ERR_PACKAGE_PATH_NOT_EXPORTED no import de
+                 `cors` — PRÉ-EXISTENTE (a reivindicar-acesso do HEAD dá o mesmo); os
+                 tipos foram conferidos numa cópia sem esse import, limpos.
+                 Falta: bateria manual C9–C12 (caixa de teste do usuário) e deploy
+                 (EF antes do site).
+    2026-09-28 — Bateria manual, lado do servidor, com o cadastro do próprio usuário
+                 (CPF autorizado por ele; vinculado, usa o sistema, sem divergência):
+                 C11 chamada 1 → envio=enviado, 1 linha na trilha (recovery, sucesso),
+                     recovery_sent_at carimbado. Texto esperado: "Redefinir minha senha".
+                 C10 chamada 2, ~10 s depois → envio=enviado, trilha SEGUE com 1 linha,
+                     recovery_sent_at inalterado: o cooldown segurou.
+                 ✅ Usuário confirmou: o e-mail CHEGOU. (Não confirmou explicitamente o
+                 texto "Redefinir"; o "um só" está provado pela trilha.)
+                 ⚠️ Ficaram na conta DELE, no banco local: 1 linha de trilha e o
+                 recovery_sent_at — resíduo inofensivo de teste, some no próximo reset.
+    2026-09-28 — C9 (o cenário que motivou o tema), com cadastro de teste em estado A
+                 (CPF 11144477737, caixa do usuário), chamando a EF por curl:
+                   chamada 1 → ja_vinculado=false, envio=enviado; o invite CRIOU a conta
+                     e o gatilho VINCULOU na hora (user_id e confirmation_sent_at
+                     preenchidos, sem login) — o estado exato que prendia as pessoas.
+                   chamada 2, após o cooldown → ja_vinculado=true, divergente=false,
+                     envio=enviado; 2ª linha na trilha (recovery, sucesso). No código
+                     antigo esta chamada respondia "já tem acesso" sem enviar nada.
+                   E-mail recebido com "Criar minha senha" (a regra corrigida pela
+                     Etapa 0); o usuário abriu o 2º link, definiu senha e ENTROU.
+                     Depois: email_confirmed_at preenchido, Δ login = 23 s, papéis
+                     user+colaborador.
+                 Limpeza verificada: cadastro, conta, papéis, perfil e trilha de teste = 0.
+                 Não testado: se o 1º link (convite) ficou inválido após o 2º; e a TELA
+                 destes casos (coberta só pelo Vitest).
