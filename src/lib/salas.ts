@@ -176,3 +176,42 @@ export function mensagemCamposObrigatorios(salas: SalaEditavel[]): string | null
   // campo, e a capacidade alimenta a conta de alocação.
   return `Há sala ${partes.join(" e ")}. Preencha antes de salvar — o número identifica a sala em campo e a capacidade entra na conta de alocação.`;
 }
+
+/** O mínimo de uma sala que a disponibilidade de fiscal precisa ler. */
+export interface PostosDaSala {
+  id: string;
+  sala_fiscal_1: string | null;
+  sala_fiscal_2: string | null;
+}
+
+/**
+ * Se `fiscalId` pode ser oferecido no posto `campo` da sala `salaId`.
+ *
+ * `salasDaTela` são as salas da unidade ABERTA, com a edição ainda não salva — para
+ * elas vale o que está na tela. `salasOcupadasNaProva` vem do servidor e cobre a prova
+ * INTEIRA: uma sala que não está na tela é de outra unidade, e só ali o servidor manda.
+ *
+ * 🔵 Até 2026-10-08 só a tela contava, e a mesma pessoa aparecia livre em outra unidade
+ * da prova. É conveniência: quem recusa é o banco (FS002, 20261009004823).
+ */
+export function fiscalDisponivel(
+  fiscalId: string,
+  salaId: string,
+  campo: "fiscal_1" | "fiscal_2",
+  salasDaTela: PostosDaSala[],
+  salasOcupadasNaProva: string[] = [],
+): boolean {
+  const sala = salasDaTela.find((s) => s.id === salaId);
+  if (!sala) return true;
+
+  if (campo === "fiscal_1" && sala.sala_fiscal_2 === fiscalId) return false;
+  if (campo === "fiscal_2" && sala.sala_fiscal_1 === fiscalId) return false;
+
+  for (const s of salasDaTela) {
+    if (s.id === salaId) continue;
+    if (s.sala_fiscal_1 === fiscalId || s.sala_fiscal_2 === fiscalId) return false;
+  }
+
+  const idsDaTela = new Set(salasDaTela.map((s) => s.id));
+  return !salasOcupadasNaProva.some((id) => !idsDaTela.has(id));
+}

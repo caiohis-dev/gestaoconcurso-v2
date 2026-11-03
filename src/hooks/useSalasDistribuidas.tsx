@@ -64,9 +64,9 @@ export function avisoFiscalDeSala(nome: string | undefined, salas: number[]): st
   if (!salas.length) return null;
 
   const quem = nome?.trim() || 'Este colaborador';
-  // O plural existe porque o banco não impede a mesma pessoa de ser fiscal de duas salas
-  // — só a UI de distribuição evita. Confiar nessa UI aqui repetiria o erro que este
-  // aviso existe para corrigir.
+  // O plural é defesa: desde 20261009004823 o banco recusa a mesma pessoa fiscal de duas
+  // salas (FS002), mas só confere o posto que MUDA — uma duplicidade gravada antes dele
+  // não seria desfeita. (Até 08/10 o banco não impedia nada, e só a UI evitava.)
   const lista = salas.join(', ');
   return salas.length === 1
     ? `${quem} está como fiscal da sala ${lista}. Removê-lo desta unidade vai retirá-lo dessa sala automaticamente.`
@@ -187,6 +187,9 @@ export function useSalasDistribuidas(provaId: string, unidadeId?: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["salas_prova_distribuidas", provaId] });
+      // Quem é fiscal onde mudou — e outra unidade da prova lê isso para não oferecer
+      // a mesma pessoa duas vezes.
+      queryClient.invalidateQueries({ queryKey: ["fiscais_sala", provaId] });
       toast({
         title: "Alterações salvas",
         description: "As salas foram atualizadas com sucesso.",
@@ -282,13 +285,28 @@ export function useSalasDistribuidasCapacidade(provaId: string, unidadeIds: stri
 export interface FiscalSala {
   colaborador_prova_id: string;
   colaborador_nome: string;
+  /** Salas DA PROVA INTEIRA (todas as unidades) em que esta alocação já é fiscal, no servidor. */
+  salas_ocupadas: string[];
 }
 
+/**
+ * Quem pode ser fiscal de sala nesta prova: as alocações cuja função está MARCADA
+ * (`funcoes_colaboradores.fiscal_de_sala`, desde 20261009004823).
+ *
+ * 🔵 Até 2026-10-08 a decisão era um palpite sobre o NOME da função
+ * (`includes("fiscal") && includes("sala")`), e a função cadastrada chama-se só "Fiscal":
+ * o seletor ficou vazio em todas as provas desde pelo menos 03/08. O filtro agora vai ao
+ * servidor (`!inner` + `.eq` na marcação) — também tira da resposta as ~500 alocações que
+ * não são fiscais, longe do teto silencioso de 1000 linhas do PostgREST.
+ *
+ * `salas_ocupadas` existe porque a tela só enxerga as salas da unidade ABERTA: sem ele, a
+ * mesma pessoa aparecia livre em outra unidade da prova. O banco recusa de qualquer jeito
+ * (FS002); isto é só para não oferecer o que vai ser recusado.
+ */
 export function useFiscaisSala(provaId: string) {
   return useQuery({
     queryKey: ["fiscais_sala", provaId],
     queryFn: async () => {
-      // First get all prova_unidades for this prova
       const { data: provaUnidades, error: puError } = await supabase
         .from("prova_unidades")
         .select("id")
@@ -300,7 +318,6 @@ export function useFiscaisSala(provaId: string) {
 
       const provaUnidadeIds = provaUnidades.map((pu) => pu.id);
 
-      // Get colaboradores_prova with funcao "fiscal de sala" for this prova
       const { data, error } = await supabase
         .from("colaboradores_prova")
         .select(`
@@ -308,21 +325,31 @@ export function useFiscaisSala(provaId: string) {
           colaborador_id,
           funcao_id,
           colaboradores!inner(colab_nome_completo),
-          funcoes_colaboradores!inner(cargo_nome)
+          funcoes_colaboradores!inner(fiscal_de_sala)
         `)
-        .in("prova_unidade_id", provaUnidadeIds);
+        .in("prova_unidade_id", provaUnidadeIds)
+        .eq("funcoes_colaboradores.fiscal_de_sala", true);
 
       if (error) throw error;
 
-      // Filter only "fiscal de sala" function (case insensitive)
-      const fiscais = data?.filter((cp) => {
-        const funcao = (cp.funcoes_colaboradores as any)?.cargo_nome?.toLowerCase() || "";
-        return funcao.includes("fiscal") && funcao.includes("sala");
-      }) || [];
+      const { data: salas, error: salasError } = await supabase
+        .from("salas_prova_distribuidas")
+        .select("id, sala_fiscal_1, sala_fiscal_2")
+        .eq("prova_id", provaId);
 
-      return fiscais.map((f) => ({
+      if (salasError) throw salasError;
+
+      const ocupadas = new Map<string, string[]>();
+      for (const sala of salas ?? []) {
+        for (const fiscal of [sala.sala_fiscal_1, sala.sala_fiscal_2]) {
+          if (fiscal) ocupadas.set(fiscal, [...(ocupadas.get(fiscal) ?? []), sala.id]);
+        }
+      }
+
+      return (data ?? []).map((f) => ({
         colaborador_prova_id: f.id,
-        colaborador_nome: (f.colaboradores as any)?.colab_nome_completo || "Sem nome",
+        colaborador_nome: f.colaboradores?.colab_nome_completo || "Sem nome",
+        salas_ocupadas: ocupadas.get(f.id) ?? [],
       })) as FiscalSala[];
     },
     enabled: !!provaId,

@@ -244,7 +244,7 @@ describe("useOcorrencias", () => {
       // A reversão (reinstalar o colaborador em `colaboradores_prova` quando a
       // ocorrência era substituição ou falta) mora no RPC, na mesma transação — ver
       // `excluir_ocorrencia_colaborador`.
-      setRpcResult("excluir_ocorrencia_colaborador", { data: true, error: null });
+      setRpcResult("excluir_ocorrencia_colaborador", { data: { postos_fiscal_nao_devolvidos: 0 }, error: null });
       const { result } = renderHookWithProviders(() => useOcorrencias("prova-1"));
       await waitFor(() => expect(result.current.isLoading).toBe(false));
 
@@ -259,6 +259,26 @@ describe("useOcorrencias", () => {
       expect(supabaseMock.rpc).toHaveBeenCalledWith("excluir_ocorrencia_colaborador", {
         p_ocorrencia_id: "o1",
       });
+    });
+
+    it("avisa quando algum posto de fiscal de sala não pôde ser devolvido", async () => {
+      // O RPC devolve o posto só se ainda estiver vago; o que não voltou é contado, e a
+      // tela tem de dizer — senão é recolocação que parece completa e não é.
+      setRpcResult("excluir_ocorrencia_colaborador", { data: { postos_fiscal_nao_devolvidos: 2 }, error: null });
+      const { result } = renderHookWithProviders(() => useOcorrencias("prova-1"));
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      result.current.remove("o1");
+
+      await waitFor(() =>
+        expect(toastMock).toHaveBeenCalledWith(
+          expect.objectContaining({
+            title: "Ocorrência excluída — confira a sala",
+            description: expect.stringContaining("2 postos de fiscal de sala"),
+          }),
+        ),
+      );
+      expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({ title: "Ocorrência excluída" }));
     });
 
     it("avisa com toast destrutivo quando a exclusão falha", async () => {

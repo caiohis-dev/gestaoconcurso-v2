@@ -8,6 +8,8 @@ export interface FuncaoColaborador {
   cargo_descricao: string | null;
   cargo_cbo: string | null;
   cargo_editavel: boolean | null;
+  /** Quem está alocado nesta função pode ser fiscal de sala — o banco confere (FS001). */
+  fiscal_de_sala: boolean;
   created_at: string | null;
   updated_at: string | null;
   created_by: string | null;
@@ -18,6 +20,7 @@ export type FuncaoColaboradorInsert = {
   cargo_descricao?: string | null;
   cargo_cbo?: string | null;
   cargo_editavel?: boolean | null;
+  fiscal_de_sala?: boolean;
 };
 
 /**

@@ -4,7 +4,7 @@
 
 ## `funcoes_colaboradores` — catálogo de funções/cargos
 
-`useFuncoesColaboradores.tsx`: CRUD simples (`cargo_nome` único, `cargo_descricao`, `cargo_cbo`, `cargo_editavel`). Gerido em `/funcoes-colaboradores`.
+`useFuncoesColaboradores.tsx`: CRUD simples (`cargo_nome` único, `cargo_descricao`, `cargo_cbo`, `cargo_editavel`, `fiscal_de_sala`). Gerido em `/funcoes-colaboradores`.
 
 ### ⚠️ IDs hardcoded de funções de coordenação
 
@@ -19,9 +19,28 @@ const FUNCOES_COORDENACAO = [
 
 Esses UUIDs literais identificam quais linhas de `funcoes_colaboradores` contam como "função de coordenação" para fins de elegibilidade de acesso de coordenador. **Isso é frágil por construção**: se essas duas linhas forem excluídas e recriadas (mesmo com nome idêntico), ganham novo UUID e o vínculo quebra silenciosamente — não há lookup por `cargo_nome` nesse ponto do código. Se for mexer em seeds/migrations que tocam `funcoes_colaboradores`, verifique se esses IDs específicos ainda existem antes de assumir que a elegibilidade de coordenador continua funcionando.
 
-**E há uma segunda tela acoplada a estas linhas, por outro caminho:** `useFiscaisSala` (em `useSalasDistribuidas.tsx`) identifica o fiscal pelo **nome**, com `includes("fiscal") && includes("sala")`. Renomear a função esvazia aquela lista sem erro. Duas telas, dois acoplamentos diferentes, ambos silenciosos — ver o ponto frágil 1 do [contrato do módulo](./00-modulo.md).
+### Fiscal de sala é uma MARCAÇÃO da função (desde 2026-10-08)
 
-> 🔴 **E é assim que o banco está HOJE (medido em 03/08):** a função cadastrada é **"Fiscal"**, sem "de sala", então o seletor de fiscal de `/gerenciar-salas-distribuidas` está **vazio em todas as provas** — 456 alocações como Fiscal, 0 fiscais atribuídos em 58 salas. Ficou anotado sem correção por decisão do usuário; números e as duas saídas em [`../../../backlog.md`](../../../backlog.md).
+`funcoes_colaboradores.fiscal_de_sala` (boolean, `NOT NULL DEFAULT false`) diz quem pode ocupar os postos **Fiscal 1/2** de `salas_prova_distribuidas`. Marca-se no diálogo de `/funcoes-colaboradores` (checkbox "Fiscal de sala", com selo na listagem). **Não é travada nas funções do sistema**: o `check_system_funcao_changes` protege só nome, exclusão e `cargo_editavel`. A "Fiscal" de referência (`d62fe957-…`) nasce marcada pela migration `20261009004823_fiscal_de_sala_marcado_na_funcao`, que **falha** se não achar a linha.
+
+🔵 **Antes era o NOME:** `useFiscaisSala` filtrava `includes("fiscal") && includes("sala")` no JS. A função se chama só "Fiscal", então o seletor ficou **vazio em todas as provas** desde pelo menos 03/08: 812 alocações como Fiscal, **0 fiscais atribuídos em 100 salas** (medido em 08/10). Era o "o NOME mente" do §8 do CLAUDE.md.
+
+**O banco recusa** (trigger `check_fiscais_de_sala`, `AFTER … FOR EACH STATEMENT`, em INSERT e UPDATE):
+
+| SQLSTATE | Recusa | Mensagem nomeia |
+|---|---|---|
+| `FS001` | alocação cuja função **não está marcada** | a pessoa e a função; manda marcar ou trocar a alocação |
+| `FS002` | a mesma alocação como fiscal em **duas salas da prova**, ou nos **dois postos da mesma sala** | a sala e a unidade em que ela já está |
+| `FS003` | alocação de **outra prova** | a pessoa |
+
+- **Só o posto que MUDOU é conferido.** Editar a capacidade de uma sala não reprova um fiscal atribuído antes de a função ser desmarcada. **Desmarcar uma função em uso é permitido** e não desaloja ninguém.
+- ⚠️ **AFTER, nunca BEFORE ROW:** `salvar_salas_distribuidas` grava o lote num único UPDATE, e um `BEFORE … FOR EACH ROW` recusaria a **troca** de fiscais entre duas salas (veria o outro ainda no lugar antigo). Falsificado: a versão BEFORE ROW reprova o caso 5 da bateria. (`AFTER ROW` também passaria; o "por comando" é pelas transition tables.)
+- **Concorrência:** a conferência trava (`FOR UPDATE`) a linha da alocação, e duas gravações simultâneas da mesma pessoa se serializam. **Não está provado por bateria** (exige duas sessões).
+- ⚠️ **Não exige a MESMA UNIDADE.** A sala de uma unidade aceita fiscal alocado em outra unidade da mesma prova, porque o seletor lista a prova inteira. Isso **não mudou**; fechar exigiria decidir se é permitido.
+
+**Na tela:** `useFiscaisSala` filtra pela marcação **no servidor** (`!inner` + `.eq("funcoes_colaboradores.fiscal_de_sala", true)`), e devolve `salas_ocupadas` da **prova inteira**. `fiscalDisponivel` (`src/lib/salas.ts`) usa isso para não oferecer quem já é fiscal em outra unidade. Antes, a deduplicação só via as salas da unidade aberta. Para as salas da unidade aberta vale a edição na tela, mesmo não salva.
+
+🧪 [`docs/bateria-fiscal-de-sala.sql`](../../../docs/bateria-fiscal-de-sala.sql) — 7 casos: controle positivo, FS001 no UPDATE e no INSERT, FS002 entre duas unidades e na mesma sala, a troca pela RPC de salvamento (controle positivo, falsificado), FS003, e a edição de sala com fiscal "legado".
 
 ### ✅ Excluir uma função em uso é recusado PELO BANCO (desde 2026-07-26)
 

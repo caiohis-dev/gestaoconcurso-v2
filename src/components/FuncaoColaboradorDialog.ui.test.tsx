@@ -21,6 +21,7 @@ describe("FuncaoColaboradorDialog (interação)", () => {
     cargo_cbo: "2410-05",
     cargo_descricao: "Acompanha a aplicação na sala.",
     cargo_editavel: true,
+    fiscal_de_sala: false,
     created_at: null,
     updated_at: null,
     created_by: null,
@@ -55,7 +56,7 @@ describe("FuncaoColaboradorDialog (interação)", () => {
       expect(campoNome()).toBeEnabled();
     });
 
-    it("submete os três campos", async () => {
+    it("submete os campos, com fiscal de sala desmarcado por padrão", async () => {
       const user = userEvent.setup();
       abrir();
       await user.type(campoNome(), "Apoio Logístico");
@@ -68,7 +69,24 @@ describe("FuncaoColaboradorDialog (interação)", () => {
           cargo_nome: "Apoio Logístico",
           cargo_cbo: "4110-10",
           cargo_descricao: "Apoia a montagem.",
+          fiscal_de_sala: false,
         }),
+      );
+    });
+
+    it("marcar 'Fiscal de sala' vai no submit", async () => {
+      // A marcação é o que põe a função nos seletores Fiscal 1/2 — e o banco recusa
+      // fiscal de função não marcada (FS001, 20261009004823).
+      const user = userEvent.setup();
+      abrir();
+      await user.type(campoNome(), "Fiscal Volante");
+      await user.click(screen.getByRole("checkbox", { name: "Fiscal de sala" }));
+      await user.click(screen.getByRole("button", { name: "Cadastrar" }));
+
+      await waitFor(() =>
+        expect(onSubmit).toHaveBeenCalledWith(
+          expect.objectContaining({ cargo_nome: "Fiscal Volante", fiscal_de_sala: true }),
+        ),
       );
     });
 
@@ -98,6 +116,12 @@ describe("FuncaoColaboradorDialog (interação)", () => {
       expect(screen.getByRole("button", { name: "Salvar" })).toBeInTheDocument();
       expect(campoNome()).toHaveValue("Fiscal de Sala");
       expect(screen.getByLabelText("CBO")).toHaveValue("2410-05");
+      expect(screen.getByRole("checkbox", { name: "Fiscal de sala" })).not.toBeChecked();
+    });
+
+    it("preenche a marcação de fiscal de sala que veio do banco", () => {
+      abrir({ funcao: { ...FUNCAO, fiscal_de_sala: true } });
+      expect(screen.getByRole("checkbox", { name: "Fiscal de sala" })).toBeChecked();
     });
 
     it("campos nulos no banco viram string vazia, não 'null' na tela", async () => {
@@ -157,6 +181,24 @@ describe("FuncaoColaboradorDialog (interação)", () => {
             cargo_nome: "Coordenador Geral",
             cargo_descricao: "Coordena a unidade.",
           }),
+        ),
+      );
+    });
+
+    it("a marcação de fiscal de sala NÃO é travada na função do sistema", async () => {
+      // A "Fiscal" de referência é função do sistema e nasce marcada; desmarcar (ou marcar
+      // outra do sistema) é decisão de operação — o trigger de sistema protege só o nome.
+      const user = userEvent.setup();
+      abrir({ funcao: { ...SISTEMA, cargo_nome: "Fiscal", fiscal_de_sala: true } });
+
+      const marcacao = screen.getByRole("checkbox", { name: "Fiscal de sala" });
+      expect(marcacao).toBeEnabled();
+      await user.click(marcacao);
+      await user.click(screen.getByRole("button", { name: "Salvar" }));
+
+      await waitFor(() =>
+        expect(onSubmit).toHaveBeenCalledWith(
+          expect.objectContaining({ cargo_nome: "Fiscal", fiscal_de_sala: false }),
         ),
       );
     });

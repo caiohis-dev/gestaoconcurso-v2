@@ -5,6 +5,7 @@ import {
   numerosDoLote,
   resumoDoLote,
   SALAS_POR_ANDAR,
+  fiscalDisponivel,
 } from "@/lib/salas";
 
 /**
@@ -186,5 +187,39 @@ describe("numeroDigitado", () => {
   it("número normal passa", () => {
     expect(numeroDigitado("45")).toBe(45);
     expect(numeroDigitado("0")).toBe(0);
+  });
+});
+
+describe("fiscalDisponivel", () => {
+  const sala = (id: string, f1: string | null = null, f2: string | null = null) => ({
+    id,
+    sala_fiscal_1: f1,
+    sala_fiscal_2: f2,
+  });
+
+  it("⭐ CONTROLE POSITIVO: livre na prova inteira, é oferecido", () => {
+    expect(fiscalDisponivel("cp-1", "s1", "fiscal_1", [sala("s1"), sala("s2")], [])).toBe(true);
+  });
+
+  it("não é oferecido no outro posto da MESMA sala", () => {
+    expect(fiscalDisponivel("cp-1", "s1", "fiscal_2", [sala("s1", "cp-1")], ["s1"])).toBe(false);
+  });
+
+  it("não é oferecido se já está em outra sala DESTA unidade, mesmo sem salvar", () => {
+    expect(fiscalDisponivel("cp-1", "s1", "fiscal_1", [sala("s1"), sala("s2", null, "cp-1")], [])).toBe(false);
+  });
+
+  it("🔴 não é oferecido se já é fiscal numa sala de OUTRA unidade da prova", () => {
+    // `s-outra` não está na tela: só o servidor sabe dela. Era o furo até 2026-10-08.
+    expect(fiscalDisponivel("cp-1", "s1", "fiscal_1", [sala("s1"), sala("s2")], ["s-outra"])).toBe(false);
+  });
+
+  it("vale a TELA para as salas desta unidade: tirado de uma sala sem salvar, volta a ser oferecido", () => {
+    // O servidor ainda diz que cp-1 está em s2, mas a edição na tela já o tirou de lá.
+    expect(fiscalDisponivel("cp-1", "s1", "fiscal_1", [sala("s1"), sala("s2")], ["s2"])).toBe(true);
+  });
+
+  it("é oferecido de novo na sala em que já está (o valor atual não some do seletor)", () => {
+    expect(fiscalDisponivel("cp-1", "s1", "fiscal_1", [sala("s1", "cp-1")], ["s1"])).toBe(true);
   });
 });

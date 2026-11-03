@@ -352,6 +352,7 @@ describe("useFiscaisSala", () => {
     resetSupabaseMock();
     setTableResult("prova_unidades", { data: [], error: null });
     setTableResult("colaboradores_prova", { data: [], error: null });
+    setTableResult("salas_prova_distribuidas", { data: [], error: null });
   });
 
   const alocado = (id: string, nome: string, cargo: string) => ({
@@ -359,7 +360,7 @@ describe("useFiscaisSala", () => {
     colaborador_id: `colab-${id}`,
     funcao_id: `f-${id}`,
     colaboradores: { colab_nome_completo: nome },
-    funcoes_colaboradores: { cargo_nome: cargo },
+    funcoes_colaboradores: { cargo_nome: cargo, fiscal_de_sala: true },
   });
 
   it("não busca alocação quando a prova não tem unidade", async () => {
@@ -375,7 +376,7 @@ describe("useFiscaisSala", () => {
   it("busca os alocados das unidades da prova", async () => {
     setTableResult("prova_unidades", { data: [{ id: "pu-1" }, { id: "pu-2" }], error: null });
     setTableResult("colaboradores_prova", {
-      data: [alocado("cp-1", "Maria", "Fiscal de Sala")],
+      data: [alocado("cp-1", "Maria", "Fiscal")],
       error: null,
     });
 
@@ -389,36 +390,54 @@ describe("useFiscaisSala", () => {
     expect(result.current.data?.[0]).toEqual({
       colaborador_prova_id: "cp-1",
       colaborador_nome: "Maria",
+      salas_ocupadas: [],
     });
   });
 
-  it("⚠️ ATENÇÃO: o fiscal é identificado pelo NOME da função, por substring", async () => {
-    // O filtro é `nome.includes("fiscal") && nome.includes("sala")`, em minúsculas e
-    // feito em JS — não há id nem flag no banco marcando "esta função é fiscal de
-    // sala". Consequências que este teste fixa:
-    //
-    //   * variações de grafia passam ("FISCAL DE SALA", "fiscal volante de sala");
-    //   * uma função legítima com outro nome NÃO passa ("Aplicador", "Fiscal de
-    //     Corredor") — e some da lista em silêncio;
-    //   * renomear a função no cadastro quebra a tela sem erro nenhum.
-    //
-    // É a mesma fragilidade dos UUIDs de coordenação em useCoordenadoresProva: papel
-    // identificado por dado editável. Ao mexer em funções, lembre-se deste acoplamento.
+  it("filtra pela MARCAÇÃO da função, no servidor — o nome da função não decide nada", async () => {
+    // 🔵 Até 2026-10-08 este teste FIXAVA o defeito: o filtro era
+    // `nome.includes("fiscal") && nome.includes("sala")`, no JS, e a função cadastrada
+    // chama-se só "Fiscal" — o seletor ficou vazio em todas as provas. Hoje quem decide é
+    // `funcoes_colaboradores.fiscal_de_sala` (20261009004823), pedido ao PostgREST; o
+    // que voltar, entra — inclusive uma função chamada só "Fiscal".
     setTableResult("prova_unidades", { data: [{ id: "pu-1" }], error: null });
     setTableResult("colaboradores_prova", {
-      data: [
-        alocado("cp-1", "Maria", "FISCAL DE SALA"),
-        alocado("cp-2", "João", "fiscal volante de sala"),
-        alocado("cp-3", "Ana", "Fiscal de Corredor"),
-        alocado("cp-4", "Bruno", "Coordenador de Unidade"),
-      ],
+      data: [alocado("cp-1", "Maria", "Fiscal"), alocado("cp-2", "João", "Aplicador")],
       error: null,
     });
 
     const { result } = renderHookWithProviders(() => useFiscaisSala(PROVA));
     await waitFor(() => expect(result.current.data).toBeTruthy());
 
+    expect(chamadasDe("colaboradores_prova", "eq")).toContainEqual([
+      "funcoes_colaboradores.fiscal_de_sala",
+      true,
+    ]);
     expect(result.current.data?.map((f) => f.colaborador_nome)).toEqual(["Maria", "João"]);
+  });
+
+  it("diz em que salas DA PROVA INTEIRA cada alocação já é fiscal", async () => {
+    // A tela só carrega as salas da unidade aberta; sem isto, quem é fiscal em outra
+    // unidade aparecia livre (o banco recusaria com FS002).
+    setTableResult("prova_unidades", { data: [{ id: "pu-1" }], error: null });
+    setTableResult("colaboradores_prova", {
+      data: [alocado("cp-1", "Maria", "Fiscal"), alocado("cp-2", "João", "Fiscal")],
+      error: null,
+    });
+    setTableResult("salas_prova_distribuidas", {
+      data: [
+        { id: "s-a", sala_fiscal_1: "cp-1", sala_fiscal_2: null },
+        { id: "s-b", sala_fiscal_1: null, sala_fiscal_2: null },
+      ],
+      error: null,
+    });
+
+    const { result } = renderHookWithProviders(() => useFiscaisSala(PROVA));
+    await waitFor(() => expect(result.current.data).toHaveLength(2));
+
+    expect(chamadasDe("salas_prova_distribuidas", "eq")[0]).toEqual(["prova_id", PROVA]);
+    expect(result.current.data?.find((f) => f.colaborador_prova_id === "cp-1")?.salas_ocupadas).toEqual(["s-a"]);
+    expect(result.current.data?.find((f) => f.colaborador_prova_id === "cp-2")?.salas_ocupadas).toEqual([]);
   });
 
   it("usa 'Sem nome' quando o join não trouxe o colaborador", async () => {
@@ -443,8 +462,8 @@ describe("avisoFiscalDeSala", () => {
   });
 
   it("usa plural quando há mais de uma sala", () => {
-    // O banco NÃO impede a mesma pessoa de ser fiscal de duas salas — só a UI de
-    // distribuição evita. Confiar nessa UI aqui repetiria o erro que este aviso corrige.
+    // Defesa: o banco recusa a duplicidade desde 20261009004823 (FS002), mas só no posto
+    // que muda — uma duplicidade gravada antes dele não seria desfeita.
     const aviso = avisoFiscalDeSala("Maria", [201, 305]);
     expect(aviso).toContain("das salas 201, 305");
     expect(aviso).toContain("dessas salas");

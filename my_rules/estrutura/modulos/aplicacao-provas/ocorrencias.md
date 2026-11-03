@@ -59,6 +59,37 @@ por uma ocorrência congelada não pode ser excluída do catálogo, e a coluna s
 quando a alocação original de fato não tinha função — sem ambiguidade a resolver na
 reversão (ver bateria abaixo, caso 8).
 
+🔵 **Desde 2026-10-08 o posto de FISCAL DE SALA também volta** (migration
+`20261008222929_fiscal_de_sala_volta_com_a_ocorrencia_excluida`). `sala_fiscal_1/2` de
+`salas_prova_distribuidas` apontam para `colaboradores_prova(id)` com **ON DELETE SET
+NULL**: a saída esvazia o posto, e a reinstalação cria uma linha **nova, com outro id**,
+que nada religava às salas. O colaborador voltava para a lista, mas não para a sala.
+Agora `registrar_ocorrencia_colaborador` grava, **antes do DELETE**, em
+`salas_fiscal_1_congeladas`/`salas_fiscal_2_congeladas` (`uuid[]`, sem FK), as salas em que
+a pessoa era fiscal, e `excluir_ocorrencia_colaborador` as devolve à alocação nova.
+
+- 🔴 **Só volta posto VAGO.** Quem assumiu o posto no meio-tempo não é desalojado: foi
+  decisão de alguém, não resto da remoção. Sala apagada depois também não volta.
+- **Isso não passa calado:** o RPC passou a retornar `jsonb`
+  `{"postos_fiscal_nao_devolvidos": n}` (era `boolean`), e com `n > 0` o toast de
+  `useOcorrencias` vira "Ocorrência excluída — confira a sala".
+- Na reversão de substituição, **o substituto sai antes da devolução**. Se ele tiver
+  assumido o posto, o SET NULL dele o libera, e o posto volta ao original.
+- Prova ou unidade **finalizada**: a devolução é UPDATE em `salas_prova_distribuidas` e
+  esbarra no `check_sala_de_prova_finalizada` (PF001, "Reabra a prova…"), desfazendo a
+  exclusão inteira. É simétrico ao registro, cujo SET NULL já esbarra no mesmo trigger.
+- Ocorrências **anteriores** a 08/10 têm os arrays vazios, e não há backfill possível: o
+  SET NULL já apagou de onde ler. Medido no dia: **0 de 100 salas** tinham fiscal
+  atribuído, porque o seletor de fiscal estava vazio desde 03/08. A correção entrou
+  **latente**; o seletor voltou no mesmo dia (`fiscal_de_sala`, ver
+  [`alocacao-e-funcoes.md`](./alocacao-e-funcoes.md)).
+- 🔵 **Desde 20261009004823 a devolução passa pelo trigger de fiscal de sala.** Se ele
+  recusar (FS001/FS002/FS003 — por exemplo, a função foi desmarcada no meio-tempo), a
+  exclusão **segue**: o colaborador volta à lista e o posto conta como não devolvido.
+  PF001 (prova finalizada) continua desfazendo a exclusão inteira.
+- ⚠️ **A substituição NÃO passa o posto ao substituto.** O substituto entra sem sala, e
+  isso não mudou. Herdar o posto é decisão de operação, não está implementado.
+
 O CHECK `chk_ocorrencia_falta_substituicao_mutuamente_exclusivas` garante que
 `substituido = 1` e `falta = true` nunca coexistem na mesma linha.
 
@@ -70,7 +101,10 @@ Os dois RPCs novos levam `REVOKE ALL ... FROM PUBLIC` explícito, e qualquer RPC
 `SECURITY DEFINER` neste repo precisa do mesmo — ver
 [`../../transversais/auth-e-permissoes.md`](../../transversais/auth-e-permissoes.md).
 
-🧪 `docs/bateria-falta-e-substituicao-ocorrencia.sql` — 12 casos: os dois controles
+🧪 `docs/bateria-falta-e-substituicao-ocorrencia.sql` — 16 casos (13 a 16 desde 08/10: posto
+de fiscal devolvido, posto ocupado no meio-tempo não sobrescrito e contado, posto assumido
+pelo substituto devolvido ao original — o 13 foi falsificado contra o RPC sem devolução —, e
+função desmarcada no meio-tempo: exclusão segue, posto contado). Os 12 originais: os dois controles
 positivos (falta e reversão), dois negativos de autorização (unidade errada; titular do
 vínculo de coordenação), a substituição como regressão (criar e reverter, com o
 congelamento provado pelo caso 6), o CHECK de exclusividade, a RESTRICT da função

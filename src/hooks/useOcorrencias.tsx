@@ -18,6 +18,9 @@ export interface Ocorrencia {
   falta: boolean;
   funcao_id_congelada: string | null;
   valor_pagamento_congelado: number | null;
+  /** Salas em que era fiscal 1/2 ao sair — devolvidas se a ocorrência for excluída. */
+  salas_fiscal_1_congeladas: string[];
+  salas_fiscal_2_congeladas: string[];
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -150,14 +153,28 @@ export function useOcorrencias(provaId: string, provaUnidadeIds?: string[]) {
 
   // Reverte, dentro da mesma transação, o efeito que a ocorrência teve sobre
   // `colaboradores_prova` (substituição ou falta) antes de excluí-la — ver
-  // `excluir_ocorrencia_colaborador`.
+  // `excluir_ocorrencia_colaborador`. Os postos de fiscal de sala também voltam, mas só
+  // os que ainda estão vagos: o RPC devolve quantos não voltaram, e isso não pode
+  // passar calado (migration 20261008222929).
   const remove = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.rpc("excluir_ocorrencia_colaborador", { p_ocorrencia_id: id });
+      const { data, error } = await supabase.rpc("excluir_ocorrencia_colaborador", { p_ocorrencia_id: id });
       if (error) throw error;
+      const retorno = data as { postos_fiscal_nao_devolvidos?: number } | null;
+      return { postosFiscalNaoDevolvidos: retorno?.postos_fiscal_nao_devolvidos ?? 0 };
     },
-    onSuccess: () => {
+    onSuccess: ({ postosFiscalNaoDevolvidos }) => {
       invalidate();
+      if (postosFiscalNaoDevolvidos > 0) {
+        toast({
+          title: "Ocorrência excluída — confira a sala",
+          description:
+            postosFiscalNaoDevolvidos === 1
+              ? "O colaborador voltou à lista, mas 1 posto de fiscal de sala que ele ocupava não pôde ser devolvido: já foi preenchido por outra pessoa ou a sala não existe mais. Ajuste em Salas Distribuídas, se for o caso."
+              : `O colaborador voltou à lista, mas ${postosFiscalNaoDevolvidos} postos de fiscal de sala que ele ocupava não puderam ser devolvidos: já foram preenchidos por outra pessoa ou as salas não existem mais. Ajuste em Salas Distribuídas, se for o caso.`,
+        });
+        return;
+      }
       toast({ title: "Ocorrência excluída", description: "A ocorrência foi excluída com sucesso." });
     },
     onError: (error: Error) => {

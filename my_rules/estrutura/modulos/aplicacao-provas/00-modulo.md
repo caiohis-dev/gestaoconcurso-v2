@@ -130,7 +130,7 @@ Todas `SECURITY DEFINER`, chamadas via `supabase.rpc(...)`:
 | `finalizar_prova`, `finalizar_prova_unidade` | ciclo de vida | |
 | `reabrir_prova`, `reabrir_prova_unidade` | ciclo de vida | só superadmin **ou** quem finalizou |
 | `encerrar_ocorrencias_unidade` | `OcorrenciasProva` | **sem RPC simétrica de reabertura** — ver `ocorrencias.md` |
-| `registrar_ocorrencia_colaborador`, `excluir_ocorrencia_colaborador` | `useOcorrencias` (`OcorrenciasProva`) | 🔵 **23/09** — substituição e falta (novo terceiro estado) numa transação só; autorização POR UNIDADE, não por prova — ver `ocorrencias.md` |
+| `registrar_ocorrencia_colaborador`, `excluir_ocorrencia_colaborador` | `useOcorrencias` (`OcorrenciasProva`) | 🔵 **23/09** — substituição e falta (novo terceiro estado) numa transação só; autorização POR UNIDADE, não por prova. 🔵 **08/10:** a exclusão devolve também o posto de fiscal de sala (só se vago) e retorna `jsonb` com quantos não voltaram — ver `ocorrencias.md` |
 | `acquire_prova_unidade_lock`, `update_prova_unidade_lock_activity`, `release_prova_unidade_lock` | `useProvaUnidadeLock` | 🔵 **16/09** — por UNIDADE, e funcionando pela primeira vez; **parâmetro único `p_prova_unidade_id`**, identidade por `auth.uid()`; tipadas, sem cast (ver abaixo) |
 | `get_coordenador_colaboradores` | `useColaboradores` | recorte do coordenador |
 | `get_coordenador_prova_unidade_ids` | `useCoordenadorUnidades` | idem |
@@ -187,11 +187,9 @@ Fora do módulo, em `src/components/`: `Layout`, `NavLink`, `PasswordConfirmDial
 
 1. **Papel identificado por dado editável — em dois lugares, de dois jeitos.** É a mesma fragilidade com duas caras, e as duas falham **em silêncio**:
    - **Por UUID:** `useCoordenadoresProva.tsx` traz `FUNCOES_COORDENACAO` hardcoded. Recriar essas linhas de `funcoes_colaboradores` quebra a elegibilidade de coordenador. Detalhe em [`alocacao-e-funcoes.md`](./alocacao-e-funcoes.md).
-   - **Por NOME, via substring:** `useFiscaisSala` (em `useSalasDistribuidas.tsx`) decide quem é fiscal de sala com `nome.includes("fiscal") && nome.includes("sala")`, em minúsculas e no JS. Não há id nem flag no banco marcando isso. Logo: "Fiscal de Corredor" **não** entra, "fiscal volante de sala" entra, e **renomear a função no cadastro esvazia a lista sem erro nenhum**. Fixado por teste em `useSalasDistribuidas.test.tsx`.
+   - 🔵 **~~Por NOME, via substring~~ — FECHADO em 2026-10-08.** `useFiscaisSala` decidia quem é fiscal de sala com `nome.includes("fiscal") && nome.includes("sala")`; a função cadastrada chama-se só "Fiscal", e o seletor ficou vazio em todas as provas desde pelo menos 03/08 (812 alocações como Fiscal, 0 fiscais atribuídos em 100 salas, medido em 08/10). Hoje é a coluna **`funcoes_colaboradores.fiscal_de_sala`**, marcada no cadastro de funções, e o **banco recusa** fiscal inválido (trigger `check_fiscais_de_sala`, FS001/FS002/FS003). Ver [`alocacao-e-funcoes.md`](./alocacao-e-funcoes.md).
 
-     > 🔴 **Isto DEIXOU DE SER hipótese — está acontecendo (medido em 2026-08-03).** A única função de fiscal cadastrada chama-se **"Fiscal"**, sem "de sala": das 15 funções com alocação, **nenhuma** casa com as duas palavras, e os seletores "Fiscal 1/2" de `/gerenciar-salas-distribuidas` mostram só "Nenhum" — com **456 pessoas alocadas como Fiscal** e **0 fiscais atribuídos** nas 58 salas. Não corrigir foi **decisão do usuário em 03/08**; o item, os números e as duas saídas possíveis estão em [`../../../backlog.md`](../../../backlog.md).
-
-   Ao mexer no cadastro de funções, lembre-se de que **duas telas dependem do conteúdo daquelas linhas**, não só da existência delas.
+   Ao mexer no cadastro de funções, lembre-se de que **a elegibilidade de coordenador depende do UUID daquelas linhas**, não só da existência delas. (Eram duas telas; a de fiscal deixou de depender do conteúdo em 08/10.)
 2. **Template vs. snapshot de sala** — confundir `sala_prova` com `salas_prova_distribuidas` é o erro mais fácil deste módulo. Ver [`provas-e-unidades.md`](./provas-e-unidades.md).
 3. **`valor_pagamento` é congelado na alocação**, não lido ao vivo de `valores_funcao_prova`. Mudar o valor da função não corrige alocações existentes.
 4. **Encerrar ocorrências de uma unidade é irreversível pelo app** — nada devolve `ocorrencias_encerradas` a `FALSE`, nem o `reabrir_prova_unidade`. Ver [`ocorrencias.md`](./ocorrencias.md).

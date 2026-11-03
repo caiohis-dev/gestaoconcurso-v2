@@ -15,7 +15,7 @@ import { ArrowLeft, Save, Loader2, Building2, Plus, Lock, AlertTriangle } from "
 import { useToast } from "@/hooks/use-toast";
 import { formatDateBRWithFallback } from "@/lib/utils";
 import { SalaExtraDialog } from "@/components/SalaExtraDialog";
-import { numeroDigitado, mensagemCamposObrigatorios } from "@/lib/salas";
+import { numeroDigitado, mensagemCamposObrigatorios, fiscalDisponivel } from "@/lib/salas";
 
 /**
  * 🔴 Os três campos numéricos podem ficar `null` AQUI, e não no banco: `null` significa
@@ -103,23 +103,16 @@ export default function GerenciarSalasDistribuidas() {
     return selected;
   }, [editableSalas]);
 
-  // Check if a fiscal is available for a specific sala and field
-  const isFiscalAvailable = (fiscalId: string, salaId: string, field: "fiscal_1" | "fiscal_2") => {
-    // If this fiscal is already selected in this sala's other field, it's not available
-    const sala = editableSalas.find((s) => s.id === salaId);
-    if (!sala) return true;
-
-    if (field === "fiscal_1" && sala.sala_fiscal_2 === fiscalId) return false;
-    if (field === "fiscal_2" && sala.sala_fiscal_1 === fiscalId) return false;
-
-    // If this fiscal is selected in another sala, it's not available
-    for (const s of editableSalas) {
-      if (s.id === salaId) continue;
-      if (s.sala_fiscal_1 === fiscalId || s.sala_fiscal_2 === fiscalId) return false;
-    }
-
-    return true;
-  };
+  // Se o fiscal pode ser oferecido neste posto — considera a edição não salva desta
+  // unidade e, do servidor, as salas das OUTRAS unidades da prova. Ver `fiscalDisponivel`.
+  const isFiscalAvailable = (fiscalId: string, salaId: string, field: "fiscal_1" | "fiscal_2") =>
+    fiscalDisponivel(
+      fiscalId,
+      salaId,
+      field,
+      editableSalas,
+      fiscais?.find((f) => f.colaborador_prova_id === fiscalId)?.salas_ocupadas,
+    );
 
   if (authLoading) {
     return (

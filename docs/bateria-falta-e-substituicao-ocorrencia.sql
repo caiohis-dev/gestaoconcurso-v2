@@ -1,6 +1,10 @@
 -- Bateria: falta em Nova Ocorrência remove o colaborador da lista de trabalhadores da
 -- prova — e a substituição, unificada no mesmo RPC, ganha transação.
 -- Migration coberta: 20260923232343_falta_remove_colaborador_da_prova.sql
+-- e 20261008222929_fiscal_de_sala_volta_com_a_ocorrencia_excluida.sql (casos 13 a 15:
+-- o posto de fiscal de sala volta com a exclusão da ocorrência)
+-- e 20261009004823_fiscal_de_sala_marcado_na_funcao.sql (caso 16: a recusa do trigger de
+-- fiscal não desfaz a exclusão). A regra de fiscal em si: docs/bateria-fiscal-de-sala.sql.
 --   · coluna `ocorrencias_colaborador.falta` + CHECK de exclusividade com `substituido`
 --   · colunas `funcao_id_congelada` (RESTRICT) / `valor_pagamento_congelado`
 --   · RPC `registrar_ocorrencia_colaborador(...)`
@@ -754,6 +758,254 @@ BEGIN
         v_estado, v_ainda_removido, v_oc_ainda_existe, v_msg;
     END IF;
   END;
+END $$;
+ROLLBACK;
+
+\echo ''
+\echo '╔════════════════════════════════════════════════════════════════════════╗'
+\echo '║ 13. 🟢 CONTROLE POSITIVO — excluir a FALTA devolve o posto de fiscal   ║'
+\echo '╚════════════════════════════════════════════════════════════════════════╝'
+\echo '-- 20261008222929: o SET NULL de sala_fiscal_1/2 esvaziava o posto na saída, e a'
+\echo '-- reinstalação (linha NOVA, outro id) não o religava. Usa Fiscal 2 — o 15 usa Fiscal 1.'
+\echo '-- (Uma pessoa só é fiscal de UMA sala desde 20261009004823, então as duas colunas'
+\echo '-- se exercitam em casos separados.)'
+
+BEGIN;
+DO $$
+DECLARE
+  v_pu uuid; v_prova uuid; v_unidade uuid; v_admin uuid; v_funcao uuid;
+  v_colab uuid; v_cp uuid; v_sala uuid; v_cp_novo uuid;
+  v_oc public.ocorrencias_colaborador; v_ret jsonb;
+  v_f2_saida uuid; v_f2_volta uuid;
+BEGIN
+  SELECT pu.id, pu.prova_id, pu.unidade_id INTO v_pu, v_prova, v_unidade
+    FROM public.prova_unidades pu JOIN public.provas p ON p.id = pu.prova_id
+   WHERE NOT coalesce(p.prova_finalizada, false) AND NOT coalesce(pu.unidade_finalizada, false)
+   LIMIT 1;
+  SELECT user_id INTO v_admin FROM public.user_roles WHERE role = 'admin' LIMIT 1;
+  IF v_pu IS NULL OR v_admin IS NULL THEN
+    RAISE NOTICE 'CASO %: PULADO — sem unidade não finalizada ou sem admin', 13; RETURN;
+  END IF;
+  -- Função MARCADA como fiscal de sala: desde 20261009004823 o banco recusa (FS001)
+  -- fiscal de função não marcada.
+  INSERT INTO public.funcoes_colaboradores (cargo_nome, fiscal_de_sala, created_by)
+  VALUES ('BATERIA TESTE — Fiscal 13', true, v_admin) RETURNING id INTO v_funcao;
+
+  INSERT INTO public.colaboradores (colab_nome_completo, colab_cpf, colab_data_nascimento)
+  VALUES ('BATERIA TESTE FISCAL 13', '99999900131', '1990-01-01') RETURNING id INTO v_colab;
+  INSERT INTO public.colaboradores_prova (prova_unidade_id, colaborador_id, funcao_id, created_by)
+  VALUES (v_pu, v_colab, v_funcao, v_admin) RETURNING id INTO v_cp;
+  INSERT INTO public.salas_prova_distribuidas (prova_id, sala_fk_unidade, sala_numero, sala_capacidade, sala_fiscal_2)
+  VALUES (v_prova, v_unidade, 9131, 30, v_cp) RETURNING id INTO v_sala;
+
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+
+  v_oc := public.registrar_ocorrencia_colaborador(
+    p_prova_unidade_id := v_pu, p_colaborador_id := v_colab,
+    p_tipo_ocorrencia := 'Falta', p_data_ocorrencia := now(),
+    p_descricao := 'Bateria caso 13', p_efeito := 'falta'
+  );
+  SELECT sala_fiscal_2 INTO v_f2_saida FROM public.salas_prova_distribuidas WHERE id = v_sala;
+
+  v_ret := public.excluir_ocorrencia_colaborador(v_oc.id);
+
+  SELECT id INTO v_cp_novo FROM public.colaboradores_prova WHERE prova_unidade_id = v_pu AND colaborador_id = v_colab;
+  SELECT sala_fiscal_2 INTO v_f2_volta FROM public.salas_prova_distribuidas WHERE id = v_sala;
+
+  IF v_oc.salas_fiscal_2_congeladas = ARRAY[v_sala] AND cardinality(v_oc.salas_fiscal_1_congeladas) = 0
+     AND v_f2_saida IS NULL
+     AND v_cp_novo IS NOT NULL AND v_cp_novo <> v_cp
+     AND v_f2_volta = v_cp_novo
+     AND (v_ret->>'postos_fiscal_nao_devolvidos')::int = 0
+  THEN
+    RAISE NOTICE 'CASO 13: OK — congelou a sala, esvaziou na saída, devolveu à alocação NOVA, 0 não devolvidos';
+  ELSE
+    RAISE NOTICE 'CASO 13: FALHOU — cong1=% cong2=% saida=% novo=% volta=% ret=%',
+      v_oc.salas_fiscal_1_congeladas, v_oc.salas_fiscal_2_congeladas, v_f2_saida,
+      v_cp_novo, v_f2_volta, v_ret;
+  END IF;
+END $$;
+ROLLBACK;
+
+\echo ''
+\echo '╔════════════════════════════════════════════════════════════════════════╗'
+\echo '║ 14. 🔴 Posto OCUPADO no meio-tempo NÃO é sobrescrito — e é contado     ║'
+\echo '╚════════════════════════════════════════════════════════════════════════╝'
+
+BEGIN;
+DO $$
+DECLARE
+  v_pu uuid; v_prova uuid; v_unidade uuid; v_admin uuid; v_funcao uuid;
+  v_colab uuid; v_outro uuid; v_cp uuid; v_cp_outro uuid; v_sala uuid; v_cp_novo uuid;
+  v_oc public.ocorrencias_colaborador; v_ret jsonb; v_f1 uuid;
+BEGIN
+  SELECT pu.id, pu.prova_id, pu.unidade_id INTO v_pu, v_prova, v_unidade
+    FROM public.prova_unidades pu JOIN public.provas p ON p.id = pu.prova_id
+   WHERE NOT coalesce(p.prova_finalizada, false) AND NOT coalesce(pu.unidade_finalizada, false)
+   LIMIT 1;
+  SELECT user_id INTO v_admin FROM public.user_roles WHERE role = 'admin' LIMIT 1;
+  IF v_pu IS NULL OR v_admin IS NULL THEN
+    RAISE NOTICE 'CASO %: PULADO — sem unidade não finalizada ou sem admin', 14; RETURN;
+  END IF;
+  -- Função MARCADA como fiscal de sala: desde 20261009004823 o banco recusa (FS001)
+  -- fiscal de função não marcada.
+  INSERT INTO public.funcoes_colaboradores (cargo_nome, fiscal_de_sala, created_by)
+  VALUES ('BATERIA TESTE — Fiscal 14', true, v_admin) RETURNING id INTO v_funcao;
+
+  INSERT INTO public.colaboradores (colab_nome_completo, colab_cpf, colab_data_nascimento)
+  VALUES ('BATERIA TESTE FISCAL 14', '99999900141', '1990-01-01') RETURNING id INTO v_colab;
+  INSERT INTO public.colaboradores (colab_nome_completo, colab_cpf, colab_data_nascimento)
+  VALUES ('BATERIA TESTE OUTRO 14', '99999900142', '1990-01-01') RETURNING id INTO v_outro;
+  INSERT INTO public.colaboradores_prova (prova_unidade_id, colaborador_id, funcao_id, created_by)
+  VALUES (v_pu, v_colab, v_funcao, v_admin) RETURNING id INTO v_cp;
+  INSERT INTO public.colaboradores_prova (prova_unidade_id, colaborador_id, funcao_id, created_by)
+  VALUES (v_pu, v_outro, v_funcao, v_admin) RETURNING id INTO v_cp_outro;
+  INSERT INTO public.salas_prova_distribuidas (prova_id, sala_fk_unidade, sala_numero, sala_capacidade, sala_fiscal_1)
+  VALUES (v_prova, v_unidade, 9141, 30, v_cp) RETURNING id INTO v_sala;
+
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+
+  v_oc := public.registrar_ocorrencia_colaborador(
+    p_prova_unidade_id := v_pu, p_colaborador_id := v_colab,
+    p_tipo_ocorrencia := 'Falta', p_data_ocorrencia := now(),
+    p_descricao := 'Bateria caso 14', p_efeito := 'falta'
+  );
+  -- Alguém assume o posto vago enquanto a falta está registrada.
+  UPDATE public.salas_prova_distribuidas SET sala_fiscal_1 = v_cp_outro WHERE id = v_sala;
+
+  v_ret := public.excluir_ocorrencia_colaborador(v_oc.id);
+
+  SELECT id INTO v_cp_novo FROM public.colaboradores_prova WHERE prova_unidade_id = v_pu AND colaborador_id = v_colab;
+  SELECT sala_fiscal_1 INTO v_f1 FROM public.salas_prova_distribuidas WHERE id = v_sala;
+
+  IF v_f1 = v_cp_outro AND v_cp_novo IS NOT NULL
+     AND (v_ret->>'postos_fiscal_nao_devolvidos')::int = 1
+  THEN
+    RAISE NOTICE 'CASO 14: OK — quem assumiu ficou, o colaborador voltou à lista, e o retorno conta 1 posto não devolvido';
+  ELSE
+    RAISE NOTICE 'CASO 14: FALHOU — fiscal=% (esperado o outro %) reinstalado=% ret=%', v_f1, v_cp_outro, v_cp_novo, v_ret;
+  END IF;
+END $$;
+ROLLBACK;
+
+\echo ''
+\echo '╔════════════════════════════════════════════════════════════════════════╗'
+\echo '║ 15. 🟢 SUBSTITUIÇÃO revertida — o posto que o substituto assumiu volta ║'
+\echo '╚════════════════════════════════════════════════════════════════════════╝'
+\echo '-- O substituto sai ANTES da devolução: o SET NULL dele libera o posto, e ele volta'
+\echo '-- ao original. Na ordem inversa, o posto estaria ocupado e não voltaria.'
+
+BEGIN;
+DO $$
+DECLARE
+  v_pu uuid; v_prova uuid; v_unidade uuid; v_admin uuid; v_funcao uuid;
+  v_colab uuid; v_subst uuid; v_cp uuid; v_cp_subst uuid; v_sala uuid; v_cp_novo uuid;
+  v_oc public.ocorrencias_colaborador; v_ret jsonb; v_f1 uuid; v_subst_alocado boolean;
+BEGIN
+  SELECT pu.id, pu.prova_id, pu.unidade_id INTO v_pu, v_prova, v_unidade
+    FROM public.prova_unidades pu JOIN public.provas p ON p.id = pu.prova_id
+   WHERE NOT coalesce(p.prova_finalizada, false) AND NOT coalesce(pu.unidade_finalizada, false)
+   LIMIT 1;
+  SELECT user_id INTO v_admin FROM public.user_roles WHERE role = 'admin' LIMIT 1;
+  IF v_pu IS NULL OR v_admin IS NULL THEN
+    RAISE NOTICE 'CASO %: PULADO — sem unidade não finalizada ou sem admin', 15; RETURN;
+  END IF;
+  -- Função MARCADA como fiscal de sala: desde 20261009004823 o banco recusa (FS001)
+  -- fiscal de função não marcada.
+  INSERT INTO public.funcoes_colaboradores (cargo_nome, fiscal_de_sala, created_by)
+  VALUES ('BATERIA TESTE — Fiscal 15', true, v_admin) RETURNING id INTO v_funcao;
+
+  INSERT INTO public.colaboradores (colab_nome_completo, colab_cpf, colab_data_nascimento)
+  VALUES ('BATERIA TESTE FISCAL 15', '99999900151', '1990-01-01') RETURNING id INTO v_colab;
+  INSERT INTO public.colaboradores (colab_nome_completo, colab_cpf, colab_data_nascimento)
+  VALUES ('BATERIA TESTE SUBST 15', '99999900152', '1990-01-01') RETURNING id INTO v_subst;
+  INSERT INTO public.colaboradores_prova (prova_unidade_id, colaborador_id, funcao_id, created_by)
+  VALUES (v_pu, v_colab, v_funcao, v_admin) RETURNING id INTO v_cp;
+  INSERT INTO public.salas_prova_distribuidas (prova_id, sala_fk_unidade, sala_numero, sala_capacidade, sala_fiscal_1)
+  VALUES (v_prova, v_unidade, 9151, 30, v_cp) RETURNING id INTO v_sala;
+
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+
+  v_oc := public.registrar_ocorrencia_colaborador(
+    p_prova_unidade_id := v_pu, p_colaborador_id := v_colab,
+    p_tipo_ocorrencia := 'Substituição', p_data_ocorrencia := now(),
+    p_descricao := 'Bateria caso 15', p_efeito := 'substituicao', p_substituto_id := v_subst
+  );
+  -- O substituto (que herdou a função marcada) assume o posto deixado pelo original.
+  SELECT id INTO v_cp_subst FROM public.colaboradores_prova WHERE prova_unidade_id = v_pu AND colaborador_id = v_subst;
+  UPDATE public.salas_prova_distribuidas SET sala_fiscal_1 = v_cp_subst WHERE id = v_sala;
+
+  v_ret := public.excluir_ocorrencia_colaborador(v_oc.id);
+
+  SELECT id INTO v_cp_novo FROM public.colaboradores_prova WHERE prova_unidade_id = v_pu AND colaborador_id = v_colab;
+  SELECT sala_fiscal_1 INTO v_f1 FROM public.salas_prova_distribuidas WHERE id = v_sala;
+  SELECT EXISTS (SELECT 1 FROM public.colaboradores_prova WHERE prova_unidade_id = v_pu AND colaborador_id = v_subst)
+    INTO v_subst_alocado;
+
+  IF v_oc.salas_fiscal_1_congeladas = ARRAY[v_sala]
+     AND v_f1 = v_cp_novo AND NOT v_subst_alocado AND (v_ret->>'postos_fiscal_nao_devolvidos')::int = 0 THEN
+    RAISE NOTICE 'CASO 15: OK — substituto saiu, o posto voltou ao original, 0 não devolvidos';
+  ELSE
+    RAISE NOTICE 'CASO 15: FALHOU — fiscal=% (esperado %) subst_alocado=% ret=%', v_f1, v_cp_novo, v_subst_alocado, v_ret;
+  END IF;
+END $$;
+ROLLBACK;
+
+\echo ''
+\echo '╔════════════════════════════════════════════════════════════════════════╗'
+\echo '║ 16. 🔴 Função DESMARCADA no meio-tempo — a exclusão segue, o posto não ║'
+\echo '╚════════════════════════════════════════════════════════════════════════╝'
+\echo '-- 20261009004823: a devolução passa pelo trigger de fiscal de sala. A recusa dele (FS001)'
+\echo '-- não pode desfazer a exclusão inteira: o colaborador volta, o posto conta como não devolvido.'
+
+BEGIN;
+DO $$
+DECLARE
+  v_pu uuid; v_prova uuid; v_unidade uuid; v_admin uuid; v_funcao uuid;
+  v_colab uuid; v_cp uuid; v_sala uuid; v_cp_novo uuid;
+  v_oc public.ocorrencias_colaborador; v_ret jsonb; v_f1 uuid; v_oc_existe boolean;
+BEGIN
+  SELECT pu.id, pu.prova_id, pu.unidade_id INTO v_pu, v_prova, v_unidade
+    FROM public.prova_unidades pu JOIN public.provas p ON p.id = pu.prova_id
+   WHERE NOT coalesce(p.prova_finalizada, false) AND NOT coalesce(pu.unidade_finalizada, false)
+   LIMIT 1;
+  SELECT user_id INTO v_admin FROM public.user_roles WHERE role = 'admin' LIMIT 1;
+  IF v_pu IS NULL OR v_admin IS NULL THEN
+    RAISE NOTICE 'CASO %: PULADO — sem unidade não finalizada ou sem admin', 16; RETURN;
+  END IF;
+  -- Função MARCADA como fiscal de sala: desde 20261009004823 o banco recusa (FS001)
+  -- fiscal de função não marcada.
+  INSERT INTO public.funcoes_colaboradores (cargo_nome, fiscal_de_sala, created_by)
+  VALUES ('BATERIA TESTE — Fiscal 16', true, v_admin) RETURNING id INTO v_funcao;
+
+  INSERT INTO public.colaboradores (colab_nome_completo, colab_cpf, colab_data_nascimento)
+  VALUES ('BATERIA TESTE FISCAL 16', '99999900161', '1990-01-01') RETURNING id INTO v_colab;
+  INSERT INTO public.colaboradores_prova (prova_unidade_id, colaborador_id, funcao_id, created_by)
+  VALUES (v_pu, v_colab, v_funcao, v_admin) RETURNING id INTO v_cp;
+  INSERT INTO public.salas_prova_distribuidas (prova_id, sala_fk_unidade, sala_numero, sala_capacidade, sala_fiscal_1)
+  VALUES (v_prova, v_unidade, 9161, 30, v_cp) RETURNING id INTO v_sala;
+
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+
+  v_oc := public.registrar_ocorrencia_colaborador(
+    p_prova_unidade_id := v_pu, p_colaborador_id := v_colab,
+    p_tipo_ocorrencia := 'Falta', p_data_ocorrencia := now(),
+    p_descricao := 'Bateria caso 16', p_efeito := 'falta'
+  );
+  UPDATE public.funcoes_colaboradores SET fiscal_de_sala = false WHERE id = v_funcao;
+
+  v_ret := public.excluir_ocorrencia_colaborador(v_oc.id);
+
+  SELECT id INTO v_cp_novo FROM public.colaboradores_prova WHERE prova_unidade_id = v_pu AND colaborador_id = v_colab;
+  SELECT sala_fiscal_1 INTO v_f1 FROM public.salas_prova_distribuidas WHERE id = v_sala;
+  SELECT EXISTS (SELECT 1 FROM public.ocorrencias_colaborador WHERE id = v_oc.id) INTO v_oc_existe;
+
+  IF v_cp_novo IS NOT NULL AND v_f1 IS NULL AND NOT v_oc_existe
+     AND (v_ret->>'postos_fiscal_nao_devolvidos')::int = 1 THEN
+    RAISE NOTICE 'CASO 16: OK — reinstalado, ocorrência apagada, posto vago e contado como não devolvido';
+  ELSE
+    RAISE NOTICE 'CASO 16: FALHOU — reinstalado=% fiscal=% oc_existe=% ret=%', v_cp_novo, v_f1, v_oc_existe, v_ret;
+  END IF;
 END $$;
 ROLLBACK;
 

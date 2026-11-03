@@ -156,14 +156,14 @@ sg docker -c 'npx supabase db reset'    # aplica migrations + os 3 seeds
 **Não há CI.** Nada roda a suíte sozinho; cada tema fechado depende de alguém lembrar. É o item de maior alavancagem do backlog, adiado por decisão do usuário.
 
 ```bash
-npm test                                  # 2112 testes em 107 arquivos
+npm test                                  # 2123 testes em 107 arquivos
 npx tsc --noEmit -p tsconfig.app.json     # tem de sair limpo
 npm run build
-npm run lint                              # baseline 110 (54 erros, 56 avisos)
+npm run lint                              # baseline 108 (52 erros, 56 avisos)
 npm run docs:conferir                     # docs × código/banco — tem de sair sem divergência
 ```
 
-**O lint tem 110 problemas pré-existentes** (110 desde 2026-09-24, quando a `create-admin` virou
+**O lint tem 108 problemas pré-existentes** (108 desde 2026-10-08, quando **caíram 2 erros de `any`** junto com o filtro por nome do `useFiscaisSala`, que virou a marcação `fiscal_de_sala` — medido contra o HEAD; eram 110 desde 2026-09-24, quando a `create-admin` virou
 `conceder-papel-sistema`: **caíram 2 erros de `any`** do teste antigo e **1 aviso** de
 `react-refresh` do `createUserSchema` que a página exportava — medido arquivo a arquivo contra o
 HEAD. ⚠️ O split antes era **56 erros + 57 avisos**, e a atribuição de 113 abaixo é a daquela

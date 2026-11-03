@@ -1249,6 +1249,7 @@ export type Database = {
           cargo_nome: string
           created_at: string | null
           created_by: string | null
+          fiscal_de_sala: boolean
           id: string
           updated_at: string | null
         }
@@ -1259,6 +1260,7 @@ export type Database = {
           cargo_nome: string
           created_at?: string | null
           created_by?: string | null
+          fiscal_de_sala?: boolean
           id?: string
           updated_at?: string | null
         }
@@ -1269,6 +1271,7 @@ export type Database = {
           cargo_nome?: string
           created_at?: string | null
           created_by?: string | null
+          fiscal_de_sala?: boolean
           id?: string
           updated_at?: string | null
         }
@@ -1448,6 +1451,8 @@ export type Database = {
           id: string
           prova_id: string
           prova_unidade_id: string
+          salas_fiscal_1_congeladas: string[]
+          salas_fiscal_2_congeladas: string[]
           substituido: number
           substituto_id: string | null
           tipo_ocorrencia: string | null
@@ -1465,6 +1470,8 @@ export type Database = {
           id?: string
           prova_id: string
           prova_unidade_id: string
+          salas_fiscal_1_congeladas?: string[]
+          salas_fiscal_2_congeladas?: string[]
           substituido?: number
           substituto_id?: string | null
           tipo_ocorrencia?: string | null
@@ -1482,6 +1489,8 @@ export type Database = {
           id?: string
           prova_id?: string
           prova_unidade_id?: string
+          salas_fiscal_1_congeladas?: string[]
+          salas_fiscal_2_congeladas?: string[]
           substituido?: number
           substituto_id?: string | null
           tipo_ocorrencia?: string | null
@@ -2588,7 +2597,7 @@ export type Database = {
       }
       excluir_ocorrencia_colaborador: {
         Args: { p_ocorrencia_id: string }
-        Returns: boolean
+        Returns: Json
       }
       finalizar_prova: { Args: { p_prova_id: string }; Returns: boolean }
       finalizar_prova_unidade: {

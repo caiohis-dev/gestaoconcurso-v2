@@ -69,7 +69,7 @@ export default function FuncoesColaboradores() {
     setDeleteDialogOpen(true);
   };
 
-  const handleSubmit = (data: { cargo_nome: string; cargo_cbo?: string; cargo_descricao?: string }) => {
+  const handleSubmit = (data: { cargo_nome: string; cargo_cbo?: string; cargo_descricao?: string; fiscal_de_sala: boolean }) => {
     if (editingFuncao) {
       update(
         { id: editingFuncao.id, ...data },
@@ -145,6 +145,11 @@ export default function FuncoesColaboradores() {
                           {isSistema && (
                             <span className="ml-2 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
                               Sistema
+                            </span>
+                          )}
+                          {funcao.fiscal_de_sala && (
+                            <span className="ml-2 text-xs text-primary bg-primary/10 px-1.5 py-0.5 rounded">
+                              Fiscal de sala
                             </span>
                           )}
                         </TableCell>

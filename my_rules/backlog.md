@@ -733,48 +733,6 @@ Não foi corrigido junto com a extração porque **corrigir muda o documento emi
 
 ---
 
-## 🔴 O seletor de fiscal de sala está VAZIO — 456 pessoas alocadas, nenhuma atribuível
-
-**Status:** medido em 2026-08-03, ao ler `/gerenciar-salas-distribuidas`. **Não corrigido por decisão do usuário no mesmo dia** — anotado aqui, sem prazo.
-**Área:** Aplicação de Provas
-
-Os dois seletores "Fiscal 1" e "Fiscal 2" de `/gerenciar-salas-distribuidas/:provaId/:unidadeId` oferecem **apenas "Nenhum"**, em todas as provas do banco. Não é falta de gente: é o critério que escolhe quem aparece.
-
-`useFiscaisSala` (em `src/hooks/useSalasDistribuidas.tsx`) decide quem é fiscal **por substring do nome da função**, no JS:
-
-```ts
-funcao.includes("fiscal") && funcao.includes("sala")
-```
-
-**MEDIDO no banco local recém-resetado (03/08) — as alocações por função:**
-
-| função cadastrada | alocações | entra no seletor? |
-|---|---|---|
-| **Fiscal** | **456** | ❌ |
-| Equipe de Apoio | 28 | ❌ |
-| Auxiliar de Coordenação | 14 | ❌ |
-| Ledor/ Marcador | 13 | ❌ |
-| Coordenador Geral | 10 | ❌ |
-| outras 10 funções | 21 | ❌ |
-| **total** | **554** | **0 entram** |
-
-A única função de fiscal cadastrada chama-se **"Fiscal"**, sem "de sala" — e nenhuma das 15 casa com a exigência das **duas** palavras. Consequência conferida no dado: **0 fiscais atribuídos** nas 58 salas distribuídas.
-
-🔴 **Não é bug novo: é um risco que a doc já previa, acontecido.** [`estrutura/modulos/aplicacao-provas/00-modulo.md`](./estrutura/modulos/aplicacao-provas/00-modulo.md) (ponto frágil 1) e [`alocacao-e-funcoes.md`](./estrutura/modulos/aplicacao-provas/alocacao-e-funcoes.md) já avisavam que *"renomear a função no cadastro esvazia aquela lista sem erro nenhum"*. É o padrão **"o NOME mente"** do §8 do CLAUDE.md — não existe id nem flag marcando "esta função é fiscal de sala"; existe um palpite sobre o texto.
-
-**As duas saídas, e por que elas não são equivalentes:**
-
-- **Afrouxar a heurística** (exigir só `includes("fiscal")`) devolve a lista hoje e custa uma linha — mas mantém a adivinhação de pé, e passa a incluir qualquer coisa que tenha "fiscal" no nome ("Fiscal de Corredor", se existir).
-- **Marcar a função explicitamente** no cadastro de `funcoes_colaboradores` (flag/coluna) tira a decisão do texto. É a correção que fecha o padrão, e é maior: mexe no CRUD de funções, na migration e no ponto frágil que a doc descreve.
-
-⚠️ **Medir antes de escolher:** conferir se alguma prova real já teve fiscal atribuído (hoje são **0** — então não há histórico a preservar) e se o cadastro de funções deve distinguir "fiscal de sala" de outros fiscais. É essa resposta que decide entre as duas saídas.
-
-**Achado irmão, do mesmo dia e da mesma tela — menor, mas do mesmo tipo:** a deduplicação de fiscal só olha as salas da **unidade aberta** (`isFiscalAvailable` varre `editableSalas`), enquanto a lista de candidatos vem da **prova inteira**. Duas unidades abertas em sequência aceitam a mesma pessoa como fiscal nas duas, e o banco não impede — o comentário de `avisoFiscalDeSala` já assume isso ao usar plural. Enquanto o seletor estiver vazio, é inalcançável; quando ele voltar, volta junto.
-
-⚠️ **Se este item for fechado, os avisos de `00-modulo.md` e `alocacao-e-funcoes.md` saem no mesmo passe** — aviso envelhecido é pior que aviso nenhum.
-
----
-
 ## Temas de infraestrutura — futuro distante
 
 **Status:** anotados, sem desenho e sem ordem definida. Nenhum tem dono nem medição ainda.

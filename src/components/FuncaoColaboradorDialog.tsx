@@ -12,6 +12,7 @@ import {
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -19,6 +20,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import type { FuncaoColaborador } from "@/hooks/useFuncoesColaboradores";
@@ -27,6 +29,7 @@ export const formSchema = z.object({
   cargo_nome: z.string().min(1, "Nome é obrigatório").max(35, "Máximo 35 caracteres"),
   cargo_cbo: z.string().max(7, "Máximo 7 caracteres").optional(),
   cargo_descricao: z.string().max(1000, "Máximo 1000 caracteres").optional(),
+  fiscal_de_sala: z.boolean().default(false),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -57,6 +60,7 @@ export default function FuncaoColaboradorDialog({
       cargo_nome: "",
       cargo_cbo: "",
       cargo_descricao: "",
+      fiscal_de_sala: false,
     },
   });
 
@@ -66,12 +70,14 @@ export default function FuncaoColaboradorDialog({
         cargo_nome: funcao.cargo_nome,
         cargo_cbo: funcao.cargo_cbo || "",
         cargo_descricao: funcao.cargo_descricao || "",
+        fiscal_de_sala: funcao.fiscal_de_sala ?? false,
       });
     } else {
       form.reset({
         cargo_nome: "",
         cargo_cbo: "",
         cargo_descricao: "",
+        fiscal_de_sala: false,
       });
     }
   }, [funcao, form]);
@@ -157,6 +163,28 @@ export default function FuncaoColaboradorDialog({
                     />
                   </FormControl>
                   <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Não fica travado nas funções do sistema: o trigger de função de sistema só
+                protege nome e exclusão, e marcar quem é fiscal de sala é decisão de
+                operação (a "Fiscal" de referência nasce marcada — 20261009004823). */}
+            <FormField
+              control={form.control}
+              name="fiscal_de_sala"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-start gap-3 space-y-0 rounded-md border p-3">
+                  <FormControl>
+                    <Checkbox checked={field.value} onCheckedChange={(v) => field.onChange(v === true)} />
+                  </FormControl>
+                  <div className="space-y-1 leading-none">
+                    <FormLabel>Fiscal de sala</FormLabel>
+                    <FormDescription>
+                      Quem estiver alocado nesta função aparece nos seletores Fiscal 1 e Fiscal 2 das salas
+                      distribuídas. Desmarcar não retira ninguém de sala já atribuída.
+                    </FormDescription>
+                  </div>
                 </FormItem>
               )}
             />
