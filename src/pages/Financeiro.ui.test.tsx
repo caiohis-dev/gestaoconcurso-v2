@@ -154,6 +154,31 @@ describe("Financeiro — tela (Fase 3)", () => {
 
     expect(screen.getByRole("button", { name: /CJXXIII/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /CIEP/ })).toBeInTheDocument();
+    // Controle positivo do aviso de centavos: valores inteiros não o disparam.
+    expect(screen.queryByText(/os centavos serão ignorados/)).not.toBeInTheDocument();
+  });
+
+  it("🔴 célula NUMÉRICA com centavos: paga reais inteiros e avisa quem teve centavos ignorados", async () => {
+    // Células de NÚMERO de verdade, não texto — é o caso que pagava 10× (2000.75 → 20075).
+    const matrizNumerica = [MATRIZ[0], [...MATRIZ[1]], [...MATRIZ[2]]];
+    matrizNumerica[1][2] = 1500 as unknown as string;
+    matrizNumerica[2][2] = 2000.75 as unknown as string;
+    const user = userEvent.setup();
+    await irParaValidacao(user, matrizNumerica);
+
+    const aviso = screen.getByText(/1 valor\(es\) com centavos — os centavos serão ignorados/).closest('[role="alert"]');
+    expect(aviso).not.toBeNull();
+    const linhaBeltrano = within(aviso as HTMLElement).getByText("Beltrano da Silva").closest("tr") as HTMLElement;
+    expect(linhaBeltrano).toHaveTextContent(/2\.000,75/);
+    expect(linhaBeltrano).toHaveTextContent(/2\.000,00/);
+    // Fulano veio inteiro (1500) — não entra no aviso.
+    expect(within(aviso as HTMLElement).queryByText("Fulano de Tal")).not.toBeInTheDocument();
+
+    // O arquivo gerado leva o valor truncado.
+    await user.click(screen.getByRole("button", { name: /CIEP/ }));
+    const [workbook] = escreverXlsx.mock.calls[0];
+    const linhas = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
+    expect(linhas[1]).toEqual(["Beltrano da Silva", "Fiscal", "CPF", "52998224726", 2000]);
   });
 
   it("chave PIX tipo CPF divergente do favorecido aparece no aviso de conferência", async () => {

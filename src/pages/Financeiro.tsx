@@ -498,6 +498,7 @@ function ValidacaoEtapa(props: {
   const valorTotal = pagamentos.reduce((soma, p) => soma + (Number.isFinite(p.valorPagamento) ? p.valorPagamento : 0), 0);
   const inferidas = pagamentos.reduce((n, p) => (p.chaveInferida ? n + 1 : n), 0);
   const ambiguas = pagamentos.reduce((n, p) => (p.chaveAmbigua ? n + 1 : n), 0);
+  const comCentavos = pagamentos.filter((p) => p.valorComCentavos !== undefined);
   // Conversor garante edital único quando não há erro; basta ler do primeiro registro.
   const editalUnico = pagamentos[0]?.edital ?? "";
 
@@ -531,6 +532,8 @@ function ValidacaoEtapa(props: {
             arquivos={grupos.length}
           />
         )}
+
+        {!erro && comCentavos.length > 0 && <AvisoCentavos pagamentos={comCentavos} />}
 
         {!erro && pagamentos.length > 0 && (
           <TabelaPagamentos pagamentos={pagamentos} inferidas={inferidas} ambiguas={ambiguas} onExportar={props.onExportar} />
@@ -652,6 +655,47 @@ function TabelaPagamentos(props: {
                   </div>
                 </TableCell>
                 <TableCell className="font-mono">{p.chavePix || "—"}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+/** Pagamento é sempre em reais inteiros: lista as linhas cujos centavos foram descartados. */
+function AvisoCentavos({ pagamentos }: { pagamentos: PagamentoPix[] }) {
+  return (
+    <div
+      className="space-y-3 rounded-lg border border-amber-500/20 bg-amber-500/10 p-4 text-amber-700 dark:text-amber-400"
+      role="alert"
+    >
+      <div className="flex items-start gap-2">
+        <Info className="mt-0.5 h-5 w-5 flex-shrink-0" />
+        <div>
+          <p className="font-medium">{pagamentos.length} valor(es) com centavos — os centavos serão ignorados</p>
+          <p className="text-sm">
+            Os pagamentos são feitos em reais inteiros. Estas linhas da planilha trazem centavos, que foram descartados:
+            o arquivo será gerado com o valor da coluna "Valor pago".
+          </p>
+        </div>
+      </div>
+      <div className="overflow-auto rounded-md border bg-background">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Nome</TableHead>
+              <TableHead className="text-right">Valor na planilha</TableHead>
+              <TableHead className="text-right">Valor pago</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {pagamentos.map((p, i) => (
+              <TableRow key={`${p.cpfFornecedor}-${i}`}>
+                <TableCell>{p.nomeFornecedor}</TableCell>
+                <TableCell className="text-right">{brl.format(p.valorComCentavos ?? p.valorPagamento)}</TableCell>
+                <TableCell className="text-right">{brl.format(p.valorPagamento)}</TableCell>
               </TableRow>
             ))}
           </TableBody>

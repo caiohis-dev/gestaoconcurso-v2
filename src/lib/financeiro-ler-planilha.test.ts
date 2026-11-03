@@ -29,9 +29,11 @@ describe('lerPlanilha', () => {
       ['Zeca', 150.5],
     ])
     const matriz = await lerPlanilha(file)
+    // ⚠️ Até 2026-11-03 este caso afirmava '150.5' como correto — e era esse texto que o
+    // parser de valor (ponto = milhar) lia como 1505. Célula numérica sai em formato brasileiro.
     expect(matriz).toEqual([
       ['Nome', 'Valor'],
-      ['Zeca', '150.5'],
+      ['Zeca', '150,5'],
     ])
   })
 

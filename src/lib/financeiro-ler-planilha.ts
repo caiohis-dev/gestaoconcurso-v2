@@ -23,9 +23,14 @@ const temExtensaoDePlanilha = (nome: string): boolean => {
  * em texto, preservando a fidelidade numérica (ex.: valores e CPFs numéricos não
  * passam por formatação de exibição). Datas seriais não são usadas por este
  * sistema — a data de pagamento é escolhida na interface.
+ *
+ * 🔴 Célula NUMÉRICA sai com vírgula decimal (`1500.5` → `"1500,5"`), no mesmo formato
+ * brasileiro de uma célula de texto. Sem isso o parser de valor — que trata ponto como
+ * separador de milhar — lia `"1500.5"` como 15005 (v3.6.0 a v3.8.2).
  */
 const celulaParaTexto = (valor: unknown): string => {
   if (valor === null || valor === undefined) return ''
+  if (typeof valor === 'number') return String(valor).replace('.', ',')
   return String(valor).trim()
 }
 
@@ -47,7 +52,8 @@ export const lerPlanilha = async (file: File): Promise<Matriz> => {
   }
 
   const worksheet = workbook.Sheets[primeiraAba]
-  // header: 1 -> array de arrays; raw: true -> mantém números como números;
+  // header: 1 -> array de arrays; raw: true -> mantém números como números (o
+  // celulaParaTexto os converte para o formato brasileiro);
   // defval: '' -> células vazias viram string vazia (mantém o alinhamento das colunas).
   const linhas = XLSX.utils.sheet_to_json<unknown[]>(worksheet, {
     header: 1,

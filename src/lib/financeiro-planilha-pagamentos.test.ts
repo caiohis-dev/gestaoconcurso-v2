@@ -35,10 +35,15 @@ function matriz(linhas: Linha[]): Matriz {
 const LINHA_VALIDA: Linha = {
   'Nome Completo': 'Zeca Silva',
   CPF: '11144477735',
-  'Valor Líquido': '150,50',
+  'Valor Líquido': '150',
   Edital: 'Edital 002/2026',
   'Sigla Unidade': 'SEDE',
   Função: 'Fiscal',
+}
+
+/** Converte uma linha só, com o valor dado, e devolve o pagamento. */
+function comValor(valor: string) {
+  return converterPlanilhaParaPagamentoPix(matriz([{ ...LINHA_VALIDA, 'Valor Líquido': valor }]), '24092026')[0]
 }
 
 describe('converterPlanilhaParaPagamentoPix', () => {
@@ -47,20 +52,34 @@ describe('converterPlanilhaParaPagamentoPix', () => {
     const pagamentos = converterPlanilhaParaPagamentoPix(m, '24092026')
     expect(pagamentos).toHaveLength(1)
     expect(pagamentos[0].nomeFornecedor).toBe('Zeca Silva')
-    expect(pagamentos[0].valorPagamento).toBe(150.5)
+    expect(pagamentos[0].valorPagamento).toBe(150)
+    expect(pagamentos[0].valorComCentavos).toBeUndefined()
     expect(pagamentos[0].dataPagamento).toBe('24092026')
   })
 
-  it('🔴 valor com separador de milhar em ponto ("1.234,56") não perde a casa decimal', () => {
-    const m = matriz([{ ...LINHA_VALIDA, 'Valor Líquido': '1.234,56' }])
-    const pagamentos = converterPlanilhaParaPagamentoPix(m, '24092026')
-    expect(pagamentos[0].valorPagamento).toBe(1234.56)
+  // Regra (decisão do usuário, 2026-11-03): pagamento é em reais inteiros. Centavos são
+  // DESCARTADOS — truncados, nunca arredondados — e a linha guarda o valor lido para o aviso.
+  // ⚠️ Até essa data, '1.234,56' afirmava 1234.56 como correto.
+  it('🔴 centavos são descartados e o valor lido fica em valorComCentavos', () => {
+    const p = comValor('1.234,56')
+    expect(p.valorPagamento).toBe(1234)
+    expect(p.valorComCentavos).toBe(1234.56)
   })
 
-  it('valor com dois separadores de milhar ("10.000,00")', () => {
-    const m = matriz([{ ...LINHA_VALIDA, 'Valor Líquido': '10.000,00' }])
-    const pagamentos = converterPlanilhaParaPagamentoPix(m, '24092026')
-    expect(pagamentos[0].valorPagamento).toBe(10000)
+  it('🔴 trunca, não arredonda: "150,99" paga 150', () => {
+    expect(comValor('150,99').valorPagamento).toBe(150)
+  })
+
+  it('🔴 célula NUMÉRICA com centavos (chega do lerPlanilha como "1500,5") paga 1500, não 15005', () => {
+    const p = comValor('1500,5')
+    expect(p.valorPagamento).toBe(1500)
+    expect(p.valorComCentavos).toBe(1500.5)
+  })
+
+  it('valor inteiro com separadores de milhar ("10.000,00") não é marcado como tendo centavos', () => {
+    const p = comValor('10.000,00')
+    expect(p.valorPagamento).toBe(10000)
+    expect(p.valorComCentavos).toBeUndefined()
   })
 
   it('matriz vazia devolve lista vazia, sem erro', () => {

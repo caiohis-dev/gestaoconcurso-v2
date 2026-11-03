@@ -32,7 +32,10 @@ export interface PagamentoPix {
   siglaUnidade: string // Unidade do recebedor — agrupa a geração em 1 arquivo por unidade
   funcao: string // Função/cargo do recebedor — compõe a "Informação entre Usuários" do Segmento B
   dataPagamento: string // Formato DDMMAAAA (8 caracteres)
-  valorPagamento: number // Valor float (ex: 150.50)
+  valorPagamento: number // Reais inteiros (ex: 150) — centavos da planilha são descartados
+  // Metadado apenas para a UI: o valor lido da planilha quando ele trazia centavos
+  // (que foram descartados em `valorPagamento`). Ausente quando o valor já era inteiro.
+  valorComCentavos?: number
   tipoChavePix: string // '01' (Telefone), '02' (Email), '03' (CPF), '04' (Aleatória)
   chavePix: string
   // Metadado apenas para a UI: true quando o tipo/chave PIX foi inferido

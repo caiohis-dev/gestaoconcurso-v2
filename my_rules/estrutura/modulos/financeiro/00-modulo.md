@@ -148,11 +148,30 @@ writeFile` e `URL.createObjectURL`/`HTMLAnchorElement.click` mockados — armadi
   lint de 111 para 113** (2 avisos de `complexity`, ver CLAUDE.md §5). São ports fiéis da origem —
   refatorar a complexidade agora não é escopo da Fase 2 (traduzir, não redesenhar) e mexeria em
   lógica que decide o TIPO de chave PIX de um pagamento real.
-- 🔵 **Corrigido em 2026-09-24.** O parser de valor era `parseFloat(valorStr.replace(',', '.'))` —
-  só trocava a PRIMEIRA vírgula, então `"1.234,56"` virava `1.234` em vez de `1234.56`. Virou
-  `parseValorMonetario` (remove os pontos de milhar antes de trocar a vírgula pelo decimal), com 2
-  casos novos em `financeiro-planilha-pagamentos.test.ts` (`"1.234,56"` e `"10.000,00"`). Escopo
-  estrito: não trata símbolo de moeda (`"R$"`) nem sinal negativo, que não foram relatados.
+- 🔴 **Pagamento é sempre em REAIS INTEIROS** (decisão do usuário, 2026-11-03). Centavos na
+  planilha são **descartados — truncados, nunca arredondados** (`150,99` paga 150) — em
+  `converterPlanilhaParaPagamentoPix`, que guarda o valor lido em `PagamentoPix.valorComCentavos`
+  (metadado só de UI). A tela lista essas linhas no aviso `AvisoCentavos` ("os centavos serão
+  ignorados"), com o valor da planilha e o valor pago. O `.REM` e a planilha de conferência saem
+  com o valor truncado.
+- 🔴 **O valor chega ao parser SEMPRE em formato brasileiro** (`parseValorMonetario`: ponto é
+  milhar, vírgula é decimal). Por isso `lerPlanilha` converte célula **numérica** para texto com
+  vírgula decimal (`1500.5` → `"1500,5"`). ⚠️ **De 2026-09-24 (v3.6.0) a 2026-11-03 não
+  convertia:** a célula numérica `1500.5` chegava como `"1500.5"`, o parser apagava o ponto e lia
+  **15005** — pagamento 10× maior, sem erro nenhum na tela. Entrou com o conserto do `"1.234,56"`
+  (commit `0c81276`), cujos testes só usavam valor em TEXTO; nenhum envio saiu com valor quebrado
+  (confirmado pelo usuário). Teste de valor neste módulo tem de incluir célula de número de verdade
+  num `.xlsx` (`Financeiro.ui.test.tsx`).
+- ⚠️ **Valor que não se lê vira R$ 0,00 calado** — `"R$ 1.500,00"` dá `NaN`, a tela mostra R$ 0,00
+  e o Segmento A grava zeros. Não tratado: o parser não remove símbolo de moeda nem trata sinal
+  negativo. Mesmo formato de perda silenciosa da avaliação de 2026-11-03, ainda aberta (ver abaixo).
+- ⚠️ **Em aberto (avaliação de 2026-11-03, confirmada no código, não corrigida):**
+  `lerPlanilha` usa `raw: true`, então CPF/chave PIX guardados como NÚMERO perdem o zero à esquerda
+  (`05261923727` → `5261923727`; a chave de 10 dígitos pode virar telefone `+555261923727`). O
+  campo CPF do favorecido se salva (o `formatNumeric` completa com zeros); a chave PIX, não.
+  Trocar para `raw: false` sozinho **quebraria o valor** (o SheetJS formata em en-US: `"1,500.50"`).
+  Também abertos: linhas ignoradas sem dizer quais; chave PIX inválida trocada calada pelo CPF;
+  CPF do favorecido sem validação de DV; `cpfTemDigitosValidos` duplica `src/lib/cpf.ts`.
 - ⚠️ **A Fase 3 não foi verificada em navegador real logado.** O banco local carrega dado e hashes
   de senha de PRODUÇÃO (`desenvolvimento-local.md`) — não há credencial de teste segura para logar
   sozinho como superadmin/financeiro e conferir a tela visualmente. A cobertura de comportamento

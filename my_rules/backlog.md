@@ -263,6 +263,26 @@ migrations desenhadas e nunca ligadas ao frontend).
 
 ---
 
+## 💸 Módulo Financeiro — perdas silenciosas na leitura da planilha
+
+**Status:** ⏳ **não iniciado.** Vem da avaliação de 2026-11-03; cada ponto abaixo foi conferido no
+código. O defeito mais grave dela (célula numérica com centavos lida 10×) **foi corrigido** no mesmo
+dia, junto com a regra de reais inteiros — ver `00-modulo.md`, "Pontos frágeis".
+**Área:** módulo Financeiro — ver [`estrutura/modulos/financeiro/00-modulo.md`](./estrutura/modulos/financeiro/00-modulo.md)
+
+1. **CPF/chave PIX guardados como NÚMERO perdem o zero à esquerda** (`raw: true` em `lerPlanilha`).
+   A chave de 10 dígitos pode virar telefone `+555261923727` sem aviso. 🔴 **Não troque para
+   `raw: false` sozinho:** o SheetJS formata em en-US (`"1,500.50"`) e quebraria o valor. O caminho
+   provável é tratar a célula numérica de CPF/chave no `celulaParaTexto` (ou por coluna), com teste
+   em `.xlsx` real com célula de número.
+2. **Valor ilegível vira R$ 0,00 calado** (`"R$ 1.500,00"` → `NaN` → zeros no Segmento A). Deveria
+   recusar a linha ou nomeá-la.
+3. **Linhas ignoradas sem dizer quais** — a tela mostra só o total.
+4. **Chave PIX preenchida e inválida é trocada calada pelo CPF** do favorecido.
+5. **CPF do favorecido sem validação de DV/tamanho**, e `cpfTemDigitosValidos` duplica `src/lib/cpf.ts`.
+
+---
+
 ## ⏭️ NA FILA (era a próxima até 2026-09-18) — dois tipos de distribuição automática: máxima e homogênea
 
 **Status:** ⏳ **não iniciado, e o desenho NÃO está fechado.** O usuário anunciou o tema em 2026-08-05 e disse que **dará mais detalhes na hora de implementar**. Esta entrada existe só para o tema não se perder — não é especificação.

@@ -228,7 +228,12 @@ export const converterPlanilhaParaPagamentoPix = (
       continue // Ignora linhas inconsistentes
     }
 
-    const valorNumerico = parseValorMonetario(valorStr)
+    // Regra de negócio (decisão do usuário, 2026-11-03): pagamento é sempre em reais
+    // inteiros. Centavos na planilha são DESCARTADOS (truncados, não arredondados) e a
+    // linha guarda o valor lido em `valorComCentavos` para a tela avisar.
+    const valorLido = parseValorMonetario(valorStr)
+    const temCentavos = Number.isFinite(valorLido) && !Number.isInteger(valorLido)
+    const valorNumerico = temCentavos ? Math.trunc(valorLido) : valorLido
 
     // Valor bruto da chave Pix (se não houver coluna própria, assume o CPF do favorecido)
     const chavePixBruta = chavePixOriginal !== '' ? chavePixOriginal : cpfSanitizado
@@ -268,6 +273,7 @@ export const converterPlanilhaParaPagamentoPix = (
       funcao: funcao,
       dataPagamento: dataPagamento,
       valorPagamento: valorNumerico,
+      ...(temCentavos ? { valorComCentavos: valorLido } : {}),
       tipoChavePix: tipoChavePix,
       chavePix: chavePix,
       chaveInferida: tipoChaveOriginal === '',
