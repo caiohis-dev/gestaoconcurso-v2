@@ -68,3 +68,7 @@ docs/temp/
 
 # Anotações de Segurança
 seguranca/
+
+# Scripts de Monitoramento (Teste de Estresse / Benchmarks)
+monitoramento/
+monitoramento/.token.json
