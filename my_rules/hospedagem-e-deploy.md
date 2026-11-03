@@ -6,7 +6,13 @@ Como o gestaoconcurso vai ao ar. Par de [`banco-producao.md`](./banco-producao.m
 >
 > O deploy foi executado em outra sessão; o ferramental vive fora deste repo, em `configura_server_gestaoconcurso`. 🟢 **O secret `SITE_URL` e as redirect URLs — que ficaram como ressalva aqui desde 13/08 — foram CONFIRMADOS em 2026-09-09**, por uma recuperação de senha real: o e-mail chegou com o visual da FEVRE e o link abriu `fevre.online/redefinir-senha`.
 >
-> 🟢 **Deploy mais recente: 2026-09-28, release `v3.8.1`** (commit `3fc06a2`) — a porta do CPF
+> 🟢 **Deploy mais recente: 2026-11-03, release `v3.9.0`** (commit `65d2459`) — fiscal de sala
+> marcado na função e Financeiro em reais inteiros. 2 migrations (`prod:push`) antes do
+> `deploy.sh`, sem Edge Function. Conferido: bundle servido `index-vnDLp_0j.js` igual ao buildado,
+> **0** de `127.0.0.1`, **8** da URL de produção, HTTPS 200, HTTP 301, logo 200. Detalhe em
+> `versionamento.md`.
+>
+> 🔵 *(Anterior.)* **2026-09-28, release `v3.8.1`** (commit `3fc06a2`) — a porta do CPF
 > manda link a quem já tem conta. Sem migration; 2 Edge Functions (`reivindicar-acesso`,
 > `recuperar-senha`) antes do `deploy.sh`. Conferido: bundle servido `index-BVEag_VV.js` igual ao
 > buildado, **0** de `127.0.0.1`, **8** da URL de produção, HTTPS 200, logo 200. Detalhe em

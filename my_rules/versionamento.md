@@ -68,6 +68,21 @@ Versionamento semântico, com prefixo `v`:
 
   ⚠️ **Subiu sem backup novo**, por decisão do usuário; o mais recente era o de 16/09. Fica registrado porque o Free não tem backup automático nenhum.
 
+- **`v3.9.0` nasceu em 2026-11-03**, no commit `65d2459`. MINOR, **banco + site**, sem Edge
+  Function. Entregou o **fiscal de sala marcado na função** (`funcoes_colaboradores.fiscal_de_sala`
+  + trigger FS001/2/3 — o seletor estava vazio desde sempre) com o **posto devolvido ao excluir a
+  ocorrência**, e no Financeiro o **pagamento em reais inteiros** (centavos ignorados, com aviso)
+  junto com o fim da regressão em que célula numérica `1500.5` virava 15005 (desde a v3.6.0; o
+  usuário confirmou que nenhum envio saiu quebrado). Ritual inteiro: `git fetch . dev:main` → tag
+  → push (main + tag) → `link` (usuário) → `prod:push:dry` (as 2 migrations esperadas, nada mais)
+  → `prod:push` (usuário) → dry de novo ("up to date") → `prod:unlink` → `deploy.sh`.
+  **Verificado ao vivo:** bundle servido `index-vnDLp_0j.js` idêntico ao buildado, HTTPS 200,
+  HTTP 301, logo 200, **0** de `127.0.0.1` e 8 do projeto de produção, a frase do aviso de
+  centavos presente; sonda sem login em `fiscal_de_sala` responde **42501** (existe, `anon`
+  barrado) contra **42703** de uma coluna inventada. ⚠️ **Subiu sem backup novo** — o mais
+  recente segue sendo o de 16/09. Nenhuma sala tinha fiscal antes (o seletor não deixava), então
+  a trigger nova não tinha dado antigo a recusar.
+
 - **`v3.8.2` nasceu em 2026-09-28**, no commit `c4abcb3`. PATCH de segurança, **só Edge
   Function** — sem banco, sem site, sem `deploy.sh`. O e-mail digitado entrava cru no `.ilike()`
   e o `_` era curinga: na `recuperar-senha`, `maria_souza@…` casava o cadastro de
