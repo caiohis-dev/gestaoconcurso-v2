@@ -156,22 +156,14 @@ sg docker -c 'npx supabase db reset'    # aplica migrations + os 3 seeds
 **Não há CI.** Nada roda a suíte sozinho; cada tema fechado depende de alguém lembrar. É o item de maior alavancagem do backlog, adiado por decisão do usuário.
 
 ```bash
-npm test                                  # 2123 testes em 107 arquivos
+npm test                                  # 2126 testes em 107 arquivos
 npx tsc --noEmit -p tsconfig.app.json     # tem de sair limpo
 npm run build
 npm run lint                              # baseline 108 (52 erros, 56 avisos)
 npm run docs:conferir                     # docs × código/banco — tem de sair sem divergência
 ```
 
-**O lint tem 108 problemas pré-existentes** (108 desde 2026-10-08, quando **caíram 2 erros de `any`** junto com o filtro por nome do `useFiscaisSala`, que virou a marcação `fiscal_de_sala` — medido contra o HEAD; eram 110 desde 2026-09-24, quando a `create-admin` virou
-`conceder-papel-sistema`: **caíram 2 erros de `any`** do teste antigo e **1 aviso** de
-`react-refresh` do `createUserSchema` que a página exportava — medido arquivo a arquivo contra o
-HEAD. ⚠️ O split antes era **56 erros + 57 avisos**, e a atribuição de 113 abaixo é a daquela
-época. Eram 113 desde 2026-09-23, quando **subiram 2 avisos de
-`complexity`** com o port da lógica do módulo Financeiro — `inferirTipoEFormatarChavePix`
-(financeiro-chave-pix.ts) e `converterPlanilhaParaPagamentoPix` (financeiro-planilha-pagamentos.ts)
-são portes 1:1 do `gera_cnab_pix`, e refatorar a complexidade agora contrariaria a decisão da Fase
-2 do roadmap-modulo-financeiro.yaml (traduzir fielmente, não redesenhar). Eram 111 desde 2026-09-15, quando **caiu 1 erro de `any`** junto com a extração de `montarLinhas` para fora do `useEffect` do `PainelDadosColaboradores`; eram 112 mais cedo no mesmo dia, quando **caiu 1 erro de `any`** junto com a extração de `converterDataExcel` para `src/lib/data-planilha.ts` — o parâmetro virou `unknown`. ⚠️ O **split** estava errado aqui: media-se 113 = **58 erros + 55 avisos** em 2026-09-15 antes desse tema — esta linha dizia "57 erros, 56 avisos", e o total nunca havia mudado. Eram 113 desde 2026-09-12, quando **caíram 2 erros de `any`** junto com o `useColaboradores()` removido; eram 115 mais cedo no mesmo dia, quando **caíram 2 avisos** junto com os campos de e-mail e senha do `CoordenadoresProvaDialog`; eram 117 desde 2026-09-10, quando **caíram 5 erros de `any`** junto com os totalizadores que saíram do `ProvaCard`; eram 122 antes disso, e 120 até 02/08, quando dois saíram junto com código removido; 118 até 04/08, quando o `any` do `handleSubmit` de `UnidadesProva` virou `UnidadeProvaInsert`). Só importa se **subir** — meça o baseline com `git stash` antes de atribuir um número novo ao seu trabalho.
+**O lint tem 108 problemas pré-existentes** (52 erros, 56 avisos — medido em 2026-10-08). Só importa se **subir** — meça o baseline com `git stash` antes de atribuir um número novo ao seu trabalho; a evolução do número está no `git log` deste arquivo.
 
 ### `npm run docs:conferir` — o que ele pega, e o que não pega
 
@@ -205,7 +197,7 @@ Aconteceu: em 02/08 a RPC `trocar_candidatos_do_edital` ganhou um 4º parâmetro
 
 ## 6. Git e produção
 
-- 🔵 **`main` está em `v3.8.2` desde 2026-09-28** (commit `c4abcb3`; a v3.8.1/`3fc06a2` é do mesmo dia; antes, `v3.8.0`/`0e6d411` de 24/09, e da v3.6.0 à v3.8.0 todas são daquele dia), e o congelamento acabou em 09/09. ⚠️ **Esta linha já dizia `v3.3.0`, e ficou parada por duas releases** — v3.4.0 e v3.5.0 subiram sem que ninguém a atualizasse (e antes dela, `v3.2.0`, `v3.1.0`, `v2.1.0`/`f17a56f`, parada por cinco releases: v2.1.1, v2.2.0, v2.3.0, v2.4.0, v2.5.0). É o aviso do §1: *contagem e versão envelhecem mais rápido que o resto* — **confira a tag na hora** (`git tag --sort=-creatordate | head -1`), não acredite neste número. 🟢 **Hoje `main`, `dev` e o schema de produção coincidem** — a v2.1.0 foi a **primeira release feita pelo ritual inteiro no mesmo evento**: merge (fast-forward), tag, `prod:push`, `deploy.sh`, nessa ordem. 🔴 **Banco antes do site, sempre**: o bundle novo chamava uma RPC e uma coluna que produção ainda não tinha, e inverter a ordem quebraria as telas na cara do usuário. Esta linha dizia *"`main` está CONGELADA em `v1.0.0` até a v2 ir ao ar"*. ⚠️ Mas note a ordem real, porque ela contraria o ritual: **o site subiu em 13/08 a partir da `dev`**, com a `main` ainda parada 205 commits atrás; ela só alcançou a `dev` em 09/09, junto com o `prod:push` do keep-alive, e a tag nasceu aí. `git checkout main` segue sendo coisa de dia de subida — e mesmo nele há alternativa melhor (ver [`versionamento.md`](./my_rules/versionamento.md)).
+- ⚠️ **Versão de `main`: confira a tag na hora** (`git tag --sort=-creatordate | head -1`) — esta linha já citou número e ficou parada por várias releases (§1: *versão envelhece mais rápido que o resto*). 🟢 A v2.1.0 foi a **primeira release feita pelo ritual inteiro no mesmo evento**: merge (fast-forward), tag, `prod:push`, `deploy.sh`, nessa ordem. 🔴 **Banco antes do site, sempre**: o bundle novo chamava uma RPC e uma coluna que produção ainda não tinha, e inverter a ordem quebraria as telas na cara do usuário. `git checkout main` é coisa de dia de subida — e mesmo nele há alternativa melhor (ver [`versionamento.md`](./my_rules/versionamento.md)).
 - **`dev` é a branch de integração.** Branches de tema (`feat/*`, `fix/*`, `db/*`) saem de `dev` e voltam para `dev`.
 - 🔴 **Empurrar `dev` é decisão do usuário — NÃO pergunte, NÃO faça sozinho.** `dev` à frente de `origin/dev` por N commits é o estado normal de repouso, não algo a sinalizar. (Empurrar quando pedido explicitamente é normal.)
 - Commit e push só quando pedido.
