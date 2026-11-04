@@ -312,6 +312,31 @@ describe("useAuth", () => {
       expect(supabaseMock.auth.signOut).toHaveBeenCalledWith({ scope: "global" });
     });
 
+    // Saída por INATIVIDADE (ControleInatividade, 2026-11-03): só este navegador — uma aba
+    // esquecida em casa não pode derrubar a pessoa no trabalho — e o motivo vai na URL,
+    // porque o reload duro apaga toast e state.
+    it("🔴 por inatividade: desloga em escopo LOCAL, não em todos os aparelhos", async () => {
+      comSessao(["admin"]);
+      const { result } = await montar();
+
+      await act(async () => {
+        await result.current.signOut({ motivo: "inatividade" });
+      });
+
+      expect(supabaseMock.auth.signOut).toHaveBeenCalledWith({ scope: "local" });
+    });
+
+    it("🔴 por inatividade: recarrega em /auth levando o motivo na URL", async () => {
+      comSessao(["admin"]);
+      const { result } = await montar();
+
+      await act(async () => {
+        await result.current.signOut({ motivo: "inatividade" });
+      });
+
+      expect(window.location.href).toBe("/auth?sessao=inatividade");
+    });
+
     it("força recarga em /auth, a porta única", async () => {
       // O reload duro existe para não deixar estado React fantasma. Efeito colateral
       // herdado: ele destrói qualquer navigate(..., { state }) chamado logo depois.

@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import fevreLogo from "@/assets/fevre-logo.png";
-import { CheckCircle2, X, ArrowLeft } from "lucide-react";
+import { CheckCircle2, X, ArrowLeft, Clock } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import ReivindicarAcessoCard from "@/components/ReivindicarAcessoCard";
 import { z } from "zod";
 
@@ -30,6 +31,9 @@ export default function Auth() {
 
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
+  // Saída por inatividade (ControleInatividade). O motivo vem na URL porque o signOut faz
+  // reload duro, que apaga toast e `navigate(..., { state })`.
+  const saiuPorInatividade = new URLSearchParams(location.search).get("sessao") === "inatividade";
 
   // Show success message if redirected after saving profile
   useEffect(() => {
@@ -134,6 +138,13 @@ export default function Auth() {
             Sistema de Cadastro de Colaboradores
           </p>
         </div>
+
+        {saiuPorInatividade && !showReivindicar && (
+          <Alert className="mb-4">
+            <Clock className="h-4 w-4" />
+            <AlertDescription>Você foi desconectado por inatividade. Entre novamente para continuar.</AlertDescription>
+          </Alert>
+        )}
 
         {!showReivindicar && (
           <Card className="border-none shadow-lg">

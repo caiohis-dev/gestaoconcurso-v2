@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -101,49 +101,10 @@ export default function PerfilColaborador() {
 
   const { bancos } = useBancos();
 
-  const inactivityTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 minutes
-
-  const resetInactivityTimer = useCallback(() => {
-    if (inactivityTimeoutRef.current) {
-      clearTimeout(inactivityTimeoutRef.current);
-    }
-    inactivityTimeoutRef.current = setTimeout(() => {
-      toast({
-        title: 'Sessão expirada',
-        description: 'Você foi desconectado por inatividade.',
-        variant: 'destructive',
-      });
-      // signOut do useAuth já recarrega a página em /auth.
-      signOut();
-    }, INACTIVITY_TIMEOUT);
-  }, [signOut, toast]);
-
-  // Logout por inatividade. As chamadas a register/update/unregister_colaborador_session
-  // saíram na etapa 2A: aquela "sessão" era gravada por qualquer um, com qualquer id
-  // (fragilidade 8), e a sessão de verdade agora é a do Supabase Auth.
-  useEffect(() => {
-    const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
-
-    const handleActivity = () => {
-      resetInactivityTimer();
-    };
-
-    resetInactivityTimer();
-
-    events.forEach(event => {
-      document.addEventListener(event, handleActivity);
-    });
-
-    return () => {
-      if (inactivityTimeoutRef.current) {
-        clearTimeout(inactivityTimeoutRef.current);
-      }
-      events.forEach(event => {
-        document.removeEventListener(event, handleActivity);
-      });
-    };
-  }, [resetInactivityTimer]);
+  // 🔵 O logout por inatividade saiu daqui em 2026-11-03 e virou o `ControleInatividade`,
+  // montado no App para TODO usuário logado (5 min continua valendo para o colaborador sem
+  // gestão). O timer desta página deslogava em todos os aparelhos (signOut global) e não
+  // enxergava as outras abas — ver src/lib/inatividade.ts.
 
   // A guarda da rota: precisa de sessão do Auth E do papel de colaborador. Um admin
   // que não seja colaborador não tem cadastro para ver aqui.

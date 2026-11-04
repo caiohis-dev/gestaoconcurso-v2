@@ -156,14 +156,14 @@ sg docker -c 'npx supabase db reset'    # aplica migrations + os 3 seeds
 **Não há CI.** Nada roda a suíte sozinho; cada tema fechado depende de alguém lembrar. É o item de maior alavancagem do backlog, adiado por decisão do usuário.
 
 ```bash
-npm test                                  # 2152 testes em 107 arquivos
+npm test                                  # 2176 testes em 110 arquivos
 npx tsc --noEmit -p tsconfig.app.json     # tem de sair limpo
 npm run build
-npm run lint                              # baseline 108 (52 erros, 56 avisos)
+npm run lint                              # baseline 107 (52 erros, 55 avisos)
 npm run docs:conferir                     # docs × código/banco — tem de sair sem divergência
 ```
 
-**O lint tem 108 problemas pré-existentes** (52 erros, 56 avisos — medido em 2026-10-08). Só importa se **subir** — meça o baseline com `git stash` antes de atribuir um número novo ao seu trabalho; a evolução do número está no `git log` deste arquivo.
+**O lint tem 107 problemas pré-existentes** (52 erros, 55 avisos — medido em 2026-11-03, quando caiu o aviso de dependência do `INACTIVITY_TIMEOUT` junto com o timer do `PerfilColaborador`). Só importa se **subir** — meça o baseline com `git stash` antes de atribuir um número novo ao seu trabalho; a evolução do número está no `git log` deste arquivo.
 
 ### `npm run docs:conferir` — o que ele pega, e o que não pega
 

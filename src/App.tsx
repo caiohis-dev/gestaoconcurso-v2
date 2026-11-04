@@ -36,6 +36,7 @@ import GerenciarUsuarios from "./pages/GerenciarUsuarios";
 import Financeiro from "./pages/Financeiro";
 import NotFound from "./pages/NotFound";
 import { RequireAcesso } from "@/components/RequireAcesso";
+import { ControleInatividade } from "@/components/ControleInatividade";
 
 const queryClient = new QueryClient();
 
@@ -45,6 +46,8 @@ const App = () => (
         <TooltipProvider>
           <Toaster />
           <Sonner />
+          {/* Logout por inatividade para todo usuário logado, em qualquer tela. */}
+          <ControleInatividade />
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<Inicio />} />

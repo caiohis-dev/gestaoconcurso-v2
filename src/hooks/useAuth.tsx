@@ -22,7 +22,9 @@ interface AuthContextType {
   isLoggingOut: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>;
-  signOut: () => Promise<void>;
+  /** Sem argumento: sai em TODOS os aparelhos (o botão Sair). Com `motivo: 'inatividade'`:
+   * sai só deste navegador e a tela de login explica — ver `ControleInatividade`. */
+  signOut: (opcoes?: { motivo?: 'inatividade' }) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -161,7 +163,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error as Error | null };
   };
 
-  const signOut = useCallback(async () => {
+  const signOut = useCallback(async (opcoes?: { motivo?: 'inatividade' }) => {
+    const porInatividade = opcoes?.motivo === 'inatividade';
     // Set logging out flag to prevent race conditions
     isLoggingOutRef.current = true;
     setIsLoggingOut(true);
@@ -179,15 +182,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       );
       keysToRemove.forEach(key => localStorage.removeItem(key));
 
-      // Sign out with global scope to clear all sessions on all devices
-      await supabase.auth.signOut({ scope: 'global' });
+      // O botão Sair encerra a sessão em todos os aparelhos. A INATIVIDADE encerra só a
+      // deste navegador: uma aba esquecida em casa não pode derrubar a pessoa no trabalho
+      // (era o que o timer do PerfilColaborador fazia até 2026-11-03).
+      await supabase.auth.signOut({ scope: porInatividade ? 'local' : 'global' });
     } catch (error) {
       console.error('Error signing out:', error);
     }
-    
+
     // Force full page reload to the login page - this ensures all React state is cleared.
     // `/auth` é a porta única desde a etapa 2A: colaborador e gestor saem no mesmo lugar.
-    window.location.href = '/auth';
+    // ⚠️ O reload apaga toast e `navigate(..., { state })`: o motivo vai na URL.
+    window.location.href = porInatividade ? '/auth?sessao=inatividade' : '/auth';
   }, []);
 
   // superadmin has all admin permissions
