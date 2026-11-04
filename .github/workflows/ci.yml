@@ -1,0 +1,59 @@
+# Verificação automática — o que o CLAUDE.md §5 manda rodar à mão antes de fechar um tema.
+#
+# Roda a cada push (qualquer branch) e em pull request. NÃO toca banco, NÃO faz deploy e
+# não precisa de segredo nenhum: a suíte mocka o Supabase, e o build sai sem as variáveis
+# VITE_* (o bundle gerado aqui não é publicado — quem publica é o deploy.sh, com o
+# .env.production da máquina).
+#
+# ⚠️ O que este workflow NÃO cobre, de propósito:
+#   - regra de banco (RLS, CHECK, trigger): é bateria SQL contra o banco local (docs/bateria-*.sql);
+#   - Edge Functions (`npm run test:ef`): pede Deno e alguns casos enviam e-mail real;
+#   - `npm run docs:conferir`: extrai a verdade estrutural do banco local.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependências
+        id: instalar
+        run: npm ci --no-audit --no-fund
+
+      # Os quatro passos abaixo rodam mesmo que um deles falhe, para que um push mostre
+      # TODOS os vermelhos de uma vez, e não um por rodada — mas não se a instalação falhou.
+      - name: Tipos (tsc)
+        if: ${{ !cancelled() && steps.instalar.outcome == 'success' }}
+        run: npx tsc --noEmit -p tsconfig.app.json
+
+      - name: Testes (Vitest)
+        if: ${{ !cancelled() && steps.instalar.outcome == 'success' }}
+        run: npm test
+
+      - name: Build
+        if: ${{ !cancelled() && steps.instalar.outcome == 'success' }}
+        run: npm run build
+
+      - name: Lint (só bloqueia se passar do baseline)
+        if: ${{ !cancelled() && steps.instalar.outcome == 'success' }}
+        run: npm run lint:baseline

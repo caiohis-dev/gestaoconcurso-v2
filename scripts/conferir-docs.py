@@ -62,7 +62,7 @@ for linha in bruto.splitlines():
 
 # --- verdade do sistema de arquivos ----------------------------------------
 arquivos_repo = set()
-for base in ("src", "supabase", "docs", "my_rules", ".claude"):
+for base in ("src", "supabase", "docs", "my_rules", ".claude", "scripts", ".github"):
     d = RAIZ / base
     if d.exists():
         for p in d.rglob("*"):

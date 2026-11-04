@@ -1,0 +1,13 @@
+{
+  "medido_em": "2026-11-04",
+  "erros": 51,
+  "avisos": 51,
+  "por_regra": {
+    "@typescript-eslint/no-empty-object-type": 2,
+    "@typescript-eslint/no-explicit-any": 48,
+    "@typescript-eslint/no-require-imports": 1,
+    "complexity": 29,
+    "react-hooks/exhaustive-deps": 3,
+    "react-refresh/only-export-components": 19
+  }
+}

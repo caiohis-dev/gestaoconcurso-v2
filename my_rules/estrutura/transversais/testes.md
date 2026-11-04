@@ -10,7 +10,7 @@
 | `npm run test:watch` | modo interativo |
 | `npx vitest run src/hooks/useEditais.test.tsx` | um arquivo só |
 
-⚠️ **Nada roda os testes sozinho.** Não há CI nem hook de pre-commit — é item aberto no [`backlog.md`](../../backlog.md). Enquanto isso, rodar `npm test` faz parte de fechar um tema, junto com `npx tsc --noEmit -p tsconfig.app.json` e `npm run build`. Os três, não só o build: o `tsc` já ficou **11 dias vermelho** por um import morto que o build não pegava (o esbuild descarta import não usado antes de resolver o módulo).
+🔵 **Há CI desde 2026-11-04** ([`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml)): `tsc`, `npm test`, `build` e `npm run lint:baseline` a cada push e PR. ⚠️ **Mas ele só roda quando alguém empurra**, e empurrar `dev` é decisão do usuário — então rodar os quatro à mão continua fazendo parte de fechar um tema. Não há hook de pre-commit. Os três primeiros, não só o build: o `tsc` já ficou **11 dias vermelho** por um import morto que o build não pegava (o esbuild descarta import não usado antes de resolver o módulo).
 
 ## Stack e convenções
 
@@ -393,7 +393,7 @@ O script (`scripts/test-ef.sh`) lê as três variáveis do próprio `supabase st
 
 ⚠️ **`deno` NÃO é dependência do projeto** e não entra no `package.json` — é um binário à parte (2.9.4, em `~/.deno/bin`). O script o localiza e, se faltar, **falha com a instrução de instalação** em vez de sumir em silêncio.
 
-⚠️ **`npm test` continua sem alcançar esta camada.** Instalar o Deno resolveu *"não dá para rodar"*; **não** resolveu *"nada avisa"*. Enquanto o CI não existir, rodar `test:ef` continua dependendo de alguém lembrar — a diferença é que agora existe um comando descoberto, e não três `export` enterrados nesta doc.
+⚠️ **`npm test` continua sem alcançar esta camada.** Instalar o Deno resolveu *"não dá para rodar"*; **não** resolveu *"nada avisa"*. 🔵 O CI existe desde 2026-11-04, mas **deixa esta camada de fora de propósito** (pede Deno e alguns casos enviam e-mail real), então rodar `test:ef` continua dependendo de alguém lembrar — a diferença é que agora existe um comando descoberto, e não três `export` enterrados nesta doc.
 
 > O comando cru, se precisar dele fora do script:
 > ```bash

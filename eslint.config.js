@@ -5,7 +5,9 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist"] },
+  // O cache do VitePress (my_rules/.vitepress/cache) é JS gerado e fora do git: lintá-lo
+  // fazia o `npm run lint` local contar 5 problemas que o CI, em checkout limpo, não vê.
+  { ignores: ["dist", "**/.vitepress/cache", "**/.vitepress/dist"] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],

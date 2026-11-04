@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "test:ef": "bash scripts/test-ef.sh",
     "lint": "eslint .",
+    "lint:baseline": "node scripts/lint-baseline.mjs",
     "preview": "vite preview",
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",

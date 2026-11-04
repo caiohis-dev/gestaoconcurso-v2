@@ -153,17 +153,17 @@ sg docker -c 'npx supabase db reset'    # aplica migrations + os 3 seeds
 
 ## 5. Verificação — o que rodar antes de fechar um tema
 
-**Não há CI.** Nada roda a suíte sozinho; cada tema fechado depende de alguém lembrar. É o item de maior alavancagem do backlog, adiado por decisão do usuário.
+🔵 **Há CI desde 2026-11-04** — [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) roda `tsc`, `npm test`, `build` e o portão de lint a cada push e PR, sem segredo e sem banco. ⚠️ **Ele só roda no GitHub, e só quando alguém empurra** — e empurrar `dev` é decisão do usuário (§6). Até lá, o que vale é rodar à mão. E ele **não cobre** `docs:conferir` (precisa do banco local), `test:ef` (Deno, e envia e-mail) nem as baterias SQL.
 
 ```bash
 npm test                                  # 2176 testes em 110 arquivos
 npx tsc --noEmit -p tsconfig.app.json     # tem de sair limpo
 npm run build
-npm run lint                              # baseline 107 (52 erros, 55 avisos)
+npm run lint:baseline                     # falha só se passar do baseline (51 erros, 51 avisos)
 npm run docs:conferir                     # docs × código/banco — tem de sair sem divergência
 ```
 
-**O lint tem 107 problemas pré-existentes** (52 erros, 55 avisos — medido em 2026-11-03, quando caiu o aviso de dependência do `INACTIVITY_TIMEOUT` junto com o timer do `PerfilColaborador`). Só importa se **subir** — meça o baseline com `git stash` antes de atribuir um número novo ao seu trabalho; a evolução do número está no `git log` deste arquivo.
+**O lint tem 102 problemas pré-existentes** (51 erros, 51 avisos), registrados por regra em `scripts/lint-baseline.json`. Só importa se **subir** — e é isso que `npm run lint:baseline` confere, dizendo QUAL regra subiu (`npm run lint` dá arquivo e linha). Quando o número **cair**, regrave no mesmo commit com `npm run lint:baseline -- --atualizar`, senão a folga vira espaço para problema novo entrar calado. ⚠️ O portão é por **total**: corrigir um e criar outro passa. 🔵 Até 2026-11-03 este parágrafo dizia **107** (52/55): a diferença eram 5 problemas em `my_rules/.vitepress/cache/`, JS gerado e fora do git, que o `eslint .` varria aqui e o checkout limpo não tem — o cache passou a ser ignorado no `eslint.config.js`.
 
 ### `npm run docs:conferir` — o que ele pega, e o que não pega
 

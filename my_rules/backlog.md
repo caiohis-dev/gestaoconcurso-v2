@@ -209,8 +209,19 @@ Protege todo o resto.
 
 ## Rodar a suíte de testes automaticamente (CI e/ou pre-commit)
 
-**Status:** pendente — aberto em 2026-07-25, junto com a introdução dos testes. **Adiado por decisão do usuário no mesmo dia: "deixar o CI para o final."** Segue sendo o item de maior alavancagem da lista; o adiamento é escolha consciente de ordem, não reavaliação do valor.
+**Status:** 🟡 **workflow escrito e verificado localmente em 2026-11-04 — falta o primeiro run no GitHub.** Ele só roda quando alguém empurra, e empurrar `dev` é decisão do usuário. **O item fecha (e vai para `concluidos/`) quando o primeiro run sair verde no GitHub**; se sair vermelho, a diferença entre o runner e esta máquina é o achado. Aberto em 2026-07-25 e adiado no mesmo dia por decisão do usuário ("deixar o CI para o final"), até a reordenação de 04/11.
 **Área:** Infraestrutura (ver [`estrutura/transversais/arquitetura-geral.md`](./estrutura/transversais/arquitetura-geral.md))
+
+### O que foi feito (2026-11-04)
+
+- **[`.github/workflows/ci.yml`](../.github/workflows/ci.yml)** — a cada push (qualquer branch), PR ou disparo manual: `npm ci`, depois `tsc`, `npm test`, `build` e o portão de lint. Os quatro rodam mesmo que um falhe (um push mostra todos os vermelhos), mas não se a instalação falhou. Sem segredo e sem banco: a suíte mocka o Supabase, e o build sai sem as `VITE_*` (o bundle do CI não é publicado). Node 24, o desta máquina.
+- **Portão de lint por baseline** — `npm run lint:baseline` (`scripts/lint-baseline.mjs`) falha só se erros **ou** avisos passarem de `scripts/lint-baseline.json` (51 e 51, por regra), e diz qual regra subiu. Com `-- --atualizar` regrava. **Falsificado nos dois sentidos** num checkout limpo: um `any` novo reprova (`no-explicit-any: 48 → 49`, saída 1); um problema a menos passa e manda regravar.
+- **Medido num checkout limpo de `HEAD` com `npm ci` e `TZ=UTC`** (o runner é UTC; esta máquina é -03): 2176 testes verdes em 110 arquivos, `tsc` limpo, build ok. Nenhum teste depende do fuso.
+- 🔴 **Achado: o baseline era 102, não 107.** Os 5 a mais eram JS gerado em `my_rules/.vitepress/cache/` (fora do git), que o `eslint .` varria aqui e o checkout limpo não tem. O cache passou a ser ignorado no `eslint.config.js` — sem isso, o número local e o do CI nunca bateriam.
+
+**O que ficou de fora, de propósito:** `docs:conferir` (precisa do banco local), `test:ef` (Deno, e casos que enviam e-mail real), as baterias SQL e o pre-commit (não pedido; continua opcional).
+
+### O texto de quando o item estava aberto
 
 O projeto ganhou uma suíte de regressão em 2026-07-25 (Vitest + React Testing Library, `npm test`), mas **nada a executa sozinho**: não há `.github/workflows/`, não há hook de pre-commit. Os testes só rodam quando alguém digita o comando.
 
@@ -278,10 +289,12 @@ O que **existe** hoje é verificação manual da autorização de duas delas, em
 ### Dívida de contexto que a suíte carrega
 
 - **Mudança de produção feita para viabilizar os testes:** os 9 schemas Zod passaram a ser `export`ados dos componentes (**8 arquivos**; só a palavra `export`). Custo aceito: os 8 entram nos avisos de `react-refresh/only-export-components` — que somavam **19 no repo** em 26/07, a maioria pré-existente (`components/ui/*`, hooks e páginas que exportam constantes).
-- **Baseline de lint do repo: 107 problemas (52 erros, 55 avisos)** por `npm run lint` — medido em 2026-11-03 (era 93 = 69/24 em 26/07; a evolução está no `git log` do `CLAUDE.md`). Se subir, é coisa nova.
-- **Enquanto não houver CI**, fechar tema inclui rodar à mão o que o `CLAUDE.md` §5 lista: `npm test`, `npx tsc --noEmit -p tsconfig.app.json`, `npm run build`, `npm run lint` e `npm run docs:conferir`.
+- **Baseline de lint do repo: 102 problemas (51 erros, 51 avisos)**, registrado por regra em `scripts/lint-baseline.json` e conferido por `npm run lint:baseline` — medido em 2026-11-04 (era 93 = 69/24 em 26/07; o "107" de 03/11 contava 5 do cache do VitePress). Se subir, é coisa nova.
+- **Enquanto o CI não rodar no GitHub** (só roda no push), fechar tema inclui rodar à mão o que o `CLAUDE.md` §5 lista.
 
 ### A automação ficou para o fim, por decisão
+
+🔵 **Superado em 2026-11-04:** o workflow foi escrito (item acima). O texto abaixo é o de antes.
 
 **O usuário decidiu em 2026-07-25 deixar o CI para o final.** Não é esquecimento — está registrado no item próprio abaixo ("Rodar a suíte de testes automaticamente"), que segue válido e continua sendo **o de maior alavancagem da lista**. A consequência de a decisão valer: **nada roda a suíte sozinho**, então cada tema fechado depende de alguém lembrar.
 
