@@ -54,6 +54,10 @@ errada e o que cada decisão custou. Antes de reabrir qualquer tema abaixo, proc
 | ✅ 24/09 | o `PerfilColaborador` passou a mostrar a recusa do banco: a frase `P0001` das RPCs (que era descartada, inclusive a da duplicidade) e as CHECKs traduzidas — o ramo `23505` da tela nunca rodava |
 | ✅ 24/09 | a `update_meu_colaborador` deixou de completar o CPF com zeros antes de conferir o tamanho (aceitava `123`, cortava 12 dígitos), ganhou dígito verificador na MUDANÇA e passou a nomear o campo duplicado — migration `20260925002742`, bateria `docs/bateria-update-meu-colaborador.sql` |
 | ❌ 24/09 | o diálogo "Nova Ocorrência" em assistente de etapas — **não será feito**, decisão do usuário. A outra metade do item (a falta tirar o colaborador da lista da prova) já tinha entrado na v3.4.0 |
+| ✅ 08/10 | o **fiscal de sala virou marcação da função** (`fiscal_de_sala` + trigger FS001/2/3; o seletor estava vazio desde sempre) e excluir a ocorrência devolve o posto — **no ar na v3.9.0** (03/11) |
+| ✅ 03/11 | Financeiro: **pagamento em reais inteiros** (centavos ignorados, com aviso) e o fim da célula numérica lida 10× — **v3.9.0** |
+| ✅ 03/11 | Financeiro: **nenhuma linha some calada** — recusadas listadas com motivo (valor estrito, chave PIX não reconhecida, CPF inválido), medido numa planilha real — **v3.9.1** e **v3.9.2**. Sobra o item de CPF/chave como número, prioridade baixa |
+| ✅ 03/11 | **logout por inatividade** para todo usuário logado (30 min gestão, 5 min colaborador, aviso 1 min antes, conta por navegador, saída só deste navegador) — **v3.10.0** |
 
 ---
 
