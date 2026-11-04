@@ -68,6 +68,15 @@ Versionamento semântico, com prefixo `v`:
 
   ⚠️ **Subiu sem backup novo**, por decisão do usuário; o mais recente era o de 16/09. Fica registrado porque o Free não tem backup automático nenhum.
 
+- **`v3.9.2` nasceu em 2026-11-03**, no commit `91aeccf`. PATCH, **só site**. Financeiro: o
+  **CPF do favorecido passa pelo validador oficial** (`src/lib/cpf.ts`) e a linha com CPF inválido
+  é recusada com o motivo — antes ia ao arquivo do banco como viesse (2 de 423 com DV errado numa
+  planilha real); e o módulo deixou a própria cópia do módulo 11. Com isso, da avaliação de
+  2026-11-03 sobra só o item de CPF/chave como número (prioridade baixa). Ritual curto: commit →
+  `git fetch . dev:main` → tag → push (main + tag) → `deploy.sh`. **Verificado ao vivo:** bundle
+  servido `index-cttUdlQW.js` idêntico ao buildado, HTTPS 200, HTTP 301, logo 200, **0** de
+  `127.0.0.1`, 8 do projeto de produção, e os textos de CPF inválido presentes.
+
 - **`v3.9.1` nasceu em 2026-11-03**, no commit `087f491`. PATCH, **só site** — sem banco, sem Edge
   Function. Financeiro: **nenhuma linha some calada** — as recusadas aparecem listadas com nome e
   motivo; o valor ganhou formato estrito (antes `"R$ 1.500,00"` virava R$ 0,00 no Segmento A e
