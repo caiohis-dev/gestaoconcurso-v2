@@ -68,6 +68,17 @@ Versionamento semântico, com prefixo `v`:
 
   ⚠️ **Subiu sem backup novo**, por decisão do usuário; o mais recente era o de 16/09. Fica registrado porque o Free não tem backup automático nenhum.
 
+- **`v3.10.0` nasceu em 2026-11-03**, no commit `2821b3e`. MINOR (recurso novo), **só site**.
+  **Logout por inatividade para todo usuário logado** (`ControleInatividade`): 30 min na gestão,
+  5 min no colaborador sem gestão, aviso 1 min antes com "Continuar conectado"; a conta é por
+  navegador (marca no `localStorage` lida por todas as abas), e a saída é só deste navegador
+  (`scope: 'local'`), com o motivo em `/auth?sessao=inatividade`. Substituiu o timer do
+  `PerfilColaborador`, que saía em todos os aparelhos e contava por aba. Ritual curto: `git fetch .
+  dev:main` → tag → push (main + tag) → `deploy.sh`. **Verificado ao vivo:** bundle servido
+  `index-C0spikr1.js` idêntico ao buildado, HTTPS 200, HTTP 301, logo 200, **0** de `127.0.0.1`, 8
+  do projeto de produção, e as frases do aviso e da porta única presentes. ⚠️ **Não verificado num
+  navegador logado** — o aviso e a saída só foram exercitados pela suíte (timers falsos).
+
 - **`v3.9.2` nasceu em 2026-11-03**, no commit `91aeccf`. PATCH, **só site**. Financeiro: o
   **CPF do favorecido passa pelo validador oficial** (`src/lib/cpf.ts`) e a linha com CPF inválido
   é recusada com o motivo — antes ia ao arquivo do banco como viesse (2 de 423 com DV errado numa
