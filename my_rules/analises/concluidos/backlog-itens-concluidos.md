@@ -1213,3 +1213,214 @@ A única função de fiscal cadastrada chama-se **"Fiscal"**, sem "de sala" — 
 **Achado irmão, do mesmo dia e da mesma tela — menor, mas do mesmo tipo:** a deduplicação de fiscal só olha as salas da **unidade aberta** (`isFiscalAvailable` varre `editableSalas`), enquanto a lista de candidatos vem da **prova inteira**. Duas unidades abertas em sequência aceitam a mesma pessoa como fiscal nas duas, e o banco não impede — o comentário de `avisoFiscalDeSala` já assume isso ao usar plural. Enquanto o seletor estiver vazio, é inalcançável; quando ele voltar, volta junto.
 
 ⚠️ **Se este item for fechado, os avisos de `00-modulo.md` e `alocacao-e-funcoes.md` saem no mesmo passe** — aviso envelhecido é pior que aviso nenhum.
+
+---
+
+# Movidos do backlog em 2026-11-04
+
+> Sete blocos que tinham ficado no backlog depois de fechados — seis ✅ mantidos lá "pelo que a
+> correção ensina" e as pendências menores da importação, todas resolvidas ou sem objeto. Vieram
+> **na íntegra**, com duas anotações datadas de 04/11: a senha SMTP rotacionada (no bloco do `.env`) e
+> as sobras da hospedagem, que perderam o objeto.
+
+---
+
+## Pendências menores da importação de candidatos
+
+**Status:** registradas para adiante — nenhuma bloqueia nada hoje
+**Área:** Candidatos
+
+1. ~~**O fixture `CABECALHO_REAL` está defasado**~~ — ✅ **RESOLVIDO em 2026-07-31.** Atualizado lendo o arquivo real (`docs/temp/todos inscritos concurso 002-2026-SMA cabeçalho.xls`), não de memória: a coluna 0 se chama `N_INSCRICAO`, são 29 colunas, 7.416 linhas de dado, e a `LINHA_REAL` do fixture bate **exatamente** com a primeira linha — ela não precisou mudar. O caso "coluna sem título" ganhou fixture próprio (`CABECALHO_SEM_TITULO_NA_COLUNA_A`) mais um **controle negativo** que quebra se alguém reverter o cabeçalho — sem ele o fixture envelheceria calado de novo, que é o que houve entre 27/07 e 31/07.
+
+   🔴 **O item dizia "3 asserções" e eram QUATRO** — e a quarta é a que importa: `converterLinha` afirmava `n_inscricao: "214274"`, que é o `ID` da coluna B, **o identificador da PESSOA**. O teste ficava verde porque o fixture defasado mapeava `n_inscricao` para a coluna 1; ele afirmava como correto exatamente o defeito que a correção de 28/07 identificou. **Armadilha 8 de `testes.md` outra vez** — teste verde guardando defeito — e a **quarta** vez que um item deste backlog erra a contagem ou a premissa.
+
+2. ~~**Alargar o trigger da 5b**~~ — ❌ **SEM OBJETO desde 2026-08-01.** O item dizia *"fica sem sentido se a chave mudar, então decidir a chave ANTES"*. A chave **mudou** (migration `20260801193530`: agora é `(edital_id, n_inscricao)`), e o trigger em questão — `candidatos_recusa_reapontar_cargo`, o `RC001` — **já não existia**: foi dropado em 30/07 pela `20260730140000`, quando a troca total o tornou incapaz de disparar. O item sobreviveu a essa remoção por dois dias falando de um trigger que o banco não tem.
+
+   ⚠️ **É a quinta vez que um item deste backlog carrega premissa errada** — aqui, um alvo que já tinha sido removido. Conferir a premissa no código antes de executar continua sendo obrigatório.
+
+3. ~~**`anon` continua com `TRUNCATE` em `candidatos`**~~ — ✅ **RESOLVIDO em 2026-07-31** pela migration `20260731110000`: `anon` perdeu **todos** os privilégios em `public`, e o `ALTER DEFAULT PRIVILEGES` parou de reconceder. Ver ["os grants de `anon` foram a zero"](./analises/concluidos/backlog-itens-concluidos.md) no histórico — a execução do item achou, de quebra, um vazamento de leitura em 8 policies.
+
+---
+
+## ✅ `anon` alcançava 24 funções por RPC — FECHADO em 2026-09-08
+
+**Status:** ✅ resolvido — migration `20260908231620_revogar_execute_de_anon_em_funcoes.sql`. Fica aqui só como registro; o detalhe está no cabeçalho da própria migration.
+
+Achado de raspão ao desenhar o keep-alive, e **a premissa estava certa** (ao contrário das 4 vezes citadas no CLAUDE.md §1) — mas o **tamanho** só apareceu ao medir: das 53 funções de `public`, **38** eram executáveis por `anon`; tirando as de trigger, **24 chamáveis por RPC** com a chave publishable, que é pública.
+
+**O que a medição corrigiu na hipótese original:**
+- As `SECURITY INVOKER` **já estavam protegidas** pelos grants de tabela de 31/07. O buraco eram as **20 `SECURITY DEFINER`**, que rodam como dono e ignoram esse revoke.
+- 🔴 **`verify_user_password` era um oráculo de enumeração de contas** e **nunca conferiu senha** (`p_password` não era lido). O bug: `v_user_id != auth.uid()` com `auth.uid()` nulo dá **`NULL`**, o `IF` não dispara e cai em `RETURN TRUE`. Era **órfã** — foi dropada.
+- ⚠️ **Dois alarmes meus caíram ao medir:** `assign_coordenador_role` **não** era escalada de privilégio (a guarda funciona porque `has_role` usa `SELECT EXISTS`, que devolve `false` e nunca `NULL`), e `salvar_salas_distribuidas` tem guarda real de admin. `get_coordenador_colaboradores` vazava **UUIDs**, não PII.
+
+Verificado com controle positivo nas duas metades: `anon` foi de 38 para **0**, `authenticated` manteve 51 de 52 (a exceção é o keep-alive, de propósito), e por HTTP o `anon` passou a levar `42501 permission denied for function`.
+
+---
+
+## ✅ `useFuncoesAssociadas` — 42 kB para calcular booleanos — FECHADO em 2026-09-10
+
+**Status:** ✅ **resolvido no mesmo dia**, pela RPC `funcoes_em_uso` (migration `20260911022341`) — 42,8 kB em 3 requisições viraram **680 bytes em uma**, e a tela saiu do alcance do teto de 1000. Bateria em `docs/bateria-funcoes-em-uso.sql`, rodada. **Fica aqui, e não em `concluidos/`, pelo que a correção da premissa ensina.** Aberto em 2026-09-10. 🔴 **A primeira versão deste item afirmava coisa errada, e a correção é a parte que vale ler.**
+**Área:** Aplicação de Provas — `/funcoes-colaboradores`
+
+Eu escrevi, ao abrir o item: *"o resultado vira um `Set` que decide se uma função **pode ser excluída**. Truncar libera exclusão de função EM USO — é bug de correção, não de performance."* **Medido no mesmo dia, é falso nos três pontos:**
+
+| Afirmado | Medido |
+|---|---|
+| truncar libera exclusão de função em uso | as **3 FKs são `RESTRICT`** — o banco recusa |
+| é bug de correção | a UI **já traduz** o `23503` (`useFuncoesColaboradores.tsx:42`) |
+| risco ativo | 554 / 186 / 24 linhas — nenhuma perto do teto de 1000 |
+
+⚠️ **E a primeira tentativa de provar a recusa provou a regra ERRADA.** Apagar "Coordenador Geral" foi recusado por `prevent_system_funcao_changes()` ("não é permitido excluir funções básicas do sistema"), não pela FK — é o padrão de **ofuscação** que o `CLAUDE.md` §8 descreve. Só com uma função `cargo_editavel = true` **e** em uso a FK apareceu, nomeada: `colaboradores_prova_funcao_id_fkey`. **Ao provar uma recusa, leia o NOME de quem barrou.**
+
+**O que sobra, e é o item de verdade:** `useFuncoesAssociadas` faz **3 consultas sem filtro** (42.778 bytes medidos) para produzir um `Set` de ids. O `Set` só desabilita o botão de excluir e escreve o tooltip. Se um dia passar de 1000 linhas, o sintoma é o botão **não** desabilitar: o usuário clica, o banco recusa, e ele vê a mensagem traduzida. **Degradação de UX, não perda de dado.**
+
+**A saída é a mesma de `totais_da_prova` (10/09):** uma RPC que devolve os ids das funções em uso, agregando no banco. Passa de 42,8 kB em 3 requisições para menos de 1 kB em uma, e fica **imune ao teto de 1000** — que é o único jeito de fechar o risco futuro, porque nenhum conserto no cliente o alcança.
+
+---
+
+## ✅ `finalizar_prova` / `reabrir_prova` confiavam no `p_user_id` do chamador — FECHADO em 2026-09-12
+
+**Status:** ✅ **resolvido**, migration `20260912191749_finalizacao_por_auth_uid.sql`. Aberto em 2026-09-08, medido e adiado por decisão do usuário; executado em 12/09. **Fica aqui, e não em `concluidos/`, pelo que a premissa incompleta ensina.**
+
+> ✅ **O que foi feito:** `p_user_id` foi **removido da assinatura** das quatro RPCs, que passaram a ler `auth.uid()` — vinda do JWT, que o cliente não escolhe. Manter o parâmetro e ignorá-lo deixaria no contrato um argumento que parece autorizar e não autoriza.
+>
+> 🔵 **A política das duas de PROVA mudou, por decisão do usuário:** passou a ser **superadmin OU o criador**, alinhando com o que as `_unidade` já faziam. O motivo é operacional e foi medido: as 2 provas do banco foram criadas por uma admin que **não** é superadmin, então nem as contas superadmin conseguiam finalizá-las — se aquela pessoa saísse, ninguém socorria. A política das duas `_unidade` **não mudou**.
+>
+> 🔴 **A NOTA ABAIXO ESTAVA INCOMPLETA, e isso mudou o conserto.** Ela descreve as quatro como "comparam `created_by` com `p_user_id`" — exato só para as duas de PROVA. Medido no corpo de cada uma antes de reescrever, as `_unidade` já tinham regras mais ricas **e diferentes entre si**: `finalizar_prova_unidade` aceitava superadmin OU criador OU **coordenador da prova** (ramo usado de verdade — 2 das 11 unidades finalizadas foram por coordenadores), e `reabrir_prova_unidade` aceitava superadmin OU **quem finalizou aquela unidade**. Reescrever as quatro com a mesma regra teria tirado acesso de coordenador no dia da prova.
+>
+> ⚠️ **E a previsão de que "os testes que exercitam essas RPCs vão cair" NÃO se cumpriu: nenhum caiu.** Ninguém guardava o contrato — as menções em `guards.test.tsx` são uma lista de nomes para o mock, e as outras são comentários. O `tsc` também não guarda: reintroduzir `p_user_id` na chamada passa limpo (medido). A testemunha que faltava virou **`docs/bateria-finalizacao-autorizacao.sql`** — 9 casos, com controle positivo e falsificação.
+
+**Status original (2026-09-08):** aberto, medido e **deliberadamente adiado** (decisão do usuário no mesmo dia). O acesso **anônimo** foi fechado; isto é o que sobra, e vale para usuário **logado**.
+**Área:** Auth e Permissões (ver [`estrutura/transversais/auth-e-permissoes.md`](./estrutura/transversais/auth-e-permissoes.md))
+
+As quatro funções de finalização (`finalizar_prova`, `reabrir_prova`, e as `_unidade`) **não consultam `auth.uid()`**. Elas comparam o `created_by` da prova com **`p_user_id`, que é parâmetro fornecido pelo próprio chamador**:
+
+```sql
+IF v_created_by != p_user_id THEN RAISE EXCEPTION 'Apenas o usuário que criou a prova...'
+```
+
+Isso não é autorização — é uma conferência que o atacante controla dos dois lados. **Qualquer usuário autenticado** que saiba o `prova_id` e o `created_by` finaliza (ou reabre) prova alheia.
+
+**O conserto foi trocar o parâmetro por `auth.uid()`**, mudando a assinatura: os quatro chamadores (`GerenciarProva.tsx` e `GerenciarColaboradoresProva.tsx`) deixaram de enviar `p_user_id`. ⚠️ Previa-se que "os testes que exercitam essas RPCs vão cair" — **nenhum caiu**, porque nenhum afirmava o corpo da chamada.
+
+⚠️ A pergunta "a regra pretendida é mesmo 'só o criador'?" foi levada ao usuário antes de codificar, e a resposta foi **não**: passou a ser superadmin OU criador.
+
+---
+
+## ✅ O `.env` da raiz se chamava produção e apontava para o Docker local — FECHADO em 2026-09-12
+
+**Status:** ✅ **resolvido.** O `.env` foi **removido** (o `.env.local` já cobria o desenvolvimento e vence a precedência, então ele só existia para enganar), e os três arquivos passaram a ser documentados no **`.env.example`** — o único `.env*` versionado da raiz, sem segredo nenhum.
+
+> 🔵 **Medido depois de remover:** `npm run build` sai com **0** ocorrências de `127.0.0.1` e 7 do projeto de produção; `vite build --mode development` sai com 4 e **0**. Cada modo aponta para onde deve.
+>
+> 🔴 **ACHADO NÃO PREVISTO, e mais grave que o item:** o `.env.local` guardava quatro variáveis `SMTP_*` com a **senha real do e-mail da FEVRE**, em texto claro. **Ninguém as lia** — o Vite só embute o prefixo `VITE_` (conferido: 0 ocorrências no bundle) e as Edge Functions leem `supabase/functions/.env`. Era credencial viva guardada onde não servia. As quatro linhas saíram.
+>
+> ✅ **FEITO — confirmado pelo usuário em 2026-11-04:** a senha, que ficou exposta no histórico da sessão em que foi achada (2026-09-12), foi **rotacionada**. ⚠️ Esta linha dizia "PENDENTE, e é do usuário: rotacionar na Hostinger e depois atualizar o secret no dashboard do Supabase e o `supabase/functions/.env` local" — e ficou escondida dentro deste bloco ✅ por quase dois meses, onde ninguém procura pendência.
+>
+> ⚠️ **O texto abaixo descrevia a situação até 12/09** e fica pelo que a armadilha ensina. A proposta que ele registrava — *"renomear para `.env.local`, que é o que ele de fato é"* — **não era executável**: `.env.local` já existia, e os dois apontavam para o Docker. Pior, o cabeçalho do `.env.local` afirmava que apagá-lo "volta a usar o `.env` de produção", o que era falso nos dois sentidos.
+
+**Status original:** ⏳ absorvido pelo item acima (etapa 1 do roadmap de alternância)
+**Área:** Infraestrutura / build (ver [`hospedagem-e-deploy.md`](./hospedagem-e-deploy.md))
+
+O arquivo `.env` da raiz contém `VITE_SUPABASE_URL="http://127.0.0.1:54321"` com a publishable key **local** — e se apresenta como o arquivo de produção. É a **armadilha nº 1 do §8 do CLAUDE.md**: o nome mente antes do código.
+
+🔵 **Ficou menos perigoso em 2026-08-08**, quando `.env.production` passou a existir. Conferido na fonte do Vite (`getEnvFilesForMode`): a ordem é `.env` → `.env.local` → `.env.[mode]` → `.env.[mode].local`, então **`.env.production` vence** e o `npm run build` sai apontando para a nuvem. Comprovado no artefato: 0 ocorrências da URL local no bundle.
+
+🔴 **Mas o risco não é o build de hoje — é o dia em que `.env.production` sumir ou for esquecido.** O `.env` continua ali, com cara de produção, pronto para gerar um bundle que aponta para o Docker local **sem erro nenhum no build**. O sintoma aparece só em runtime: a página carrega, o login aparece, e tudo falha.
+
+🔵 **Corrigido em 2026-09-09: esta linha dizia que o sintoma é *"idêntico ao de projeto pausado por inatividade, o que torna o diagnóstico confuso"*. NÃO é idêntico, e a diferença é fácil de ver.** A pausa foi medida em 08/09: o hostname do projeto **some do DNS** (NXDOMAIN autoritativo), então o navegador nem chega a fazer requisição. Bundle apontado para o Supabase errado é o oposto — o nome **resolve** normalmente e a falha vem depois, na requisição. **Um `dig +short <ref>.supabase.co` separa os dois em segundos.** Ver `banco-producao.md`.
+
+**Saídas possíveis** (nenhuma decidida): renomear para `.env.local`, que é o que ele de fato é; ou deixar um comentário no topo dizendo em voz alta que ele é local e que `.env.production` é quem vale.
+
+🔵 Foi o **achado A2** do roadmap de bootstrap, o único item dele que não fechou junto — ver [`analises/concluidos/roadmap-bootstrap-banco-producao.yaml`](./analises/concluidos/roadmap-bootstrap-banco-producao.yaml), seção `fechamento`, P3.
+
+---
+
+## ✅ Migrar hospedagem/deploy para fora do Lovable — EXECUTADO em 2026-08-13
+
+**Status:** ✅ **o site está no ar**; sobraram duas conferências (abaixo)
+**Área:** Infraestrutura (ver [`estrutura/transversais/arquitetura-geral.md`](./estrutura/transversais/arquitetura-geral.md))
+
+🔵 **Medido em 2026-08-13, não presumido:** `https://fevre.online` responde **200** por nginx sobre HTTP/2 com TLS válido, servindo o build, e **o bundle publicado aponta para `https://zugigdpuxbpogoepdawm.supabase.co`** com a publishable key de `.env.production`. Site de produção falando com o banco de produção — a armadilha do `.env` da raiz não mordeu.
+
+O deploy foi executado **em outra sessão**, e o ferramental vive fora deste repo (`configura_server_gestaoconcurso`), então este item não guarda o registro do que foi feito lá.
+
+*(O texto abaixo é o do item enquanto ele estava aberto, preservado porque explica as decisões — PaaS descartado, túnel SSH descartado. Ele dizia: "o projeto está temporariamente fora do ar… não há mais deploy ativo em lugar nenhum".)*
+
+🔵 **O COMO deixou de ser pergunta em 2026-08-08.** O roteiro está em [`hospedagem-e-deploy.md`](./hospedagem-e-deploy.md): **servidor Ubuntu 24.04 próprio**, nginx servindo o build estático, público em `fevre.online` com TLS do Let's Encrypt. ⚠️ Este item dizia "ex.: Vercel, Netlify" — **PaaS foi descartado**, assim como o acesso só por túnel SSH (inviável: cada fiscal precisaria de chave SSH no servidor para abrir a tela de login).
+
+O ferramental existe e foi testado, **fora deste repositório**, em `configura_server_gestaoconcurso` — quatro scripts (hardening, nginx, TLS, deploy) mais dois templates de nginx. Este repo não versiona infraestrutura, por decisão.
+
+**Falta executar:** provisionar o servidor, apontar o DNS de `fevre.online` para ele, e rodar as quatro etapas.
+
+🔵 **A dependência do banco CAIU em 2026-08-10** e a publicação aconteceu em **13/08**. O `deploy.sh` **recusa publicar** um build que aponte para o Docker local, e o gate passou — o bundle no ar prova isso.
+
+### O que sobrou deste item — 🔵 fechado em 2026-11-04 (as duas conferências deixaram de ter objeto)
+
+> 🔵 **Revisto em 2026-11-04:** o `SITE_URL` e as redirect URLs foram **provados ponta a ponta em
+> 2026-09-09** (recuperação de senha real abrindo `fevre.online/redefinir-senha` — ver CLAUDE.md §6), e o
+> `prod:push:dry` perdeu o objeto: produção passou por várias releases pelo ritual completo desde então
+> (v3.10.0 em 03/11). O CSV saiu no commit `234b1e7`. O texto abaixo é o de quando estava aberto.
+
+1. 🔴 **Conferir o secret `SITE_URL` das Edge Functions e as redirect URLs do dashboard.** Este era o motivo real da proibição de disparar e-mail, e **ele não caiu junto com o site**: `_shared/enviar-link-acesso.ts` faz `Deno.env.get('SITE_URL') ?? 'http://127.0.0.1:8080'`, então **sem o secret todo convite e toda recuperação de senha nascem apontando para `localhost`** — a função responde sucesso, o e-mail chega, e só o destinatário descobre. Ver o passo 7 de [`banco-producao.md`](./banco-producao.md).
+2. ⚠️ **Rodar `prod:push:dry`**: produção pode ter acumulado atraso de migrations novas de `dev` desde 08/08, e esse delta é parte da próxima release (era o risco R4 do roadmap de bootstrap).
+
+✅ **`public/auth_users_export.csv` foi removido** — `public/` inteiro vira URL pública e ele tinha uma linha de dado real (UUID de conta, e-mail, nome, último login). A remoção está na árvore, **ainda não commitada**. *(🔵 Commitada depois, em `234b1e7`.)*
+
+---
+
+## ✅ CONCLUÍDO 2026-09-20 — carimbo de "Último Acesso" + trilha de envio do link
+
+**Status:** ✅ **AS DUAS PARTES executadas em 2026-09-20** — o carimbo (migration
+`20260921002249_carimbar_ultimo_acesso_no_login.sql`) e a trilha de envio (migration `20260921005259_trilha_envio_link_acesso.sql`,
+tabela `log_envio_link_acesso`). Aberto ao investigar por que colaboradores que acabavam de informar
+o próprio e-mail apareciam como *"Nunca acessou"*.
+**Área:** Auth e Permissões · estudo completo em
+[`analises/analise-ultimo-acesso-e-convite.md`](./analises/analise-ultimo-acesso-e-convite.md)
+
+`colaboradores.colab_ultimo_acesso` teve os seus dois únicos escritores dropados na migration
+`20260715125720_drop_rpcs_colaborador_antigas.sql` (eram do portal de código de 4 dígitos). A
+**leitura ficou** — `ColaboradoresList` e `PainelDadosColaboradores` —, e ninguém notou porque a
+coluna continuou existindo com dado dentro.
+
+🔴 **Medido em PRODUÇÃO em 2026-09-20: 263 de 263.** Das **274** contas vinculadas, **263** entraram
+de verdade — e **todas as 263** estão descritas errado: **71** como *"Nunca acessou"* e **192** com
+uma data congelada de junho/julho. O carimbo mais recente da coluna é **2026-07-09**; o login mais
+recente de verdade é do **próprio dia da medição, 23:43**. ⚠️ Não é a maioria, é a totalidade — e o
+recurso de *ordenar* por último acesso, que existe justamente para achar quem nunca entrou, ordena
+sobre `null`.
+
+🔴 **Confirmado em PRODUÇÃO no mesmo dia, e não é teórico:** a colaboradora do aviso de
+autosserviço (`patricia…@gmail.com`) abriu o link **42 s** depois do envio e entrou com a senha
+própria **2 min 27 s** depois — e a tela diz *"Nunca acessou"*. 🟢 O mesmo caso prova, de quebra,
+que o secret `SITE_URL` de produção está correto e que a entrega pela Hostinger funciona ponta a
+ponta para destinatário real.
+
+### O conserto
+
+1. ✅ **FEITO — carimbar no trigger que já existe.** `vincular_colaborador_no_signin` passou a gravar
+   `colab_ultimo_acesso = NEW.last_sign_in_at`. 🔴 **Num bloco `EXCEPTION` PRÓPRIO, não no do
+   vínculo** — achado da implementação: fundidos, a exceção do carimbo anula a subtransação e
+   **desfaz o vínculo junto**, criando uma perda silenciosa nova. O caso 14 da bateria falsifica a
+   variante fundida. ⚠️ Carimba só quando `last_sign_in_at` **muda**: confirmar e-mail não é acesso.
+2. 🔵 **SEM BACKFILL — decisão dele em 2026-09-20:** *"o erro de informação 'nunca acessou' não
+   precisa ser corrigido para informações passadas"*. Cada pessoa se corrige sozinha no primeiro
+   login seguinte. ⚠️ **Não reabra propondo backfill "para deixar consistente"** — foi recusado com
+   motivo, e recusá-lo elimina o único passo manual em produção do conserto (`seed.pos.sql` não
+   roda sozinho lá; esquecê-lo seria falha silenciosa). O custo aceito: os 192 com data congelada
+   seguem exibindo junho/julho até logarem de novo.
+3. ✅ **FEITO — a trilha de envio do link.** Tabela `log_envio_link_acesso`, escrita num ponto único dentro de `enviarLinkAcesso` (não em cada uma das 5 EFs chamadoras — mesma lição do `registrarFalhaDeEnvio`). Best-effort, nunca derruba o envio real; falsificado com dublê que sempre falha no INSERT, e provado de ponta a ponta contra o Auth local (sem dublê nenhum). RLS: SELECT só admin, com controle positivo e negativo. ⚠️ Sem backfill — só vale a partir de 20/09. Ver `analises/analise-ultimo-acesso-e-convite.md` §6.2.
+
+### Como verificar (controle positivo obrigatório)
+
+🔴 **O controle positivo do carimbo são os 8 casos ANTIGOS da bateria**, não os novos: o carimbo foi
+acrescentado dentro da função do vínculo, então provar que ele grava é metade — a outra é provar que
+o vínculo não regrediu. Os 14 passam desde 2026-09-20, depois de `db reset` completo.
+
+Provar que passou a carimbar é metade. A outra é
+[`docs/consulta-acesso-colaborador.sql`](../docs/consulta-acesso-colaborador.sql) continuar
+distinguindo os quatro estados — em especial **convite pendente** (`confirmation_sent_at`
+preenchido) de **só abriu o link** (delta < 1 s entre `email_confirmed_at` e `last_sign_in_at`).
+⚠️ O limiar é **1 segundo e foi medido**, não arbitrado: a distribuição é bimodal (7 contas em 4–13
+ms, nada até 24,8 s, 40 contas acima). Um corte de 2 minutos classifica errado quem criou a senha e
+logou em seguida — o caminho normal.
