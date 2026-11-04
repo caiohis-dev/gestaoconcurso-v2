@@ -3,6 +3,9 @@
  * Portado de `gera_cnab_pix/src/lib/valida_chave.ts` na Fase 2 do
  * roadmap-modulo-financeiro.yaml.
  */
+// Validador oficial do repositório. ⚠️ Até 2026-11-03 este arquivo tinha a própria cópia
+// (`cpfTemDigitosValidos`), portada da origem — duas regras que podiam divergir.
+import { cpfValido } from './cpf'
 export interface InferredPixKey {
   tipoChavePix: string // '01' | '02' | '03' | '04'
   chavePix: string
@@ -37,26 +40,6 @@ const isChaveAleatoria = (val: string): boolean => {
   return uuidRegex.test(val)
 }
 
-/**
- * Valida os dígitos verificadores de um CPF (11 dígitos), pelo algoritmo oficial
- * (módulo 11). Rejeita sequências de dígitos repetidos (ex.: 00000000000), que
- * satisfazem a fórmula mas não são CPFs válidos.
- */
-const cpfTemDigitosValidos = (val: string): boolean => {
-  const s = val.replace(/\D/g, '')
-  if (s.length !== 11 || /^(\d)\1{10}$/.test(s)) return false
-  const d = s.split('').map(Number)
-  let soma = 0
-  for (let i = 0; i < 9; i++) soma += d[i] * (10 - i)
-  let dv1 = (soma * 10) % 11
-  if (dv1 === 10) dv1 = 0
-  if (dv1 !== d[9]) return false
-  soma = 0
-  for (let i = 0; i < 10; i++) soma += d[i] * (11 - i)
-  let dv2 = (soma * 10) % 11
-  if (dv2 === 10) dv2 = 0
-  return dv2 === d[10]
-}
 
 /**
  * Heurística de celular brasileiro em 11 dígitos crus: DDD plausível (11–99) e
@@ -163,7 +146,7 @@ export const inferirTipoEFormatarChavePix = (
   //    genuinamente ambíguo: devolve o melhor palpite (CPF) marcado `ambigua`
   //    para a conferência humana confirmar antes de gerar o arquivo.
   if (chaveDigitos.length === 11) {
-    const ehCpf = cpfTemDigitosValidos(chaveDigitos)
+    const ehCpf = cpfValido(chaveDigitos)
     const ehCelular = pareceCelularBR(chaveDigitos)
     if (ehCpf && ehCelular) {
       return { tipoChavePix: '03', chavePix: chaveDigitos, ambigua: true }

@@ -6,6 +6,8 @@
 import type { PagamentoPix } from './financeiro-cnab240-tipos'
 import type { Matriz } from './financeiro-ler-planilha'
 import { inferirTipoEFormatarChavePix } from './financeiro-chave-pix'
+import { caracteresIntrusos, motivoCpfInvalido } from './cpf'
+import type { MotivoCpfInvalido } from './cpf'
 
 /**
  * Identificadores internos das colunas que o sistema consome.
@@ -142,10 +144,29 @@ export interface LinhaRecusada {
   motivo: string
 }
 
+/**
+ * Por que o CPF do favorecido é inválido, nas palavras da importação de candidatos
+ * (`candidatos-import.ts`) — cada motivo pede uma correção diferente na planilha.
+ * ⚠️ Sequência repetida NÃO é "verificador errado": os DV de 111.111.111-11 conferem.
+ */
+const textoCpfInvalido = (cpf: string, motivo: MotivoCpfInvalido): string => {
+  if (motivo === 'caractere-invalido') {
+    const intrusos = caracteresIntrusos(cpf).map((c) => `"${c}"`).join(', ')
+    return `CPF "${cpf}" tem caractere que não é dígito (${intrusos})`
+  }
+  if (motivo === 'tamanho') return `CPF "${cpf}" tem ${cpf.replace(/\D/g, '').length} dígitos, e um CPF tem 11`
+  if (motivo === 'sequencia-repetida') return `CPF "${cpf}" é uma sequência de dígitos repetidos, que não é CPF de ninguém`
+  return `CPF "${cpf}" tem 11 dígitos, mas é inválido: os dígitos verificadores não conferem`
+}
+
 /** Motivo para recusar a linha, ou `null` se ela pode virar pagamento. */
-const motivoDeRecusa = (nome: string, cpfSanitizado: string, valorStr: string, valorLido: number | null): string | null => {
+const motivoDeRecusa = (nome: string, cpfOriginal: string, valorStr: string, valorLido: number | null): string | null => {
   if (!nome) return 'Nome em branco'
-  if (!cpfSanitizado) return 'CPF em branco'
+  if (!cpfOriginal) return 'CPF em branco'
+  // 🔴 O CPF do favorecido vai para o arquivo do banco (Segmentos A e B). Até 2026-11-03 só
+  // passava por `replace(/\D/g, '')` — medido numa planilha real: 2 de 423 com DV errado.
+  const motivoCpf = motivoCpfInvalido(cpfOriginal)
+  if (motivoCpf !== null) return textoCpfInvalido(cpfOriginal, motivoCpf)
   if (!valorStr) return 'Valor em branco'
   if (valorLido === null) return `Valor "${valorStr}" não está no formato 1.234,56`
   if (Math.trunc(valorLido) < 1) return 'Valor abaixo de R$ 1,00 — sem os centavos, o pagamento seria zero'
@@ -269,7 +290,7 @@ export const lerPagamentosDaPlanilha = (
     const cpfSanitizado = cpfOriginal.replace(/\D/g, '')
 
     const valorLido = parseValorMonetario(valorStr)
-    const motivo = motivoDeRecusa(nome, cpfSanitizado, valorStr, valorLido)
+    const motivo = motivoDeRecusa(nome, cpfOriginal, valorStr, valorLido)
     if (motivo !== null || valorLido === null) {
       recusadas.push({ nome, cpf: cpfOriginal, valor: valorStr, motivo: motivo ?? '' })
       continue

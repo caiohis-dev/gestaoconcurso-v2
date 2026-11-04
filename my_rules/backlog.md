@@ -270,7 +270,7 @@ código. Já corrigidos no mesmo dia (ver `00-modulo.md`, "Pontos frágeis"): a 
 centavos lida 10× (junto com a regra de reais inteiros), o **valor ilegível que virava R$ 0,00** e
 as **linhas ignoradas sem dizer quais** e a **chave PIX trocada calada pelo CPF** — hoje toda
 linha recusada aparece com nome e motivo. 🔵 Os itens 2, 3 e 4 desta lista eram esses; os números
-abaixo foram mantidos. **Sobram o 1 (prioridade baixa, medido) e o 5.**
+abaixo foram mantidos. **Sobra só o 1** (prioridade baixa, medido). O 5 também foi corrigido.
 **Área:** módulo Financeiro — ver [`estrutura/modulos/financeiro/00-modulo.md`](./estrutura/modulos/financeiro/00-modulo.md)
 
 1. **CPF/chave PIX guardados como NÚMERO perdem o zero à esquerda** (`raw: true` em `lerPlanilha`).
@@ -292,7 +292,9 @@ abaixo foram mantidos. **Sobram o 1 (prioridade baixa, medido) e o 5.**
    em 0** (`0` + o telefone da linha), 1 com 12 dígitos cujos 8 finais batem com o telefone, e 1
    com 14 dígitos. As 3 primeiras são recuperáveis **exatamente** pela coluna Telefone da própria
    linha; as outras 2, não.
-5. **CPF do favorecido sem validação de DV/tamanho**, e `cpfTemDigitosValidos` duplica `src/lib/cpf.ts`.
+5. ~~CPF do favorecido sem validação de DV/tamanho, e validador duplicado~~ — **corrigido em
+   2026-11-03**: a linha é recusada com o motivo (2 de 423 na planilha real), e o módulo usa o
+   `src/lib/cpf.ts`.
 
 ---
 

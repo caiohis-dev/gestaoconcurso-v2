@@ -133,6 +133,27 @@ describe('lerPagamentosDaPlanilha — linhas recusadas', () => {
     expect(r.recusadas[0].motivo).toBe(motivo)
   })
 
+  // CPF do favorecido pelo validador oficial (`src/lib/cpf.ts`), 2026-11-03. Medido numa planilha
+  // real: 2 de 423 com DV errado, que iam para o arquivo do banco sem aviso. Valores sintéticos.
+  it.each([
+    ['dígito verificador errado', '11144477736', 'CPF "11144477736" tem 11 dígitos, mas é inválido: os dígitos verificadores não conferem'],
+    ['10 dígitos', '1114447773', 'CPF "1114447773" tem 10 dígitos, e um CPF tem 11'],
+    ['sequência repetida (passa no módulo 11)', '11111111111', 'CPF "11111111111" é uma sequência de dígitos repetidos, que não é CPF de ninguém'],
+    ['letra no lugar do zero', '1O778817709', 'CPF "1O778817709" tem caractere que não é dígito ("O")'],
+    // ⚠️ Antes, "abc" virava "CPF em branco" — o filtro de dígitos esvaziava o campo.
+    ['só letras', 'abc', 'CPF "abc" tem caractere que não é dígito ("a", "b", "c")'],
+  ])('🔴 CPF do favorecido inválido — %s — recusa a linha com o motivo', (_caso, cpf, motivo) => {
+    const r = lerUma({ ...LINHA_VALIDA, CPF: cpf })
+    expect(r.pagamentos).toEqual([])
+    expect(r.recusadas[0].motivo).toBe(motivo)
+  })
+
+  it('⭐ CONTROLE POSITIVO: CPF válido COM máscara é aceito, e vai ao arquivo só com os dígitos', () => {
+    const r = lerUma({ ...LINHA_VALIDA, CPF: '111.444.777-35' })
+    expect(r.recusadas).toEqual([])
+    expect(r.pagamentos[0].cpfFornecedor).toBe('11144477735')
+  })
+
   // Formatos medidos numa planilha real (2026-11-03): 5 de 423 chaves caíam aqui e eram trocadas
   // CALADAS pelo CPF do favorecido. Decisão do usuário: a linha é recusada. Valores sintéticos.
   it.each([

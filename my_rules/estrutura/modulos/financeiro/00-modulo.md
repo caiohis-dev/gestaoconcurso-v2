@@ -168,7 +168,9 @@ writeFile` e `URL.createObjectURL`/`HTMLAnchorElement.click` mockados — armadi
   planilha** e o motivo. A tela lista todas em `AvisoRecusadas` ("ficaram fora do arquivo — não
   serão pagas"), e as válidas seguem geráveis. `converterPlanilhaParaPagamentoPix` continua
   existindo e devolve só os pagamentos. Motivos, nesta ordem: nome em branco · CPF em branco ·
-  valor em branco · valor fora do formato · valor abaixo de R$ 1,00 (truncado, daria zero) ·
+  **CPF do favorecido inválido** (`motivoCpfInvalido` de `src/lib/cpf.ts` — caractere que não é
+  dígito, tamanho, sequência repetida ou DV; textos iguais aos da importação de candidatos;
+  máscara aceita) · valor em branco · valor fora do formato · valor abaixo de R$ 1,00 (truncado, daria zero) ·
   **chave PIX preenchida e não reconhecida** (sem `tipo_chave_pix`, e a inferência não a leu como
   CPF, celular, e-mail nem chave aleatória). ⚠️ **Até 2026-11-03 essa chave era trocada CALADA pelo
   CPF do favorecido** — medido numa planilha real: 5 de 423 (celular sem DDD, `0` + telefone, 14
@@ -187,8 +189,12 @@ writeFile` e `URL.createObjectURL`/`HTMLAnchorElement.click` mockados — armadi
   campo CPF do favorecido se salva (o `formatNumeric` completa com zeros); a chave PIX, não.
   Trocar para `raw: false` sozinho **quebraria o valor** (o SheetJS formata em en-US: `"1,500.50"`).
   🔵 Medido numa planilha real em 2026-11-03: CPF e `Chave PIX` vêm como **texto** — o defeito
-  não ocorre nesse formato. Também aberto: CPF do favorecido sem validação de DV;
-  `cpfTemDigitosValidos` duplica `src/lib/cpf.ts`.
+  não ocorre nesse formato.
+- 🔵 **CPF validado desde 2026-11-03.** ⚠️ Até essa data o CPF do favorecido só passava por
+  `replace(/\D/g, '')` e ia ao arquivo do banco como viesse (2 de 423 com DV errado numa planilha
+  real), e `"abc"` era acusado como "CPF em branco". E `financeiro-chave-pix.ts` tinha a própria
+  cópia do módulo 11 (`cpfTemDigitosValidos`, portada da origem); hoje usa `cpfValido` de
+  `src/lib/cpf.ts` — uma regra só.
 - ⚠️ **A Fase 3 não foi verificada em navegador real logado.** O banco local carrega dado e hashes
   de senha de PRODUÇÃO (`desenvolvimento-local.md`) — não há credencial de teste segura para logar
   sozinho como superadmin/financeiro e conferir a tela visualmente. A cobertura de comportamento
