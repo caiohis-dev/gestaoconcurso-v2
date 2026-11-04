@@ -1,0 +1,67 @@
+# Roadmap VIVO — Refatoração da UI de Gerenciar Usuários — Modal de Controle de Coordenação
+# Criado em 2026-09-12. Leia my_rules/analises/README.md antes de usar como guia.
+
+roadmap:
+  titulo: "Refatoração da UI de Gerenciar Usuários — Modal de Controle de Coordenação"
+  criado: "2026-09-12"
+  status: "⏳ PENDENTE"
+  
+  origem: >
+    A tabela de usuários de /gerenciar-usuarios tornou-se inadequada para exibir um volume
+    potencialmente grande de informações devido à possibilidade de um mesmo usuário coordenar
+    múltiplas provas. O usuário solicitou que essa informação e controle migrassem para
+    um Modal dedicado e interativo, acessado por um botão na tabela.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  decisoes_do_usuario: |
+    D1. O modal assume a exibição dos detalhes sobre as provas coordenadas e passa a listar cada vínculo atrelado ao usuário.
+    
+    D2. REVOGAR SIM, CONCEDER NÃO. A operação permitida na lista será "Revogar". A concessão do
+        papel continuará dependendo de alocação de fato em uma unidade, devendo ser feita
+        exclusivamente no `CoordenadoresProvaDialog`, mantendo a arquitetura solidificada em
+        2026-07-26. O modal exibirá um aviso instruindo o administrador sobre isso.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  medido_antes: |
+    O hook `useUsers` e a query atual que alimenta o cache agrupam os dados apenas para visualização de texto:
+    A função envia um `Record<string, string[]>` com os nomes dos editais (ex: `['Edital 01', 'Edital 02']`).
+    Isso bloqueia qualquer ação individual. O novo desenho exigirá ler o `id` da tabela `coordenadores_prova`.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  o_que_NAO_muda: |
+    As regras estabelecidas de autorização. Superadmin e Admin seguem sendo papéis puros atribuíveis
+    por dropdown. Coordenador continua precisando da alocação de base. A exclusão reutilizará o conceito 
+    já testado de "verificar se é a última coordenação para revogar de user_roles".
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  fases:
+    - id: 1
+      nome: "Hooks e Comunicação com Banco"
+      status: "⏳ pendente"
+      entrega:
+        - >
+          Atualizar o retorno de `userCoordenadorProvas` no `useUsers.tsx` para o tipo
+          `Record<string, { id: string; edital_nome: string; prova_id: string }[]>`.
+        - >
+          Criar mutation `revogarAcessoProva(id: string)` com deleção na tabela
+          `coordenadores_prova` e tratamento em cascata no papel de `user_roles`.
+      armadilha: >
+        ⚠️ Revogar a última prova exige atomicidade ou exclusão encadeada para que o superadmin
+        não tenha o papel global deixado por descuido (dívida já paga neste repositório anteriormente).
+
+    - id: 2
+      nome: "UI — Modal e Componentes da Tabela"
+      status: "⏳ pendente"
+      entrega:
+        - >
+          Criar o componente `UserCoordenadorModal.tsx`.
+        - >
+          Atualizar a `TableCell` em `GerenciarUsuarios.tsx`, substituindo as badges e textos
+          por um `Button size="icon" variant="ghost"` que ativa o Dialog.
+
+    - id: 3
+      nome: "Verificação e docs"
+      status: "⏳ pendente"
+      entrega:
+        - "Testes manuais da exclusão no navegador."
+        - "npm test · tsc · lint · build · docs:conferir"

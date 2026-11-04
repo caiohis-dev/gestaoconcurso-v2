@@ -1,0 +1,96 @@
+# Roadmap VIVO — Sistema de Monitoramento e Teste de Estresse
+# Criado em 2026-09-12. Leia my_rules/analises/README.md antes de usar como guia.
+
+roadmap:
+  titulo: "Sistema de Monitoramento e Teste de Estresse (Hostinger + Supabase)"
+  criado: "2026-09-12"
+  status: "⏳ PENDENTE"
+  
+  origem: >
+    Necessidade de simular o comportamento do sistema de produção sob alta carga (milhares
+    de alocações de colaboradores) para identificar gargalos no Supabase (CPU, limites de 
+    conexões e cortes silenciosos do PostgREST) e na Hostinger (servidor Nginx).
+    O código não será versionado e viverá isolado na pasta `monitoramento/`.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  decisoes_do_usuario: |
+    D1. Todo o código viverá na pasta `monitoramento/`, que já foi isolada no `.gitignore`.
+        O monitor é um SISTEMA À PARTE: ele tem seu próprio servidor (ex: Express/Vite local),
+        não se mistura com o build principal, NUNCA sobe para produção e abre obrigatoriamente
+        em uma porta diferente da aplicação (ex: porta 8081).
+    
+    D2. Cada etapa deste roadmap dará início a um Plano de Implementação separado,
+        executado sequencialmente. Isso isola o escopo de cada ferramenta de teste.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  medido_antes: |
+    - A rota crítica identificada pelo usuário (Gerenciar Colaboradores Prova) dispara
+      requisições massivas (`fetchAll: true` e `colaboradoresAlocadosQuery`) que ameaçam o
+      limite do Free Tier (CPU 100%, Esgotamento de Pool de Conexões).
+    - Existem limites documentados (PostgREST max_rows=1000) que falham silenciosamente.
+    - O servidor da Hostinger é enxuto e passível de monitoramento de log/htop via SSH.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  fases:
+    - id: 1
+      nome: "Monitor do Supabase via Management API"
+      status: "⏳ pendente"
+      entrega:
+        - "Script Node local para bater no `/v1/projects/{ref}/metrics` a cada 5s."
+        - "Coletar e logar métricas críticas de gargalo: CPU Usage e Conexões Ativas/Ociosas."
+        - "Emissão de avisos locais quando limites do Free Tier se aproximarem do teto."
+      nota: >
+        Iniciará o PLANO 1. Sem injetar carga, apenas prepara as ferramentas de observação
+        para as próximas fases.
+
+    - id: 2
+      nome: "Monitor do Servidor Hostinger (Logs e SSH)"
+      status: "⏳ pendente"
+      entrega:
+        - "Script para coletar o `tail -f /var/log/nginx/access.log` do servidor via SSH."
+        - "Script utilitário para registrar snapshots de `top -b` ou dados do `htop` rodando."
+        - "Sincronização temporal (timestamp local) com os logs extraídos da Fase 1."
+      nota: >
+        Iniciará o PLANO 2. Isola a observabilidade do Nginx/Ubuntu da Hostinger para
+        poder cruzar picos de requisições com os picos no banco.
+
+    - id: 3.1
+      nome: "Engenho de Carga — Setup e Autenticação"
+      status: "⏳ pendente"
+      entrega:
+        - "Configuração base do framework de teste (K6 ou Artillery)."
+        - "Script para autenticar um 'usuário administrador' simulado no Supabase e guardar o JWT."
+        - "Criação de uma tabela/mock seguro apenas para uso nos testes (se aplicável), isolando os dados de produção."
+      nota: >
+        Iniciará o PLANO 3.1. Focado apenas na infraestrutura e segurança do script de carga antes de atirar.
+
+    - id: 3.2
+      nome: "Engenho de Carga — Read Stress (Leitura Massiva)"
+      status: "⏳ pendente"
+      entrega:
+        - "Configurar os disparos apenas contra as rotas de leitura pesadas (ex: `colaboradoresAlocadosQuery`)."
+        - "Rotina de teste simulando 100, 500 e 1000 administradores simultâneos abrindo a tela de gestão."
+      nota: >
+        Iniciará o PLANO 3.2. Mede se a CPU do Supabase colapsa apenas buscando e formatando os dados de milhares de pessoas.
+
+    - id: 3.3
+      nome: "Engenho de Carga — Write Stress (Escrita Massiva)"
+      status: "⏳ pendente"
+      entrega:
+        - "Simulação de transações de alocação/remoção em lote."
+        - "Gatilhos parametrizados rodando apenas contra o ambiente de mock criado na Fase 3.1."
+      armadilha: >
+        ⚠️ Produção tem dados REAIS e não possui backup grátis. A Fase 3.3 só deve rodar se
+        tivermos 100% de garantia de que a escrita afeta EXCLUSIVAMENTE a tabela de mock temporária.
+      nota: >
+        Iniciará o PLANO 3.3. Mede o esgotamento do pool de conexões (transactions) durante escritas concorrentes.
+
+    - id: 4
+      nome: "Relatório de Colapso e Limiares (Breakpoints)"
+      status: "⏳ pendente"
+      entrega:
+        - "Extração do resultado e consolidação do momento exato de falha (quando os 503s começam)."
+        - "Mapeamento documentado de quantos colaboradores a tela atual aguenta renderizar antes da CPU estourar."
+      nota: >
+        Iniciará o PLANO 4. Consiste em rodar a suíte inteira construída nas fases anteriores 
+        e emitir a análise de otimização definitiva.
