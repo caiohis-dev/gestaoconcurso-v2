@@ -68,6 +68,15 @@ Versionamento semântico, com prefixo `v`:
 
   ⚠️ **Subiu sem backup novo**, por decisão do usuário; o mais recente era o de 16/09. Fica registrado porque o Free não tem backup automático nenhum.
 
+- **`v3.9.1` nasceu em 2026-11-03**, no commit `087f491`. PATCH, **só site** — sem banco, sem Edge
+  Function. Financeiro: **nenhuma linha some calada** — as recusadas aparecem listadas com nome e
+  motivo; o valor ganhou formato estrito (antes `"R$ 1.500,00"` virava R$ 0,00 no Segmento A e
+  `"1500abc"` pagava 1500); a chave PIX preenchida e não reconhecida recusa a linha, em vez de ser
+  trocada calada pelo CPF (5 de 423 numa planilha real). Ritual curto: commit → `git fetch .
+  dev:main` → tag → push (main + tag) → `deploy.sh`. **Verificado ao vivo:** bundle servido
+  `index-9c1bmO3Y.js` idêntico ao buildado, HTTPS 200, HTTP 301, logo 200, **0** de `127.0.0.1`,
+  8 do projeto de produção, e as frases dos avisos novos presentes.
+
 - **`v3.9.0` nasceu em 2026-11-03**, no commit `65d2459`. MINOR, **banco + site**, sem Edge
   Function. Entregou o **fiscal de sala marcado na função** (`funcoes_colaboradores.fiscal_de_sala`
   + trigger FS001/2/3 — o seletor estava vazio desde sempre) com o **posto devolvido ao excluir a
