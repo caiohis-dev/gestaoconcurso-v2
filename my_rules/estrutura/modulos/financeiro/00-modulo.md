@@ -125,6 +125,7 @@ teto do lint, não só por organização):
 2. **Correspondência de colunas** — uma linha por `COLUNAS_SISTEMA`, `Select` para a coluna da
    planilha, prévia do primeiro valor; "Validar" só libera com toda coluna `obrigatoria` mapeada.
 3. **Validação/Geração** — resumo (recebedores válidos, ignoradas, valor total, nº de arquivos),
+   aviso das linhas recusadas (`AvisoRecusadas`), aviso de centavos ignorados (`AvisoCentavos`),
    tabela de pagamentos lidos, aviso de divergência CPF×chave PIX
    (`detectarChaveCpfDivergente`), e um botão de geração por unidade (`agruparPagamentosPorUnidade`
    + `gerarLotePix`) que baixa o `.REM` (`Blob`+`<a download>`) e a planilha de conferência
@@ -133,7 +134,7 @@ teto do lint, não só por organização):
 Teste: `src/pages/Financeiro.ui.test.tsx` — sem mock de Supabase (o módulo não o toca). Constrói um
 `.xlsx` real com `xlsx` e sobe pelo caminho real da página (mesma convenção de
 `CandidatosImportar.ui.test.tsx`). Cobre: mapeamento pré-preenchido, bloqueio por coluna
-obrigatória, resumo da validação, o aviso de divergência, e a geração de arquivo (com `xlsx.
+obrigatória, resumo da validação, os avisos de linha recusada, de centavos e de divergência, e a geração de arquivo (com `xlsx.
 writeFile` e `URL.createObjectURL`/`HTMLAnchorElement.click` mockados — armadilha 9 de
 `testes.md`, já que gerar arquivo de verdade suja o jsdom).
 
@@ -162,16 +163,32 @@ writeFile` e `URL.createObjectURL`/`HTMLAnchorElement.click` mockados — armadi
   (commit `0c81276`), cujos testes só usavam valor em TEXTO; nenhum envio saiu com valor quebrado
   (confirmado pelo usuário). Teste de valor neste módulo tem de incluir célula de número de verdade
   num `.xlsx` (`Financeiro.ui.test.tsx`).
-- ⚠️ **Valor que não se lê vira R$ 0,00 calado** — `"R$ 1.500,00"` dá `NaN`, a tela mostra R$ 0,00
-  e o Segmento A grava zeros. Não tratado: o parser não remove símbolo de moeda nem trata sinal
-  negativo. Mesmo formato de perda silenciosa da avaliação de 2026-11-03, ainda aberta (ver abaixo).
+- 🔴 **Nenhuma linha some calada** (2026-11-03). `lerPagamentosDaPlanilha` devolve
+  `{ pagamentos, recusadas }`; cada `LinhaRecusada` traz nome, CPF e valor **como estavam na
+  planilha** e o motivo. A tela lista todas em `AvisoRecusadas` ("ficaram fora do arquivo — não
+  serão pagas"), e as válidas seguem geráveis. `converterPlanilhaParaPagamentoPix` continua
+  existindo e devolve só os pagamentos. Motivos, nesta ordem: nome em branco · CPF em branco ·
+  valor em branco · valor fora do formato · valor abaixo de R$ 1,00 (truncado, daria zero) ·
+  **chave PIX preenchida e não reconhecida** (sem `tipo_chave_pix`, e a inferência não a leu como
+  CPF, celular, e-mail nem chave aleatória). ⚠️ **Até 2026-11-03 essa chave era trocada CALADA pelo
+  CPF do favorecido** — medido numa planilha real: 5 de 423 (celular sem DDD, `0` + telefone, 14
+  dígitos). Decisão do usuário: recusar, não corrigir sozinho. Chave em **branco** segue indo para
+  o CPF (por desenho), e `tipo_chave_pix` explícito não passa pela inferência.
+  - **O formato de valor é estrito** (`VALOR_BR`): `1500`, `1500,5`, `1.500`, `1.234,56`. Fica
+    fora: `"R$ …"`, sinal negativo, `"1.5"` (ponto decimal em texto, que o parser leria como 15)
+    e lixo no fim. ⚠️ **Até 2026-11-03 era `parseFloat`**: `"R$ 1.500,00"` virava `NaN` e saía
+    **R$ 0,00 no Segmento A**, `"1500abc"` virava 1500, valor em branco virava 0, e linha sem
+    nome/CPF sumia — a tela só mostrava "Linhas ignoradas: N".
+  - O número da linha do Excel **não** é mostrado de propósito: `lerPlanilha` descarta linhas em
+    branco (`blankrows: false`), então o índice da matriz não bate com a linha da planilha.
 - ⚠️ **Em aberto (avaliação de 2026-11-03, confirmada no código, não corrigida):**
   `lerPlanilha` usa `raw: true`, então CPF/chave PIX guardados como NÚMERO perdem o zero à esquerda
   (`05261923727` → `5261923727`; a chave de 10 dígitos pode virar telefone `+555261923727`). O
   campo CPF do favorecido se salva (o `formatNumeric` completa com zeros); a chave PIX, não.
   Trocar para `raw: false` sozinho **quebraria o valor** (o SheetJS formata em en-US: `"1,500.50"`).
-  Também abertos: linhas ignoradas sem dizer quais; chave PIX inválida trocada calada pelo CPF;
-  CPF do favorecido sem validação de DV; `cpfTemDigitosValidos` duplica `src/lib/cpf.ts`.
+  🔵 Medido numa planilha real em 2026-11-03: CPF e `Chave PIX` vêm como **texto** — o defeito
+  não ocorre nesse formato. Também aberto: CPF do favorecido sem validação de DV;
+  `cpfTemDigitosValidos` duplica `src/lib/cpf.ts`.
 - ⚠️ **A Fase 3 não foi verificada em navegador real logado.** O banco local carrega dado e hashes
   de senha de PRODUÇÃO (`desenvolvimento-local.md`) — não há credencial de teste segura para logar
   sozinho como superadmin/financeiro e conferir a tela visualmente. A cobertura de comportamento

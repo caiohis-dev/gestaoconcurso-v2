@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   converterPlanilhaParaPagamentoPix,
+  lerPagamentosDaPlanilha,
   sugerirMapeamento,
   lerCabecalho,
   lerPrimeiraLinhaDados,
@@ -99,6 +100,92 @@ describe('converterPlanilhaParaPagamentoPix', () => {
     ])
     expect(converterPlanilhaParaPagamentoPix(m, '24092026')).toHaveLength(1)
   })
+})
+
+/** Uma linha só, pelo caminho que devolve as recusadas. */
+function lerUma(linha: Linha) {
+  return lerPagamentosDaPlanilha(matriz([linha]), '24092026')
+}
+
+// 🔴 Nenhuma linha some calada (2026-11-03). Antes: sem nome/CPF sumia sem dizer quem, e valor
+// ilegível ("R$ 1.500,00") ou em branco virava pagamento de R$ 0,00 no Segmento A.
+describe('lerPagamentosDaPlanilha — linhas recusadas', () => {
+  it('⭐ CONTROLE POSITIVO: linha válida vira pagamento e nada é recusado', () => {
+    const r = lerUma(LINHA_VALIDA)
+    expect(r.pagamentos).toHaveLength(1)
+    expect(r.recusadas).toEqual([])
+  })
+
+  it.each([
+    ['nome em branco', { 'Nome Completo': '' }, 'Nome em branco'],
+    ['CPF em branco', { CPF: '' }, 'CPF em branco'],
+    ['valor em branco', { 'Valor Líquido': '' }, 'Valor em branco'],
+    ['valor com "R$"', { 'Valor Líquido': 'R$ 1.500,00' }, 'Valor "R$ 1.500,00" não está no formato 1.234,56'],
+    ['valor com lixo no fim (parseFloat aceitava "1500")', { 'Valor Líquido': '1500abc' }, 'Valor "1500abc" não está no formato 1.234,56'],
+    ['ponto decimal em texto ("1.5" — viraria 15)', { 'Valor Líquido': '1.5' }, 'Valor "1.5" não está no formato 1.234,56'],
+    ['valor negativo', { 'Valor Líquido': '-150' }, 'Valor "-150" não está no formato 1.234,56'],
+    ['valor zero', { 'Valor Líquido': '0' }, 'Valor abaixo de R$ 1,00 — sem os centavos, o pagamento seria zero'],
+    ['só centavos ("0,50")', { 'Valor Líquido': '0,50' }, 'Valor abaixo de R$ 1,00 — sem os centavos, o pagamento seria zero'],
+  ] as const)('%s: recusa a linha, com o motivo, e não gera pagamento', (_caso, troca, motivo) => {
+    const r = lerUma({ ...LINHA_VALIDA, ...troca })
+    expect(r.pagamentos).toEqual([])
+    expect(r.recusadas).toHaveLength(1)
+    expect(r.recusadas[0].motivo).toBe(motivo)
+  })
+
+  // Formatos medidos numa planilha real (2026-11-03): 5 de 423 chaves caíam aqui e eram trocadas
+  // CALADAS pelo CPF do favorecido. Decisão do usuário: a linha é recusada. Valores sintéticos.
+  it.each([
+    ['celular sem DDD (9 dígitos)', '999998888'],
+    ['telefone com 0 na frente (12 dígitos)', '024999998888'],
+    ['14 dígitos (formato de CNPJ)', '12345678000195'],
+    ['11 dígitos que não é CPF válido nem celular', '12345678911'],
+  ])('🔴 chave PIX não reconhecida — %s — recusa a linha, sem trocar pelo CPF', (_caso, chave) => {
+    const r = lerUma({ ...LINHA_VALIDA, chave_pix: chave })
+    expect(r.pagamentos).toEqual([])
+    expect(r.recusadas[0].motivo).toBe(
+      `Chave PIX "${chave}" não reconhecida — não é CPF, celular, e-mail nem chave aleatória`,
+    )
+  })
+
+  it('⭐ CONTROLE POSITIVO: chave em BRANCO continua indo para o CPF (não é recusada)', () => {
+    const r = lerUma({ ...LINHA_VALIDA, chave_pix: '' })
+    expect(r.recusadas).toEqual([])
+    expect(r.pagamentos[0]).toMatchObject({ tipoChavePix: '03', chavePix: '11144477735' })
+  })
+
+  it('⭐ CONTROLE POSITIVO: tipo_chave_pix EXPLÍCITO não passa pela inferência, então não é recusado', () => {
+    const r = lerUma({ ...LINHA_VALIDA, chave_pix: '999998888', tipo_chave_pix: '01' })
+    expect(r.recusadas).toEqual([])
+    expect(r.pagamentos[0].tipoChavePix).toBe('01')
+  })
+
+  it('a recusada leva nome, CPF e valor como estavam na planilha', () => {
+    const r = lerUma({ ...LINHA_VALIDA, 'Valor Líquido': 'R$ 1.500,00' })
+    expect(r.recusadas[0]).toMatchObject({ nome: 'Zeca Silva', cpf: '11144477735', valor: 'R$ 1.500,00' })
+  })
+
+  it('⭐ CONTROLE POSITIVO: formatos aceitos — "1500", "1500,5", "1.500", "1.234,56", "1,00"', () => {
+    for (const valor of ['1500', '1500,5', '1.500', '1.234,56', '1,00']) {
+      expect(lerUma({ ...LINHA_VALIDA, 'Valor Líquido': valor }).recusadas).toEqual([])
+    }
+  })
+
+  it('recusadas mantêm a ordem da planilha e não impedem as válidas', () => {
+    const r = lerPagamentosDaPlanilha(
+      matriz([
+        { ...LINHA_VALIDA, 'Nome Completo': 'Ana', CPF: '' },
+        LINHA_VALIDA,
+        { ...LINHA_VALIDA, 'Nome Completo': 'Bia', 'Valor Líquido': 'abc' },
+      ]),
+      '24092026',
+    )
+    expect(r.pagamentos.map((p) => p.nomeFornecedor)).toEqual(['Zeca Silva'])
+    expect(r.recusadas.map((x) => x.nome)).toEqual(['Ana', 'Bia'])
+  })
+})
+
+describe('converterPlanilhaParaPagamentoPix — regras da planilha inteira', () => {
 
   describe('colunas obrigatórias', () => {
     it('lança erro quando falta coluna obrigatória (ex.: sem "Valor Líquido")', () => {

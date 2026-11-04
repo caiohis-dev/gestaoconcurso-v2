@@ -154,8 +154,31 @@ describe("Financeiro — tela (Fase 3)", () => {
 
     expect(screen.getByRole("button", { name: /CJXXIII/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /CIEP/ })).toBeInTheDocument();
-    // Controle positivo do aviso de centavos: valores inteiros não o disparam.
+    // Controle positivo dos avisos: planilha toda válida e inteira não dispara nenhum dos dois.
     expect(screen.queryByText(/os centavos serão ignorados/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ficaram fora do arquivo/)).not.toBeInTheDocument();
+  });
+
+  it("🔴 linha recusada aparece nomeada, com o motivo, e as válidas seguem geráveis", async () => {
+    const matrizComRecusadas = [
+      ...MATRIZ,
+      ["Ciclano Souza", "39053344705", "R$ 1.500,00", "Edital 001/2026 SMA", "CIEP", "Fiscal", "000789", "24999996666", "39053344705", "03"],
+      ["Sem Cpf Nenhum", "", "900,00", "Edital 001/2026 SMA", "CIEP", "Fiscal", "000999", "24999995555", "", ""],
+    ];
+    const user = userEvent.setup();
+    await irParaValidacao(user, matrizComRecusadas);
+
+    expect(screen.getByText("Recebedores válidos").nextElementSibling).toHaveTextContent("2");
+    expect(screen.getByText("Linhas ignoradas").nextElementSibling).toHaveTextContent("2");
+
+    const aviso = screen.getByText(/2 linha\(s\) ficaram fora do arquivo/).closest('[role="alert"]') as HTMLElement;
+    const ciclano = within(aviso).getByText("Ciclano Souza").closest("tr") as HTMLElement;
+    expect(ciclano).toHaveTextContent('Valor "R$ 1.500,00" não está no formato 1.234,56');
+    const semCpf = within(aviso).getByText("Sem Cpf Nenhum").closest("tr") as HTMLElement;
+    expect(semCpf).toHaveTextContent("CPF em branco");
+    // As válidas não entram no aviso, e a geração continua disponível para elas.
+    expect(within(aviso).queryByText("Fulano de Tal")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /CJXXIII/ })).toBeInTheDocument();
   });
 
   it("🔴 célula NUMÉRICA com centavos: paga reais inteiros e avisa quem teve centavos ignorados", async () => {

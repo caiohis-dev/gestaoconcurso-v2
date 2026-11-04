@@ -265,9 +265,12 @@ migrations desenhadas e nunca ligadas ao frontend).
 
 ## 💸 Módulo Financeiro — perdas silenciosas na leitura da planilha
 
-**Status:** ⏳ **não iniciado.** Vem da avaliação de 2026-11-03; cada ponto abaixo foi conferido no
-código. O defeito mais grave dela (célula numérica com centavos lida 10×) **foi corrigido** no mesmo
-dia, junto com a regra de reais inteiros — ver `00-modulo.md`, "Pontos frágeis".
+**Status:** ⏳ **parcial.** Vem da avaliação de 2026-11-03; cada ponto abaixo foi conferido no
+código. Já corrigidos no mesmo dia (ver `00-modulo.md`, "Pontos frágeis"): a célula numérica com
+centavos lida 10× (junto com a regra de reais inteiros), o **valor ilegível que virava R$ 0,00** e
+as **linhas ignoradas sem dizer quais** e a **chave PIX trocada calada pelo CPF** — hoje toda
+linha recusada aparece com nome e motivo. 🔵 Os itens 2, 3 e 4 desta lista eram esses; os números
+abaixo foram mantidos. **Sobram o 1 (prioridade baixa, medido) e o 5.**
 **Área:** módulo Financeiro — ver [`estrutura/modulos/financeiro/00-modulo.md`](./estrutura/modulos/financeiro/00-modulo.md)
 
 1. **CPF/chave PIX guardados como NÚMERO perdem o zero à esquerda** (`raw: true` em `lerPlanilha`).
@@ -275,10 +278,20 @@ dia, junto com a regra de reais inteiros — ver `00-modulo.md`, "Pontos frágei
    `raw: false` sozinho:** o SheetJS formata em en-US (`"1,500.50"`) e quebraria o valor. O caminho
    provável é tratar a célula numérica de CPF/chave no `celulaParaTexto` (ou por coluna), com teste
    em `.xlsx` real com célula de número.
-2. **Valor ilegível vira R$ 0,00 calado** (`"R$ 1.500,00"` → `NaN` → zeros no Segmento A). Deveria
-   recusar a linha ou nomeá-la.
-3. **Linhas ignoradas sem dizer quais** — a tela mostra só o total.
-4. **Chave PIX preenchida e inválida é trocada calada pelo CPF** do favorecido.
+   🔵 **Medido em 2026-11-03 numa planilha real** (`colaboradores_Edital_003_2026_-_SMA.xls`, 423
+   linhas): CPF e `Chave PIX` vêm como **texto** em todas as linhas — 134 CPFs começam com zero e
+   chegam intactos. O defeito **não ocorre** nesse formato de exportação; só reabre se aparecer
+   planilha com essas colunas tipadas como número. Prioridade baixa.
+2. ~~Valor ilegível vira R$ 0,00 calado~~ — **corrigido em 2026-11-03** (linha recusada, com motivo).
+3. ~~Linhas ignoradas sem dizer quais~~ — **corrigido em 2026-11-03** (`AvisoRecusadas`).
+4. ~~Chave PIX preenchida e inválida é trocada calada pelo CPF~~ — **corrigido em 2026-11-03**:
+   a linha é recusada, com a chave no motivo (decisão do usuário: recusar, não recuperar sozinho).
+   🔵 **Medido em 2026-11-03 na mesma planilha real:** **5 de 423** chaves preenchidas caem nessa
+   troca calada (mais 2 vazias, que vão para o CPF por desenho). Formato, sem os valores: 2 com
+   **9 dígitos** (celular sem DDD; a coluna Telefone = DDD + a chave), 1 com **12 dígitos começando
+   em 0** (`0` + o telefone da linha), 1 com 12 dígitos cujos 8 finais batem com o telefone, e 1
+   com 14 dígitos. As 3 primeiras são recuperáveis **exatamente** pela coluna Telefone da própria
+   linha; as outras 2, não.
 5. **CPF do favorecido sem validação de DV/tamanho**, e `cpfTemDigitosValidos` duplica `src/lib/cpf.ts`.
 
 ---

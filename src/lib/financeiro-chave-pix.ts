@@ -175,7 +175,7 @@ export const inferirTipoEFormatarChavePix = (
       return { tipoChavePix: '01', chavePix: `+55${chaveDigitos}` }
     }
     // 11 dígitos que não é CPF válido nem celular plausível: não infere aqui
-    // (cai no fallback do conversor, que usa o CPF do favorecido — Tipo 03).
+    // (o conversor RECUSA a linha — até 2026-11-03 trocava calado pelo CPF do favorecido).
     return null
   }
 

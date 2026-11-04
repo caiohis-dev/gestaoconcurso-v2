@@ -21,13 +21,12 @@ import {
 import type { PagamentoPix } from "@/lib/financeiro-cnab240-tipos";
 import {
   COLUNAS_SISTEMA,
-  contarLinhasDados,
-  converterPlanilhaParaPagamentoPix,
+  lerPagamentosDaPlanilha,
   lerCabecalho,
   lerPrimeiraLinhaDados,
   sugerirMapeamento,
 } from "@/lib/financeiro-planilha-pagamentos";
-import type { DefColunaSistema, IdColunaSistema, MapeamentoColunas } from "@/lib/financeiro-planilha-pagamentos";
+import type { DefColunaSistema, IdColunaSistema, LinhaRecusada, MapeamentoColunas } from "@/lib/financeiro-planilha-pagamentos";
 import { lerPlanilha } from "@/lib/financeiro-ler-planilha";
 import type { Matriz } from "@/lib/financeiro-ler-planilha";
 import { baixarXls } from "@/lib/financeiro-exportar-planilha";
@@ -109,20 +108,19 @@ export default function Financeiro() {
   // Parsing/validação derivada — só roda com um mapeamento confirmado
   const resultado = useMemo((): {
     pagamentos: PagamentoPix[];
-    totalLinhas: number;
+    recusadas: LinhaRecusada[];
     erro: string | null;
   } => {
-    if (!matriz || !mapeamento) return { pagamentos: [], totalLinhas: 0, erro: null };
+    if (!matriz || !mapeamento) return { pagamentos: [], recusadas: [], erro: null };
     try {
-      const pagamentos = converterPlanilhaParaPagamentoPix(matriz, toDDMMAAAA(dataPagamento), mapeamento);
-      return { pagamentos, totalLinhas: contarLinhasDados(matriz), erro: null };
+      return { ...lerPagamentosDaPlanilha(matriz, toDDMMAAAA(dataPagamento), mapeamento), erro: null };
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Falha ao processar a planilha.";
-      return { pagamentos: [], totalLinhas: contarLinhasDados(matriz), erro: msg };
+      return { pagamentos: [], recusadas: [], erro: msg };
     }
   }, [matriz, dataPagamento, mapeamento]);
 
-  const { pagamentos, totalLinhas, erro } = resultado;
+  const { pagamentos, recusadas, erro } = resultado;
   const podeGerar = pagamentos.length > 0 && !erro;
 
   // Um arquivo CNAB por unidade. Deriva os grupos (com nomes de arquivo únicos)
@@ -268,7 +266,7 @@ export default function Financeiro() {
             fileName={fileName}
             erro={erro}
             pagamentos={pagamentos}
-            totalLinhas={totalLinhas}
+            recusadas={recusadas}
             grupos={grupos}
             divergenciasChaveCpf={divergenciasChaveCpf}
             onExportar={exportar}
@@ -485,7 +483,7 @@ function ValidacaoEtapa(props: {
   fileName: string | null;
   erro: string | null;
   pagamentos: PagamentoPix[];
-  totalLinhas: number;
+  recusadas: LinhaRecusada[];
   grupos: GrupoUnidade[];
   divergenciasChaveCpf: DivergenciaChaveCpf[];
   onExportar: () => void;
@@ -493,8 +491,7 @@ function ValidacaoEtapa(props: {
   onVoltarMapeamento: () => void;
   onTrocarArquivo: () => void;
 }) {
-  const { fileName, erro, pagamentos, totalLinhas, grupos, divergenciasChaveCpf } = props;
-  const ignoradas = Math.max(0, totalLinhas - pagamentos.length);
+  const { fileName, erro, pagamentos, recusadas, grupos, divergenciasChaveCpf } = props;
   const valorTotal = pagamentos.reduce((soma, p) => soma + (Number.isFinite(p.valorPagamento) ? p.valorPagamento : 0), 0);
   const inferidas = pagamentos.reduce((n, p) => (p.chaveInferida ? n + 1 : n), 0);
   const ambiguas = pagamentos.reduce((n, p) => (p.chaveAmbigua ? n + 1 : n), 0);
@@ -527,13 +524,13 @@ function ValidacaoEtapa(props: {
         ) : (
           <ResumoValidacao
             validos={pagamentos.length}
-            ignoradas={ignoradas}
+            ignoradas={recusadas.length}
             valorTotal={valorTotal}
             arquivos={grupos.length}
           />
         )}
 
-        {!erro && comCentavos.length > 0 && <AvisoCentavos pagamentos={comCentavos} />}
+        {!erro && <AvisosDaPlanilha recusadas={recusadas} comCentavos={comCentavos} />}
 
         {!erro && pagamentos.length > 0 && (
           <TabelaPagamentos pagamentos={pagamentos} inferidas={inferidas} ambiguas={ambiguas} onExportar={props.onExportar} />
@@ -655,6 +652,58 @@ function TabelaPagamentos(props: {
                   </div>
                 </TableCell>
                 <TableCell className="font-mono">{p.chavePix || "—"}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+/** Os dois avisos sobre o conteúdo da planilha: linhas recusadas e centavos ignorados. */
+function AvisosDaPlanilha({ recusadas, comCentavos }: { recusadas: LinhaRecusada[]; comCentavos: PagamentoPix[] }) {
+  return (
+    <>
+      {recusadas.length > 0 && <AvisoRecusadas recusadas={recusadas} />}
+      {comCentavos.length > 0 && <AvisoCentavos pagamentos={comCentavos} />}
+    </>
+  );
+}
+
+/** Linhas da planilha que NÃO viraram pagamento — cada uma com o motivo, nenhuma some calada. */
+function AvisoRecusadas({ recusadas }: { recusadas: LinhaRecusada[] }) {
+  return (
+    <div
+      className="space-y-3 rounded-lg border border-red-500/20 bg-red-500/10 p-4 text-red-700 dark:text-red-400"
+      role="alert"
+    >
+      <div className="flex items-start gap-2">
+        <Info className="mt-0.5 h-5 w-5 flex-shrink-0" />
+        <div>
+          <p className="font-medium">{recusadas.length} linha(s) ficaram fora do arquivo — não serão pagas</p>
+          <p className="text-sm">
+            Corrija estas linhas na planilha e envie de novo para incluí-las. As demais podem ser geradas normalmente.
+          </p>
+        </div>
+      </div>
+      <div className="overflow-auto rounded-md border bg-background">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Nome</TableHead>
+              <TableHead>CPF</TableHead>
+              <TableHead>Valor</TableHead>
+              <TableHead>Motivo</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {recusadas.map((r, i) => (
+              <TableRow key={`${r.cpf}-${i}`}>
+                <TableCell>{r.nome || "(em branco)"}</TableCell>
+                <TableCell className="font-mono">{r.cpf || "(em branco)"}</TableCell>
+                <TableCell>{r.valor || "(em branco)"}</TableCell>
+                <TableCell>{r.motivo}</TableCell>
               </TableRow>
             ))}
           </TableBody>

@@ -116,11 +116,41 @@ const normalizarRotulo = (texto: string): string =>
 /** Verdadeiro se a linha da matriz não contém nenhuma célula preenchida. */
 const linhaVazia = (linha: string[]): boolean => linha.every((c) => c.trim() === '')
 
+/** Formato brasileiro aceito: "1500", "1500,5", "1.500", "1.234,56". Nada além disso. */
+const VALOR_BR = /^(\d{1,3}(\.\d{3})+|\d+)(,\d+)?$/
+
 /**
  * Converte um valor monetário no formato brasileiro ("1.234,56") para number.
  * Ponto é separador de milhar (removido) e vírgula é o separador decimal.
+ * Devolve `null` para qualquer texto fora do formato — inclusive "R$ 1.500,00", "1.5" e
+ * "1500abc", que o `parseFloat` de antes aceitava pela metade ou transformava em NaN (R$ 0,00).
  */
-const parseValorMonetario = (valorStr: string): number => parseFloat(valorStr.replace(/\./g, '').replace(',', '.'))
+const parseValorMonetario = (valorStr: string): number | null => {
+  if (!VALOR_BR.test(valorStr)) return null
+  return Number(valorStr.replace(/\./g, '').replace(',', '.'))
+}
+
+/**
+ * Linha de dados que NÃO virou pagamento, com o motivo — a tela lista cada uma.
+ * Identificada pelo conteúdo (não pelo número da linha: `lerPlanilha` descarta linhas em
+ * branco, então o índice da matriz não é a linha do Excel).
+ */
+export interface LinhaRecusada {
+  nome: string
+  cpf: string
+  valor: string
+  motivo: string
+}
+
+/** Motivo para recusar a linha, ou `null` se ela pode virar pagamento. */
+const motivoDeRecusa = (nome: string, cpfSanitizado: string, valorStr: string, valorLido: number | null): string | null => {
+  if (!nome) return 'Nome em branco'
+  if (!cpfSanitizado) return 'CPF em branco'
+  if (!valorStr) return 'Valor em branco'
+  if (valorLido === null) return `Valor "${valorStr}" não está no formato 1.234,56`
+  if (Math.trunc(valorLido) < 1) return 'Valor abaixo de R$ 1,00 — sem os centavos, o pagamento seria zero'
+  return null
+}
 
 /**
  * Lê o cabeçalho (primeira linha) da planilha e devolve os nomes de coluna já limpos.
@@ -165,6 +195,7 @@ export const sugerirMapeamento = (cabecalho: string[]): MapeamentoColunas => {
 /**
  * Consome a matriz de uma planilha (.xls/.xlsx) e converte em
  * uma lista de PagamentoPix compatível com o gerador de arquivos CNAB.
+ * Só os pagamentos — quem precisa das linhas recusadas usa `lerPagamentosDaPlanilha`.
  *
  * @param matriz Linhas × colunas da planilha (primeira linha = cabeçalho)
  * @param dataPagamento Data em que o pagamento será agendado (formato DDMMAAAA)
@@ -175,8 +206,20 @@ export const converterPlanilhaParaPagamentoPix = (
   matriz: Matriz,
   dataPagamento: string,
   mapeamento?: MapeamentoColunas,
-): PagamentoPix[] => {
-  if (matriz.length === 0) return []
+): PagamentoPix[] => lerPagamentosDaPlanilha(matriz, dataPagamento, mapeamento).pagamentos
+
+/**
+ * Como `converterPlanilhaParaPagamentoPix`, mas devolve também as linhas que NÃO viraram
+ * pagamento, com o motivo (`recusadas`, na ordem da planilha). 🔴 Nenhuma linha some calada:
+ * nome/CPF/valor em branco, valor fora do formato ou abaixo de R$ 1,00 vão para `recusadas`
+ * — antes, valor ilegível virava pagamento de R$ 0,00 e as demais sumiam sem nome.
+ */
+export const lerPagamentosDaPlanilha = (
+  matriz: Matriz,
+  dataPagamento: string,
+  mapeamento?: MapeamentoColunas,
+): { pagamentos: PagamentoPix[]; recusadas: LinhaRecusada[] } => {
+  if (matriz.length === 0) return { pagamentos: [], recusadas: [] }
 
   const cabecalho = lerCabecalho(matriz)
   const mapa = mapeamento ?? sugerirMapeamento(cabecalho)
@@ -205,6 +248,7 @@ export const converterPlanilhaParaPagamentoPix = (
   }
 
   const pagamentos: PagamentoPix[] = []
+  const recusadas: LinhaRecusada[] = []
 
   for (let i = 1; i < matriz.length; i++) {
     const colunas = matriz[i]
@@ -215,7 +259,7 @@ export const converterPlanilhaParaPagamentoPix = (
     const edital = colunas[idxEdital] ? colunas[idxEdital].trim() : ''
     const siglaUnidade = colunas[idxSiglaUnidade] ? colunas[idxSiglaUnidade].trim() : ''
     const funcao = colunas[idxFuncao] ? colunas[idxFuncao].trim() : ''
-    const valorStr = colunas[idxValor] ? colunas[idxValor].trim() : '0'
+    const valorStr = colunas[idxValor] ? colunas[idxValor].trim() : ''
 
     // Dados das novas colunas com fallbacks
     const tipoChaveOriginal = idxTipoChavePix !== -1 && colunas[idxTipoChavePix] ? colunas[idxTipoChavePix].trim() : ''
@@ -224,16 +268,18 @@ export const converterPlanilhaParaPagamentoPix = (
 
     const cpfSanitizado = cpfOriginal.replace(/\D/g, '')
 
-    if (!nome || !cpfSanitizado) {
-      continue // Ignora linhas inconsistentes
+    const valorLido = parseValorMonetario(valorStr)
+    const motivo = motivoDeRecusa(nome, cpfSanitizado, valorStr, valorLido)
+    if (motivo !== null || valorLido === null) {
+      recusadas.push({ nome, cpf: cpfOriginal, valor: valorStr, motivo: motivo ?? '' })
+      continue
     }
 
     // Regra de negócio (decisão do usuário, 2026-11-03): pagamento é sempre em reais
     // inteiros. Centavos na planilha são DESCARTADOS (truncados, não arredondados) e a
     // linha guarda o valor lido em `valorComCentavos` para a tela avisar.
-    const valorLido = parseValorMonetario(valorStr)
-    const temCentavos = Number.isFinite(valorLido) && !Number.isInteger(valorLido)
-    const valorNumerico = temCentavos ? Math.trunc(valorLido) : valorLido
+    const temCentavos = !Number.isInteger(valorLido)
+    const valorNumerico = Math.trunc(valorLido)
 
     // Valor bruto da chave Pix (se não houver coluna própria, assume o CPF do favorecido)
     const chavePixBruta = chavePixOriginal !== '' ? chavePixOriginal : cpfSanitizado
@@ -259,9 +305,17 @@ export const converterPlanilhaParaPagamentoPix = (
         chavePix = inferida.chavePix
         chaveAmbigua = inferida.ambigua === true
       } else {
-        // Inferência falhou: usa o CPF do favorecido como chave (Tipo 03 - CPF)
-        tipoChavePix = '03'
-        chavePix = normalizarChavePix(cpfSanitizado, '03')
+        // Chave PREENCHIDA que não é CPF, celular, e-mail nem chave aleatória: a linha é
+        // RECUSADA (decisão do usuário, 2026-11-03). ⚠️ Até essa data ela era trocada calada
+        // pelo CPF do favorecido — medido numa planilha real: 5 de 423. Chave em BRANCO não
+        // chega aqui: vira o CPF acima e a inferência casa com o CPF de referência (tipo 03).
+        recusadas.push({
+          nome,
+          cpf: cpfOriginal,
+          valor: valorStr,
+          motivo: `Chave PIX "${chavePixOriginal}" não reconhecida — não é CPF, celular, e-mail nem chave aleatória`,
+        })
+        continue
       }
     }
 
@@ -316,5 +370,5 @@ export const converterPlanilhaParaPagamentoPix = (
   // o arquivo CNAB e o XLS exportado consomem este mesmo array, todos ficam ordenados.
   pagamentos.sort((a, b) => a.nomeFornecedor.localeCompare(b.nomeFornecedor, 'pt-BR', { sensitivity: 'base' }))
 
-  return pagamentos
+  return { pagamentos, recusadas }
 }
