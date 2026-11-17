@@ -22,22 +22,18 @@ import { useLinhasPorFonte } from "@/hooks/useQuadrosDoEdital";
 import { useCamposDoEdital } from "@/hooks/useCamposDoEdital";
 import { useAvisarAoSair } from "@/hooks/useAvisarAoSair";
 import { analisarEdital, resumoDoLinter, type Achado } from "@/lib/edital-linter";
-import { resolverReferencias, type CapituloResolvido } from "@/lib/edital-numeracao";
-import { resolverCampos, resolverARedigir } from "@/lib/edital-campos";
-import {
-  ancorasDoDocumento,
-  mapaDeAncoras,
-  numerarItens,
-  resolverReferenciasDeItem,
-  type ItemBruto,
-  type QuadroFonte,
-} from "@/lib/edital-itens";
+import type { CapituloResolvido } from "@/lib/edital-numeracao";
+import type { ItemBruto } from "@/lib/edital-itens";
+import { rotuloDoNumero, type CapituloMontado } from "@/lib/edital-documento";
+import { useDocumentoDoEdital } from "@/hooks/useDocumentoDoEdital";
 import {
   ArtigosDoCapitulo,
   TextoFormatado,
   type Rascunhos,
 } from "@/components/ArtigosDoCapitulo";
 import { QuadroDoArtigo } from "@/components/QuadroDoArtigo";
+import { AnexoDoEdital } from "@/components/AnexoDoEdital";
+import { ExportarEdital } from "@/components/ExportarEdital";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -68,9 +64,6 @@ import { ConteudoProgramatico } from "@/components/ConteudoProgramatico";
 import { CriteriosDeDesempate } from "@/components/CriteriosDeDesempate";
 import { DadosDoEdital } from "@/components/DadosDoEdital";
 import { FaixaDoModeloPadrao } from "@/components/FaixaDoModeloPadrao";
-
-/** Os artigos de um capítulo, já ordenados. */
-type PorCapitulo = ReadonlyMap<string, ItemBruto[]>;
 
 /** O número como sai no documento; capítulo sem número mostra um traço. */
 function Numero({ capitulo }: { capitulo: CapituloResolvido }) {
@@ -126,59 +119,35 @@ function Trilha({
 
 /** Preview do documento e painel do linter — a terceira projeção da mesma lista. */
 /**
- * O corpo do capítulo na PRÉVIA, montado dos registros de `edital_itens`.
+ * O corpo do capítulo na PRÉVIA — desenha o capítulo JÁ MONTADO.
  *
  * 🔴 É aqui que a numeração de artigo aparece — nunca no que a pessoa digita. Foi
  * medido: nos três editais reais as 95 referências cruzadas apontam TODAS para item, e
  * nenhuma para capítulo. Ver `src/lib/edital-itens.ts`.
+ *
+ * 🔵 Desde 2026-11-16 não numera nem resolve nada: recebe o `CapituloMontado` de
+ * `src/lib/edital-documento.ts`, o mesmo que a exportação usa. Duas montagens divergiriam.
  */
-function CorpoDoCapitulo({
-  capitulo,
-  itens,
-  documento,
-  ancoras,
-  valores,
-  editalId,
-}: {
-  capitulo: CapituloResolvido;
-  itens: readonly ItemBruto[];
-  documento: CapituloResolvido[];
-  ancoras: Map<string, string>;
-  valores: ReadonlyMap<string, string> | undefined;
-  editalId: string | undefined;
-}) {
-  const numerados = numerarItens(itens, capitulo.numero);
-  if (numerados.length === 0) return <p className="text-sm text-muted-foreground">—</p>;
-
-  // As QUATRO resoluções, em ordem: capítulo, item, valor e o que falta redigir.
-  //
-  // ⚠️ A ordem não é arbitrária. `{{campo:}}` vem por último porque o VALOR é a única das
-  // três coisas que vem de dado digitado por alguém — um valor que contivesse `{{` viraria
-  // referência se fosse resolvido antes. Resolvendo-o no fim, não há esse caminho.
-  const resolver = (t: string) =>
-    resolverARedigir(
-      resolverCampos(
-        resolverReferenciasDeItem(resolverReferencias(t, documento), ancoras),
-        valores ?? new Map(),
-      ),
-    );
+function CorpoDoCapitulo({ capitulo }: { capitulo: CapituloMontado }) {
+  if (capitulo.artigos.length === 0) return <p className="text-sm text-muted-foreground">—</p>;
 
   return (
     <div className="space-y-1 text-sm text-muted-foreground">
-      {numerados.map((l) => (
-        <div key={l.id} style={{ paddingLeft: `${l.nivel * 1.25}rem` }}>
+      {capitulo.artigos.map((a) => (
+        <div key={a.id} style={{ paddingLeft: `${a.nivel * 1.25}rem` }}>
           <p className="whitespace-pre-wrap">
-            {l.numero && (
-              <span className="font-medium text-foreground">
-                {l.nivel === 2 ? `${l.numero}) ` : `${l.numero}. `}
-              </span>
-            )}
-            <TextoFormatado texto={resolver(l.texto ?? "")} />
+            {a.numero && <span className="font-medium text-foreground">{rotuloDoNumero(a)}</span>}
+            <TextoFormatado texto={a.texto} />
           </p>
-          {l.tipo === "quadro" && editalId && (
-            <div className="my-2 overflow-x-auto rounded-md border">
-              <QuadroDoArtigo fonte={l.quadro_fonte as QuadroFonte} editalId={editalId} />
-            </div>
+          {a.quadro && (
+            <figure className="my-2">
+              {/* O número do quadro é CALCULADO pela posição no documento — ver
+                  `edital-anexos.ts`. O Edital 004 publicou dois "Quadro II". */}
+              <figcaption className="mb-1 text-xs font-semibold text-foreground">Quadro {a.numeroDoQuadro}</figcaption>
+              <div className="overflow-x-auto rounded-md border">
+                <QuadroDoArtigo quadro={a.quadro} />
+              </div>
+            </figure>
           )}
         </div>
       ))}
@@ -396,27 +365,9 @@ function BotaoDePendencias({
 }
 
 /** A prévia do documento montado, numa gaveta lateral. */
-function BotaoDePrevia({
-  documento,
-  porCapitulo,
-  editalId,
-}: {
-  documento: CapituloResolvido[];
-  porCapitulo: PorCapitulo;
-  editalId: string | undefined;
-}) {
-  // Sem prop drilling: é o mesmo cache do React Query que o painel do capítulo já usa.
-  const { valores } = useCamposDoEdital(editalId);
-  const ancoras = mapaDeAncoras(
-    ancorasDoDocumento(
-      documento.map((c) => ({
-        chave: c.chave,
-        numero: c.numero,
-        incluido: c.incluido,
-        itens: porCapitulo.get(c.chave) ?? [],
-      })),
-    ),
-  );
+function BotaoDePrevia({ editalId }: { editalId: string | undefined }) {
+  // Sem prop drilling: é o mesmo cache do React Query que os painéis já usam.
+  const { documento } = useDocumentoDoEdital(editalId);
   return (
     <Sheet>
       <SheetTrigger asChild>
@@ -438,24 +389,25 @@ function BotaoDePrevia({
         </SheetHeader>
         <ScrollArea className="h-[calc(100vh-5rem)]">
           <div className="space-y-4 p-4">
-            {documento
-              .filter((c) => c.incluido)
-              .map((cap) => (
+            {/* Enquanto qualquer parte carrega, nada de documento pela metade: um quadro
+                sairia como pendência e um campo como [?campo:…], plausíveis e falsos. */}
+            {!documento ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" aria-label="Montando o documento" />
+              </div>
+            ) : (
+              documento.capitulos.map((cap) => (
                 <section key={cap.chave} className="space-y-1">
                   <h3 className="text-sm font-semibold uppercase">
                     {cap.numero !== null && `${cap.numero}. `}
                     {cap.titulo}
                   </h3>
-                  <CorpoDoCapitulo
-                    capitulo={cap}
-                    itens={porCapitulo.get(cap.chave) ?? []}
-                    documento={documento}
-                    ancoras={ancoras}
-                    valores={valores}
-                    editalId={editalId}
-                  />
+                  <CorpoDoCapitulo capitulo={cap} />
                 </section>
-              ))}
+              ))
+            )}
+            {/* Os anexos saem DEPOIS do fecho, como nos três editais publicados. */}
+            {documento?.anexos.map((anexo) => <AnexoDoEdital key={anexo.chave} anexo={anexo} />)}
           </div>
         </ScrollArea>
       </SheetContent>
@@ -665,11 +617,10 @@ export default function EditalStudio() {
           */}
           <div className="ml-auto flex items-center gap-2">
             <BotaoDePendencias achados={achados} onIrPara={draft.pedirTroca} />
-            <BotaoDePrevia
-              documento={documento}
-              porCapitulo={artigos.porCapitulo}
-              editalId={editalId}
-            />
+            <BotaoDePrevia editalId={editalId} />
+            {/* O rascunho do capítulo aberto vai junto: a exportação lê o banco, e com
+                texto sujo na tela o arquivo sairia diferente do que a pessoa vê. */}
+            <ExportarEdital editalId={editalId} edital={edital} rascunhosSujos={draft.quantidadeSuja} />
           </div>
         </div>
 

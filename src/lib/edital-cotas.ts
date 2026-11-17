@@ -99,15 +99,37 @@ export interface PercentuaisDeclarados {
   negros?: number | null;
 }
 
+/**
+ * O percentual que VALE, em pontos (`10`, não `0.1`): o declarado, ou o padrão.
+ *
+ * 🔴 Uma função só, usada pela CONTA (`sugerirCotas`) e pela MENSAGEM (`conferirCotas`).
+ * Até 2026-11-16 a mensagem escrevia "10%" e "20%" fixos enquanto a conta usava o
+ * declarado: num edital de 15%, o aviso dizia "10% de 20 vagas dá 3" — número de um
+ * percentual, texto de outro.
+ *
+ * ⚠️ `??` e não `||`: percentual 0 é declaração legítima ("este edital não reserva"),
+ * e o `||` a trocaria pelo padrão de 10%.
+ */
+export function percentuaisEmVigor(declarados?: PercentuaisDeclarados): { pcd: number; negros: number } {
+  return {
+    pcd: declarados?.pcd ?? PERCENTUAL_PCD_PADRAO * 100,
+    negros: declarados?.negros ?? PERCENTUAL_NEGROS_PADRAO * 100,
+  };
+}
+
+/** `15` → `15%`, `12.5` → `12,5%` — como o edital escreve. */
+function emPercentual(pontos: number): string {
+  return `${pontos.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
+}
+
 export function sugerirCotas(total: number, declarados?: PercentuaisDeclarados): Cotas {
   if (!Number.isFinite(total) || total <= 0) {
     return { total: Math.max(0, Math.trunc(total) || 0), amplaConcorrencia: 0, pcd: 0, negros: 0 };
   }
   const t = Math.trunc(total);
-  // ⚠️ `??` e não `||`: percentual 0 é declaração legítima ("este edital não reserva"),
-  // e o `||` a trocaria pelo padrão de 10%.
-  const fracPcd = (declarados?.pcd ?? PERCENTUAL_PCD_PADRAO * 100) / 100;
-  const fracNegros = (declarados?.negros ?? PERCENTUAL_NEGROS_PADRAO * 100) / 100;
+  const vigor = percentuaisEmVigor(declarados);
+  const fracPcd = vigor.pcd / 100;
+  const fracNegros = vigor.negros / 100;
   const pcd = meioParaCima(t * fracPcd);
   // 🔴 CORRIGIDO em 2026-09-17, e a correção veio de dado NOVO, não de opinião.
   //
@@ -151,12 +173,13 @@ export function conferirCotas(c: Cotas, declarados?: PercentuaisDeclarados): Avi
   // fixos. Sem isso, um edital que declara 15% teria o Quadro I avisando com base em 10%
   // — o painel mentiria sobre a própria regra do documento.
   const sugerido = sugerirCotas(c.total, declarados);
+  const vigor = percentuaisEmVigor(declarados);
   if (c.pcd < sugerido.pcd) {
     avisos.push({
       tipo: "abaixo-do-minimo",
       reserva: "pcd",
       sugerido: sugerido.pcd,
-      mensagem: `A reserva de PCD está em ${c.pcd}; 10% de ${c.total} vagas dá ${sugerido.pcd}.`,
+      mensagem: `A reserva de PCD está em ${c.pcd}; ${emPercentual(vigor.pcd)} de ${c.total} vagas dá ${sugerido.pcd}.`,
     });
   }
   if (c.negros < sugerido.negros) {
@@ -164,7 +187,7 @@ export function conferirCotas(c: Cotas, declarados?: PercentuaisDeclarados): Avi
       tipo: "abaixo-do-minimo",
       reserva: "negros",
       sugerido: sugerido.negros,
-      mensagem: `A reserva de cotas raciais está em ${c.negros}; 20% de ${c.total} vagas dá ${sugerido.negros}.`,
+      mensagem: `A reserva de cotas raciais está em ${c.negros}; ${emPercentual(vigor.negros)} de ${c.total} vagas dá ${sugerido.negros}.`,
     });
   }
   return avisos;

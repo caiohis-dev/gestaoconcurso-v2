@@ -18,6 +18,7 @@ import {
   conferirInscricao, taxaSugerida, CRITERIOS_DE_ISENCAO, TIPOS_DE_CANAL,
   type CargoComTaxa, type TipoCriterioIsencao,
 } from "@/lib/edital-inscricao";
+import { cargosComTaxa } from "@/lib/edital-conferencias";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -273,15 +274,8 @@ export function InscricaoTaxasEIsencao({ editalId }: { editalId: string }) {
 
   if (isLoading) return <p className="text-sm text-muted-foreground">Carregando o capítulo…</p>;
 
-  const comTaxa: CargoComTaxa[] = cargosDoEdital.map((ec) => {
-    const c = cargos.find((x) => x.id === ec.cargo_id);
-    return {
-      edital_cargo_id: ec.id,
-      nome: c?.nome ?? "(cargo removido)",
-      escolaridade_minima: c?.escolaridade_minima ?? null,
-      taxa_inscricao: ec.taxa_inscricao ?? null,
-    };
-  });
+  // A MESMA entrada que o portão da exportação monta — ver `edital-conferencias.ts`.
+  const comTaxa: CargoComTaxa[] = cargosComTaxa(cargosDoEdital, cargos);
   const avisos = conferirInscricao({ cargos: comTaxa, criterios, canais, emailDaVistaDeProva });
 
   return (

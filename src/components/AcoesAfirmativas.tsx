@@ -16,7 +16,7 @@ import {
   type RegrasLactantesLinha,
 } from "@/hooks/useAcoesAfirmativas";
 import { useCronograma } from "@/hooks/useCronograma";
-import { primeiraData } from "@/lib/edital-cronograma";
+import { entradaDasAcoes } from "@/lib/edital-conferencias";
 import { dataLimiteNascimentoLactente, conferirAcoesAfirmativas } from "@/lib/edital-acoes-afirmativas";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -153,22 +153,10 @@ export function AcoesAfirmativas({ editalId, capitulo }: { editalId: string; cap
   const { pcd, cotas, lactantes, isLoading, gravar } = useAcoesAfirmativas(editalId);
   const { etapas } = useCronograma(editalId);
 
-  const etapaProva = etapas.find((e) => e.chave === "prova_objetiva");
-  const dataDaProva = etapaProva ? primeiraData(etapaProva) : null;
-
-  const avisos = conferirAcoesAfirmativas({
-    dataDaProva,
-    lactantes: lactantes && {
-      idadeMaximaMeses: lactantes.idade_maxima_lactente_meses,
-      permiteCompensacao: lactantes.permite_compensacao_tempo,
-      tempoMaximoMinutos: lactantes.tempo_maximo_compensacao_minutos,
-    },
-    pcd: pcd && {
-      percentualReserva: pcd.percentual_reserva,
-      aceitaLaudoIndeterminado: pcd.aceita_laudo_indeterminado,
-      validadeMesesLaudoTemporario: pcd.validade_meses_laudo_temporario,
-    },
-  });
+  // A MESMA entrada que o portão da exportação monta — ver `edital-conferencias.ts`.
+  const entrada = entradaDasAcoes({ pcd, lactantes, etapas });
+  const { dataDaProva } = entrada;
+  const avisos = conferirAcoesAfirmativas(entrada);
 
   if (isLoading) return <p className="text-sm text-muted-foreground">Carregando as regras…</p>;
 

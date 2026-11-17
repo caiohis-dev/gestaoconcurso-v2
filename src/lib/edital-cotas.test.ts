@@ -159,6 +159,30 @@ describe("🔴 o percentual DECLARADO manda no cálculo", () => {
     expect(avisos[0]).toMatchObject({ reserva: "pcd", sugerido: 30 });
   });
 
+  it("🔴 a MENSAGEM diz o percentual declarado — não o padrão", () => {
+    // Até 2026-11-16 o texto era "10% de" fixo enquanto a conta usava o declarado: o caso
+    // acima passava (o número estava certo) e o painel dizia "10% de 200 vagas dá 30".
+    const cotas = { total: 200, amplaConcorrencia: 150, pcd: 20, negros: 30 };
+    const avisos = conferirCotas(cotas, { pcd: 15, negros: 25 });
+    expect(avisos.map((a) => a.mensagem)).toEqual([
+      "A reserva de PCD está em 20; 15% de 200 vagas dá 30.",
+      "A reserva de cotas raciais está em 30; 25% de 200 vagas dá 50.",
+    ]);
+  });
+
+  it("controle: sem declaração, a mensagem diz o padrão (10% e 20%)", () => {
+    const avisos = conferirCotas({ total: 20, amplaConcorrencia: 17, pcd: 1, negros: 2 });
+    expect(avisos.map((a) => a.mensagem)).toEqual([
+      "A reserva de PCD está em 1; 10% de 20 vagas dá 2.",
+      "A reserva de cotas raciais está em 2; 20% de 20 vagas dá 4.",
+    ]);
+  });
+
+  it("percentual com fração sai como o edital escreve: vírgula decimal", () => {
+    const [aviso] = conferirCotas({ total: 40, amplaConcorrencia: 32, pcd: 0, negros: 8 }, { pcd: 12.5 });
+    expect(aviso.mensagem).toBe("A reserva de PCD está em 0; 12,5% de 40 vagas dá 5.");
+  });
+
   it("⭐ CONTROLE: os 22 valores reais continuam batendo com o declarado de 10/20", () => {
     // Declarar explicitamente o que antes era constante não pode mudar nenhum resultado.
     for (const [, ac, pd, cn] of REAIS) {

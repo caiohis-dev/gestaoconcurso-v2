@@ -156,7 +156,7 @@ sg docker -c 'npx supabase db reset'    # aplica migrations + os 3 seeds
 🔵 **Há CI desde 2026-11-04** — [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) roda `tsc`, `npm test`, `build` e o portão de lint a cada push e PR, sem segredo e sem banco. ⚠️ **Ele só roda no GitHub, e só quando alguém empurra** — e empurrar `dev` é decisão do usuário (§6). Até lá, o que vale é rodar à mão. E ele **não cobre** `docs:conferir` (precisa do banco local), `test:ef` (Deno, e envia e-mail) nem as baterias SQL.
 
 ```bash
-npm test                                  # 2176 testes em 110 arquivos
+npm test                                  # 2308 testes em 119 arquivos
 npx tsc --noEmit -p tsconfig.app.json     # tem de sair limpo
 npm run build
 npm run lint:baseline                     # falha só se passar do baseline (51 erros, 51 avisos)

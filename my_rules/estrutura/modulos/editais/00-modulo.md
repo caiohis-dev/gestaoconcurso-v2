@@ -54,6 +54,18 @@ O **edital** é o **documento normativo do certame**, montado por capítulos den
 | `src/components/QuadroDeCargos.tsx` | 🔵 **v3 fatia 2** — o primeiro capítulo com parâmetro estruturado |
 | `supabase/migrations/20260916184254_editais_cargos_vagas_e_cg001_por_nome.sql` | 🔵 **v3 fatia 2** — `edital_cargos`, as colunas de `cargos`, e a CG001 estreitada |
 | `src/lib/edital-linter.ts` | 🔵 **v3** — função pura: as regras determinísticas, sem LLM |
+| `src/lib/edital-documento.ts` | 🔵 **fatia 12, 2026-11-16** — função pura: o **documento montado** (capítulos incluídos, artigos numerados, os 4 marcadores resolvidos, quadros como linhas). A prévia e a exportação desenham ISTO; ver a seção própria abaixo |
+| `src/hooks/useDocumentoDoEdital.tsx` | 🔵 **fatia 12** — junta todas as consultas (quadros **e anexos**) e devolve o documento montado; `undefined` até TUDO chegar |
+| `src/lib/edital-anexos.ts` | 🔵 **fatia 12, etapa 2** — função pura: numeração de ANEXO e de QUADRO, e os marcadores `{{anexo:}}`/`{{quadro:}}` |
+| `src/components/AnexoDoEdital.tsx` | 🔵 **fatia 12, etapa 2** — desenha um anexo (conteúdo programático ou abrangência) na prévia |
+| `src/lib/edital-markdown.ts` | 🔵 **fatia 12, etapa 3** — função pura: o documento montado em Markdown, com a numeração como TEXTO escapado |
+| `src/lib/edital-exportacao.ts` | 🔵 **fatia 12, etapa 4** — função pura: o PORTÃO (`pendenciasDaExportacao`, `avaliarExportacao`) e o nome do arquivo |
+| `src/lib/edital-conferencias.ts` | 🔵 **fatia 12, etapa 4** — função pura: as DEZ conferências de painel juntas (`conferenciasDoEdital`), e as entradas que os painéis montavam no JSX (`cargosComTaxa`, `entradaDasAcoes`…), que hoje os painéis e o portão chamam |
+| `src/hooks/useConferenciasDoEdital.tsx` | 🔵 **fatia 12, etapa 4** — o dado dos dez painéis; `undefined` até tudo chegar |
+| `src/hooks/useConsultasComErro.tsx` | 🔵 **fatia 12, etapa 4** — as consultas ATIVAS da tela em erro, lidas do cache do React Query |
+| `src/components/ExportarEdital.tsx` | 🔵 **fatia 12, etapa 4** — o botão "Exportar" do Studio e o diálogo de confirmação nomeada |
+| `src/components/QuadroDoArtigo.tsx` | 🔵 **v3** — desenha um `QuadroMontado`. 🔵 Até 2026-11-16 eram cinco componentes, cada um buscando o próprio dado e montando as linhas no JSX |
+| `src/hooks/useQuadrosDoEdital.tsx` | 🔵 **v3** — `useDadosDosQuadros` (o dado dos cinco quadros, `undefined` enquanto carrega) e `useLinhasPorFonte` (a contagem para a regra `quadro-sem-dado`). 🔵 Faltava nesta tabela até 2026-11-16 |
 | `src/lib/edital-campos.ts` | 🔵 **2026-09-18** — o TERCEIRO marcador: `{{campo:chave}}`, o dado variável no texto |
 | `src/hooks/useCamposDoEdital.tsx` | 🔵 **2026-09-18** — a única peça do mecanismo que fala com o banco; agrega hooks que já existem |
 | `src/components/DadosDoEdital.tsx` | 🔵 **2026-09-18** — o editor do `preambulo`; **fecha o buraco da fatia 1**, em que `salvarMetadados` não era chamado por tela nenhuma |
@@ -123,6 +135,171 @@ Três tipos de artigo, e os três existem nos editais reais:
 ⚠️ **A indentação da colagem é tolerante** (3 espaços contam como 1 nível), de propósito: perder um artigo por um espaço a mais seria pior que o nível errado, que a lista mostra na hora.
 
 **As duas resoluções de referência convivem:** `{{cap:chave}}` para capítulo e `{{item:ancora}}` para artigo. As duas viram marcador visível (`[?…]`) quando não resolvem — nunca somem, nunca inventam número. Ver `src/lib/edital-itens.ts`.
+
+### 🔵 O documento MONTADO — uma montagem, várias projeções (fatia 12, 2026-11-16)
+
+Até 16/11 o documento só existia **desenhado**: a prévia numerava, resolvia os marcadores e
+montava os quadros dentro de componentes React, cada quadro buscando o próprio dado. Nada disso
+era alcançável por um exportador, e fazê-lo remontar o documento criaria uma **segunda
+montagem** — que diverge da prévia no dia em que uma das duas for corrigida.
+
+Desde então a montagem mora em `src/lib/edital-documento.ts`, pura, e a prévia é **uma
+projeção** dela, e o Markdown (`edital-markdown.ts`, etapa 3) é outra:
+
+| peça | o que faz |
+|---|---|
+| `resolverMarcadores` | a cadeia dos 4 marcadores, na ordem capítulo → item → campo → redigir. Saiu do `EditalStudio` sem mudar de comportamento |
+| `quadroDeCargos` · `matrizDaProva` · `quadroDeTitulos` · `vagasPorArea` · `quadroDoCronograma` | uma função por fonte: dado cru → `{ colunas, linhas }`, ou `pendencia` nomeada quando não há linha |
+| `montarEditalCompleto` | capítulos **incluídos**, artigos numerados por `numerarItens`, texto resolvido, quadros montados |
+| `useDocumentoDoEdital` | o hook: `undefined` até capítulos, artigos, valores dos campos e quadros chegarem |
+
+🔴 **Não reimplemente nada disso num formato de saída.** Uma célula de quadro é texto com
+`**negrito**` — a mesma marcação dos artigos —, e cada formato só decide como desenhá-la.
+
+🔴 **`undefined` enquanto carrega, nunca listas vazias** — vale para `useDadosDosQuadros` e
+para o documento. Lista vazia quer dizer "este edital não tem linha" e faz o quadro sair como
+pendência. ⚠️ **Isto corrigiu um defeito:** `useLinhasPorFonte` devolvia zeros durante a carga,
+contra a doutrina do próprio linter (*"ausente = não carregado, a regra não roda"*), e o painel
+acusava `quadro-sem-dado` em todos os quadros no primeiro frame.
+
+🔵 **Os dois anexos entraram na etapa 2 (mesmo dia).** Este parágrafo dizia que o conteúdo
+programático e as áreas de abrangência *"existem só como editores"* e não apareciam na prévia.
+Hoje saem no documento montado, depois do último capítulo — ver a seção seguinte.
+
+### 🔵 ANEXOS e QUADROS numerados pelo sistema (fatia 12, etapa 2, 2026-11-16)
+
+É a numeração de capítulo um nível abaixo, e foi medida: o conteúdo programático é Anexo I no
+002 e no 003 e **Anexo II no 004**, porque lá a abrangência entra antes; e o 004 publicou **dois
+"Quadro II"**. Os dois números são calculados em `src/lib/edital-anexos.ts`:
+
+| | regra |
+|---|---|
+| **anexos** | catálogo fixo, nesta ordem: abrangência (só com `distribuicao_geografica` incluído) e conteúdo programático. 🔴 **Os dois dependem do capítulo `anexos` incluído** — desligá-lo não pode deixar um Anexo I depois de um corpo que não o anuncia |
+| **quadros** | `Quadro I, II…` pela ordem de aparição no documento inteiro, só em capítulos incluídos (senão a sequência teria buraco) |
+| **o cronograma** | NÃO é anexo numerado em nenhum dos três publicados: é um quadro dentro do capítulo `anexos` |
+
+**Dois marcadores novos**, com a mesma forma de `{{item:}}` — devolvem **só o número**, e o
+texto escreve a palavra: `Anexo {{anexo:conteudo_programatico}}`, `Quadro {{quadro:ancora}}`. O
+de quadro aponta pela **âncora do artigo de quadro**; âncora de artigo comum não serve. O que não
+resolve vira `[?anexo:…]`/`[?quadro:…]`, e o linter acusa (`referencia-de-anexo-quebrada`, que
+distingue typo de anexo desligado, e `referencia-de-quadro-quebrada`). A cadeia passou a ter
+**seis** passos: capítulo → item → anexo → quadro → campo → redigir.
+
+⚠️ **O texto do modelo NÃO foi alterado, por decisão do usuário (16/11):** continua *"como anexo
+deste Edital"*, sem número. O mecanismo está pronto; quem quiser citar edita pela tela. Mudar o
+modelo exigiria migration sobre o texto dele, e a guarda `NOT EXISTS` por capítulo faria uma
+migration nova ser no-op onde o capítulo já existe.
+
+**A forma dos anexos segue os publicados:** ementas comuns primeiro, marcadas *"(comum a todos os
+cargos)"* (Edital 002), depois cada cargo na ordem do Quadro I sob *"Cargo: …"* (004); ruas
+numeradas por unidade, agrupadas por bairro, unidades na ordem da distribuição de vagas. Ementa
+de cargo fora do Quadro I e unidade com rua sem vaga **vão para o fim, não somem**. Anexo sem
+nenhuma linha vira **pendência nomeada**.
+
+⚠️ **Consulta que FALHA ainda é lida como vazia.** Os hooks devolvem `data ?? []` e não expõem
+o erro, então um quadro cuja consulta falhou sai como "sem linha". Para a prévia é tolerável.
+🔵 **A exportação já distingue (etapa 4):** `useConsultasComErro` recusa antes de montar, ver
+"O PORTÃO da exportação". A prévia continua sem essa distinção.
+
+### 🔵 O Markdown — a numeração sai como TEXTO (fatia 12, etapa 3, 2026-11-16)
+
+`documentoEmMarkdown(documento, { titulo? })` em `src/lib/edital-markdown.ts`. Não numera nem
+resolve nada: projeta o `DocumentoMontado`, o mesmo da prévia.
+
+🔴 **O risco que ela guarda:** a diagramação final é no Word, a partir deste arquivo (decisão
+D-PDF). Linha que o conversor leia como **lista ordenada se renumera sozinha**, e o número
+publicado deixa de ser o calculado. Por isso todo começo de linha que um conversor leia como bloco
+leva barra invertida: `1\.`, `a\)`, `IV\.`, `\(a)`, `\-`, `\#`, `\>`, `\:`. Isso vale também para as
+linhas do **meio** do parágrafo, porque um `- ` ali interrompe o parágrafo. O alvo é o
+CommonMark **e o pandoc**, que vai além e lê `a)`, `(a)` e romano como lista (`fancy_lists`).
+⚠️ Só UMA letra ou um romano é marcador de lista: `SUS.` e `Av. Brasil` ficam sem barra, e
+`7.1.` também (não é lista).
+
+| decisão | por quê |
+|---|---|
+| **sem recuo por nível** | quatro espaços à esquerda é bloco de código. A hierarquia está no número, como nos publicados |
+| **quebra simples → `\` no fim da linha** (quebra dura) | em Markdown a quebra simples some, e as linhas da ementa sairiam coladas. Dois espaços no fim também funcionam, mas são invisíveis e somem no primeiro editor que apara a linha, num arquivo feito para versionar. ⚠️ O Python-Markdown (não CommonMark) mostra a `\` literal; CommonMark e pandoc a aceitam |
+| **negrito: o espaço da borda vai para fora do `**`** | `** x**` não é negrito em CommonMark, e o asterisco sairia cru no Word |
+| **`$` só escapado colado** | `R$ 100,00` com espaço não abre fórmula no pandoc, e escapar todo "R$" encheria de barras um arquivo que existe para ser lido |
+| **quadro: tabela de pipe (GFM)** | `\|` na célula; quebra de linha dentro da célula vira espaço (a tabela de pipe não aceita); coluna numérica `---:` |
+| **pendência → `> **PENDÊNCIA:** motivo`** | quadro com pendência, quadro sem dado carregado e anexo vazio ou sem dado. Nunca buraco no arquivo |
+| **títulos em caixa alta** | a prévia faz isso por CSS; no Markdown não há CSS |
+
+**Verificado contra o modelo inteiro** (19 capítulos, 377 artigos, todos ligados): nenhuma linha
+abre bloco, e todo número do arquivo é o do documento montado, na ordem. Fora da suíte, o mesmo
+arquivo passou pelo Python-Markdown: 0 `<ol>`, 0 `<ul>`, 0 `<pre>`, 196 `<strong>`, 7
+citações (as 7 pendências da fixture sem dado). O controle sem as barras volta a gerar `<ol>`
+para `1. Rua A`. ⚠️ Ele não reconhece lista por letra, então as 68 alíneas do modelo se provam
+só pelo teste, não por ele.
+
+🔵 **O botão entrou com o portão (etapa 4)** — ver a seção seguinte. Na etapa 3 o Markdown
+existia sem botão, de propósito: um caminho de exportar sem portão violaria a D-P1.
+
+### 🔵 O PORTÃO da exportação (fatia 12, etapa 4, 2026-11-16)
+
+Botão **"Exportar"** no cabeçalho do Studio, ao lado da prévia. Abre um diálogo cujo estado sai
+de `avaliarExportacao` (`src/lib/edital-exportacao.ts`), nesta ordem:
+
+| estado | quando | saída |
+|---|---|---|
+| **falha** | alguma consulta ATIVA da tela terminou em erro | ❌ recusa, nomeando a consulta. Não se confirma |
+| **carregando** | o documento ainda não está montado | spinner, sem botão |
+| **rascunho** | há artigo não salvo no capítulo aberto | ❌ recusa. Não se confirma. **Decisão de 16/11:** recusar, não avisar |
+| **pendente** | há pendência sem confirmação | lista com UMA caixa por pendência; botão desabilitado |
+| **livre** | sem pendência, ou todas confirmadas | baixa `edital-<número>.md` |
+
+🔴 **D-P1: confirmação NOMEADA.** Cada pendência tem a sua caixa, com o texto dela, e **não existe
+"marcar todas"**. A confirmação é por **id**, e o id inclui o texto. Por isso, quando um
+renumerar muda "o item 7.3" para "o item 7.4", a confirmação antiga deixa de valer. Ela foi
+falsificada: conferir **por contagem** passava na suíte até existir o caso da confirmação velha.
+Fechar o diálogo zera as confirmações.
+
+**As pendências** (`pendenciasDaExportacao`) são quatro fontes somadas:
+- os achados do linter, **erros e avisos**;
+- 🔵 **as dez conferências de painel** (`edital-conferencias.ts`), cada uma com o título do
+  capítulo na frente;
+- os quadros com pendência no documento montado;
+- os anexos com pendência no documento montado.
+
+⚠️ O linter roda aqui **sem `linhasPorFonte`**, então a regra `quadro-sem-dado` não roda: a
+pendência do quadro já vem do documento, com o número, e rodar as duas listaria o mesmo quadro
+duas vezes. ⚠️ **Anexo vazio** só existe no documento montado; o linter não recebe o dado dos
+anexos.
+
+🔴 **Falha ≠ vazio, pelo CACHE.** Os hooks do módulo leem falha como `[]`.
+`useConsultasComErro` olha o cache do React Query e lista toda consulta **com observador**
+em `status === "error"`. A alternativa, um `isError` por hook, foi preterida: são uns dez,
+aninhados, e o próximo hook que o documento passar a usar reabriria o buraco calado. Consulta em
+erro de outra tela (sem observador) não bloqueia. Uma consulta ativa da tela que não alimenta o
+documento **também bloqueia** — o erro sobra para o lado seguro. Durante as 3 tentativas
+automáticas a consulta segue `pending`, e o diálogo mostra "carregando".
+
+🔴 **As conferências de painel entraram no mesmo dia, por decisão do usuário.** A primeira
+versão do portão via só o linter e o documento. As dez conferências de painel (inscrição,
+cotas, matriz, títulos, distribuição, investidura, desempate, cronograma, conteúdo, ações
+afirmativas) apareciam só dentro de cada painel, e o portão dizia "nenhuma pendência" para um
+edital com canal sem endereço (erro). A dívida do **e-mail da vista fora dos canais** era uma
+delas.
+
+| regra | por quê |
+|---|---|
+| **as entradas saíram dos painéis** | o que cada painel montava no JSX antes de chamar a conferência (cargos com taxa, disciplinas do conteúdo, data da prova…) mora em `edital-conferencias.ts`, e os seis painéis chamam a mesma função. Uma cópia no portão divergiria do painel no dia em que um dos dois fosse corrigido |
+| **só capítulo incluído** | o painel só aparece no capítulo dele |
+| **inscrição: uma vez** | o painel serve a `inscricao_e_pagamento` e `isencao_taxa`; confere no primeiro ligado |
+| **ações afirmativas: por regra** | o laudo é de `vagas_pcd`, a lactante é de `condicoes_especiais_prova`; a parte do capítulo desligado vai como `null` |
+| **cotas e matriz ganham o nome do cargo** | no painel a mensagem fica dentro do cartão do cargo; no portão ela chega sozinha |
+| **ordem do documento** | o laço é por cargo, e sem ordenar a lista sairia intercalada |
+
+🔵 **Achado e corrigido no mesmo dia:** a mensagem de `conferirCotas` escrevia *"10% de"* e
+*"20% de"* fixos, enquanto a conta usava o percentual declarado — num edital de 15%, *"10% de 200
+vagas dá 30"*. Hoje conta e texto leem o mesmo `percentuaisEmVigor` (`edital-cotas.ts`), e o
+percentual sai como o edital escreve (`12,5%`). O teste que existia conferia o número sugerido e
+não o texto, e por isso o defeito passava verde.
+
+**Por que rascunho e falha não se confirmam:** a pendência confirmada sai **visível** no arquivo
+(`[?…]`, `> PENDÊNCIA`). Com falha, o arquivo sairia com uma tabela FALTANDO, sob a pendência
+"sem linha", que é falsa. Com rascunho, o arquivo sairia diferente do texto na tela. Confirmar não
+torna nenhum dos dois verdadeiro.
 
 ### 🔵 Rascunho de artigo: sair do capítulo PERGUNTA (2026-09-18)
 
@@ -228,7 +405,9 @@ instrução**. É o `[ ]` com a única coisa que lhe faltava.
 
 ⚠️ **Não confundir com `{{campo:}}`:** campo é dado que o sistema tem e injeta; `redigir` é
 prosa que só uma pessoa escreve, e que o modelo não tem como adivinhar. A resolução do Studio
-passou a ter **quatro** passos: capítulo → item → campo → redigir.
+passou a ter **quatro** passos: capítulo → item → campo → redigir. 🔵 **Desde 2026-11-16 são
+seis** (anexo e quadro entram depois de item) e moram em `resolverMarcadores`
+(`edital-documento.ts`), não mais no Studio.
 
 ### 🟢 Rodadas 17 a 19 — o MODELO ESTÁ COMPLETO (2026-09-19)
 
@@ -722,8 +901,9 @@ abaixo: elemento pós-textual condicional que entra desloca os seguintes. E `{{c
 serve, porque `anexos` é `numerado: false` e resolveria para `[?anexos]`.
 
 **Por ora o artigo não cita número** — *"como anexo deste Edital"* é impreciso e **nunca
-falso**, contra um número que estaria errado em 2 dos 3 editais reais. ⏳ A lacuna está no
-[`backlog.md`](../../../backlog.md) para a fatia de exportação, que é quem monta os anexos.
+falso**, contra um número que estaria errado em 2 dos 3 editais reais. 🔵 **O mecanismo existe
+desde 2026-11-16** (`{{anexo:}}`, fatia 12 etapa 2); o texto do modelo ficou sem número por
+decisão do usuário — ver a seção dos anexos numerados.
 ⚠️ E o apontamento acontece **duas vezes por edital** (item 1.6 e o capítulo da prova), então a
 âncora `conteudo_programatico_anexo` existe para o segundo apontar para o primeiro.
 
@@ -873,7 +1053,7 @@ O caso que prova a diferença está publicado e já estava documentado neste arq
 `XX` aparece ali — o valor está preenchido, formatado e errado.
 
 **A resolução agora tem três passos**, em ordem, em `EditalStudio`: capítulo → item →
-campo. ⚠️ **`{{campo:}}` vem por último de propósito:** o valor é a única das três coisas
+campo. (🔵 Hoje seis, em `edital-documento.ts` — ver a seção do documento montado.) ⚠️ **`{{campo:}}` vem por último de propósito:** o valor é a única das três coisas
 que vem de dado digitado por alguém, e um valor que contivesse `{{` viraria referência se
 fosse resolvido antes.
 
@@ -1285,7 +1465,7 @@ O preço combinado: desligar um capítulo **padrão** gera **aviso** do linter �
 
 **Cobertura de testes** (ver [`../../transversais/testes.md`](../../transversais/testes.md)): o módulo é o mais bem coberto do sistema. `useEditais.test.tsx` (14) cobre a listagem, as traduções de `23505`/`23503` e a invalidação dupla; `EditalDialog.test.ts` (8) o schema isolado; `EditalDialog.ui.test.tsx` (11) a interação. O lado da prova está em `ProvaDialog.ui.test.tsx` (10), que guarda a herança e o bloqueio sem edital. E o **guard da rota** está em `pages/guards.test.tsx`: `/editais` recusa deslogado, colaborador e coordenador — foi justamente quebrando este guard de propósito que a bateria foi falsificada antes de ser aceita.
 
-🔵 **A v3 trouxe 276 casos de LÓGICA PURA (2026-09-16 e 17),** em 14 arquivos: `edital-cotas` (36) · `edital-itens` (29) · `edital-linter` (26) · `edital-territorialidade` (24) · `edital-inscricao` (22) · `edital-numeracao` (20) · `edital-investidura` (19) · `edital-cronograma` (18) · `edital-desempate` (17) · `edital-conteudo` (15) · `edital-titulos` (15) · `edital-acoes-afirmativas` (13) · `edital-prova` (13) · `edital-texto` (9). 🔵 **Mais `edital-campos` (17) em 2026-09-18**, e 7 casos novos em `edital-linter` e em `edital-cronograma` cada. Mais **15 de interação** em `ArtigosDoCapitulo.ui.test.tsx`.
+🔵 **A v3 trouxe 276 casos de LÓGICA PURA (2026-09-16 e 17),** em 14 arquivos: `edital-cotas` (36) · `edital-itens` (29) · `edital-linter` (26) · `edital-territorialidade` (24) · `edital-inscricao` (22) · `edital-numeracao` (20) · `edital-investidura` (19) · `edital-cronograma` (18) · `edital-desempate` (17) · `edital-conteudo` (15) · `edital-titulos` (15) · `edital-acoes-afirmativas` (13) · `edital-prova` (13) · `edital-texto` (9). 🔵 **Mais `edital-campos` (17) em 2026-09-18**, e 7 casos novos em `edital-linter` e em `edital-cronograma` cada. Mais **15 de interação** em `ArtigosDoCapitulo.ui.test.tsx`. 🔵 **E `edital-documento` (22) e `edital-anexos` (16) em 2026-11-16**, mais 5 casos de anexo e quadro em `edital-linter` — a ordem da cadeia de marcadores, a numeração do documento montado igual à que o linter vê, e a pendência de cada quadro vazio —, mais `useQuadrosDoEdital.test.tsx` (2), que afirma sobre **todos os renders** que nenhum devolve contagem parcial durante a carga. 🔵 **E `edital-markdown` (37), na etapa 3**: o escape de começo de linha (cada caso com o controle de que a entrada abriria bloco), a quebra dura, o negrito, a tabela, as pendências e o edital modelo inteiro sem nenhuma linha que vire lista. 🔵 **E, na etapa 4, `edital-exportacao` (19), `edital-conferencias` (17), `useConferenciasDoEdital` (2), `useConsultasComErro` (3, com QueryClient real) e `ExportarEdital.ui` (6)**: a confirmação por id (que pegou a versão por contagem), a ordem das recusas, falha ≠ vazio e o botão que só habilita com todas confirmadas.
 
 ⚠️ **E 12 baterias SQL**, que é onde mora tudo que a suíte não alcança: `edital-capitulos` · `edital-itens` · `edital-cargos` · `edital-cronograma` · `edital-acoes-afirmativas` · `edital-prova-objetiva` · `edital-titulos` · `edital-territorialidade` · `edital-investidura` · `edital-inscricao` · `edital-conteudo` · `edital-desempate`. Nenhuma é alcançada por `npm test` nem por `npm run docs:conferir` — **rodá-las é passo manual**, e uma delas já apodreceu verde neste módulo (ver abaixo).
 

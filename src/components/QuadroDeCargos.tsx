@@ -26,7 +26,8 @@ import { useState } from "react";
 import { useCargos } from "@/hooks/useCargos";
 import { useEditalCargos, type EditalCargo } from "@/hooks/useEditalCargos";
 import { useAcoesAfirmativas } from "@/hooks/useAcoesAfirmativas";
-import { sugerirCotas, conferirCotas } from "@/lib/edital-cotas";
+import { sugerirCotas } from "@/lib/edital-cotas";
+import { avisosDeCotasDaLinha, percentuaisDeclarados } from "@/lib/edital-conferencias";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -49,10 +50,7 @@ export function QuadroDeCargos({ editalId }: { editalId: string }) {
   // usava 10%/20% fixos enquanto o capítulo [8] podia declarar outra coisa — o edital
   // sairia com o texto dizendo um percentual e a tabela com números de outro.
   const { pcd: regrasPcd, cotas: regrasCotas } = useAcoesAfirmativas(editalId);
-  const declarados = {
-    pcd: regrasPcd?.percentual_reserva ?? null,
-    negros: regrasCotas?.percentual_reserva ?? null,
-  };
+  const declarados = percentuaisDeclarados(regrasPcd, regrasCotas);
   const [novoCargoId, setNovoCargoId] = useState("");
 
   const nomeDoCargo = (id: string) => cargos.find((c) => c.id === id)?.nome ?? "(cargo removido do catálogo)";
@@ -139,12 +137,8 @@ export function QuadroDeCargos({ editalId }: { editalId: string }) {
             </TableHeader>
             <TableBody>
               {cargosDoEdital.map((linha) => {
-                const avisos = linha.vagas_total === null ? [] : conferirCotas({
-                  total: Number(linha.vagas_total),
-                  amplaConcorrencia: Number(linha.vagas_ampla_concorrencia ?? 0),
-                  pcd: Number(linha.vagas_pcd ?? 0),
-                  negros: Number(linha.vagas_negros ?? 0),
-                }, declarados);
+                // A MESMA conta que o portão da exportação faz — ver `edital-conferencias.ts`.
+                const avisos = avisosDeCotasDaLinha(linha, declarados);
                 return (
                   <TableRow key={linha.id}>
                     <TableCell className="font-medium">{nomeDoCargo(linha.cargo_id)}</TableCell>

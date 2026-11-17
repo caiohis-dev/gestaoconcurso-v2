@@ -17,6 +17,7 @@ import { useDesempate, type CriterioGravado } from "@/hooks/useDesempate";
 import {
   conferirDesempate, rotuloDoCriterio, TIPOS_DE_CRITERIO, type ListaDeDesempate,
 } from "@/lib/edital-desempate";
+import { entradaDoDesempate } from "@/lib/edital-conferencias";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -167,10 +168,10 @@ export function CriteriosDeDesempate({ editalId }: { editalId: string }) {
 
   if (isLoading) return <p className="text-sm text-muted-foreground">Carregando os critérios…</p>;
 
-  const nomes = [...new Set(disciplinas.map((d) => d.nome_disciplina))];
-  const avisos = conferirDesempate({
-    criterios, disciplinasDaProva: nomes, temProvaDeTitulos: titulos.length > 0,
-  });
+  // A MESMA entrada que o portão da exportação monta — ver `edital-conferencias.ts`.
+  const entrada = entradaDoDesempate({ criterios, disciplinas, titulos });
+  const nomes = [...entrada.disciplinasDaProva];
+  const avisos = conferirDesempate(entrada);
 
   return (
     <Card>

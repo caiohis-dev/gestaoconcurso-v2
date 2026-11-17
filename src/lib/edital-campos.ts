@@ -414,7 +414,8 @@ export function camposDoTexto(texto: string): CampoDoTexto[] {
  * Resolver por fonte aqui dentro arrastaria o `supabase` para dentro de `src/lib/`, e os
  * 15 arquivos `edital-*.ts` são função pura com os editais reais como fixture.
  *
- * ⚠️ **Esta resolução vem por ÚLTIMO na cadeia** (ver `EditalStudio`): um valor de texto
+ * ⚠️ **Esta resolução vem por ÚLTIMO na cadeia** (`resolverMarcadores`, em
+ * `edital-documento.ts` — até 2026-11-16 a cadeia morava no `EditalStudio`): um valor de texto
  * poderia conter `{{`, e resolvendo-o depois das outras duas ele nunca vira referência.
  */
 export function resolverCampos(texto: string, valores: ReadonlyMap<string, string>): string {

@@ -49,6 +49,15 @@ import {
   type ItemBruto,
   type QuadroFonte,
 } from "@/lib/edital-itens";
+import {
+  ANEXOS_CATALOGO,
+  anexosDoDocumento,
+  mapaDeAnexos,
+  mapaDeQuadros,
+  quadrosDoDocumento,
+  RE_REFERENCIA_ANEXO,
+  RE_REFERENCIA_QUADRO,
+} from "@/lib/edital-anexos";
 
 export type Severidade = "erro" | "aviso";
 
@@ -169,6 +178,48 @@ function analisarCamposDoArtigo(
 }
 
 /**
+ * As referências a ANEXO e a QUADRO (fatia 12, 2026-11-16).
+ *
+ * São a mesma regra das de item, um nível abaixo: o número é calculado, e o que não
+ * resolve sai impresso como `[?anexo:…]`/`[?quadro:…]`. A mensagem distingue os dois
+ * motivos do anexo, porque têm conserto diferente: chave fora do catálogo é typo; anexo
+ * que não entra é o capítulo que o traz (`anexos`, ou a territorialidade) desligado.
+ *
+ * ⚠️ Fora de `analisarArtigo` pelo motivo de sempre: a complexidade do lint.
+ */
+function analisarReferenciasPosTextuais(
+  cap: CapituloResolvido,
+  onde: string,
+  texto: string,
+  mapaAnexos: ReadonlyMap<string, string>,
+  mapaQuadros: ReadonlyMap<string, string>,
+): Achado[] {
+  const achados: Achado[] = [];
+  const erro = (regra: string, mensagem: string) =>
+    achados.push({ severidade: "erro" as const, capitulo: cap.chave, regra, mensagem });
+
+  for (const m of texto.matchAll(RE_REFERENCIA_ANEXO)) {
+    if (mapaAnexos.has(m[1])) continue;
+    const existe = ANEXOS_CATALOGO.some((a) => a.chave === m[1]);
+    erro(
+      "referencia-de-anexo-quebrada",
+      existe
+        ? `Em "${cap.titulo}", ${onde} cita o anexo "${m[1]}", que não entra neste edital — o capítulo que o traz está desligado. Sairia impresso como "[?anexo:${m[1]}]".`
+        : `Em "${cap.titulo}", ${onde} cita o anexo "${m[1]}", que não existe — os anexos são: ${ANEXOS_CATALOGO.map((a) => a.chave).join(", ")}.`,
+    );
+  }
+
+  for (const m of texto.matchAll(RE_REFERENCIA_QUADRO)) {
+    if (mapaQuadros.has(m[1])) continue;
+    erro(
+      "referencia-de-quadro-quebrada",
+      `Em "${cap.titulo}", ${onde} cita o quadro "${m[1]}", e nenhum quadro com essa âncora existe num capítulo incluído.`,
+    );
+  }
+  return achados;
+}
+
+/**
  * As regras que olham UM artigo.
  *
  * ⚠️ Mora fora de `analisarEdital` porque o laço lá dentro passou de 15 de complexidade
@@ -179,6 +230,8 @@ function analisarArtigo(
     cap: CapituloResolvido;
     documento: readonly CapituloResolvido[];
     mapaAncoras: ReadonlyMap<string, string>;
+    mapaAnexos: ReadonlyMap<string, string>;
+    mapaQuadros: ReadonlyMap<string, string>;
     linhasPorFonte: Partial<Record<QuadroFonte, number>> | undefined;
     valoresDeCampo: ReadonlyMap<string, string> | undefined;
   },
@@ -223,6 +276,7 @@ function analisarArtigo(
   }
 
   achados.push(...analisarCamposDoArtigo(cap, onde, texto, ctx.valoresDeCampo));
+  achados.push(...analisarReferenciasPosTextuais(cap, onde, texto, ctx.mapaAnexos, ctx.mapaQuadros));
 
   for (const m of texto.matchAll(RE_REFERENCIA_ITEM)) {
     if (!ctx.mapaAncoras.has(m[1])) {
@@ -288,16 +342,17 @@ export function analisarEdital(entrada: EntradaLinter): Achado[] {
 
   // 🔴 As referências dos editais reais apontam para ITEM, não para capítulo: 95 delas
   // nos três de referência, e nenhuma para capítulo.
-  const mapaAncoras = mapaDeAncoras(
-    ancorasDoDocumento(
-      documento.map((c) => ({
-        chave: c.chave,
-        numero: c.numero,
-        incluido: c.incluido,
-        itens: porCapitulo.get(c.chave) ?? [],
-      })),
-    ),
-  );
+  const comItens = documento.map((c) => ({
+    chave: c.chave,
+    numero: c.numero,
+    incluido: c.incluido,
+    itens: porCapitulo.get(c.chave) ?? [],
+  }));
+  const mapaAncoras = mapaDeAncoras(ancorasDoDocumento(comItens));
+  // 🔵 Os mesmos números que o documento montado usa (`edital-anexos.ts`): calculá-los aqui
+  // por outra conta faria o painel aceitar uma citação que o arquivo imprime como [?…].
+  const mapaAnexos = mapaDeAnexos(anexosDoDocumento(documento));
+  const mapaQuadros = mapaDeQuadros(quadrosDoDocumento(comItens));
 
   for (const cap of documento) {
     const itens = porCapitulo.get(cap.chave) ?? [];
@@ -308,6 +363,8 @@ export function analisarEdital(entrada: EntradaLinter): Achado[] {
       cap,
       documento,
       mapaAncoras,
+      mapaAnexos,
+      mapaQuadros,
       linhasPorFonte: entrada.linhasPorFonte,
       valoresDeCampo: entrada.valoresDeCampo,
     };

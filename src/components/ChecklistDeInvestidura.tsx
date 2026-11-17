@@ -18,6 +18,7 @@ import {
   conferirInvestidura, conselhosDoEdital, documentosDoConselho, DOCUMENTOS_PADRAO,
   type CargoDoEdital,
 } from "@/lib/edital-investidura";
+import { cargosParaInvestidura } from "@/lib/edital-conferencias";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -105,14 +106,8 @@ export function ChecklistDeInvestidura({ editalId }: { editalId: string }) {
 
   if (isLoading) return <p className="text-sm text-muted-foreground">Carregando o checklist…</p>;
 
-  const doEdital: CargoDoEdital[] = cargosDoEdital.map((ec) => {
-    const c = cargos.find((x) => x.id === ec.cargo_id);
-    return {
-      cargo_id: ec.cargo_id,
-      nome: c?.nome ?? "(cargo removido)",
-      conselho_classe_obrigatorio: c?.conselho_classe_obrigatorio ?? null,
-    };
-  });
+  // A MESMA entrada que o portão da exportação monta — ver `edital-conferencias.ts`.
+  const doEdital: CargoDoEdital[] = cargosParaInvestidura(cargosDoEdital, cargos);
   const conselhos = conselhosDoEdital(doEdital);
   const avisos = conferirInvestidura({ documentos, cargos: doEdital });
   const nomeDoCargo = (id: string) => doEdital.find((c) => c.cargo_id === id)?.nome ?? "(cargo)";

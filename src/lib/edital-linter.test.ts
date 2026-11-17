@@ -273,6 +273,46 @@ describe("referência a ARTIGO — a granularidade que os editais reais usam", (
   });
 });
 
+describe("referência a ANEXO e a QUADRO (fatia 12)", () => {
+  it("⭐ CONTROLE NEGATIVO: anexo que entra resolve e não acusa", () => {
+    expect(regras(comArtigos("prova_objetiva", "ver o Anexo {{anexo:conteudo_programatico}}"))).toEqual([]);
+  });
+
+  it("🔴 o MESMO texto acusa quando a territorialidade está desligada, e deixa de acusar ao ligá-la", () => {
+    // A abrangência só existe com o capítulo territorial. O par prova que a regra olha o
+    // estado do edital, não o texto.
+    const itens = comArtigos("disposicoes_preliminares", "conforme Anexo {{anexo:abrangencia}}");
+    const achados = analisarEdital({ itens });
+    expect(achados.map((a) => a.regra)).toEqual(["referencia-de-anexo-quebrada"]);
+    expect(achados[0].mensagem).toMatch(/desligado/);
+    const ligado = [...itens, artigo("distribuicao_geografica", "Das áreas.")];
+    expect(regras(ligado, [{ chave: "distribuicao_geografica", incluido: true }])).toEqual([]);
+  });
+
+  it("anexo fora do catálogo é TYPO, e a mensagem lista os que existem", () => {
+    const achados = analisarEdital({ itens: comArtigos("prova_objetiva", "ver {{anexo:conteudo}}") });
+    expect(achados.map((a) => a.regra)).toEqual(["referencia-de-anexo-quebrada"]);
+    expect(achados[0].mensagem).toMatch(/não existe.*conteudo_programatico/);
+  });
+
+  it("acusa quadro sem âncora correspondente; ⭐ e não acusa quando o quadro existe", () => {
+    expect(regras(comArtigos("prova_objetiva", "conforme Quadro {{quadro:matriz}}"))).toEqual([
+      "referencia-de-quadro-quebrada",
+    ]);
+    const itens = comArtigos(
+      "prova_objetiva",
+      "conforme Quadro {{quadro:matriz}}",
+      { tipo: "quadro", quadro_fonte: "disciplinas", texto: "Matriz", ancora: "matriz" },
+    );
+    expect(regras(itens)).toEqual([]);
+  });
+
+  it("🔴 âncora de artigo COMUM não serve para {{quadro:}} — só a de um artigo de quadro", () => {
+    const itens = comArtigos("prova_objetiva", { texto: "texto", ancora: "comum" }, "Quadro {{quadro:comum}}");
+    expect(regras(itens)).toEqual(["referencia-de-quadro-quebrada"]);
+  });
+});
+
 describe("resumoDoLinter", () => {
   it("separa erro de aviso", () => {
     const achados = analisarEdital({

@@ -17,6 +17,7 @@ import { useConteudoProgramatico, type EmentaGravada } from "@/hooks/useConteudo
 import {
   conferirConteudo, coberturaPorCargo, type DisciplinaDaProva,
 } from "@/lib/edital-conteudo";
+import { disciplinasParaConteudo } from "@/lib/edital-conferencias";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -133,16 +134,8 @@ export function ConteudoProgramatico({ editalId }: { editalId: string }) {
     id: ec.cargo_id, nome: nomeDoCargo(ec.cargo_id),
   }));
 
-  const daProva: DisciplinaDaProva[] = disciplinas.flatMap((d) => {
-    const ec = cargosDoEdital.find((x) => x.id === d.edital_cargo_id);
-    if (!ec) return [];
-    return [{
-      edital_cargo_id: d.edital_cargo_id,
-      cargo_id: ec.cargo_id,
-      nomeDoCargo: nomeDoCargo(ec.cargo_id),
-      nome_disciplina: d.nome_disciplina,
-    }];
-  });
+  // A MESMA entrada que o portão da exportação monta — ver `edital-conferencias.ts`.
+  const daProva: DisciplinaDaProva[] = disciplinasParaConteudo(disciplinas, cargosDoEdital, cargos);
 
   const avisos = conferirConteudo({ ementas, disciplinas: daProva });
 

@@ -30,12 +30,45 @@ roadmap:
     🔵 2026-09-16. O PDF NÃO precisa numerar nada — chega tudo numerado:
 
     · Número do CAPÍTULO: `src/lib/edital-numeracao.ts`.
-    · Número do ITEM e da alínea (`7.2.1`, `a)`): `src/lib/edital-itens.ts`.
-    · As duas referências cruzadas já resolvidas: `{{cap:chave}}` e `{{item:ancora}}`.
+    · Número do ITEM e da alínea (`7.2.1`, `a)`): `numerarItens`, em `src/lib/edital-itens.ts`.
+    · Os SEIS marcadores, nesta ordem: `{{cap:}}` → `{{item:}}` → `{{anexo:}}` → `{{quadro:}}` →
+      `{{campo:}}` → `{{redigir:}}` (anexo e quadro entraram na etapa 2).
 
     ⚠️ **Não reimplemente numeração no exportador.** Duas numerações divergindo é como
     um PDF sai com número diferente do preview — e o PDF é o que vai ao Diário Oficial.
-    O exportador consome `parsearCapitulo` e os dois resolvedores, como o preview faz.
+    O exportador consome `numerarItens` e a mesma cadeia de resolução da prévia.
+
+    🔵 **Corrigido em 2026-11-16.** Este trecho dizia *"consome `parsearCapitulo` e os dois
+    resolvedores"*. Envelheceu com a migração para um registro por artigo (20260916225307):
+    `parsearCapitulo` deixou de numerar e virou só a porta da colagem; e os marcadores
+    passaram de dois a quatro em 18/09 e na rodada 3.
+
+    🔴 **A cadeia de resolução NÃO é função pura hoje** — mora dentro do componente
+    (`EditalStudio.tsx`, a `resolver` do render do capítulo). O primeiro passo da exportação
+    é EXTRAÍ-LA para `src/lib/`, com a prévia passando a chamá-la: duas cópias da cadeia
+    seriam duas numerações por outro caminho. A ordem importa — `{{campo:}}` vem por último
+    porque é dado digitado, e um valor contendo `{{` viraria referência se resolvido antes.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  medido_no_codigo_em_2026_11_16: |
+    Leitura dirigida, ao retomar a fatia. Três achados que o esboço não previa:
+
+    A1. 🔴 A PRÉVIA NÃO É O DOCUMENTO INTEIRO. O backlog dizia "a prévia já monta o documento
+        na tela — exportar é levá-lo para fora, não remontá-lo". Medido: a prévia (Sheet
+        "Ver prévia" do `EditalStudio`) mostra capítulos incluídos + artigos + os cinco
+        quadros. O CONTEÚDO PROGRAMÁTICO e as ÁREAS DE ABRANGÊNCIA (843 logradouros) NÃO
+        aparecem nela — existem só como EDITORES (`ConteudoProgramatico`,
+        `TerritorialidadeELotacao`). A exportação tem de montar esses dois anexos do zero.
+
+    A2. 🔴 OS QUADROS SÃO COMPONENTES QUE BUSCAM O PRÓPRIO DADO. `QuadroDoArtigo` despacha
+        para cinco componentes React, cada um com seu hook. Dado e desenho estão juntos, e
+        nada disso é alcançável de um exportador de Markdown/JSON/PDF. É preciso uma camada
+        intermediária: o DOCUMENTO COMO DADO (capítulos, artigos numerados, texto resolvido,
+        quadros como linhas), montado UMA vez — e a prévia, o MD, o JSON e o PDF viram
+        quatro projeções dele. Sem isso, cada formato remonta o documento e eles divergem.
+
+    A3. A cadeia de resolução dos 4 marcadores mora dentro do componente (ver acima).
+        Entra na mesma extração do A2.
 
   # ═══════════════════════════════════════════════════════════════════════════
   reuso_que_ja_existe: |
@@ -60,35 +93,118 @@ roadmap:
         API pública desde o primeiro dia, não como dump interno.
 
   # ═══════════════════════════════════════════════════════════════════════════
+  decisoes_do_usuario_2026_11_16: |
+    D-P1. ✅ BLOQUEAR, e liberar só com confirmação que NOMEIE cada pendência (a recomendação).
+    D-P2. ✅ JSON ADIADO. Sem portal definido, seria contrato desenhado sem consumidor. Sai do
+          escopo desta fatia; volta quando houver especificação do portal.
+    D-PDF. ✅ SÓ MARKDOWN nesta fatia — sem PDF e sem DOCX (o DOCX exigiria dependência nova,
+          o pacote `docx`, e foi recusado em 16/11). A diagramação final continua no Word, a
+          partir do Markdown. ⚠️ Isso desloca o R1: o número errado não nasce no PDF, mas pode
+          nascer no Word se alguém renumerar à mão — o Markdown tem de sair com a numeração
+          como TEXTO, nunca como lista ordenada (`1.`), que o conversor renumeraria sozinho.
+
+  # ═══════════════════════════════════════════════════════════════════════════
   etapas:
+    # 🔵 Refeitas em 2026-11-16, depois dos achados A1–A3 e das decisões acima. Eram:
+    # 1 Markdown e JSON · 2 PDF diagramado · 3 portão do linter · 4 verificação.
     - id: 1
-      nome: "Markdown e JSON"
-      status: "⏳ pendente"
+      nome: "O documento como DADO"
+      status: "✅ CONCLUÍDA em 2026-11-16 (não commitada)"
+      feito: >
+        `src/lib/edital-documento.ts` (resolverMarcadores, 5 funções de quadro, montarEditalCompleto),
+        `useDocumentoDoEdital`, `useDadosDosQuadros`. A prévia e o `QuadroDoArtigo` passaram a
+        desenhar o documento montado. No caminho, `useLinhasPorFonte` deixou de devolver zeros
+        enquanto carrega. Testes: edital-documento (17) e useQuadrosDoEdital (2), cada caso
+        falsificado. ⚠️ A prévia NÃO foi conferida no navegador.
       entrega:
-        - "Serialização do edital montado, com a numeração calculada já resolvida."
-        - "Markdown legível; JSON versionado (P2)."
+        - "Função pura em src/lib/: recebe capítulos, itens, valores dos campos e o dado dos quadros e anexos; devolve o documento montado (numerado, texto resolvido, quadros como linhas)."
+        - "Extrair a cadeia de resolução dos 4 marcadores do EditalStudio; a prévia passa a consumir a função (A3)."
+        - "Os quadros: separar o MONTAR LINHAS (puro) do DESENHAR (componente), um por fonte (A2)."
+        - "Um hook que busca tudo de uma vez — a abrangência por buscar-em-fatias, nunca select solto (843 linhas, teto de 1000)."
 
     - id: 2
-      nome: "PDF diagramado"
-      status: "⏳ pendente"
+      nome: "Os anexos que a prévia não mostra"
+      status: "✅ CONCLUÍDA em 2026-11-16 (não commitada)"
+      feito: >
+        Conteúdo programático e abrangência no documento montado e na prévia (AnexoDoEdital).
+        `src/lib/edital-anexos.ts`: anexos e quadros numerados em romano, marcadores
+        {{anexo:}} e {{quadro:}}, duas regras novas no linter. Decisão do usuário: o texto do
+        modelo NÃO muda (segue "como anexo deste Edital"). Testes: edital-anexos (16),
+        edital-documento (+5), edital-linter (+5), cada guarda falsificada.
+        ⚠️ A prévia NÃO foi conferida no navegador.
       entrega:
-        - "Reuso do timbre existente; paginação, sumário e numeração dos capítulos."
+        - "Conteúdo programático e áreas de abrangência entram no documento montado (A1)."
+        - "Numeração de anexo e de quadro, que resolve o item do backlog — {{anexo:}} vem aqui ou fica explicitamente para depois."
 
     - id: 3
-      nome: "O portão do linter"
-      status: "⏳ pendente"
+      nome: "Markdown"
+      status: "✅ CONCLUÍDA em 2026-11-16 (não commitada)"
+      feito: >
+        `src/lib/edital-markdown.ts` (documentoEmMarkdown). Todo começo de linha que o CommonMark
+        ou o pandoc (fancy_lists) leia como bloco é escapado, inclusive no meio do parágrafo.
+        Quebra simples vira quebra dura com `\`, quadro vira tabela de pipe e pendência vira
+        citação visível. Testes: edital-markdown (37), com o edital modelo inteiro como
+        controle positivo e 9 falsificações. Python-Markdown sobre o modelo: 0 listas.
+        ⚠️ SEM BOTÃO de propósito: exportar sem o portão violaria a D-P1, e o botão entra
+        com a etapa 4.
       entrega:
-        - "Implementar P1: exportação recusa (ou exige confirmação nomeada) com pendência em aberto."
+        - "Uma projeção do documento montado. Negrito via segmentarNegrito; numeração como texto, escapada para não virar lista ordenada (D-PDF)."
 
     - id: 4
+      nome: "O portão do linter (D-P1)"
+      status: "✅ CONCLUÍDA em 2026-11-16 (não commitada)"
+      feito: >
+        `src/lib/edital-exportacao.ts` (pendenciasDaExportacao, avaliarExportacao, nomeDoArquivo),
+        `useConsultasComErro` (falha ≠ vazio, pelo cache do React Query, só consultas com
+        observador), `ExportarEdital` (botão + diálogo, uma caixa por pendência, sem "marcar
+        todas"). Decisão tomada aqui: RASCUNHO NÃO SALVO RECUSA, não avisa — confirmar não faz
+        o arquivo igual à tela. Falha também recusa sem confirmação. Testes: 19 + 3 + 6, com
+        10 falsificações; a confirmação por CONTAGEM sobreviveu à primeira suíte e ganhou caso.
+        ⚠️ Nem o diálogo nem a prévia foram conferidos no navegador.
+      aberto_para_decisao_RESOLVIDO: >
+        🔵 RESOLVIDO no mesmo dia: o usuário decidiu incluir as dez, e elas entraram
+        (`edital-conferencias.ts`, `useDadosDasConferencias`; as entradas que os painéis
+        montavam no JSX foram extraídas e os seis painéis passaram a chamá-las). 17 + 2 testes,
+        9 falsificações: a ORDEM sobreviveu à primeira suíte e ganhou caso; tirar só a carga de
+        `useEditalCargos` sobrevive por proteção sobreposta (registrado no teste). Achado no
+        caminho: a mensagem de `conferirCotas` dizia "10%"/"20%" fixos mesmo com outro
+        percentual declarado — CORRIGIDO em seguida, a pedido (`percentuaisEmVigor`, 3 casos
+        novos em edital-cotas.test.ts). O texto original do achado era:
+        🔴 Achado ao fechar a etapa: o portão vê o LINTER e o DOCUMENTO, mas não as DEZ
+        conferências de painel (conferirInscricao, conferirCotas, conferirCronograma,
+        conferirConteudo, conferirAcoesAfirmativas, conferirDesempate, conferirInvestidura,
+        conferirProva, conferirTitulos, conferirDistribuicao). Elas aparecem só dentro de cada
+        painel, e não no botão "Pendências" do Studio. Algumas são ERRO: `canal-sem-endereco`
+        diz que o canal "sairia no edital como um canal que ninguém consegue usar". Uma delas é a
+        dívida do e-mail duplicado que o backlog previa "virar erro visível na exportação": hoje
+        ela NÃO chega ao portão. Incluí-las exige carregar o dado dos dez painéis ao exportar,
+        e é decisão do usuário.
+      entrega:
+        - "O BOTÃO de exportar (download do .md), que a etapa 3 deixou de fora para não existir um caminho sem portão. O nome do edital vai como `titulo` do documentoEmMarkdown."
+        - "Exportação recusa com pendência aberta; liberação só confirmando cada uma pelo nome."
+        - >
+          🔴 Achado na etapa 1: CONSULTA QUE FALHA É LIDA COMO VAZIA. Os hooks dos quadros
+          devolvem `data ?? []` sem expor o erro — um quadro cuja consulta falhou sai como "sem
+          linha". O portão tem de distinguir erro de vazio antes de liberar qualquer coisa.
+        - >
+          Anexo VAZIO não é regra do linter: a pendência aparece no documento montado, mas o
+          painel não a lista (o linter não recebe o dado dos anexos). O portão tem de olhar a
+          pendência do documento montado — quadros e anexos —, não só o linter.
+        - >
+          Rascunho NÃO salvo no Studio: exportar lê o banco, não o rascunho. Decidir se o portão
+          recusa ou avisa quando há artigo sujo no capítulo aberto.
+
+    - id: 5
       nome: "Verificação e docs"
       status: "⏳ pendente"
       entrega:
         - >
           ⭐ CONTROLE POSITIVO FINAL DO MÓDULO: montar o Edital 002/2026 inteiro no sistema e
-          comparar o PDF gerado com o publicado. É o teste que diz se a v3 cumpriu o que
-          prometeu.
-        - "npm test · tsc · lint (baseline 111) · build · docs:conferir"
+          comparar o documento exportado com o publicado. É o teste que diz se a v3 cumpriu o
+          que prometeu.
+        - "npm test · tsc · npm run lint:baseline · build · docs:conferir"
+        # 🔵 Até 2026-11-16 dizia "lint (baseline 111)". O número envelheceu (hoje 51/51) e
+        # deixou de ser a forma de conferir: o portão é `lint:baseline`, que lê o JSON.
 
   # ═══════════════════════════════════════════════════════════════════════════
   riscos: |
