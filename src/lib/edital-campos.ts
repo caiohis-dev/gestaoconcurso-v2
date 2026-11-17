@@ -295,7 +295,7 @@ const CAMPOS_DO_EDITAL: readonly CampoCatalogo[] = [
     rotulo: "Prazo de validade (anos)",
     formato: "inteiro",
     fonte: "editais.prazo_validade_anos",
-    ondeSePreenche: "disposicoes_gerais",
+    ondeSePreenche: "preambulo",
   },
   // ── Os cinco que não tinham casa antes de 2026-09-18 ────────────────────────────────
   {
@@ -317,24 +317,29 @@ const CAMPOS_DO_EDITAL: readonly CampoCatalogo[] = [
     rotulo: "Nome de quem assina",
     formato: "texto",
     fonte: "editais.signatario_nome",
-    ondeSePreenche: "anexos",
+    ondeSePreenche: "preambulo",
   },
   {
     chave: "signatario_cargo",
     rotulo: "Cargo de quem assina",
     formato: "texto",
     fonte: "editais.signatario_cargo",
-    ondeSePreenche: "anexos",
+    ondeSePreenche: "preambulo",
   },
   {
     chave: "data_publicacao",
     rotulo: "Data de publicação",
     formato: "data_extenso",
     fonte: "editais.data_publicacao",
-    ondeSePreenche: "anexos",
+    ondeSePreenche: "preambulo",
   },
 ];
 
+// 🔵 Até 2026-11-16 `prazo_validade_anos` apontava para `disposicoes_gerais` e os três do
+// fecho (`signatario_nome`, `signatario_cargo`, `data_publicacao`) para `anexos` — é onde
+// eles SAEM no documento, não onde se PREENCHEM. Os quatro inputs moram no Preâmbulo
+// (`DadosDoEdital`), e o linter mandava a pessoa a um capítulo sem o campo. O teste
+// "o editor do capítulo indicado ESCREVE a coluna" mede isto contra a tela.
 export const CAMPOS_CATALOGO: readonly CampoCatalogo[] = [
   ...CAMPOS_DO_EDITAL,
   ...CAMPOS_DO_CRONOGRAMA,

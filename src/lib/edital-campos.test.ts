@@ -10,6 +10,8 @@
  * de julho" onde o edital oferece "22 OU 23". A frase é plausível, e é por isso que só um
  * teste a pega.
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import {
   CAMPOS_CATALOGO,
@@ -114,6 +116,62 @@ describe("o catálogo", () => {
       expect(c.ondeSePreenche.trim(), `campo ${c.chave}`).not.toBe("");
       expect(c.fonte.trim(), `campo ${c.chave}`).not.toBe("");
     }
+  });
+});
+
+describe("🔴 onde se preenche — medido contra a TELA", () => {
+  // Até 2026-11-16 o único teste disto conferia que `ondeSePreenche` não estava VAZIO — e
+  // passava com quatro campos apontando para o capítulo errado e três sem input nenhum. O
+  // linter dizia "preencha em Anexos" para um campo cujo input mora no Preâmbulo.
+  //
+  // O que se mede aqui: o despacho `EditorDoCapitulo` do Studio diz qual componente edita
+  // cada capítulo; o campo com coluna de origem (`tabela.coluna`) tem de ter essa coluna
+  // escrita no código daquele componente. É leitura de fonte, como o teste de diálogos: barato,
+  // e falha no dia em que um campo novo nasce sem casa.
+  const raiz = join(process.cwd(), "src");
+  const studio = readFileSync(join(raiz, "pages", "EditalStudio.tsx"), "utf8");
+  const despacho = studio.slice(studio.indexOf("function EditorDoCapitulo"));
+  const corpo = despacho.slice(0, despacho.indexOf("\n}\n"));
+
+  const editores = new Map<string, string[]>();
+  for (const bloco of corpo.split(/\n {2}if /)) {
+    const chaves = [
+      ...[...bloco.matchAll(/chave === "([a-z_]+)"/g)].map((m) => m[1]),
+      ...[...bloco.matchAll(/\[([^\]]+)\]\.includes\(chave\)/g)].flatMap((m) => [...m[1].matchAll(/"([a-z_]+)"/g)].map((x) => x[1])),
+    ];
+    const componentes = [...bloco.matchAll(/<([A-Z][A-Za-z]+) editalId/g)].map((m) => m[1]);
+    for (const c of chaves) editores.set(c, [...(editores.get(c) ?? []), ...componentes]);
+  }
+
+  it("controle: o despacho foi lido (senão todo campo 'faltaria' e o teste seria ruído)", () => {
+    expect(editores.get("preambulo")).toEqual(["DadosDoEdital"]);
+    expect(editores.get("anexos")).toEqual(["CronogramaEtapas", "ConteudoProgramatico"]);
+  });
+
+  it("todo campo aponta para um capítulo que TEM editor", () => {
+    const semEditor = CAMPOS_CATALOGO.filter((c) => !editores.get(c.ondeSePreenche)?.length);
+    expect(semEditor.map((c) => `${c.chave} → ${c.ondeSePreenche}`)).toEqual([]);
+  });
+
+  it("🔴 o editor do capítulo indicado ESCREVE a coluna de origem do campo", () => {
+    // Controle do padrão: casa a escrita e não casa a leitura.
+    expect(/\bleis_base\s*:/.test("salvar({ leis_base: x })")).toBe(true);
+    expect(/\bleis_base\s*:/.test("defaultValue={pcd?.leis_base ?? ''}")).toBe(false);
+    const fonteDe = (componente: string) => readFileSync(join(raiz, "components", `${componente}.tsx`), "utf8");
+    const faltando: string[] = [];
+    for (const c of CAMPOS_CATALOGO) {
+      const coluna = /^[a-z_]+\.([a-z_0-9]+)/.exec(c.fonte)?.[1];
+      if (!coluna) continue; // derivado (data de corte, cargos em frase): não tem input próprio
+      const comps = editores.get(c.ondeSePreenche) ?? [];
+      // ⚠️ ESCREVER, não mencionar: a primeira versão usava `includes(coluna)` e passava com o
+      // input das leis de PCD removido, porque a coluna seguia no `defaultValue` (leitura).
+      // Toda gravação dos painéis passa a coluna como CHAVE de objeto — `{ coluna: valor }`.
+      const escreve = new RegExp(`\\b${coluna}\\s*:`);
+      if (!comps.some((comp) => escreve.test(fonteDe(comp)))) {
+        faltando.push(`${c.chave}: "${coluna}" não aparece em ${comps.join(", ") || "(nenhum editor)"}`);
+      }
+    }
+    expect(faltando).toEqual([]);
   });
 });
 

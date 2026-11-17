@@ -30,6 +30,37 @@ ler dado real. **Conferir a premissa no código antes de executar o item é obri
 
 ---
 
+## ✅ CONCLUÍDO 2026-11-16 — o número do ANEXO e do QUADRO passou a ser calculado
+
+### A mensagem de cotas mentia o percentual (achado e corrigido no mesmo dia)
+
+Entrada como estava no backlog: 🔵 **Achado em 16/11, não corrigido — a mensagem de cotas mente o percentual.** `conferirCotas` (`src/lib/edital-cotas.ts`) escreve *"10% de N vagas dá X"* e *"20% de…"* fixos, mas a conta usa o percentual DECLARADO no capítulo Das Vagas. Num edital que declara 15%, o aviso diz "10%" com o número de 15%. Aparece no painel do Quadro de Cargos e, desde 16/11, no portão da exportação. Conserto: interpolar o percentual usado (`sugerirCotas` já o conhece).
+
+**Feito:** `percentuaisEmVigor` em `src/lib/edital-cotas.ts`, usada pela conta (`sugerirCotas`) e pela mensagem (`conferirCotas`); o percentual sai em pt-BR (`12,5%`). O teste antigo conferia o número sugerido e não o texto — por isso o defeito passava verde. 3 casos novos, cada um falsificado (texto fixo de volta derruba 2; sem a vírgula decimal, 1).
+
+Feito na **fatia 12 (exportação), etapa 2**, como a entrada previa. `src/lib/edital-anexos.ts`
+numera os anexos (abrangência antes do conteúdo, só quando o capítulo territorial está incluído) e
+os quadros (pela ordem no documento), e os marcadores `{{anexo:chave}}` e `{{quadro:ancora}}`
+citam o número; o linter acusa os que não resolvem. ⚠️ **Por decisão do usuário, o texto do
+modelo NÃO foi alterado** — o paliativo *"como anexo deste Edital"* continua lá, e quem quiser
+citar o número edita pela tela.
+
+A entrada, como estava no backlog:
+
+### 📄 O número do ANEXO e do QUADRO são referência calculada, e não há mecanismo
+
+**Status:** ⏳ aberto em 2026-09-18, na rodada 3 do edital padrão.
+**Área:** módulo Editais — ver [`estrutura/modulos/editais/00-modulo.md`](./estrutura/modulos/editais/00-modulo.md)
+
+**Medido nos três editais:** o conteúdo programático é o **Anexo I** no 002 e no 003, e o
+**Anexo II** no 004 — porque lá o Anexo I é a abrangência territorial. É exatamente o problema
+que a numeração calculada de capítulo resolve, um nível abaixo: elemento pós-textual condicional
+que entra desloca todos os seguintes.
+
+🔴 **E o mesmo vale para os QUADROS, medido na rodada 4:**
+
+| | Quadro I | Quadro II | Quadro III |
+|
 ## ✅ CONCLUÍDO 2026-09-24 — as ressalvas do "admin preenche o e-mail e o colaborador se reivindica"
 
 **Status:** ⏳ aberto em 2026-09-18, ao conferir se um colaborador **sem e-mail** consegue concluir o acesso depois de o admin preencher o campo pelo *Editar Colaborador* de `/colaboradores`.

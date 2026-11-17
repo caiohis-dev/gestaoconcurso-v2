@@ -62,6 +62,8 @@ O **edital** é o **documento normativo do certame**, montado por capítulos den
 | `src/lib/edital-exportacao.ts` | 🔵 **fatia 12, etapa 4** — função pura: o PORTÃO (`pendenciasDaExportacao`, `avaliarExportacao`) e o nome do arquivo |
 | `src/lib/edital-conferencias.ts` | 🔵 **fatia 12, etapa 4** — função pura: as DEZ conferências de painel juntas (`conferenciasDoEdital`), e as entradas que os painéis montavam no JSX (`cargosComTaxa`, `entradaDasAcoes`…), que hoje os painéis e o portão chamam |
 | `src/hooks/useConferenciasDoEdital.tsx` | 🔵 **fatia 12, etapa 4** — o dado dos dez painéis; `undefined` até tudo chegar |
+| `src/components/CamposDoEdital.tsx` | 🔵 **2026-11-16** — o botão "Campos do edital" no alto de cada capítulo: todo `{{campo:}}`, com rótulo, marcador copiável, onde se preenche e o valor atual |
+| `src/components/VistaDaFolha.tsx` · `src/hooks/useVistaDeProva.tsx` | 🔵 **2026-11-16** — o editor de `recursos_prova_objetiva`: e-mail e interstício da vista. Até então NENHUMA tela escrevia `regras_vista_prova` |
 | `src/hooks/useConsultasComErro.tsx` | 🔵 **fatia 12, etapa 4** — as consultas ATIVAS da tela em erro, lidas do cache do React Query |
 | `src/components/ExportarEdital.tsx` | 🔵 **fatia 12, etapa 4** — o botão "Exportar" do Studio e o diálogo de confirmação nomeada |
 | `src/components/QuadroDoArtigo.tsx` | 🔵 **v3** — desenha um `QuadroMontado`. 🔵 Até 2026-11-16 eram cinco componentes, cada um buscando o próprio dado e montando as linhas no JSX |
@@ -1069,6 +1071,29 @@ vencimento** — com valores diferentes, a frase estaria errada.
 |---|---|
 | `campo-desconhecido` | **quem escreveu o texto** — chave fora do catálogo, é typo |
 | `campo-sem-valor` | **o autor deste edital** — a mensagem nomeia o capítulo onde preencher |
+
+🔴 **"O capítulo onde preencher" estava ERRADO para sete campos até 2026-11-16** — medido
+contra a tela, a pedido do usuário ("como vejo o nome de um input na tela?"):
+
+| campo | o catálogo dizia | a verdade |
+|---|---|---|
+| `signatario_nome` · `signatario_cargo` · `data_publicacao` | Anexos (onde SAEM) | o input mora no **Preâmbulo** |
+| `prazo_validade_anos` | Disposições Gerais | o input mora no **Preâmbulo** |
+| `email_vista_folha` · `intersticio_vista_horas` | Recursos da prova objetiva | o capítulo **não tinha editor**; nenhuma tela escrevia `regras_vista_prova` (0 linhas no banco) |
+| `leis_pcd` | Vagas PCD | o cartão de PCD editava todas as colunas de `regras_pcd` **menos** `leis_base` — e o modelo cita o campo 5 vezes |
+
+Os quatro primeiros mudaram no catálogo; os três últimos ganharam input (`VistaDaFolha`, o campo
+"Leis que fundamentam a reserva" no cartão de PCD). O teste que existia só conferia que
+`ondeSePreenche` **não estava vazio**. O novo, em `edital-campos.test.ts`, lê o despacho
+`EditorDoCapitulo` do Studio e exige que o componente do capítulo **escreva** a coluna de origem
+(`coluna:` como chave de objeto — a primeira versão aceitava só *mencionar*, e passava com o input
+das leis removido, porque a coluna seguia no `defaultValue`). Rodado sobre o estado anterior, ele
+lista exatamente os sete.
+
+🔵 **E o marcador agora é visível na tela:** o botão **"Campos do edital"**, no alto de cada
+capítulo, lista todo `{{campo:}}` por capítulo onde se preenche, com o rótulo (o texto do input),
+o marcador para copiar e o valor atual — ou *"vazio — sairia como `[?campo:x]`"*. Carregando, diz
+"carregando", nunca "vazio".
 
 ⚠️ **Ausente e vazio são a MESMA coisa**, de propósito: o mapa é `Map<string,string>` e
 string vazia nunca entra nele. Um `""` resolveria o marcador para nada — buraco invisível no

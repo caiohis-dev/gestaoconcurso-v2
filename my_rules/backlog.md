@@ -490,36 +490,71 @@ Funcionalidade nova. A fatia 12 vem primeiro porque fecha o objetivo do módulo 
 
 ## 📄 Editais v3, fatia 12 — exportação (PDF / Markdown / JSON)
 
-**Status:** ⏳ **não iniciada, por decisão do usuário em 2026-09-17** — as fatias 1 a 11 foram entregues e esta foi deixada para o backlog. O roadmap é [`analises/roadmap-editais-exportacao.yaml`](./analises/roadmap-editais-exportacao.yaml), ainda em esboço.
+**Status:** 🟡 **em andamento desde 2026-11-16** — etapas 1 a 4 de 5 concluídas (documento montado, anexos e quadros numerados, Markdown, portão com botão "Exportar"), **não commitadas**; falta a 5 (comparar com o Edital 002). Escopo decidido: **só Markdown**, JSON adiado. O roadmap é [`analises/roadmap-editais-exportacao.yaml`](./analises/roadmap-editais-exportacao.yaml). 🔵 Até 16/11 esta linha dizia *"não iniciada… ainda em esboço"*.
 **Área:** módulo Editais — ver [`estrutura/modulos/editais/00-modulo.md`](./estrutura/modulos/editais/00-modulo.md)
 
-🔴 **É a fatia que fecha o objetivo do módulo.** As 11 primeiras montam o documento no banco; esta é a que o tira de lá. Sem ela, o edital continua sendo redigido no Word e o sistema é só um formulário — o que o `00-Plano-v3.md` chama de "gerar o edital publicável" não acontece.
+### 📍 ONDE PARAMOS — 2026-11-16 (pausado para outra tarefa)
+
+**Commitado e empurrado para `origin/dev` em 2026-11-16**, em dois commits: `feat(editais)` da
+exportação (etapas 1 a 4, conferências de painel, mensagem de cotas) e `fix(editais)` dos campos.
+Verificado no fim da sessão: `npm test` 2320/121 · `tsc` limpo · `lint:baseline` 51/51 · `build`
+ok · `docs:conferir` sem divergência. ⚠️ **Nada disto está em `main` nem em produção.** ⚠️ Os arquivos não rastreados em `my_rules/`
+(`Captura de tela…png`, `Supabase Snippet…csv`, `analises/checkpoint-monitoramento.md`,
+`otimizing/`, `seguranca`) **não são desta fatia** — não entram no commit dela.
+
+**Feito nesta sessão** (detalhe no roadmap e na doc do módulo):
+- etapas 1 a 4 do roadmap: documento montado (`edital-documento.ts`), anexos e quadros numerados
+  (`edital-anexos.ts`, marcadores `{{anexo:}}`/`{{quadro:}}`), Markdown (`edital-markdown.ts`) e o
+  portão com o botão **Exportar** (`edital-exportacao.ts`, `ExportarEdital.tsx`);
+- o portão vê linter + documento + as **dez conferências de painel** (`edital-conferencias.ts`) e
+  distingue consulta que falhou de vazia (`useConsultasComErro`);
+- de carona: a mensagem de cotas parou de escrever "10%/20%" fixos; **sete campos** que mandavam
+  preencher no capítulo errado ou não tinham input foram consertados (Preâmbulo; editor novo
+  `VistaDaFolha` em Recursos da prova objetiva; "Leis que fundamentam a reserva" no cartão de PCD);
+  botão **"Campos do edital"** no alto de cada capítulo.
+
+**Para retomar, nesta ordem:**
+1. **Conferir no NAVEGADOR** — nada disto foi visto rodando (`npm run dev`, banco local):
+   - prévia: "Quadro I/II…" sobre cada tabela, anexos depois do último capítulo;
+   - Exportar: uma caixa por pendência (as de painel com o título do capítulo), botão só libera
+     com todas; artigo não salvo → recusa; abrir o `.md` (alíneas como `a\)`, `7.1.` sem barra);
+   - "Campos do edital"; o cartão da vista em Recursos da prova objetiva; as leis em Vagas PCD.
+2. **Etapa 5** do roadmap: montar o Edital 002 inteiro no sistema e comparar o Markdown exportado
+   com o publicado — o controle positivo final do módulo.
+
+ As 11 primeiras montam o documento no banco; esta é a que o tira de lá. Sem ela, o edital continua sendo redigido no Word e o sistema é só um formulário — o que o `00-Plano-v3.md` chama de "gerar o edital publicável" não acontece.
 
 ⚠️ **E é onde duas dívidas registradas deixam de ser hipótese:**
 
-1. **O e-mail duplicado** (`regras_vista_prova.email_solicitacao` × `edital_canais_atendimento`) passa a sair impresso **no mesmo documento**, em capítulos diferentes. Hoje a divergência é um aviso de tela; na exportação vira erro visível no PDF. Ver [`estrutura/transversais/invariantes.md`](./estrutura/transversais/invariantes.md).
+1. **O e-mail duplicado** (`regras_vista_prova.email_solicitacao` × `edital_canais_atendimento`) passa a sair impresso **no mesmo documento**, em capítulos diferentes. Hoje a divergência é um aviso de tela; na exportação vira erro visível no PDF. Ver [`estrutura/transversais/invariantes.md`](./estrutura/transversais/invariantes.md). 🔵 **Desde 16/11 ela chega ao portão da exportação** como pendência (aviso) do capítulo da inscrição, junto com as outras nove conferências de painel. A duplicação em si continua: duas colunas guardando o mesmo endereço.
 2. **Os dois quadros gerados não reproduzem a forma publicada** — o Quadro II de provas e os Quadros III/IV de títulos saem com uma linha por cargo, onde o Edital 002 agrupa. Foi **decisão do usuário** (não agrupar), e a exportação é onde ela aparece.
 
-⚠️ **O que já está pronto e ela consome:** a numeração calculada de capítulo e artigo, a resolução de `{{cap:}}` e `{{item:}}`, o `segmentarNegrito`, e as cinco fontes de quadro renderizando de verdade. A prévia em `EditalStudio` já monta o documento na tela — a exportação é levá-lo para fora, não remontá-lo.
+⚠️ **O que já está pronto e ela consome:** a numeração calculada de capítulo e artigo, a resolução de `{{cap:}}` e `{{item:}}`, o `segmentarNegrito`, e as cinco fontes de quadro renderizando de verdade.
+
+🔵 **Corrigido em 2026-11-16, medido no código.** Esta linha terminava com *"a prévia em `EditalStudio` já monta o documento na tela — a exportação é levá-lo para fora, não remontá-lo"*. **Não é o documento inteiro:** o conteúdo programático e as áreas de abrangência não aparecem na prévia (só existem como editores), e os quadros são componentes React que buscam o próprio dado — nada disso é alcançável por um exportador. Ver `medido_no_codigo_em_2026_11_16` no roadmap.
 
 🔴 **A armadilha que o roadmap da fatia 7 deixou avisada:** o Anexo de abrangência tem **843 logradouros** num edital, 84% do teto de 1.000 do PostgREST. A leitura já passa por `buscar-em-fatias`; **a exportação não pode contorná-la** — um select solto devolveria 1.000 e o anexo sairia com uma rua faltando, sem erro nenhum.
 
+
 ---
 
-## 📄 O número do ANEXO e do QUADRO são referência calculada, e não há mecanismo
+## ⚠️ `importarAbrangencia` apaga e reinsere SEM transação (achado em 2026-11-16, não executado)
 
-**Status:** ⏳ aberto em 2026-09-18, na rodada 3 do edital padrão.
-**Área:** módulo Editais — ver [`estrutura/modulos/editais/00-modulo.md`](./estrutura/modulos/editais/00-modulo.md)
+**Área:** módulo Editais, territorialidade — `src/hooks/useTerritorialidade.tsx`
 
-**Medido nos três editais:** o conteúdo programático é o **Anexo I** no 002 e no 003, e o
-**Anexo II** no 004 — porque lá o Anexo I é a abrangência territorial. É exatamente o problema
-que a numeração calculada de capítulo resolve, um nível abaixo: elemento pós-textual condicional
-que entra desloca todos os seguintes.
+Importar as ruas de uma unidade faz **dois passos PostgREST**: `DELETE` de todas as linhas da
+unidade em `territorialidade_abrangencia`, depois `INSERT` das novas. Se o segundo falhar (rede,
+uma linha recusada por constraint), o primeiro já valeu: **a unidade fica sem nenhuma rua**, o
+toast mostra o erro do insert e nada diz que as antigas sumiram. É o padrão "vários passos sem
+transação" do CLAUDE.md §8, e o Anexo de abrangência é exatamente o que a exportação publica.
 
-🔴 **E o mesmo vale para os QUADROS, medido na rodada 4:**
+**Conserto pelo §2:** uma RPC que faz as duas coisas numa transação (e devolve a contagem). ⚠️
+Lembrar do teto de 1.000 do PostgREST na leitura (já em `buscar-em-fatias`) — na escrita, um
+único insert com 843 linhas cabe, mas medir o payload antes de desenhar.
 
-| | Quadro I | Quadro II | Quadro III |
-|---|---|---|---|
+---
+
+--|---|---|
 | 002 | cargos | provas | títulos |
 | 003 | cargos | provas | — |
 | 004 | cargos | **vagas por UBSF** | vagas do 2º cargo |
@@ -569,7 +604,7 @@ fatia nova, e sem o renderizador o artigo cai no ramo "fonte desconhecida".
    **e-mail da impugnação**, o órgão oficial de publicação e o endereço do **órgão demandante**
    (que não é o da entidade executora — confundi-los manda o candidato ao lugar errado).
 
-⏳ **Numerar ANEXO e QUADRO** continua na entrada própria abaixo, para a fatia de exportação.
+🔵 **Numerar ANEXO e QUADRO saiu daqui em 2026-11-16** — feito na fatia 12, etapa 2. Ver [`analises/concluidos/backlog-itens-concluidos.md`](./analises/concluidos/backlog-itens-concluidos.md).
 
 ---
 
@@ -685,8 +720,11 @@ Um script **gitignored** para apontar o `npm run dev` ao Supabase local ou ao pr
 2026-11-04**. O checkpoint diz que as fases 1, 2 e 3.1 foram feitas (código em `monitoramento/`, que está
 no `.gitignore`), mas o YAML ainda marca todas as fases como pendentes — **os dois discordam**. Parou
 esperando o usuário preencher `monitoramento/.env` e gerar o token.
-**Área:** Infraestrutura · roadmap [`analises/roadmap-monitoramento-stress.yaml`](./analises/roadmap-monitoramento-stress.yaml) ·
-estado em [`analises/checkpoint-monitoramento.md`](./analises/checkpoint-monitoramento.md)
+**Área:** Infraestrutura · roadmap [`analises/roadmap-monitoramento-stress.yaml`](./analises/roadmap-monitoramento-stress.yaml)
+
+🔵 **Fora do git por decisão do usuário (2026-11-04):** o código (`monitoramento/`) e o estado
+(`my_rules/analises/checkpoint-monitoramento.md`) vivem só nesta máquina — só o roadmap é versionado.
+Num checkout limpo, o checkpoint não existe; é ele que diz onde o trabalho parou.
 
 Medir o comportamento de produção sob carga (CPU e conexões do Supabase, nginx da Hostinger) com
 monitores próprios e Artillery, num servidor à parte que nunca sobe para produção.
@@ -695,6 +733,11 @@ monitores próprios e Artillery, num servidor à parte que nunca sobe para produ
 volta com restart — e o restart destrói a evidência. Uma carga de estresse pode reproduzir exatamente
 isso, e o free não tem backup contínuo. Antes da fase 3.2: combinar janela, começar pequeno, só leitura,
 e saber de antemão como restabelecer.
+
+⚠️ **Premissa envelhecida no roadmap:** o `medido_antes` e a fase 3.2 miram a `colaboradoresAlocadosQuery`
+e o `fetchAll` de `GerenciarColaboradoresProva` — **ambos saíram em 2026-09-12**, no mesmo dia em que o
+roadmap nasceu, quando os pickers passaram a buscar no servidor pela RPC `buscar_colaboradores_para_alocacao`
+(com `LIMIT`). Antes da 3.2, redefinir qual rota estressar, medindo no código de hoje.
 
 ---
 

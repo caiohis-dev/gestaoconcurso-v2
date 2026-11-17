@@ -64,6 +64,8 @@ import { ConteudoProgramatico } from "@/components/ConteudoProgramatico";
 import { CriteriosDeDesempate } from "@/components/CriteriosDeDesempate";
 import { DadosDoEdital } from "@/components/DadosDoEdital";
 import { FaixaDoModeloPadrao } from "@/components/FaixaDoModeloPadrao";
+import { VistaDaFolha } from "@/components/VistaDaFolha";
+import { BotaoDeCampos } from "@/components/CamposDoEdital";
 
 /** O número como sai no documento; capítulo sem número mostra um traço. */
 function Numero({ capitulo }: { capitulo: CapituloResolvido }) {
@@ -172,6 +174,7 @@ function EditorDoCapitulo({ chave, editalId }: { chave: string; editalId: string
   if (chave === "distribuicao_geografica") return <TerritorialidadeELotacao editalId={editalId} />;
   if (chave === "investidura_e_posse") return <ChecklistDeInvestidura editalId={editalId} />;
   if (chave === "desempate_e_resultado") return <CriteriosDeDesempate editalId={editalId} />;
+  if (chave === "recursos_prova_objetiva") return <VistaDaFolha editalId={editalId} />;
   if (["inscricao_e_pagamento", "isencao_taxa"].includes(chave)) {
     return <InscricaoTaxasEIsencao editalId={editalId} />;
   }
@@ -246,6 +249,9 @@ function PainelDoCapitulo({
               {quantidadeSuja} artigo(s) não salvo(s)
             </span>
           )}
+          {/* Os marcadores {{campo:}} disponíveis, com onde cada um se preenche — ver
+              `CamposDoEdital.tsx`. Fica junto do Salvar porque é ferramenta de quem escreve. */}
+          <BotaoDeCampos editalId={editalId} />
           <Button size="sm" onClick={onSalvar} disabled={artigos.isGravando || quantidadeSuja === 0}>
             {artigos.isGravando ? "Salvando…" : "Salvar capítulo"}
           </Button>

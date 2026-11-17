@@ -38,6 +38,13 @@ function CardPcd({ pcd, gravar }: { pcd: RegrasPcdLinha | null; gravar: Gravar }
           <Input type="number" step="0.01" defaultValue={pcd?.percentual_reserva ?? ""}
             onBlur={(e) => salvar({ percentual_reserva: num(e.target.value) })} />
         </label>
+        {/* 🔵 Desde 2026-11-16. A coluna existia e o texto do modelo a cita CINCO vezes
+            ({{campo:leis_pcd}}), mas nenhum input a escrevia: o documento só podia sair com
+            [?campo:leis_pcd]. */}
+        <label className="col-span-full text-sm">Leis que fundamentam a reserva
+          <Input defaultValue={pcd?.leis_base ?? ""} placeholder="Leis Municipais 3.113/94 e 3.221/95"
+            onBlur={(e) => salvar({ leis_base: e.target.value.trim() || null })} />
+        </label>
         <label className="text-sm">Validade do laudo temporário (meses)
           <Input type="number" defaultValue={pcd?.validade_meses_laudo_temporario ?? ""}
             onBlur={(e) => salvar({ validade_meses_laudo_temporario: num(e.target.value) })} />
