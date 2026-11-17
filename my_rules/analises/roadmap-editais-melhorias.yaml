@@ -1,0 +1,205 @@
+# Roadmap VIVO — Módulo Editais: MELHORIAS
+# Criado em 2026-11-16, a pedido do usuário ("leitura geral do estado do módulo,
+# planos em dois roadmaps: consertos e melhorias").
+# Leia my_rules/analises/README.md antes de usar como guia.
+# O par deste é roadmap-editais-consertos.yaml — nada aqui é defeito: o módulo funciona
+# sem qualquer destes itens. São as fronteiras que o próprio módulo deixou marcadas.
+
+roadmap:
+  titulo: "Editais — melhorias (funcionalidade nova sobre o que está entregue)"
+  criado: "2026-11-16"
+  status: "⏳ NÃO INICIADO — nenhum item começado; M1 a M3 são o próximo valor claro"
+
+  origem: >
+    As cinco pendências do EDITAL PADRÃO (backlog, seção própria desde 19/09), as
+    decisões adiadas da fatia 12 (D-P2 JSON, D-PDF, texto do modelo sem número de
+    anexo) e os dois fora-de-escopo registrados (agrupamento de quadros, diff entre
+    editais). Este roadmap os ordena e dá forma de etapa; os registros originais
+    continuam valendo como fonte do porquê.
+
+  regra_geral: >
+    🔴 Fonte de quadro nova exige fatia nova — é a regra do módulo desde 17/09: um
+    valor a mais no domínio de chk_edital_item_quadro_fonte (migration) + a função
+    pura de montagem em edital-documento.ts + o desenho em QuadroDoArtigo + o Markdown
+    de graça (projeção) + a regra quadro-sem-dado cobrindo a fonte + bateria. Sem o
+    renderizador, o artigo cai no ramo "fonte desconhecida" — que diz isso na cara,
+    de propósito. M1, M2 e M3 são exatamente isso, três vezes.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  etapas:
+    - id: M1
+      nome: "quadro_fonte: 'documentos_investidura' — a lista do COREN sai do {{redigir:}}"
+      prioridade: "🔴 1 — mata a segunda fonte do defeito que ABRE o módulo"
+      contexto: >
+        As 12 alíneas do item 15.8 publicado são a lista de documentos_investidura,
+        que tem dono estruturado e trigger IN001 desde a fatia 8. O modelo hoje leva
+        UM artigo de instrução nomeando a tabela (rodada 17) — transcrever criaria a
+        segunda fonte que produziu o COREN exigido de ACS. Com a fonte renderizando,
+        o capítulo 15 publica a lista do banco.
+      entrega:
+        - "Migration: 'documentos_investidura' entra no domínio de chk_edital_item_quadro_fonte."
+        - "Função pura quadroDeInvestidura (dado cru → {colunas, linhas} ou pendencia): documentos na ordem, escopo (todos × por cargo) resolvido como o publicado escreve, observação junto do nome."
+        - "⚠️ A forma publicada é LISTA DE ALÍNEAS (A) a L)), não tabela — medir no 002/003/004 antes de desenhar se sai como quadro de uma coluna ou como tipo novo de artigo. Se exigir forma nova, a decisão é do usuário."
+        - "Texto do modelo: o artigo de instrução do cap. 15 vira artigo de quadro — migration nova com UPDATE (a de nascimento não se edita), guarda NOT EXISTS/idempotente, e SÓ com decisão do usuário, porque muda texto que a FEVRE pode já ter editado."
+        - "Teste com os dados reais do 002 como controle positivo; bateria cobrindo o valor novo do domínio."
+
+    - id: M2
+      nome: "quadro_fonte: 'criterios_desempate' — a ordem por disciplina sai do {{redigir:}}"
+      prioridade: "🔴 2 — a lista difere DE VERDADE entre os três editais"
+      contexto: >
+        criterios_desempate existe desde a fatia 11, com as duas listas (GERAL e PCD)
+        e a ordem garantida por índice. O capítulo 14 do modelo pede a ordem por
+        {{redigir:}} nomeando a tabela (rodada 16). As três ordens publicadas estão
+        medidas no 00-modulo.md.
+      entrega:
+        - "Mesma receita da M1 (migration de domínio + função pura + desenho + bateria)."
+        - "⚠️ São DUAS listas num capítulo (geral e PCD) e elas se encadeiam (item 14.8 do 002) — decidir se é uma fonte com parâmetro ou duas entradas da mesma fonte; a forma publicada é lista numerada, não tabela."
+        - "O linter já acusa ordem com buraco (1º, 2º, 4º) — conferir que a renderização não esconde o buraco (pendência, não linha pulada)."
+
+    - id: M3
+      nome: "quadro_fonte: 'taxas' — a lista de valores de inscrição do cap. 6"
+      prioridade: "🔴 3 — a coluna já existe; é a mais barata das três"
+      contexto: >
+        edital_cargos.taxa_inscricao existe desde a fatia 9. O item 6.23 do modelo
+        pede a lista por {{redigir:}} (rodada 8). A forma publicada é lista nominal
+        por cargo: "A) Docente I – R$ 100,00".
+      entrega:
+        - "Mesma receita; linhas na ordem do Quadro I; cargo sem taxa → pendência nomeada."
+        - "⚠️ NUNCA vire {{campo:}}: valor por cargo foi medido e rejeitado na rodada 0."
+
+    - id: M4
+      nome: "A matriz rende as 4 colunas de provas_objetivas_config"
+      prioridade: "🟡 4"
+      contexto: >
+        Duração, tempo mínimo de permanência, tempo para levar o caderno e nota de
+        corte são POR CARGO (PK edital_cargo_id) e hoje o capítulo 12 os descreve com
+        {{redigir:}} nomeando a tabela (rodada 14). A matriz (quadro_fonte
+        'disciplinas') rende só cargo × disciplina × questões × peso.
+      entrega:
+        - "Decidir a forma ANTES, medindo o publicado: os três editais escrevem esses valores em PROSA (e só funcionam porque os cargos coincidem) — a saída provável é acrescentá-los ao quadro da matriz ou a um quadro-resumo por cargo, não à frase."
+        - "matrizDaProva passa a receber provas_objetivas_config; linhas novas ou colunas novas conforme a decisão; pendência quando o cargo não tem config."
+        - "Os {{redigir:}} do cap. 12 passam a apontar para o quadro (migration de UPDATE, com decisão do usuário — mesmo cuidado da M1)."
+
+    - id: M5
+      nome: "Casa para os valores que hoje não têm coluna em lugar NENHUM"
+      prioridade: "🟡 5 — só o que tem dono natural; o resto fica literal de propósito"
+      contexto: >
+        A quinta pendência do edital padrão: e-mail da impugnação, órgão oficial de
+        publicação, endereço do órgão demandante (≠ entidade executora — confundi-los
+        manda o candidato ao lugar errado). Fora da lista, de propósito: fonte Arial/A3,
+        60 min, 72h, uma hora de antecedência — idênticos nos três editais; coluna que
+        ninguém varia é coluna em que alguém confia sem motivo.
+      entrega:
+        - "O e-mail da impugnação é um CANAL (meio e-mail, finalidade no rotulo) — provavelmente não precisa de coluna nova, e sim de o capítulo citá-lo; medir se precisa de marcador de coleção ou de convenção de rótulo."
+        - "Órgão oficial e endereço do demandante: medir nos três editais se variam; variando, viram campo escalar do catálogo (edital-campos.ts + coluna + editor no capítulo certo + ondeSePreenche medido contra a TELA, que o teste de 16/11 agora exige)."
+        - "O que não variar fica literal, e a decisão entra no 00-modulo.md para a auditoria não reabrir."
+
+    - id: M6
+      nome: "O modelo passa a citar os números de anexo e quadro"
+      prioridade: "🟠 6 — o mecanismo está pronto; o texto espera decisão do usuário"
+      contexto: >
+        {{anexo:}} e {{quadro:}} existem desde 16/11 (fatia 12, etapa 2). O modelo
+        segue "como anexo deste Edital" por decisão do usuário do mesmo dia. O
+        apontamento acontece duas vezes por edital (item 1.6 e o capítulo da prova).
+      entrega:
+        - "Com o OK do usuário: migration de UPDATE sobre o texto do modelo (a guarda NOT EXISTS por capítulo faz migration nova ser no-op onde o capítulo já existe — o UPDATE precisa de guarda própria, idempotente, que não sobrescreva capítulo editado pela FEVRE)."
+        - "Teste de sincronia TS → migration ajustado no mesmo passe (ele confere texto e âncora por artigo)."
+
+    - id: M7
+      nome: "Exportação JSON para o portal de inscrições"
+      prioridade: "⏸️ adiada — gatilho EXTERNO"
+      contexto: >
+        D-P2 (16/11): sem portal definido, seria contrato desenhado sem consumidor.
+        Volta quando houver especificação do portal. Quando vier: é a terceira projeção
+        do documento montado (nunca uma remontagem), e vira API pública com versão
+        desde o primeiro dia (P2 do roadmap da exportação).
+
+    - id: M8
+      nome: "Agrupamento declarável dos quadros (II de provas, III/IV de títulos)"
+      prioridade: "⏸️ fora de escopo por decisão — reabrir só com pedido do usuário"
+      contexto: >
+        O 002 publicado agrupa famílias de cargos numa linha; o gerado lista um cargo
+        por linha. DERIVAR o agrupamento foi recusado com medição (as duas famílias do
+        002 têm números idênticos e mesmo assim são linhas separadas — não é derivável);
+        DECLARÁ-LO ficou fora de escopo (roadmap-editais-prova-de-titulos.yaml). Se o
+        usuário pedir: é um rótulo de família declarado em edital_cargos, nunca inferido.
+
+    - id: M9
+      nome: "Diff comparativo entre dois editais"
+      prioridade: "⏸️ futuro distante — registrado para não virar expectativa"
+      contexto: >
+        R3 do roadmap da exportação: é conforto, depende de haver dois editais
+        completos no sistema, e nada depende dele. Pré-requisito natural: a E3 do
+        roadmap de consertos (o primeiro edital completo).
+
+    - id: M10
+      nome: "PDF diagramado direto do sistema"
+      prioridade: "⏸️ sem gatilho — a decisão vigente é outra"
+      contexto: >
+        D-PDF (16/11): só Markdown; a diagramação final é no Word, e a dependência
+        `docx` foi recusada. Este item só existe para registrar que o caminho de volta
+        é conhecido: seria a quarta projeção do documento montado, reusando
+        pdf-timbre.ts — e reabriria o R1 (número errado vira defeito público no
+        Diário). Não fazer sem o usuário reabrir a decisão.
+
+    - id: M11
+      nome: "O marcador do número do edital imprime NÚMERO/ANO"
+      prioridade: "🟡 pequena — pedido do usuário em 2026-11-16; pegar carona com a E2 dos consertos"
+      pedido: >
+        "A âncora número do Edital deve imprimir o seguinte: NÚMERO DO EDITAL/ANO."
+        Ou seja, {{campo:numero_edital}} sai como `004/2026`, e não só como o número.
+      medido_em_2026_11_16: |
+        · Hoje o marcador lê SÓ `editais.numero_edital` (useCamposDoEdital.tsx:49,
+          formatarTexto) e ignora `editais.ano`, que é coluna separada com input próprio
+          no Preâmbulo (DadosDoEdital.tsx).
+        · No banco local o único edital com número preenchido guarda `numero_edital = '004'`
+          e `ano = 2026`. Esse edital hoje sairia "004", sem o ano, e é esse o defeito do pedido.
+        · 🔴 Mas a DICA do input diz o contrário: "Como se escreve no documento — ex.:
+          004/2026-SMA." Quem seguir a dica grava a forma inteira, e concatenar o ano daria
+          `004/2026-SMA/2026`. Hoje convivem duas convenções para a mesma coluna.
+        · Consumidores de `numero_edital` que dependem da convenção:
+          - o próprio marcador;
+          - `nomeDoArquivo` (edital-exportacao.ts:132): `edital-004.md` × `edital-004/2026-SMA.md`, com a barra dentro do nome de arquivo;
+          - o cabeçalho do Studio (EditalStudio.tsx:611): "Edital nº …";
+          - o cabeçalho do preâmbulo da E2, que ainda não existe.
+      entrega:
+        - "Fixar a convenção: `numero_edital` guarda SÓ o número (`004`) e `ano` guarda o ano. O marcador COMPÕE `numero/ano`. A composição mora numa função pura única, chamada pelo marcador, pelo cabeçalho do Studio e pelo cabeçalho da E2. Três cópias da regra de composição divergiriam."
+        - "Trocar a dica do input para a nova convenção (ex.: '004', e o ano no campo ao lado)."
+        - "Ano faltando → o campo NÃO resolve (campo-sem-valor nomeando o Preâmbulo), nunca `004/` nem `004/null`. Número faltando, idem. Ausente e vazio são a mesma coisa (regra do catálogo)."
+        - "Número preenchido na forma antiga (já contém `/`): não compor às cegas. Tratar como achado do linter ('o número já traz o ano; preencha só o número'), com teste. Senão o documento sai com `/2026` duplicado e ninguém vê."
+        - "O rótulo do campo e o 'Campos do edital' passam a mostrar o valor composto. O teste de `ondeSePreenche` medido contra a tela continua valendo: as duas colunas são escritas no Preâmbulo."
+        - "nomeDoArquivo: decidir se usa a forma composta. A barra não pode ir para o nome do arquivo (`edital-004-2026.md`)."
+        - "Testes: composição (controle positivo `004` + 2026 → `004/2026`), ano ausente, número ausente, número já com barra; cada guarda falsificada."
+      decidir_antes: >
+        ⚠️ O SUFIXO. O nome dos editais reais é "Edital 002/2026 - SMA", e a dica atual
+        escreve "-SMA". O pedido é NÚMERO/ANO, sem sufixo. Perguntar se o sufixo da
+        secretaria (a) some do número, (b) vira campo próprio (`004/2026-SMA` composto de
+        três partes) ou (c) fica por conta de quem redige o artigo. Não escolher sozinho:
+        o sufixo aparece no nome publicado.
+      dado_existente: >
+        Medir os editais de PRODUÇÃO antes (a regra da casa: meça antes de apertar). Se
+        algum guardar a forma inteira em `numero_edital`, a correção é de DADO, e dado
+        não vai em migration (CLAUDE.md §3). O linter do item acima é o que a torna
+        visível sem reescrever nada por conta própria.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  ordem_recomendada: |
+    M1 → M2 → M3 formam um tema natural ("as três fontes de quadro que faltam") e
+    compartilham a receita — valem UMA fatia de trabalho com três entregas, não três
+    temas. M4 e M5 vêm depois, cada uma com a medição própria antes do desenho.
+    M6 é pequena e pode pegar carona em qualquer uma (é só migration de UPDATE +
+    decisão). M7 a M10 não têm data: cada uma espera seu gatilho.
+    M11 (número/ano) é pequena e viaja melhor JUNTO da E2 do roadmap de consertos (o
+    cabeçalho do preâmbulo), porque os dois dependem da mesma convenção do número.
+    Feitos separados, o cabeçalho nasceria com a convenção antiga.
+
+  riscos: |
+    R1. 🔴 Toda mudança no TEXTO DO MODELO (M1, M2, M4, M6) é migration de UPDATE
+        sobre dado que a FEVRE pode já ter editado pela tela — o banco é o dono desde
+        o nascimento. A guarda tem de ser por conteúdo (não sobrescrever capítulo
+        divergente), e a decisão de mudar o modelo é SEMPRE do usuário.
+    R2. Fonte de quadro sem renderizador derruba o artigo no ramo "fonte desconhecida"
+        — nunca entregar a migration do domínio sem o desenho no mesmo passe.
+    R3. As formas publicadas (alíneas, listas numeradas) podem não caber no
+        QuadroMontado atual ({colunas, linhas}) — se M1/M2 exigirem um tipo novo de
+        bloco, isso é decisão de desenho a levar ao usuário, não a improvisar.

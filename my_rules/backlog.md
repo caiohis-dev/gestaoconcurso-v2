@@ -490,7 +490,7 @@ Funcionalidade nova. A fatia 12 vem primeiro porque fecha o objetivo do módulo 
 
 ## 📄 Editais v3, fatia 12 — exportação (PDF / Markdown / JSON)
 
-**Status:** 🟡 **em andamento desde 2026-11-16** — etapas 1 a 4 de 5 concluídas (documento montado, anexos e quadros numerados, Markdown, portão com botão "Exportar"), **não commitadas**; falta a 5 (comparar com o Edital 002). Escopo decidido: **só Markdown**, JSON adiado. O roadmap é [`analises/roadmap-editais-exportacao.yaml`](./analises/roadmap-editais-exportacao.yaml). 🔵 Até 16/11 esta linha dizia *"não iniciada… ainda em esboço"*.
+**Status:** 🟡 **em andamento desde 2026-11-16** — etapas 1 a 4 de 5 concluídas (documento montado, anexos e quadros numerados, Markdown, portão com botão "Exportar"), **commitadas e empurradas para `origin/dev`** (🔵 até a noite de 16/11 esta linha dizia "não commitadas"); falta a 5 (comparar com o Edital 002). Escopo decidido: **só Markdown**, JSON adiado. O roadmap é [`analises/roadmap-editais-exportacao.yaml`](./analises/roadmap-editais-exportacao.yaml). 🔵 Até 16/11 esta linha dizia *"não iniciada… ainda em esboço"*.
 **Área:** módulo Editais — ver [`estrutura/modulos/editais/00-modulo.md`](./estrutura/modulos/editais/00-modulo.md)
 
 ### 📍 ONDE PARAMOS — 2026-11-16 (pausado para outra tarefa)
@@ -512,6 +512,13 @@ ok · `docs:conferir` sem divergência. ⚠️ **Nada disto está em `main` nem 
   preencher no capítulo errado ou não tinham input foram consertados (Preâmbulo; editor novo
   `VistaDaFolha` em Recursos da prova objetiva; "Leis que fundamentam a reserva" no cartão de PCD);
   botão **"Campos do edital"** no alto de cada capítulo.
+
+🔵 **Atualizado no fim de 16/11:** depois do push, a leitura geral do módulo gerou os roadmaps
+de **consertos** e **melhorias** (seção própria abaixo), e a ordem de retomada passou a ser a
+do quadro "📍 Onde o módulo está" no `00-modulo.md`: **E1** (navegador) → **E2 + M11** (o
+cabeçalho do preâmbulo, que não sai na exportação, e o número como `NÚMERO/ANO`; espera a
+decisão do sufixo `-SMA`) → **E3** (a etapa 5 abaixo). A lista seguinte continua valendo como
+o detalhe da E1 e da E3.
 
 **Para retomar, nesta ordem:**
 1. **Conferir no NAVEGADOR** — nada disto foi visto rodando (`npm run dev`, banco local):
@@ -538,6 +545,26 @@ ok · `docs:conferir` sem divergência. ⚠️ **Nada disto está em `main` nem 
 
 ---
 
+## 📋 Editais — DOIS roadmaps novos: consertos e melhorias (2026-11-16)
+
+**Status:** ⏳ criados a pedido do usuário, por leitura geral do estado do módulo; nada executado.
+**Área:** módulo Editais · [`analises/roadmap-editais-consertos.yaml`](./analises/roadmap-editais-consertos.yaml) · [`analises/roadmap-editais-melhorias.yaml`](./analises/roadmap-editais-melhorias.yaml)
+
+- **Consertos (E1–E8):** conferir a fatia 12 no navegador · 🔴 **o cabeçalho do preâmbulo NÃO sai
+  na exportação** (achado novo de 16/11, conferido por grep — a rodada 2 prometeu "vem da fatia 12"
+  e ela veio sem ele) · etapa 5 (Edital 002 × publicado) · a RPC do `importarAbrangencia` (item
+  abaixo) · a prévia lendo falha como vazia · rodar as 12 baterias SQL · a decisão do e-mail da
+  vista · as dívidas de transição (inventário, não execução).
+- **Melhorias (M1–M10):** as três fontes de quadro que faltam (`documentos_investidura`,
+  `criterios_desempate`, taxas — absorvem 3 das 5 pendências do EDITAL PADRÃO abaixo) · as 4
+  colunas de `provas_objetivas_config` na matriz · casa para os valores sem coluna · o modelo
+  citando nº de anexo/quadro · e as adiadas com gatilho (JSON, agrupamento, diff, PDF).
+  🔵 **M11 (pedido de 16/11):** `{{campo:numero_edital}}` passa a imprimir **NÚMERO/ANO**. Hoje
+  sai só o número; a dica do input manda digitar `004/2026-SMA`, e as duas convenções convivem.
+  O sufixo da secretaria espera decisão.
+
+---
+
 ## ⚠️ `importarAbrangencia` apaga e reinsere SEM transação (achado em 2026-11-16, não executado)
 
 **Área:** módulo Editais, territorialidade — `src/hooks/useTerritorialidade.tsx`
@@ -551,6 +578,10 @@ transação" do CLAUDE.md §8, e o Anexo de abrangência é exatamente o que a e
 **Conserto pelo §2:** uma RPC que faz as duas coisas numa transação (e devolve a contagem). ⚠️
 Lembrar do teto de 1.000 do PostgREST na leitura (já em `buscar-em-fatias`) — na escrita, um
 único insert com 843 linhas cabe, mas medir o payload antes de desenhar.
+
+🔵 **Detalhado em 2026-11-16 como etapa E4 de
+[`analises/roadmap-editais-consertos.yaml`](./analises/roadmap-editais-consertos.yaml)** — este
+item continua sendo o registro; o roadmap é o plano.
 
 ---
 
@@ -605,6 +636,10 @@ fatia nova, e sem o renderizador o artigo cai no ramo "fonte desconhecida".
    (que não é o da entidade executora — confundi-los manda o candidato ao lugar errado).
 
 🔵 **Numerar ANEXO e QUADRO saiu daqui em 2026-11-16** — feito na fatia 12, etapa 2. Ver [`analises/concluidos/backlog-itens-concluidos.md`](./analises/concluidos/backlog-itens-concluidos.md).
+
+🔵 **As cinco pendências ganharam forma de etapa em 2026-11-16**, no
+[`analises/roadmap-editais-melhorias.yaml`](./analises/roadmap-editais-melhorias.yaml) (M1–M5).
+Esta seção continua sendo a fonte do porquê; o roadmap é a ordem e a receita.
 
 ---
 

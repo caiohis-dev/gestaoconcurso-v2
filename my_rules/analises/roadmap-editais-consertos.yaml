@@ -1,0 +1,179 @@
+# Roadmap VIVO — Módulo Editais: CONSERTOS
+# Criado em 2026-11-16, a pedido do usuário ("leitura geral do estado do módulo,
+# planos em dois roadmaps: consertos e melhorias").
+# Leia my_rules/analises/README.md antes de usar como guia.
+# O par deste é roadmap-editais-melhorias.yaml — lá é funcionalidade nova; aqui é
+# defeito, dívida ou verificação pendente. Nada aparece nos dois.
+
+roadmap:
+  titulo: "Editais — consertos (defeitos, dívidas e verificações pendentes)"
+  criado: "2026-11-16"
+  status: "⏳ NÃO INICIADO — levantamento feito, premissas-chave conferidas no código em 16/11"
+
+  origem: >
+    Leitura geral de 2026-11-16: o 00-modulo.md inteiro (1773 linhas), o backlog, o
+    roadmap-editais-exportacao.yaml, e leitura dirigida de código para cada premissa
+    marcada abaixo como "conferida". O módulo está com as 12 fatias da v3 entregues em
+    código (a 12ª a 4/5 — falta a verificação), 19 capítulos de modelo completos,
+    ~500 testes de lógica pura e 12 baterias SQL. O que sobra de errado está aqui.
+
+  como_ler: >
+    Etapas em ordem de prioridade. Doc é snapshot (CLAUDE.md §1): antes de executar
+    uma etapa, reconfira a premissa dela no código — a data de conferência está em cada
+    uma. Só a E3 depende de outra (da E2, para o diff não sair sujo). Toda etapa que
+    mexe em comportamento segue as regras da casa: teste com controle positivo e
+    falsificação, doc do módulo no mesmo passe, bateria SQL para regra de banco.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  etapas:
+    - id: E1
+      nome: "Conferir a fatia 12 no NAVEGADOR"
+      prioridade: "🔴 1 — é trabalho em andamento, não começado do zero"
+      premissa_conferida: >
+        2026-11-16, no próprio dia da entrega: NADA das etapas 1 a 4 da fatia 12 foi
+        visto rodando. Está dito no roadmap da exportação ("⚠️ A prévia NÃO foi
+        conferida no navegador", em três etapas) e no bloco ONDE PARAMOS do backlog.
+      entrega:
+        - "Prévia: 'Quadro I/II…' sobre cada tabela; os dois anexos depois do último capítulo; pendência nomeada onde falta dado."
+        - "Exportar: uma caixa por pendência (as de painel com o título do capítulo na frente); o botão só libera com todas confirmadas; artigo não salvo → recusa; consulta em erro → recusa nomeando a consulta."
+        - "Abrir o .md baixado: alíneas como `a\\)`, `7.1.` sem barra, quebra dura nas ementas, tabelas de pipe."
+        - "Botão 'Campos do edital' (busca sem acento, copiar marcador, valor atual); cartão da vista em Recursos da prova objetiva; campo de leis no cartão de PCD."
+      custo: "só tempo de tela — o dev server já roda em http://localhost:8080"
+
+    - id: E2
+      nome: "O cabeçalho do preâmbulo NÃO sai na exportação"
+      prioridade: "🔴 2 — o .md exportado está incompleto, e a promessa está escrita no doc"
+      premissa_conferida: >
+        2026-11-16, por grep: edital-documento.ts e edital-markdown.ts não leem
+        cabecalho_linha1/2, numero_edital, orgao_demandante nem natureza_juridica —
+        o único metadado que chega à exportação é o nome (título do .md) e o número
+        (nome do arquivo). E a rodada 2 do modelo diz, no 00-modulo.md: "Só o parágrafo
+        entrou; o cabeçalho NÃO… vem da exportação (fatia 12)". A fatia 12 veio e ele
+        não veio com ela. Medido na rodada 2: o 002 e o 003 publicam o cabeçalho
+        empilhado (município · secretaria · natureza + nº do edital).
+      entrega:
+        - "O documento montado ganha o cabeçalho pré-textual, derivado dos metadados de `editais` — nunca digitado: é exatamente o que a rodada 2 recusou transcrever para ninguém digitar à mão o que os campos sabem."
+        - "A prévia e o Markdown o desenham (a prévia hoje também não o mostra — conferir na E1 e tratar junto)."
+        - "Metadado faltando (ex.: numero_edital nulo) vira pendência nomeada no portão, não linha em branco."
+      decidir_antes: >
+        A forma exata (quais linhas, em que ordem, caixa alta) sai dos DOIS publicados
+        que o têm — medir no 002 e no 003 antes de desenhar, como a rodada 2 fez com o
+        parágrafo de abertura.
+      custo: "pequeno — função pura + projeções; nenhuma migration"
+
+    - id: E3
+      nome: "Etapa 5 da fatia 12: Edital 002 inteiro × publicado"
+      prioridade: "🔴 3 — o controle positivo final do módulo; depende da E2"
+      premissa_conferida: "está pendente no roadmap da exportação (etapa 5) e no backlog"
+      entrega:
+        - "Montar o Edital 002/2026 completo no sistema (capítulos, artigos, quadros, anexos, cronograma, campos)."
+        - "Exportar e comparar com o publicado, seção a seção — é o teste que diz se a v3 cumpriu 'gerar o edital publicável'."
+        - "Toda divergência vira: defeito (conserta), decisão registrada (aponta onde está escrita — ex.: quadros não agrupados, D do usuário de 16/09) ou melhoria (vai para o roadmap de melhorias)."
+        - "Fechar a fatia 12: mover o roadmap dela para concluidos/, atualizar backlog e 00-modulo.md."
+      custo: "o maior deste roadmap em tempo de digitação — ~330 artigos + dados estruturados"
+
+    - id: E4
+      nome: "importarAbrangencia: DELETE + INSERT sem transação vira RPC"
+      prioridade: "🟡 4 — perda silenciosa possível, no dado que a exportação publica"
+      premissa_conferida: >
+        2026-11-16, no código: useTerritorialidade.tsx:146-155 — a mutation apaga todas
+        as linhas da unidade em territorialidade_abrangencia e depois insere as novas,
+        em dois passos PostgREST. Falhou o segundo, a unidade fica sem nenhuma rua e o
+        toast só mostra o erro do insert. É o item já aberto no backlog (P4-ish, seção
+        própria de 16/11).
+      entrega:
+        - "RPC `importar_abrangencia_da_unidade` (SECURITY INVOKER, autorização via policies, como reordenar_itens_do_capitulo): DELETE + INSERT na mesma transação, devolvendo a contagem inserida."
+        - "Medir o payload antes de desenhar: 843 linhas de uma unidade grande cabem num insert? (a leitura já pagina por buscar-em-fatias; a escrita é um POST só)."
+        - "Bateria SQL com controle positivo (importa e as linhas novas estão lá) e falsificação (um insert inválido no meio NÃO deixa a unidade vazia — rollback)."
+        - "O hook passa a chamar a RPC; tirar o par delete/insert do cliente."
+      custo: "médio — migration + bateria + hook"
+
+    - id: E5
+      nome: "A PRÉVIA lê consulta que falhou como vazia"
+      prioridade: "🟡 5"
+      premissa_conferida: >
+        2026-11-16, no código: os hooks do documento devolvem `data ?? []`
+        (useTerritorialidade, useConteudoProgramatico, useQuadrosDoEdital…). A
+        exportação já distingue (useConsultasComErro, etapa 4); a prévia não — um
+        quadro cuja consulta falhou aparece como pendência "sem linha", que é FALSA,
+        mandando quem lê preencher o que já está preenchido. O 00-modulo.md registra:
+        "Para a prévia é tolerável… A prévia continua sem essa distinção."
+      entrega:
+        - "A prévia consome o mesmo useConsultasComErro e, havendo consulta ativa em erro, mostra uma faixa de falha (nomeando a consulta) NO LUGAR das pendências falsas — nunca as duas coisas."
+        - "Teste de UI: consulta em erro → faixa, sem 'sem linha'; controle positivo: tudo carregado → documento normal."
+      custo: "pequeno — o mecanismo já existe, é ligá-lo na segunda projeção"
+
+    - id: E6
+      nome: "Rodar as 12 baterias SQL do módulo"
+      prioridade: "🟡 6 — verificação, não código; pode rodar a qualquer momento"
+      premissa_conferida: >
+        O 00-modulo.md lista 12 baterias (edital-capitulos … edital-desempate) e avisa:
+        nenhuma é alcançada por npm test nem docs:conferir, e UMA já apodreceu verde
+        neste repo por 2 dias (a da troca de candidatos, 02-04/08). As últimas rodadas
+        registradas são de set/2026; desde então houve mudanças de schema (18/09) e de
+        código. "Ela existe" não é "ela passa" (CLAUDE.md §5).
+      entrega:
+        - "sg docker -c para subir o banco; rodar as 12 em transação com ROLLBACK, na ordem do doc."
+        - "Caso que falhar: distinguir bateria apodrecida (assinatura/fixture velha → atualizar a bateria) de regressão real (→ item novo AQUI, não conserto calado)."
+        - "Registrar a data da rodada no 00-modulo.md (uma linha)."
+      custo: "pequeno-médio — execução + leitura dos casos vermelhos, se houver"
+
+    - id: E7
+      nome: "DECISÃO: o e-mail da vista em duas colunas"
+      prioridade: "🟠 7 — mitigado, não resolvido; precisa do usuário"
+      premissa_conferida: >
+        00-modulo.md (fatia 9): regras_vista_prova.email_solicitacao duplica o que
+        edital_canais_atendimento guarda; a migração foi recusada na época ("remodelar
+        tabela entregue custa mais que a duplicação de um campo") e a regra
+        email-da-vista-fora-dos-canais torna a divergência visível. Desde 16/11 ela
+        também chega ao portão da exportação. ⚠️ E desde 16/11 existe TELA escrevendo a
+        coluna (VistaDaFolha) — a duplicação ficou mais viva, não menos.
+      entrega:
+        - "Apresentar ao usuário as duas saídas: (a) manter como está, linter+portão como guarda permanente — custo zero, divergência segue possível; (b) migrar para canal referenciado (coluna vira FK ou some; VistaDaFolha passa a escolher/criar canal; migration + dados + bateria) — mata a classe do defeito."
+        - "Se (a): registrar a decisão aqui e no 00-modulo.md e FECHAR o item, para não ser reaberto como achado."
+      custo: "(a) zero · (b) médio-alto"
+
+    - id: E8
+      nome: "Dívidas de transição: prova_edital CHAR(30), edital_id NULLABLE, n_candidatos órfã"
+      prioridade: "⚪ 8 — caras, nenhuma dói hoje; NÃO executar sem decisão"
+      premissa_conferida: >
+        00-modulo.md, seção "Dívida de transição em aberto": as três existem porque o
+        DUMP e o backfill do seed.pos.sql dependem delas — dropar quebra o db reset e o
+        bootstrap de produção. Qualquer movimento aqui é cirurgia posicional no dump
+        (CLAUDE.md §3), com backup antes e db reset como prova.
+      entrega:
+        - "Se um dia for feito, no MESMO passe: migration de DROP + cirurgia no dump + ajuste do seed.pos.sql (o backfill lê prova_edital) + db reset completo."
+        - "Até lá, a regra que já vale: nenhum código novo lê prova_edital; a obrigatoriedade de edital_id vive no Zod."
+      custo: "alto, risco alto, ganho baixo — está aqui para o inventário ficar completo"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  nao_sao_consertos: |
+    Coisas que uma auditoria reencontraria e NÃO são defeito — decisão registrada, com
+    o lugar onde está escrita:
+
+    · Os quadros gerados NÃO agrupam cargos como o 002 publicado (Quadro II de provas,
+      III/IV de títulos) — decisão do usuário de 2026-09-16, alternativas recusadas em
+      roadmap-editais-prova-de-titulos.yaml. Declarar agrupamento é melhoria (M8).
+    · O texto do modelo NÃO cita número de anexo/quadro ("como anexo deste Edital") —
+      decisão do usuário de 2026-11-16; o mecanismo {{anexo:}}/{{quadro:}} está pronto.
+      Mudar o modelo é melhoria (M6).
+    · A hora de nascimento 23h59min59s é literal — decisão registrada (fatia 11): o
+      dado o sistema não tem, e o parâmetro é idêntico nos três editais.
+    · O linter olha o texto CRU, não o resolvido — de propósito ("Rua: Antonio XX" é
+      logradouro real do Anexo I do 004).
+    · `quadro-sem-dado` não roda no portão — a pendência do quadro já vem do documento
+      montado; rodar as duas listaria o mesmo quadro duas vezes.
+    · A linha do `returnValue` em useAvisarAoSair não tem cobertura possível no jsdom —
+      limite documentado no próprio teste.
+    · Capítulo `anexos` desligado desliga os dois anexos — regra declarada no catálogo
+      de anexos, não esquecimento.
+
+  riscos: |
+    R1. 🔴 A E3 é a etapa que pode REABRIR itens: montar o 002 inteiro vai esfregar o
+        sistema contra o mundo real. Divergência achada ali entra como item novo deste
+        roadmap, com a tríade defeito/decisão/melhoria — nunca se conserta no susto no
+        meio da digitação.
+    R2. A E4 escreve no banco (migration): lembrar que migrations acumulam em dev e
+        produção só vê release tagueada. Nada deste roadmap toca produção.
+    R3. A E6 pode pintar vermelho por apodrecimento, não por regressão — gastar a
+        distinção antes de "consertar" qualquer coisa que uma bateria velha acuse.

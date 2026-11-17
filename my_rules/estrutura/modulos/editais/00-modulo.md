@@ -26,6 +26,31 @@ O **edital** é o **documento normativo do certame**, montado por capítulos den
 >
 > 🔴 **O que NÃO mudou, e não pode mudar:** a relação edital → prova continua sendo **sugestão, não fonte ao vivo**. Depois de criada, a prova é dona dos seus valores e o edital não a alcança mais. Quem "melhorar" isso fazendo a prova ler o edital ao vivo vai reescrever cabeçalhos de PDF de provas passadas retroativamente — ver a fronteira no fim deste arquivo, que segue valendo inteira.
 
+## 📍 Onde o módulo está (2026-11-16)
+
+> Foto datada; confira contra o git antes de agir. O que **falta** mora em dois roadmaps,
+> não aqui: [`roadmap-editais-consertos.yaml`](../../../analises/roadmap-editais-consertos.yaml)
+> (E1–E8) e [`roadmap-editais-melhorias.yaml`](../../../analises/roadmap-editais-melhorias.yaml)
+> (M1–M11).
+
+| | estado |
+|---|---|
+| **v3 (12 fatias)** | fatias 1 a 11 entregues e **no ar** desde a v3.0.0. Fatia 12 (exportação): etapas 1 a 4 em `dev` (`b5b507d`, `97427e0`, empurrados), **fora de `main` e de produção**. Falta a etapa 5 |
+| **Edital modelo** | completo: 19 capítulos, 377 artigos, versão `1.0` |
+| **Exportação** | só Markdown, atrás do portão de confirmação nomeada. JSON e PDF adiados por decisão |
+| **Verificado** | `npm test` 2320/121 · `tsc` · `lint:baseline` 51/51 · `build` · `docs:conferir`. ⚠️ **Nada da fatia 12 foi visto no navegador**, e as 12 baterias SQL não rodam desde setembro |
+
+**O próximo passo, nesta ordem** (consertos E1 → E2+M11 → E3):
+1. **E1:** conferir a fatia 12 no navegador.
+2. **E2 + M11 juntas:** o cabeçalho do preâmbulo, que hoje **não sai** na exportação, e o
+   marcador do número imprimindo `NÚMERO/ANO`. As duas dependem da mesma convenção de
+   `numero_edital`. ⏳ Espera uma decisão do usuário: o que fazer com o sufixo da secretaria
+   (`-SMA`).
+3. **E3:** montar o Edital 002 inteiro e comparar com o publicado. É o controle positivo que
+   fecha a v3.
+
+Depois disso, M1 a M3 (as três fontes de quadro que faltam) formam a próxima fatia.
+
 ## Arquivos
 
 | Arquivo | Papel |
