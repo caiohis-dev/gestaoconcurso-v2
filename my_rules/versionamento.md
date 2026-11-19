@@ -68,6 +68,19 @@ Versionamento semântico, com prefixo `v`:
 
   ⚠️ **Subiu sem backup novo**, por decisão do usuário; o mais recente era o de 16/09. Fica registrado porque o Free não tem backup automático nenhum.
 
+- **`v3.10.1` nasceu em 2026-11-19**, no commit `80e6c1f`. PATCH, **só site**. As duas telas de
+  "Link enviado" da porta única passaram a avisar do cooldown de 2 min por conta — para TODOS,
+  não só no cooldown, senão a tela reabriria a enumeração (ver `auth-e-permissoes.md`).
+  ⚠️ **Primeira release por CHERRY-PICK, não por `git fetch . dev:main`:** `dev` carregava a
+  fatia 12 do Editais (exportação em Markdown), nunca vista no navegador e com os consertos
+  E1–E8 abertos — não era para ir ao ar de carona numa frase. O `216d778` de `dev` virou
+  `80e6c1f` em `main`, e **`main` foi mesclada de volta em `dev` (`d099024`)** logo depois: sem
+  isso, a próxima `git fetch . dev:main` deixaria de ser fast-forward. Ritual: checkout main →
+  cherry-pick → tag → push (main + tag) → `deploy.sh` → checkout dev → merge main.
+  **Verificado ao vivo:** bundle servido `index-Cchy0CUA.js` idêntico ao buildado, HTTPS 200,
+  HTTP 301, logo 200, **0** de `127.0.0.1`, 8 do projeto de produção, e a frase nova presente.
+  ⚠️ **Não verificado num navegador.**
+
 - **`v3.10.0` nasceu em 2026-11-03**, no commit `2821b3e`. MINOR (recurso novo), **só site**.
   **Logout por inatividade para todo usuário logado** (`ControleInatividade`): 30 min na gestão,
   5 min no colaborador sem gestão, aviso 1 min antes com "Continuar conectado"; a conta é por
