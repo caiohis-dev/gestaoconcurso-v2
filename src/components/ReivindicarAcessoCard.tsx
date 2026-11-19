@@ -16,6 +16,17 @@ import InformarEmailCard from "./InformarEmailCard";
 const MENSAGEM_EXCESSO_DE_ACESSOS =
   "Sistema com excesso de acessos. Tente novamente após 10 minutos.";
 
+/**
+ * Aviso do cooldown por conta, nas DUAS telas de "Link enviado" (CPF e e-mail).
+ * 🔴 Aparece SEMPRE, não só quando o envio foi suprimido: mostrá-lo só no cooldown diria
+ * que aquele e-mail/CPF tem conta e que alguém pediu agora — a anti-enumeração da
+ * `recuperar-senha` e a decisão D3 da `reivindicar-acesso` existem para não dizer isso.
+ * ⚠️ O "2 minutos" é `COOLDOWN_MIN` de `supabase/functions/_shared/cooldown-link.ts` —
+ * mudou lá, mude aqui. Pedido do usuário em 2026-11-19.
+ */
+const MENSAGEM_COOLDOWN =
+  "Já pediu há pouco? Aguarde 2 minutos antes de pedir de novo: pedidos feitos nesse intervalo não geram um novo e-mail.";
+
 const formatCpf = (value: string) => {
   const numbers = value.replace(/\D/g, "");
   return numbers
@@ -211,6 +222,7 @@ export default function ReivindicarAcessoCard({ onClose, initialCpf, permitirEma
               sua senha e acessar o sistema.
             </p>
             <p className="text-sm text-muted-foreground">Não esqueça de conferir a caixa de spam.</p>
+            <p className="text-sm text-muted-foreground">{MENSAGEM_COOLDOWN}</p>
             <Button className="w-full" onClick={onClose}>
               Voltar para o login
             </Button>
@@ -236,6 +248,7 @@ export default function ReivindicarAcessoCard({ onClose, initialCpf, permitirEma
               para definir a sua senha.
             </p>
             <p className="text-sm text-muted-foreground">Não esqueça de conferir a caixa de spam.</p>
+            <p className="text-sm text-muted-foreground">{MENSAGEM_COOLDOWN}</p>
             {/* Sem esta dica, quem tem cadastro SEM e-mail (243 pessoas) digita o e-mail
                 pessoal, não recebe nada e não tem como saber por quê — a resposta é
                 genérica por desenho. Pelo CPF, o servidor acha e explica o caso. */}

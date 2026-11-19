@@ -290,6 +290,58 @@ describe("ReivindicarAcessoCard — informar o próprio e-mail", () => {
     const [, init] = chamadasPara("incluir-email-cadastro")[0];
     expect(JSON.parse(init.body).origem).toBe("cadastro-publico");
   });
+  describe("aviso do cooldown de 2 min (2026-11-19)", () => {
+    // 🔴 A frase aparece em TODA tela de "Link enviado", não só quando o servidor
+    // suprimiu o envio — e a tela nem tem como saber quando foi: as duas EFs respondem
+    // igual no cooldown, de propósito (anti-enumeração). Se um dia alguém condicionar a
+    // frase a um campo da resposta, é a enumeração voltando pela tela.
+    const FRASE =
+      "Já pediu há pouco? Aguarde 2 minutos antes de pedir de novo: pedidos feitos nesse intervalo não geram um novo e-mail.";
+
+    it("pelo e-mail, a tela genérica mostra o aviso", async () => {
+      fetchMock.mockResolvedValue(respostaDe({ success: true }));
+      const user = userEvent.setup();
+      renderWithProviders(<ReivindicarAcessoCard onClose={() => {}} permitirEmail />);
+
+      await user.type(screen.getByLabelText(/CPF/i), "joao@exemplo.com");
+      await user.click(screen.getByRole("button", { name: /enviar|continuar|^buscar/i }));
+
+      await waitFor(() => expect(screen.getByText("Link enviado")).toBeInTheDocument());
+      expect(screen.getByText(FRASE)).toBeInTheDocument();
+    });
+
+    it("pelo CPF, 'Link enviado' mostra o aviso", async () => {
+      fetchMock.mockResolvedValue(
+        respostaDe({ existe: true, ja_vinculado: false, email_mascarado: "jo***@x.com", envio: "enviado" }),
+      );
+      const user = userEvent.setup();
+      renderWithProviders(<ReivindicarAcessoCard onClose={() => {}} permitirEmail />);
+
+      await user.type(screen.getByLabelText(/CPF/i), CPF);
+      await user.click(screen.getByRole("button", { name: /enviar|continuar|^buscar/i }));
+
+      await waitFor(() => expect(screen.getByText("Link enviado")).toBeInTheDocument());
+      expect(screen.getByText(FRASE)).toBeInTheDocument();
+    });
+
+    it("🟢 CONTROLE POSITIVO: envio que FALHOU não manda esperar 2 min", async () => {
+      // Ali nada saiu e o cooldown não se aplica; o aviso seria falso.
+      fetchMock.mockResolvedValue(
+        respostaDe({ existe: true, ja_vinculado: false, email_mascarado: "jo***@x.com", envio: "falhou" }),
+      );
+      const user = userEvent.setup();
+      renderWithProviders(<ReivindicarAcessoCard onClose={() => {}} permitirEmail />);
+
+      await user.type(screen.getByLabelText(/CPF/i), CPF);
+      await user.click(screen.getByRole("button", { name: /enviar|continuar|^buscar/i }));
+
+      await waitFor(() =>
+        expect(screen.getByText(/não conseguimos enviar o link agora/i)).toBeInTheDocument(),
+      );
+      expect(screen.queryByText(FRASE)).not.toBeInTheDocument();
+    });
+  });
+
   describe("excesso de acessos (429)", () => {
     // Decisão do usuário em 2026-09-24: frase fixa, com a janela de `TETOS.acesso`.
     const FRASE = "Sistema com excesso de acessos. Tente novamente após 10 minutos.";
