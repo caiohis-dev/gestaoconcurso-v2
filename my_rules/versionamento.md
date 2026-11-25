@@ -81,6 +81,29 @@ Versionamento semântico, com prefixo `v`:
   HTTP 301, logo 200, **0** de `127.0.0.1`, 8 do projeto de produção, e a frase nova presente.
   ⚠️ **Não verificado num navegador.**
 
+- **`v3.11.0` nasceu em 2026-11-25**, no commit `a357dca`. MINOR — **banco + Edge Function +
+  site**. O "Resetar senha" do superadmin em `/colaboradores`: senha provisória gerada no
+  servidor, trilha `log_reset_senha` (migration `20261125161819`) e a EF nova
+  `resetar-senha-colaborador` (ver `colaboradores.md` e `auth-e-permissoes.md`).
+  **Segunda release por cherry-pick**, e a primeira com o trabalho pendente **fora de
+  commit**: `dev` tinha o Editais E1/E2+M11 só na árvore (com uma migration nova, a
+  `20261120195428`). Como o `deploy.sh` builda a ÁRVORE e o `prod:push` envia toda migration
+  do diretório, o Editais foi para um `stash` (com cópia em arquivo) antes do checkout — sem
+  isso, os dois levariam junto o que não estava pronto. Ritual: commit em `dev` (só os
+  arquivos do tema; no `backlog.md` misto, só o hunk dele) → stash do resto → checkout main →
+  cherry-pick (conflito no `backlog.md`, que em `main` é mais antigo) → `link` (usuário) →
+  `prod:push:dry` (1 migration, a esperada) → `prod:push` (usuário) → dry de novo (*"up to
+  date"*) → `functions deploy` (usuário) → `prod:unlink` → `deploy.sh` → tag → push (main +
+  tag) → checkout dev → merge main (`8a0db53`) → `stash pop`. ⚠️ **Servidor antes do git**,
+  a pedido do usuário — o commit local veio antes porque é ele que isola o build.
+  **Verificado ao vivo:** bundle servido `index-BMHQFmQP.js` idêntico ao buildado, HTTPS 200,
+  logo 200, **0** de `127.0.0.1`, 8 do projeto de produção, a EF e o diálogo novos no bundle;
+  `functions list` com a EF `ACTIVE`; chamada sem login recusada pelo **código da EF**
+  (`"Não autenticado"`, 401), não só pelo gateway. ⚠️ **Não verificado num navegador**, e
+  **subiu sem backup novo** (o mais recente é de 16/09) — a migration só cria tabela.
+  ⚠️ Em `main` não existe o script `lint:baseline` (entrou em `dev` em 04/11): o lint dos
+  arquivos do tema foi conferido direto (0 problemas).
+
 - **`v3.10.0` nasceu em 2026-11-03**, no commit `2821b3e`. MINOR (recurso novo), **só site**.
   **Logout por inatividade para todo usuário logado** (`ControleInatividade`): 30 min na gestão,
   5 min no colaborador sem gestão, aviso 1 min antes com "Continuar conectado"; a conta é por
