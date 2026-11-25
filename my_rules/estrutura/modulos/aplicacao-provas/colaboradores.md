@@ -170,6 +170,16 @@ Ele já foi uma camada `fixed` renderizada **fora** do portal do Radix, e aquilo
 - 🔴 **Um escritor NOVO de `colab_email` nasceu em 2026-09-19: a própria pessoa.** A EF pública `incluir-email-cadastro` grava o e-mail num cadastro que está **sem e-mail** e **não vinculado**, pedindo só **CPF + e-mail**. É a saída dos 243 que antes dependiam do coordenador — e é **fragilidade aceita por decisão**, com trilha (`log_email_autoinformado`) e aviso aos admins como única detecção. Todas as guardas moram na RPC `registrar_email_do_proprio_cadastro`. ⚠️ Ver [`../../../analises/dividas-auth-colaborador.md`](../../../analises/dividas-auth-colaborador.md) §5 antes de mexer.
 - 🔵 **O terceiro escritor de `colab_email` DEIXOU DE EXISTIR em 2026-09-12.** Era a Edge Function **`create-coordenador`**, que gravava a coluna ao criar a conta do coordenador — só quando nula (`.is("colab_email", null)`), o que a mantinha consistente com a regra. A EF inteira foi removida: o acesso de coordenador passou a usar a conta que o colaborador já tem, e nada no fluxo de coordenação escreve `colab_email`. ⚠️ Ela gravava o e-mail **depois** de criar a conta, então o `handle_new_user` não casava nada e a linha ficava vinculada a nada — ver [`../../transversais/auth-e-permissoes.md`](../../transversais/auth-e-permissoes.md).
 
+### 🔵 "Resetar senha" — só superadmin, senha provisória (2026-11-25)
+
+Na coluna de ações de `/colaboradores`, o superadmin tem um ícone de chave (`KeyRound`) que abre o `ResetarSenhaDialog`: confirma, chama a EF **`resetar-senha-colaborador`** e mostra **uma vez** a senha provisória e o e-mail de login da conta, com botão de copiar. O diálogo não fecha por clique fora — no passo do resultado, fechar sem querer é perder a senha.
+
+- O botão **só aparece para `isSuperAdmin`** e fica **desabilitado em quem não tem conta** (`user_id` nulo), com o motivo num `title` — que mora num `span` em volta, porque botão desabilitado tem `pointer-events-none` e nunca mostraria o motivo. Por isso **`user_id` entrou em `COLUNAS_LISTAGEM`** (`useColaboradores.tsx`): é uuid, não PII, e sem ele todo botão nasceria desabilitado.
+- ⚠️ **Tudo isso é conveniência.** Quem recusa é a EF: não-superadmin (403), sem conta (409), a própria conta (409). E ela registra cada reset em `log_reset_senha` antes de trocar.
+- 🔴 **Não é regressão ao padrão aposentado da `create-admin`** (que sobrescrevia senha calada ao conceder papel): aqui sobrescrever é a função pedida, explícita e auditada. O desenho inteiro — autorização, geração da senha, trilha, sessões derrubadas — está em [`auth-e-permissoes.md`](../../transversais/auth-e-permissoes.md).
+
+🧪 `ResetarSenhaDialog.ui.test.tsx` (5 casos, inclusive o clique fora falsificado) e 4 casos em `ColaboradoresList.ui.test.tsx` (botão some para admin, desabilitado sem conta, `user_id` pedido ao servidor, confirmação antes de chamar). A EF tem teste de integração Deno.
+
 ## Perfis — dois componentes diferentes, não intercambiáveis
 
 - **`Perfil.tsx`** — perfil do usuário admin (dados de `profiles`, autenticado via `useAuth`).

@@ -34,9 +34,10 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { SortableTableHead } from '@/components/SortableTableHead';
-import { Search, Pencil, Trash2, Users, Loader2, Clock } from 'lucide-react';
+import { Search, Pencil, Trash2, Users, Loader2, Clock, KeyRound } from 'lucide-react';
 import { ESTADO_CIVIL_MAP } from '@/lib/constants';
 import ColaboradorDialog from './ColaboradorDialog';
+import ResetarSenhaDialog from './ResetarSenhaDialog';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
@@ -104,7 +105,7 @@ function PaginacaoBusca({ buscou, pagina, total, ocupado, onPagina }: PaginacaoP
 
 export default function ColaboradoresList() {
   const { delete: deleteColaborador, isDeleting } = useColaboradoresMutations();
-  const { isAdmin, isCoordenador } = useAuth();
+  const { isAdmin, isCoordenador, isSuperAdmin } = useAuth();
   const { toast } = useToast();
 
   // Coordenadores can edit/delete, similar to admins
@@ -127,6 +128,8 @@ export default function ColaboradoresList() {
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [editLoadingId, setEditLoadingId] = useState<string | null>(null);
+  // "Resetar senha" — só superadmin. Esconder o botão é conveniência; quem recusa é a EF.
+  const [resetarSenha, setResetarSenha] = useState<ColaboradorListagem | null>(null);
   const [sortColumn, setSortColumn] = useState<OrdemColaboradores | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
@@ -414,6 +417,27 @@ export default function ColaboradoresList() {
                                 <Pencil className="h-4 w-4" />
                               )}
                             </Button>
+                            {isSuperAdmin && (
+                              // O `title` mora no span: botão desabilitado tem
+                              // pointer-events-none e nunca mostraria o motivo.
+                              <span
+                                title={
+                                  colaborador.user_id
+                                    ? 'Resetar senha'
+                                    : 'Sem acesso ao sistema ainda — não há senha a resetar'
+                                }
+                              >
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => setResetarSenha(colaborador)}
+                                  disabled={!colaborador.user_id}
+                                  aria-label={`Resetar senha de ${colaborador.colab_nome_completo ?? ''}`}
+                                >
+                                  <KeyRound className="h-4 w-4" />
+                                </Button>
+                              </span>
+                            )}
                             <Button
                               variant="ghost"
                               size="icon"
@@ -493,6 +517,15 @@ export default function ColaboradoresList() {
         onOpenChange={() => setEditColaborador(null)}
         colaborador={editColaborador}
       />
+
+      {resetarSenha && (
+        <ResetarSenhaDialog
+          open={!!resetarSenha}
+          onOpenChange={(v) => !v && setResetarSenha(null)}
+          colaboradorId={resetarSenha.id}
+          colaboradorNome={resetarSenha.colab_nome_completo}
+        />
+      )}
     </div>
   );
 }
