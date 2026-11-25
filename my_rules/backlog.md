@@ -188,6 +188,12 @@ hora"*) exige a tabela. Enquanto não existir, a consulta é manual.
 
 ---
 
+## Senha provisória do "Resetar senha" não obriga troca no 1º login (aberto em 2026-11-25)
+
+O "Resetar senha" do superadmin (EF `resetar-senha-colaborador`) entrega uma senha provisória para ele repassar. **Nada obriga a pessoa a trocá-la**: enquanto não trocar, o superadmin conhece a senha dela — e a tela só *pede* que troque. Foi deixado de fora da primeira entrega de propósito, para não inflar o escopo.
+
+**O caminho provável:** a EF grava uma marca em `app_metadata` (não `user_metadata`, que a própria pessoa edita), o `useAuth` a lê, e o `RequireAcesso` manda para a troca de senha (`AlterarSenhaCard`) até ela sair; a marca se apaga quando a senha muda. ⚠️ A marca tem de ser apagada no **servidor** (EF/trigger), não pelo cliente — senão é conveniência, não regra. Ver `estrutura/transversais/auth-e-permissoes.md`.
+
 ## Troca de e-mail de conta confirmada (estado C) — sem caminho no app
 
 **Status:** pendente — aberto em 2026-07-16, ao fechar as Etapas 1 e 2 da edição de `colab_email`

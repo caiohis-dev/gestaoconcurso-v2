@@ -162,6 +162,18 @@ Travar o campo (Etapa 1) impede o estrago novo, mas não conserta quem já está
 
 **Consequência operacional:** o **estado B tem saída no app**; o **estado C não tem caminho nenhum** — nem pelo dono, nem pela coordenação —, e a correção segue manual (dashboard do Auth). Isso é **decisão, não esquecimento**: ver a dívida em [`../analises/dividas-auth-colaborador.md`](../../analises/dividas-auth-colaborador.md) §1-bis. O banco local tem **1 linha em B já dessincronizada** (`colab_email` `contato@caioteixeira.net.br` contra login `exemplo2@exemplo3.com`) — o caso travado em carne e osso, preservado de propósito como caso de teste.
 
+### "Resetar senha" pelo superadmin: `resetar-senha-colaborador` (2026-11-25)
+
+A saída para quem **não acessa a caixa de e-mail** — o "Estou sem minha senha" manda link, e o link não chega. Em `/colaboradores`, o superadmin clica no ícone de chave da linha, confirma, e recebe uma **senha provisória** e o **e-mail de login** da conta, para repassar à pessoa.
+
+- 🔴 **É decisão consciente do usuário, não o defeito antigo voltando.** O repo aposentou duas vezes o gestor que conhece a senha de outra pessoa (`create-coordenador` em 12/09, `create-admin` em 24/09 — esta sobrescrevia a senha *calada*, de carona na concessão de papel). Aqui a sobrescrita **é a função**: explícita, só superadmin, confirmada na tela e com trilha. Não "conserte" achando que é a `create-admin`.
+- **Autorização:** superadmin, por `has_role` (o teste cria um superadmin **sem linha `admin`**). Botão escondido para os demais é conveniência; a recusa (403) é da EF.
+- **O alvo é derivado, não informado:** a requisição leva só `colaborador_id`; a conta é `colaboradores.user_id`, resolvida no servidor. Sem conta → 409 com a providência (convite pelo "Estou sem minha senha") — a EF **não cria conta**, porque criar conta com senha e e-mail confirmado sem prova de posse é exatamente o que a `create-admin` fazia. A própria conta → 409 (para isso há o `AlterarSenhaCard`).
+- **A senha é gerada no servidor** (`_shared/senha-provisoria.ts`: 12 caracteres de um alfabeto de 56 sem `0 O o 1 l I`, sorteio sem viés de módulo), nunca digitada pelo superadmin — senha escolhida por gestor tende a ser a mesma para todos.
+- **Trilha `log_reset_senha`** (migration `20261125161819`): quem, sobre quem, quando, com snapshots de nome/e-mail e as três FKs `ON DELETE SET NULL` (mesmo raciocínio de `log_email_autoinformado`). **Gravada ANTES da troca**: se não registrar, não troca; se a troca falhar, o registro é apagado. Leitura só superadmin; escrita só `service_role`. Bateria: `docs/bateria-log-reset-senha.sql` (falsificada trocando a policy para `admin` e a FK para `RESTRICT`).
+- 🔴 **As sessões abertas morrem na troca — e quem faz isso é o GoTrue, não a EF.** Medido em 2026-11-25 com controle positivo: `updateUserById` **com** `password` invalida access e refresh tokens da conta; a mesma chamada **sem** `password` os mantém. O teste de integração afirma isso, para avisar se uma atualização do GoTrue mudar o comportamento.
+- ⚠️ **O que fica em aberto (backlog):** a pessoa não é obrigada a trocar a provisória no primeiro login — enquanto não trocar, o superadmin conhece a senha dela.
+
 ### Perfis
 
 - `/perfil` — a conta do Supabase Auth do próprio usuário (nome em `profiles` + senha). **Restrita a gestão desde 2026-07-26**: colaborador sem gestão é mandado para `/perfil-colaborador`, que é a página dele. Quem tem `role === 'user'` **e não é colaborador** (3 contas) **entra**, de propósito — tem conta no Auth, o hub o aceita, e é aqui que ele troca a própria senha.

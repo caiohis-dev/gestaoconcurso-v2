@@ -365,6 +365,7 @@ O coração dessa infraestrutura é o `supabase/functions/_shared/test-utils.ts`
 | Função | Cobertura |
 |---|---|
 | `conceder-papel-sistema` | `index.test.ts` (9 passos; 🔵 substituiu o de `create-admin` em 2026-09-24). Recusas `401`/`403`, coordenador e sem-e-mail recusados **com contagem igual antes e depois**, e o controle do defeito que derrubou a `create-admin`: no colaborador **vinculado**, a pessoa **ainda entra com a senha dela** depois da concessão, e nenhum e-mail sai. ⚠️ O passo "sem conta → convite" **envia e-mail**: só roda com `EF_TESTE_ENVIA_EMAIL=1`, para domínio `.invalid`. |
+| `resetar-senha-colaborador` | `index.test.ts` (7 passos, 🔵 2026-11-25). Não envia e-mail em ramo nenhum — roda sem combinado. Recusas `401`/`403`/`404`/`409` (sem conta, própria conta) **sem escrever na trilha**; o superadmin do teste **não tem linha `admin`** (controle da hierarquia); a senha nova entra, a antiga não, a trilha registra quem fez; e a **sessão aberta antes do reset morre** (comportamento do GoTrue, fixado aqui para avisar se mudar). Falsificado trocando `superadmin` por `admin` no `has_role`: cai o caso 403. Mais `_shared/senha-provisoria.test.ts` (5 casos). |
 
 *(Baterias manuais prévias, como a `docs/bateria-create-admin-autorizacao.md`, tornaram-se obsoletas com esta infraestrutura e são mantidas apenas para registro histórico.)*
 
@@ -409,7 +410,7 @@ Para testar de propósito a ausência de header, passe `""` como token — é ex
 
 ### 🔴 Antes de escrever teste para OUTRA Edge Function
 
-São **9 EFs e apenas 1 tem teste de integração** (`conceder-papel-sistema`, que herdou o lugar da `create-admin` em 2026-09-24). Expandir esbarra numa condição deste ambiente que não vale a pena descobrir do jeito errado:
+São **10 EFs e 2 têm teste de integração**: `conceder-papel-sistema` (que herdou o lugar da `create-admin` em 2026-09-24) e, 🔵 desde 2026-11-25, `resetar-senha-colaborador`. ⚠️ Esta linha dizia "9 EFs e apenas 1". Expandir esbarra numa condição deste ambiente que não vale a pena descobrir do jeito errado:
 
 ⚠️ **`public-create-colaborador`, `reivindicar-acesso`, `recuperar-senha` e `send-email` ENVIAM E-MAIL DE VERDADE daqui**, e o banco local é cópia de produção — 771 endereços reais. Um teste que dispare qualquer uma delas contra a linha errada manda e-mail com SPF/DKIM da FEVRE para a caixa de uma pessoa real. Ver [`integracoes-externas.md`](./integracoes-externas.md).
 

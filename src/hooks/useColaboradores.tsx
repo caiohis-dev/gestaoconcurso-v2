@@ -129,23 +129,28 @@ export interface Colaborador {
 export type ColaboradorInsert = Omit<Colaborador, 'id' | 'created_at' | 'updated_at' | 'colab_ultimo_acesso' | 'user_id'>;
 
 /**
- * As colunas que as LISTAGENS realmente exibem — 7 das 33 da tabela.
+ * As colunas que as LISTAGENS realmente usam — 8 das 33 da tabela (eram 7 até o
+ * `user_id`, abaixo).
  *
  * 🔴 Não é micro-otimização: `select('*')` traz CPF, PIS, banco, agência, conta e chave
  * PIX de todo mundo para o navegador de qualquer coordenador. Medido em 2026-09-10
  * contra o banco local (771 linhas): 707 kB com `*` contra 198 kB com estas 7 — e o que
  * sai do fio é a base bancária inteira, que nenhuma listagem mostra.
  *
- * ⚠️ Serve os DOIS consumidores de listagem: a busca de `/colaboradores` (nome,
- * matrícula, CPF, telefone, PIX, último acesso) e o picker de alocação de
- * `GerenciarColaboradoresProva`, que usa só nome, CPF e telefone — subconjunto deste.
- * Antes de tirar uma coluna daqui, confira os dois.
+ * 🔵 Hoje serve UM consumidor: a busca de `/colaboradores`. ⚠️ Este bloco dizia que
+ * servia também o picker de alocação de `GerenciarColaboradoresProva` — deixou de valer
+ * em 2026-09-12, quando o picker passou para `useBuscarColaboradoresParaAlocacao` (RPC
+ * própria, colunas próprias).
+ *
+ * `user_id` entrou em 2026-11-25 para o "Resetar senha" do superadmin: o botão fica
+ * desabilitado, com o motivo, em quem ainda não tem conta. É um uuid, não PII — e é só
+ * conveniência de tela: quem recusa de verdade é a EF `resetar-senha-colaborador`.
  *
  * A EDIÇÃO não depende disto: `ColaboradoresList.handleEdit` busca a linha completa com
  * `.eq('id').single()` no momento do clique.
  */
 const COLUNAS_LISTAGEM =
-  'id, colab_matricula, colab_nome_completo, colab_cpf, colab_telefone, colab_chave_pix, colab_ultimo_acesso';
+  'id, colab_matricula, colab_nome_completo, colab_cpf, colab_telefone, colab_chave_pix, colab_ultimo_acesso, user_id';
 
 /** O recorte que as listagens recebem. Ver {@link COLUNAS_LISTAGEM}. */
 export type ColaboradorListagem = Pick<
@@ -157,6 +162,7 @@ export type ColaboradorListagem = Pick<
   | 'colab_telefone'
   | 'colab_chave_pix'
   | 'colab_ultimo_acesso'
+  | 'user_id'
 >;
 
 /**

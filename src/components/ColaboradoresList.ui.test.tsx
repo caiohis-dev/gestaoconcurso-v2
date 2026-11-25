@@ -34,6 +34,9 @@ vi.mock("@/integrations/supabase/client", async () => {
 
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 
+// Mutável para os casos do "Resetar senha", que dependem de o usuário ser superadmin.
+const papel = vi.hoisted(() => ({ isSuperAdmin: false }));
+
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
     user: { id: "u-1", email: "admin@fevre.test", user_metadata: {} },
@@ -43,7 +46,7 @@ vi.mock("@/hooks/useAuth", () => ({
     roles: ["admin"],
     rolesLoaded: true,
     isAdmin: true,
-    isSuperAdmin: false,
+    isSuperAdmin: papel.isSuperAdmin,
     isCoordenador: false,
     isColaborador: false,
     isLoggingOut: false,
@@ -63,6 +66,16 @@ const MARIA = {
   colab_telefone: 11987654321,
   colab_chave_pix: "maria@fevre.test",
   colab_ultimo_acesso: null,
+  user_id: null,
+};
+
+const JOAO_COM_CONTA = {
+  ...MARIA,
+  id: "colab-2",
+  colab_matricula: "0002",
+  colab_nome_completo: "Joao com Conta",
+  colab_cpf: "98765432100",
+  user_id: "user-joao",
 };
 
 /** As tabelas que o componente pediu ao Supabase, na ordem. */
@@ -77,6 +90,7 @@ const buscar = async (user: ReturnType<typeof userEvent.setup>, termo: string) =
 describe("ColaboradoresList", () => {
   beforeEach(() => {
     resetSupabaseMock();
+    papel.isSuperAdmin = false;
   });
 
   it("🔴 NÃO consulta `colaboradores` ao abrir a tela", async () => {
@@ -189,5 +203,69 @@ describe("ColaboradoresList", () => {
       ),
     );
     expect(pediuOrdemNoServidor).toBe(true);
+  });
+
+  describe("Resetar senha (superadmin)", () => {
+    const botaoReset = (nome: string) =>
+      screen.queryByRole("button", { name: `Resetar senha de ${nome}` });
+
+    it("admin que não é superadmin NÃO vê o botão", async () => {
+      setTableResult("colaboradores", { data: [JOAO_COM_CONTA], error: null, count: 1 });
+      const user = userEvent.setup();
+      renderWithProviders(<ColaboradoresList />);
+
+      await buscar(user, "joao");
+      await screen.findByText("Joao com Conta");
+
+      // Controle: a linha tem ações (Editar existe), só o reset é que não.
+      expect(botaoReset("Joao com Conta")).not.toBeInTheDocument();
+    });
+
+    it("superadmin vê o botão: ativo para quem tem conta, desabilitado (com motivo) para quem não tem", async () => {
+      papel.isSuperAdmin = true;
+      setTableResult("colaboradores", { data: [MARIA, JOAO_COM_CONTA], error: null, count: 2 });
+      const user = userEvent.setup();
+      renderWithProviders(<ColaboradoresList />);
+
+      await buscar(user, "a");
+      await screen.findByText("Joao com Conta");
+
+      expect(botaoReset("Joao com Conta")).toBeEnabled();
+      const semConta = botaoReset("Maria da Silva");
+      expect(semConta).toBeDisabled();
+      expect(semConta!.parentElement).toHaveAttribute(
+        "title",
+        expect.stringMatching(/Sem acesso ao sistema/),
+      );
+    });
+
+    it("a listagem pede `user_id` ao servidor — sem ele todo botão nasceria desabilitado", async () => {
+      papel.isSuperAdmin = true;
+      setTableResult("colaboradores", { data: [JOAO_COM_CONTA], error: null, count: 1 });
+      const user = userEvent.setup();
+      renderWithProviders(<ColaboradoresList />);
+
+      await buscar(user, "joao");
+      await screen.findByText("Joao com Conta");
+
+      const colunas = buildersDaTabela("colaboradores").flatMap((b) =>
+        (b.select as ReturnType<typeof vi.fn>).mock.calls.map(([c]) => String(c)),
+      );
+      expect(colunas.some((c) => c.split(",").map((x) => x.trim()).includes("user_id"))).toBe(true);
+    });
+
+    it("o clique abre a confirmação SEM chamar a Edge Function", async () => {
+      papel.isSuperAdmin = true;
+      setTableResult("colaboradores", { data: [JOAO_COM_CONTA], error: null, count: 1 });
+      const user = userEvent.setup();
+      renderWithProviders(<ColaboradoresList />);
+
+      await buscar(user, "joao");
+      await screen.findByText("Joao com Conta");
+      await user.click(botaoReset("Joao com Conta")!);
+
+      expect(await screen.findByRole("dialog")).toHaveTextContent(/senha provisória será gerada/);
+      expect(supabaseMock.functions.invoke).not.toHaveBeenCalled();
+    });
   });
 });

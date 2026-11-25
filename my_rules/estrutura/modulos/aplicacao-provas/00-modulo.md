@@ -171,7 +171,7 @@ Não há mais teste marcado `⚠️ DEFEITO` neste módulo: os dois de `useProva
 
 ## Componentes de domínio
 
-`ColaboradorDialog`, `ColaboradoresList`, `ProvaDialog`, `ProvaCard`, `UnidadeProvaDialog`, `SalaProvaDialog`, `SalaExtraDialog`, `FuncaoColaboradorDialog`, `ValoresFuncaoProvaDialog`, `MetaColaboradoresDialog`, `CoordenadoresProvaDialog`.
+`ColaboradorDialog`, `ColaboradoresList`, `ProvaDialog`, `ProvaCard`, `UnidadeProvaDialog`, `SalaProvaDialog`, `SalaExtraDialog`, `FuncaoColaboradorDialog`, `ValoresFuncaoProvaDialog`, `MetaColaboradoresDialog`, `CoordenadoresProvaDialog`, `ResetarSenhaDialog` (🔵 2026-11-25, só superadmin — ver [`colaboradores.md`](./colaboradores.md)).
 
 Fora do módulo, em `src/components/`: `Layout`, `NavLink`, `PasswordConfirmDialog`, `ReivindicarAcessoCard`, `CorrigirEmailAcessoDialog` (transversais) e `EditalDialog` (módulo Editais).
 
