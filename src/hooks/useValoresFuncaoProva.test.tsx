@@ -27,6 +27,7 @@ vi.mock("sonner", () => ({ toast: toastMock }));
 import {
   useValoresFuncaoProva,
   mensagemErroRemocaoValor,
+  buscarMetasQueImpedemRemocao,
 } from "@/hooks/useValoresFuncaoProva";
 
 const PROVA_ID = "prova-1";
@@ -157,6 +158,23 @@ describe("useValoresFuncaoProva", () => {
       await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith("Erro ao atualizar valor"));
       expect(toastMock.success).not.toHaveBeenCalled();
     });
+
+    it("prova finalizada (PF001): mostra a mensagem do banco, que manda reabrir", async () => {
+      // Trigger `check_valor_de_prova_finalizada` (2026-11-27). Mensagem REAL do banco,
+      // capturada pela `docs/bateria-valores-prova-finalizada.sql`.
+      const MSG_PF001 =
+        'A prova "Edital 001/2026 SMA" está finalizada: o valor das funções não pode mais ser alterado, porque é ele que vai para a Exportação DAF e para os recibos. Reabra a prova para editar.';
+      setTableResult("valores_funcao_prova", {
+        data: null,
+        error: erroPostgrest("PF001", MSG_PF001),
+      });
+
+      const { result } = renderHookWithProviders(() => useValoresFuncaoProva(PROVA_ID));
+      result.current.upsertValor({ funcaoId: "func-1", valorPagamento: 10 });
+
+      await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith(MSG_PF001));
+      expect(toastMock.error).not.toHaveBeenCalledWith("Erro ao atualizar valor");
+    });
   });
 
   describe("deleteValor", () => {
@@ -166,22 +184,30 @@ describe("useValoresFuncaoProva", () => {
       const { result } = renderHookWithProviders(() => useValoresFuncaoProva(PROVA_ID));
       await waitFor(() => expect(result.current.valoresFuncao).toHaveLength(1));
 
-      result.current.deleteValor("vfp-1");
+      const aoFalhar = vi.fn();
+      result.current.deleteValor("vfp-1", aoFalhar);
 
       await waitFor(() => expect(toastMock.success).toHaveBeenCalledWith("Valor removido com sucesso!"));
+      expect(aoFalhar).not.toHaveBeenCalled();
       expect(builderQueChamou("valores_funcao_prova", "delete").eq).toHaveBeenCalledWith("id", "vfp-1");
     });
 
-    it("avisa erro pelo sonner", async () => {
+    // 🔵 Até 2026-11-27 o erro saía em toast (`toastMock.error`). Decisão do usuário:
+    // recusa de remoção é POPUP, montado pelo diálogo — o hook entrega a mensagem ao
+    // callback e NÃO toasta, senão a pessoa veria as duas coisas.
+    it("entrega o erro ao callback, e não em toast", async () => {
       setTableResult("valores_funcao_prova", {
         data: null,
         error: erroPostgrest("23503", "violates foreign key"),
       });
 
       const { result } = renderHookWithProviders(() => useValoresFuncaoProva(PROVA_ID));
-      result.current.deleteValor("vfp-1");
+      const aoFalhar = vi.fn();
+      result.current.deleteValor("vfp-1", aoFalhar);
 
-      await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith("violates foreign key"));
+      await waitFor(() => expect(aoFalhar).toHaveBeenCalledWith("violates foreign key"));
+      expect(toastMock.error).not.toHaveBeenCalled();
+      expect(toastMock.success).not.toHaveBeenCalled();
     });
 
     it("mostra a recusa do trigger de meta, em vez de engolir num genérico", async () => {
@@ -191,13 +217,14 @@ describe("useValoresFuncaoProva", () => {
       });
 
       const { result } = renderHookWithProviders(() => useValoresFuncaoProva(PROVA_ID));
-      result.current.deleteValor("vfp-1");
+      const aoFalhar = vi.fn();
+      result.current.deleteValor("vfp-1", aoFalhar);
 
       // A mensagem diz O QUE FAZER ("zere as metas antes"). Trocá-la por "Erro ao remover
       // valor" deixa a pessoa sem saída: a função sumiu do diálogo de metas, então ela
       // não tem como adivinhar que o obstáculo é uma meta.
-      await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith(MSG_TRIGGER_META));
-      expect(toastMock.error).not.toHaveBeenCalledWith("Erro ao remover valor");
+      await waitFor(() => expect(aoFalhar).toHaveBeenCalledWith(MSG_TRIGGER_META));
+      expect(aoFalhar).not.toHaveBeenCalledWith("Erro ao remover valor");
     });
   });
 });
@@ -220,5 +247,57 @@ describe("mensagemErroRemocaoValor", () => {
 
   it("cai no genérico quando a mensagem é só espaço em branco", () => {
     expect(mensagemErroRemocaoValor({ message: "   " })).toBe("Erro ao remover valor");
+  });
+});
+
+/**
+ * A checagem que o diálogo faz ANTES de abrir a confirmação. Ela antecipa o trigger
+ * `check_valor_sem_meta`, então tem de filtrar como ele: mesma prova (via
+ * `prova_unidades`, porque a meta é por unidade), mesma função, `quantidade_meta > 0`.
+ * ⚠️ O mock não executa filtro — o que se afirma aqui é QUE filtros foram pedidos. Se o
+ * trigger mudar, a fidelidade se confere contra o banco, não aqui.
+ */
+describe("buscarMetasQueImpedemRemocao", () => {
+  beforeEach(() => resetSupabaseMock());
+
+  it("pede só meta > 0 da função, recortada pela prova", async () => {
+    setTableResult("meta_colaboradores_unidade", { data: [], error: null });
+
+    await buscarMetasQueImpedemRemocao(PROVA_ID, "func-1");
+
+    const builder = builderQueChamou("meta_colaboradores_unidade", "select");
+    expect(builder.select.mock.calls[0][0]).toContain("prova_unidades!inner(");
+    expect(builder.eq).toHaveBeenCalledWith("funcao_id", "func-1");
+    expect(builder.eq).toHaveBeenCalledWith("prova_unidades.prova_id", PROVA_ID);
+    // `> 0`, e não "existe linha": meta zerada não bloqueia (é o gesto que destrava).
+    expect(builder.gt).toHaveBeenCalledWith("quantidade_meta", 0);
+  });
+
+  it("devolve as unidades com a quantidade, em ordem de nome", async () => {
+    setTableResult("meta_colaboradores_unidade", {
+      data: [
+        { quantidade_meta: 3, prova_unidades: { prova_id: PROVA_ID, unidades_prova: { unid_sigla: "EM 02     ", unid_nome: "Escola B" } } },
+        { quantidade_meta: 12, prova_unidades: { prova_id: PROVA_ID, unidades_prova: { unid_sigla: "CEF 01", unid_nome: "Escola A" } } },
+        { quantidade_meta: 1, prova_unidades: { prova_id: PROVA_ID, unidades_prova: null } },
+      ],
+      error: null,
+    });
+
+    expect(await buscarMetasQueImpedemRemocao(PROVA_ID, "func-1")).toEqual([
+      { unidade: "CEF 01 — Escola A", quantidade: 12 },
+      { unidade: "EM 02 — Escola B", quantidade: 3 },
+      { unidade: "Unidade sem nome", quantidade: 1 },
+    ]);
+  });
+
+  it("propaga o erro da leitura (o diálogo decide o que fazer com ele)", async () => {
+    setTableResult("meta_colaboradores_unidade", {
+      data: null,
+      error: erroPostgrest("42501", "permission denied"),
+    });
+
+    await expect(buscarMetasQueImpedemRemocao(PROVA_ID, "func-1")).rejects.toMatchObject({
+      message: "permission denied",
+    });
   });
 });

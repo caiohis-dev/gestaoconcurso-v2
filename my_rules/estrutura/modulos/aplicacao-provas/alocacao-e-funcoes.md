@@ -118,11 +118,33 @@ Três escolhas de desenho que precisam sobreviver a refatoração:
 
 ⚠️ **`useValoresFuncaoProva.deleteValor` descartava a mensagem do banco** e mostrava "Erro ao remover valor" para tudo — a mesma classe já paga uma vez aqui (a mensagem da Edge Function jogada fora). Agora passa adiante via `mensagemErroRemocaoValor`. Sem isso o bloqueio seria pior que o bug: a pessoa levaria um genérico sem saber que o obstáculo é uma meta que ela nem enxerga.
 
+### O bloqueio aparece ANTES da confirmação, e em popup (2026-11-27)
+
+Até 27/11 a lixeira abria sempre a confirmação *"Remover valor da função"*; a pessoa clicava **Remover** e só então um **toast** dizia que havia metas. Confirmava-se algo que nunca ia acontecer. **Decisão do usuário:** o impedimento vem antes, e em popup, não em toast.
+
+O fluxo do `ValoresFuncaoProvaDialog` agora tem três etapas (`Exclusao`: `verificando` → `confirmar` | `bloqueado`):
+
+1. A lixeira chama **`buscarMetasQueImpedemRemocao(provaId, funcaoId)`** (exportada de `useValoresFuncaoProva.tsx`) e mostra spinner enquanto confere.
+2. Com meta > 0 → popup **"Não é possível remover o valor"**, que nomeia a função e **lista as unidades com a quantidade**, mandando zerar em *"Definir Número de Colaboradores"* de cada uma. Só tem **Entendi**; a confirmação nem chega a abrir.
+3. Sem meta > 0 → a confirmação de sempre.
+
+⚠️ **A checagem é conveniência, o trigger segue sendo a barreira** — e por isso ela reimplementa a condição dele **fielmente** (§8 do CLAUDE.md): mesma prova via `prova_unidades!inner`, mesma função, `quantidade_meta > 0`. **Mudou o trigger, muda a função.** Medido no banco local em 27/11: para um par com bloqueio, o PostgREST devolveu as **mesmas 9** unidades que a condição do trigger conta (19 sem o recorte de prova — o `!inner` filtra); para um par com 11 metas **todas zero**, devolveu 0 (controle positivo: meta zerada não bloqueia).
+
+🔵 **O texto da confirmação mudou no mesmo dia**: dizia *"a alocação já feita não muda, porque o valor é congelado"* — falso (ver `colaboradores_prova`, abaixo). Hoje diz que quem já está alocado na função **fica sem valor**: em branco na Exportação DAF (o Financeiro recusa a linha, visível) e R$ 0,00 no recibo.
+
+Ela enxerga o mesmo que o trigger porque o diálogo é só de admin, e a RLS de `meta_colaboradores_unidade` só recorta coordenador. Se a leitura **falhar**, o diálogo segue para a confirmação — e a recusa do banco, se vier, **também cai no popup de bloqueio** com a mensagem dele: `deleteValor(id, aoFalhar)` **exige** o callback e o hook **não toasta mais** o erro de remoção (o `tsc` barra quem esquecer de tratá-lo). ⚠️ O popup de confirmação fecha só se ainda for a etapa atual (`fecharSeEtapa`): o `onOpenChange(false)` dele dispara depois do clique em Remover e, incondicional, fecharia o bloqueio recém-aberto — a recusa sumiria calada. Foi o teste de interação que pegou isso.
+
 ## `colaboradores_prova` — a tabela de alocação real
 
 > 🧪 **O caminho do dinheiro tem bateria de interação desde 2026-07-26** — `ValoresFuncaoProvaDialog.ui.test.tsx` (20) e `MetaColaboradoresDialog.ui.test.tsx` (13). O acoplamento que elas fixam: **a meta só existe para função que já tem valor cadastrado nesta prova**. Dois consertos saíram dali no mesmo dia — o banco passou a recusar valor negativo (`chk_valor_pagamento_nao_negativo`, que o cliente agora barra antes com mensagem) e excluir um valor passou a **pedir confirmação**. ✅ **A meta órfã fechou em 2026-07-26** — ver a seção em `meta_colaboradores_unidade`, acima.
 
-`useColaboradoresProva.tsx`: liga `colaborador_id` + `prova_unidade_id` + `funcao_id`, com um **`valor_pagamento` próprio, copiado no momento da alocação** — não é um lookup ao vivo em `valores_funcao_prova`. Consequência prática: mudar o valor de uma função em `valores_funcao_prova` **não** atualiza retroativamente colaboradores já alocados; é preciso editar cada `colaboradores_prova` manualmente (ou reatribuir) se o valor mudou depois da alocação.
+`useColaboradoresProva.tsx`: liga `colaborador_id` + `prova_unidade_id` + `funcao_id`. A tabela tem uma coluna `valor_pagamento`, mas **nenhuma tela a preenche** — a alocação manda só unidade, colaborador e função (`handleAddColaborador`). Medido em 2026-11-27: **977 de 977 alocações com ela NULL**. As RPCs de ocorrência a copiam para `ocorrencias_colaborador.valor_pagamento_congelado` e de volta, mas copiam o NULL.
+
+🔴 **O valor é AO VIVO** (decisão do usuário, 2026-11-27): quem paga lê `valores_funcao_prova` — a Exportação DAF e o recibo. Mudar o valor de uma função muda o pagamento de **todos** os alocados nela, inclusive os já alocados. O que impede isso de acontecer depois da prova é o trigger **`check_valor_de_prova_finalizada`** (`PF001`, migration `20261128000031`): prova finalizada recusa INSERT/UPDATE/DELETE em `valores_funcao_prova` — UPDATE conferido dos dois lados —, e o caminho de volta é `reabrir_prova`. É **só no nível da prova**, não da unidade: o valor é por (prova, função), e fechar uma unidade travaria as outras. 🧪 `docs/bateria-valores-prova-finalizada.sql` (9 casos, afirma o SQLSTATE **e** a regra de quem barrou; falsificada rodando antes da migration: os 5 de recusa reprovaram).
+
+⚠️ **Até 27/11 este parágrafo dizia que o valor era "copiado no momento da alocação"** e que mudar o valor da função "não atualiza retroativamente". Nunca foi verdade — e a tela repetia a promessa ao usuário (diálogo de valores e popup de remoção), com dois testes de interação guardando o texto falso como certo (armadilha 8). ⚠️ O recibo ainda faz `cp.valor_pagamento || valorDaFunção || 0`: se alguém preencher a coluna por fora, o recibo a prefere e o DAF não — divergência latente, hoje sem efeito porque a coluna é toda NULL.
+
+⚠️ **Precedência entre os dois triggers de DELETE:** disparam em ordem alfabética, e `check_valor_de_prova_finalizada` vem antes de `check_valor_sem_meta`. Numa prova finalizada **com** meta > 0, a recusa é a `PF001`, não a das metas. Nenhuma bateria afirmava a outra nesse cenário — conferido no mesmo passe.
 
 Regras de negócio observadas:
 - **Um colaborador só pode estar alocado em uma unidade por prova** — e **quem garante isso é o banco**, no trigger `check_colaborador_prova_unique` (`BEFORE INSERT OR UPDATE`), que recusa com *"Este colaborador já está alocado em outra unidade desta prova."*; o hook captura e traduz. ⚠️ A unique da tabela (`unique_colaborador_prova_unidade`) cobre só `(prova_unidade_id, colaborador_id)` — é o **trigger**, não ela, que fecha o caso entre unidades. Confundir os dois leva a concluir que a regra é só da tela; ela não é.

@@ -30,6 +30,53 @@ export function mensagemErroRemocaoValor(error: { message?: string }): string {
   return doBanco ? doBanco : "Erro ao remover valor";
 }
 
+/** Uma unidade da prova cuja meta (> 0) impede remover o valor de uma função. */
+export interface MetaQueImpedeRemocao {
+  unidade: string;
+  quantidade: number;
+}
+
+/**
+ * Antecipa, ANTES da confirmação, a recusa do trigger `check_valor_sem_meta`: até
+ * 2026-11-27 a pessoa confirmava "Remover", e só depois um toast dizia que não podia.
+ *
+ * ⚠️ É conveniência, não barreira — a barreira continua sendo o trigger. Por isso a
+ * condição tem de ser a DELE, fielmente (CLAUDE.md §8): mesma prova, mesma função,
+ * `quantidade_meta > 0` (não "existe linha": meta zerada não bloqueia). Mudou o trigger,
+ * muda aqui.
+ *
+ * A leitura vê tudo o que o trigger vê porque o diálogo só existe para admin (a rota
+ * `/gerenciar-prova` é `papeis={["admin"]}`) e a RLS de `meta_colaboradores_unidade`
+ * só recorta coordenador. Se um dia ela recortar menos do que o trigger enxerga, o
+ * pior caso é o de antes: a confirmação abre e a recusa vem do banco — agora em popup.
+ */
+export async function buscarMetasQueImpedemRemocao(
+  provaId: string,
+  funcaoId: string,
+): Promise<MetaQueImpedeRemocao[]> {
+  const { data, error } = await supabase
+    .from("meta_colaboradores_unidade")
+    .select("quantidade_meta, prova_unidades!inner(prova_id, unidades_prova(unid_sigla, unid_nome))")
+    .eq("funcao_id", funcaoId)
+    .eq("prova_unidades.prova_id", provaId)
+    .gt("quantidade_meta", 0);
+
+  if (error) throw error;
+
+  return (data ?? [])
+    .map((linha) => {
+      const unidade = linha.prova_unidades?.unidades_prova;
+      return {
+        unidade:
+          // `trim`: a sigla chega com espaços à direita (`'IEMM      '`, medido no banco local).
+          [unidade?.unid_sigla?.trim(), unidade?.unid_nome?.trim()].filter(Boolean).join(" — ") ||
+          "Unidade sem nome",
+        quantidade: linha.quantidade_meta,
+      };
+    })
+    .sort((a, b) => a.unidade.localeCompare(b.unidade, "pt-BR"));
+}
+
 export function useValoresFuncaoProva(provaId: string) {
   const queryClient = useQueryClient();
 
@@ -85,7 +132,7 @@ export function useValoresFuncaoProva(provaId: string) {
       queryClient.invalidateQueries({ queryKey: ["valores-funcao-prova", provaId] });
       toast.success("Valor atualizado com sucesso!");
     },
-    onError: (error: { code?: string }) => {
+    onError: (error: { code?: string; message?: string }) => {
       // 23514 = check_violation. Desde a migration 20260726150000 o banco recusa
       // `valor_pagamento < 0`; sem traduzir, o usuário veria só "Erro ao atualizar
       // valor" e não saberia o que corrigir. O diálogo já barra antes de chegar aqui —
@@ -94,10 +141,20 @@ export function useValoresFuncaoProva(provaId: string) {
         toast.error("O valor de pagamento não pode ser negativo.");
         return;
       }
+      // PF001 = prova finalizada (trigger `check_valor_de_prova_finalizada`, 2026-11-27).
+      // A tela de prova finalizada nem mostra este diálogo, mas uma aba aberta antes da
+      // finalização ainda chega aqui — e a mensagem do banco diz o que fazer (reabrir).
+      if (error?.code === "PF001" && error.message) {
+        toast.error(error.message);
+        return;
+      }
       toast.error("Erro ao atualizar valor");
     },
   });
 
+  // Sem `onError` aqui de propósito: a recusa vira POPUP no diálogo, não toast (decisão
+  // do usuário, 2026-11-27). Por isso `deleteValor` EXIGE o callback `aoFalhar` — um
+  // chamador que esquecesse de tratar o erro o perderia em silêncio, e o `tsc` barra isso.
   const deleteValor = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
@@ -110,16 +167,14 @@ export function useValoresFuncaoProva(provaId: string) {
       queryClient.invalidateQueries({ queryKey: ["valores-funcao-prova", provaId] });
       toast.success("Valor removido com sucesso!");
     },
-    onError: (error: Error) => {
-      toast.error(mensagemErroRemocaoValor(error));
-    },
   });
 
   return {
     valoresFuncao,
     isLoading,
     upsertValor: upsertValor.mutate,
-    deleteValor: deleteValor.mutate,
+    deleteValor: (id: string, aoFalhar: (mensagem: string) => void) =>
+      deleteValor.mutate(id, { onError: (error: Error) => aoFalhar(mensagemErroRemocaoValor(error)) }),
     isUpdating: upsertValor.isPending,
     isDeleting: deleteValor.isPending,
   };

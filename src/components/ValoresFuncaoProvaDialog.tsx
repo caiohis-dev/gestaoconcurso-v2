@@ -33,10 +33,75 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useValoresFuncaoProva } from "@/hooks/useValoresFuncaoProva";
+import {
+  buscarMetasQueImpedemRemocao,
+  useValoresFuncaoProva,
+  type MetaQueImpedeRemocao,
+} from "@/hooks/useValoresFuncaoProva";
 import { useFuncoesColaboradores } from "@/hooks/useFuncoesColaboradores";
 import { Loader2, Plus, Trash2, Save } from "lucide-react";
 import { toast } from "sonner";
+
+/**
+ * A exclusão de um valor passa por etapas. `verificando` existe para que o popup certo
+ * abra de primeira: até 2026-11-27 a confirmação abria sempre, e só DEPOIS de "Remover"
+ * um toast dizia que havia metas — a pessoa confirmava algo que nunca ia acontecer.
+ */
+type Exclusao =
+  | { etapa: "verificando"; valorId: string }
+  | { etapa: "confirmar"; valorId: string }
+  | { etapa: "bloqueado"; valorId: string; metas: MetaQueImpedeRemocao[]; mensagem?: string };
+
+type Bloqueio = Extract<Exclusao, { etapa: "bloqueado" }>;
+
+/** O popup de "não é possível remover": nomeia a função e diz onde zerar as metas. */
+function BloqueioRemocaoDialog({
+  bloqueio,
+  nomeDaFuncao,
+  onOpenChange,
+}: {
+  bloqueio: Bloqueio | null;
+  nomeDaFuncao: string | undefined;
+  onOpenChange: (aberto: boolean) => void;
+}) {
+  const funcao = nomeDaFuncao ? `"${nomeDaFuncao}"` : "esta função";
+  const metas = bloqueio?.metas ?? [];
+
+  return (
+    <AlertDialog open={bloqueio !== null} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Não é possível remover o valor</AlertDialogTitle>
+          <AlertDialogDescription>
+            {bloqueio?.mensagem ??
+              `Ainda há metas de colaboradores definidas para ${funcao} nesta prova. Zere as metas antes de remover o valor.`}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        {metas.length > 0 && (
+          <div className="space-y-2 text-sm">
+            <ul className="max-h-48 overflow-auto rounded-md border divide-y">
+              {metas.map((meta, i) => (
+                <li key={`${meta.unidade}-${i}`} className="flex justify-between px-3 py-1.5">
+                  <span>{meta.unidade}</span>
+                  <span className="text-muted-foreground">
+                    {meta.quantidade} {meta.quantidade === 1 ? "colaborador" : "colaboradores"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-muted-foreground">
+              Em cada unidade, use "Definir Número de Colaboradores" e zere a meta desta
+              função.
+            </p>
+          </div>
+        )}
+        <AlertDialogFooter>
+          <AlertDialogAction>Entendi</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
 
 interface ValoresFuncaoProvaDialogProps {
   open: boolean;
@@ -59,7 +124,7 @@ export function ValoresFuncaoProvaDialog({
   const [novoValor, setNovoValor] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingValor, setEditingValor] = useState("");
-  const [valorParaExcluir, setValorParaExcluir] = useState<string | null>(null);
+  const [exclusao, setExclusao] = useState<Exclusao | null>(null);
 
   const funcoesDisponiveis = funcoes.filter(
     (f) => !valoresFuncao.some((v) => v.funcao_id === f.id)
@@ -118,14 +183,42 @@ export function ValoresFuncaoProvaDialog({
     }
   };
 
-  const confirmarExclusao = () => {
-    if (valorParaExcluir) {
-      deleteValor(valorParaExcluir);
-      setValorParaExcluir(null);
+  const pedirExclusao = async (valorId: string, funcaoId: string) => {
+    setExclusao({ etapa: "verificando", valorId });
+    try {
+      const metas = await buscarMetasQueImpedemRemocao(provaId, funcaoId);
+      setExclusao(
+        metas.length > 0
+          ? { etapa: "bloqueado", valorId, metas }
+          : { etapa: "confirmar", valorId },
+      );
+    } catch {
+      // Não deu para conferir: segue para a confirmação. A barreira é o trigger
+      // `check_valor_sem_meta`, e a recusa dele também cai no popup de bloqueio.
+      setExclusao({ etapa: "confirmar", valorId });
     }
   };
 
-  const nomeDoValorParaExcluir = valoresFuncao.find((v) => v.id === valorParaExcluir)
+  const confirmarExclusao = () => {
+    if (exclusao?.etapa !== "confirmar") return;
+    const { valorId } = exclusao;
+    setExclusao(null);
+    deleteValor(valorId, (mensagem) =>
+      setExclusao({ etapa: "bloqueado", valorId, metas: [], mensagem }),
+    );
+  };
+
+  /**
+   * Fecha só se o popup que pediu o fechamento ainda for o da etapa atual. O
+   * `onOpenChange(false)` da confirmação dispara DEPOIS do clique em "Remover" — se a
+   * recusa do banco já tiver aberto o bloqueio, um `setExclusao(null)` incondicional o
+   * fecharia na hora, e a recusa sumiria calada.
+   */
+  const fecharSeEtapa = (etapa: Exclusao["etapa"]) => (aberto: boolean) => {
+    if (!aberto) setExclusao((atual) => (atual?.etapa === etapa ? null : atual));
+  };
+
+  const nomeDoValorParaExcluir = valoresFuncao.find((v) => v.id === exclusao?.valorId)
     ?.funcoes_colaboradores?.cargo_nome;
 
   const formatCurrency = (value: number) => {
@@ -141,8 +234,9 @@ export function ValoresFuncaoProvaDialog({
         <DialogHeader>
           <DialogTitle>Cadastrar Funções dos Colaboradores - {provaEdital.trim()}</DialogTitle>
           <DialogDescription>
-            Defina o valor pago por função nesta prova. O valor é congelado no momento da
-            alocação: alterá-lo aqui não muda o que já foi alocado.
+            Defina o valor pago por função nesta prova. Ele vale para todos os colaboradores
+            da função, inclusive os já alocados, e é o que vai para a Exportação DAF e para os
+            recibos. Depois que a prova é finalizada, só muda reabrindo a prova.
           </DialogDescription>
         </DialogHeader>
 
@@ -255,10 +349,17 @@ export function ValoresFuncaoProvaDialog({
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => setValorParaExcluir(valor.id)}
+                            aria-label="Remover valor"
+                            onClick={() => pedirExclusao(valor.id, valor.funcao_id)}
+                            disabled={exclusao?.etapa === "verificando"}
                             className="text-destructive hover:text-destructive"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            {exclusao?.etapa === "verificando" &&
+                            exclusao.valorId === valor.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
                           </Button>
                         </div>
                       </TableCell>
@@ -273,11 +374,15 @@ export function ValoresFuncaoProvaDialog({
 
       {/* Até 2026-07-26 a lixeira apagava direto, num clique. É dado da base de
           pagamento; confirmar é o mínimo. Fica em AlertDialog simples, e não no
-          PasswordConfirmDialog: o valor é CONGELADO na alocação, então apagar não altera
-          pagamento já feito — pedir senha aqui seria atrito desproporcional. */}
+          PasswordConfirmDialog: só se remove valor de prova ABERTA (a finalizada é
+          recusada pelo banco, PF001), ou seja, antes da Exportação DAF que vira pagamento.
+          ⚠️ Até 2026-11-27 este comentário dizia que o valor era "congelado na alocação" —
+          nunca foi: `colaboradores_prova.valor_pagamento` nunca é preenchido, e o DAF e o
+          recibo leem o valor AO VIVO. Por isso o texto abaixo diz o que acontece com quem
+          já está alocado. */}
       <AlertDialog
-        open={valorParaExcluir !== null}
-        onOpenChange={(aberto) => !aberto && setValorParaExcluir(null)}
+        open={exclusao?.etapa === "confirmar"}
+        onOpenChange={fecharSeEtapa("confirmar")}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -286,8 +391,9 @@ export function ValoresFuncaoProvaDialog({
               {nomeDoValorParaExcluir
                 ? `O valor de "${nomeDoValorParaExcluir}" será removido desta prova. `
                 : "O valor será removido desta prova. "}
-              A alocação já feita não muda, porque o valor é congelado no momento da
-              alocação. Mas a função deixa de aceitar meta de colaboradores.
+              Quem já está alocado nesta função fica sem valor: sai em branco na Exportação
+              DAF e como R$ 0,00 no recibo, até que um valor seja cadastrado de novo. A função
+              também deixa de aceitar meta de colaboradores.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -301,6 +407,15 @@ export function ValoresFuncaoProvaDialog({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Bloqueio: vem ANTES da confirmação quando há meta > 0 (o caso normal), ou
+          depois dela se o banco recusar por um caminho que a checagem não previu. Em
+          popup, e não em toast: é um impedimento que pede ação, não um aviso que passa. */}
+      <BloqueioRemocaoDialog
+        bloqueio={exclusao?.etapa === "bloqueado" ? exclusao : null}
+        nomeDaFuncao={nomeDoValorParaExcluir}
+        onOpenChange={fecharSeEtapa("bloqueado")}
+      />
     </Dialog>
   );
 }
