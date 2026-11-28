@@ -2585,7 +2585,7 @@ export type Database = {
         }[]
       }
       encerrar_ocorrencias_unidade: {
-        Args: { p_prova_unidade_id: string; p_user_id: string }
+        Args: { p_prova_unidade_id: string }
         Returns: boolean
       }
       especiais_da_prova: {

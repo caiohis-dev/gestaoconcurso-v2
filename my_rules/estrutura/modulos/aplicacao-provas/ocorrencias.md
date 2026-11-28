@@ -123,8 +123,13 @@ O combobox de seleção de colaborador em `OcorrenciasProva.tsx` só lista **col
 
 ## Encerramento por unidade — e por que não há reabertura
 
-`prova_unidades` tem os campos `ocorrencias_encerradas`, `ocorrencias_encerradas_at`, `ocorrencias_encerradas_by`. A RPC `encerrar_ocorrencias_unidade(p_prova_unidade_id, p_user_id)` (migration `20260707114551_*`):
-- Verifica permissão manualmente: `superadmin`, `admin`, o `created_by` da prova, ou um coordenador vinculado àquela prova (`is_coordenador_prova`) — qualquer outro perfil recebe erro `P0002`.
+`prova_unidades` tem os campos `ocorrencias_encerradas`, `ocorrencias_encerradas_at`, `ocorrencias_encerradas_by`. A RPC **`encerrar_ocorrencias_unidade(p_prova_unidade_id)`** (reescrita na migration `20261128002649`, 2026-11-27):
+- **Identidade por `auth.uid()`** — o `p_user_id` saiu da assinatura. ⚠️ Até 27/11 a autorização era decidida sobre o `p_user_id` **que o cliente enviava**: qualquer logado que mandasse o uuid de um admin encerrava qualquer unidade.
+- **Só superadmin ou o coordenador DAQUELA unidade** (decisão do usuário, 27/11) — vínculo em `coordenadores_prova` → `colaboradores_prova.prova_unidade_id`, a mesma definição de `get_coordenador_prova_unidade_ids`. ⚠️ **Admin comum e o `created_by` da prova SAÍRAM**, e coordenador de *outra* unidade da mesma prova também (antes bastava `is_coordenador_prova`, por prova). Medido antes: das 11 unidades encerradas, **10 pelo coordenador da própria unidade e 1 por superadmin** — ninguém usava o caminho que saiu. Recusa: `OC001`.
+- 🔴 **Exige senha digitada há ≤ 5 minutos, conferida pelo BANCO** (`OC002`). O `PasswordConfirmDialog` sempre pediu a senha, mas conferia **no cliente** — chamar a RPC direto pulava a senha. Agora a RPC lê `auth.jwt() -> 'amr'` e exige `{"method":"password"}` com `timestamp` de no máximo 300 s. O login do diálogo gera esse token; a senha **nunca chega ao Postgres**, e quem a confere é o GoTrue (com o rate limit dele). Medido no GoTrue local: o `timestamp` é o do **login** e o refresh o **preserva**. Sessão aberta por link (`otp`/`recovery`) não serve. ⚠️ Aceito: quem entrou com senha há < 5 min encerra sem o diálogo, por chamada direta.
+- **Unidade já encerrada é recusada** (`OC003`) — antes, re-encerrar sobrescrevia `_at`/`_by` e a trilha de quem fechou se perdia calada. Sem sessão: `OC000`.
+- `EXECUTE` só para `authenticated` (revogado de `PUBLIC` **e** de `anon` explicitamente). 🧪 [`docs/bateria-encerrar-ocorrencias.sql`](../../../../docs/bateria-encerrar-ocorrencias.sql) — 19 checagens, cada recusa afirma o SQLSTATE; falsificada devolvendo `admin` e tirando a senha: reprovaram exatamente os 2 casos de admin e os 4 de senha.
+- **A tela espelha a regra** (`podeEncerrarOcorrencias`, `src/lib/encerramento-ocorrencias.ts`, com teste): admin comum vê "Registro aberto", sem botão.
 - Marca a unidade como encerrada.
 
 ⚠️ **O encerramento é irreversível pelo app — verificado em 2026-07-25.** `ocorrencias_encerradas = TRUE` é escrito em **um único lugar** em todas as migrations (a RPC acima) e **nada devolve o campo a `FALSE`**. Em particular, **`reabrir_prova_unidade` não toca nesses campos**: ela reverte apenas `unidade_finalizada`, `unidade_finalizada_at` e `unidade_finalizada_by`. São dois eixos independentes — reabrir a unidade **não** reabre as ocorrências dela.
@@ -132,6 +137,8 @@ O combobox de seleção de colaborador em `OcorrenciasProva.tsx` só lista **col
 Consequência prática: encerrar ocorrências por engano só se desfaz com `UPDATE` manual no banco. Se algum dia isso precisar de caminho no app, o simétrico terá de ser criado do zero, com autorização própria — note que `reabrir_prova_unidade` é mais restrita que a finalização: só `superadmin` **ou** quem finalizou.
 
 ✅ **A irreversibilidade é decisão, não pendência** (confirmada pelo usuário em 2026-07-25). E a UI **já é honesta sobre ela**: o `PasswordConfirmDialog` de "Encerrar Registro de Ocorrências" (`OcorrenciasProva.tsx:908-919`) diz, em negrito, que a unidade "**não poderá ser reaberta**", e ainda exige a senha para confirmar. Não há trabalho aberto aqui — só não introduza reabertura sem revisitar a decisão.
+
+🔵 **Desde 2026-11-27 o encerramento é PRÉ-CONDIÇÃO da Exportação DAF**: o botão só exporta com **todas** as unidades da prova encerradas, e lista as pendentes num popup — ver [`documentos-e-relatorios.md`](./documentos-e-relatorios.md). 🔵 Foi isso que tornou urgente o defeito de identidade da RPC (o `p_user_id` vindo do cliente), **fechado no mesmo dia** — ver acima.
 
 **A UI barra na origem, sim.** `OcorrenciasProva.tsx:99` filtra as unidades selecionáveis com `!pu.ocorrencias_encerradas` — uma unidade encerrada some do seletor, então não há por onde registrar ocorrência nela. Mas a barreira é **client-side**: a criação não revalida o flag, então uma chamada direta ao PostgREST ainda inseriria.
 

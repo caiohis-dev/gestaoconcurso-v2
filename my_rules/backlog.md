@@ -412,6 +412,32 @@ próprio: `useBancos.tsx:22` (1h), `useColaboradores.tsx` e `ProvaTotaisDialog.t
 
 ---
 
+## 📤 Exportação DAF — o que a avaliação de 2026-11-27 deixou para depois
+
+A avaliação do botão "Exportação DAF" (`GerenciarProva`, entrada do módulo Financeiro) teve 5
+itens. **Feitos em 27/11:** o valor passou a ser assumido como AO VIVO, com a prova finalizada
+congelando-o (`PF001`, migration `20261128000031`), e a montagem foi extraída para
+`src/lib/exportacao-daf.ts` com teste de contrato. **Decisão do usuário: não exportar
+`tipo_chave_pix`.** Ficaram, por decisão dele ("depois cuidamos dos demais"):
+
+1. **Autorização — pergunta, não defeito.** O módulo Financeiro nasceu sem `admin` (decisão
+   D1), mas o DAF — CPF, chave PIX e valor de cada colaborador — é exportado por `admin`
+   (`/gerenciar-prova` é `papeis={["admin"]}`). Pode ser intencional (o arquivo vai para outro
+   setor); falta confirmar.
+2. **Fidelidade de campos do arquivo** (medido no banco local em 27/11):
+   - **CEP** é coluna numérica e perde o zero à esquerda — 24 de 788;
+   - **Data de nascimento** sai `AAAA-MM-DD`, não `DD/MM/AAAA`;
+   - **"Valor Líquido"** é o valor bruto da função, sem desconto — o rótulo está certo para o uso?
+     ⚠️ É rótulo de CONTRATO com o Financeiro: mudá-lo exige mudar `COLUNAS_SISTEMA` junto (o
+     teste de contrato derruba se não);
+   - **nome do arquivo** sai `colaboradores_*.xls`, não "DAF";
+   - **falha de exportação** mostra genérico e descarta a mensagem do banco (§2 do CLAUDE.md).
+3. ~~🔴 `encerrar_ocorrencias_unidade` confia no `p_user_id` do cliente~~ — ✅ **FECHADO em
+   2026-11-27** (migration `20261128002649`): `auth.uid()`, só superadmin ou coordenador da
+   unidade, e senha recente conferida pelo banco. Ver `estrutura/modulos/aplicacao-provas/ocorrencias.md`.
+   ⚠️ **O irmão segue aberto:** `get_coordenador_prova_unidade_ids(p_user_id)` também recebe a
+   identidade do cliente — é só leitura (devolve ids de unidade de outra pessoa), não escreve nada.
+
 ## 💸 Módulo Financeiro — perdas silenciosas na leitura da planilha
 
 **Status:** ⏳ **parcial.** Vem da avaliação de 2026-11-03; cada ponto abaixo foi conferido no
@@ -568,6 +594,7 @@ o detalhe da E1 e da E3.
   `criterios_desempate`, taxas — absorvem 3 das 5 pendências do EDITAL PADRÃO abaixo) · as 4
   colunas de `provas_objetivas_config` na matriz · casa para os valores sem coluna · o modelo
   citando nº de anexo/quadro · e as adiadas com gatilho (JSON, agrupamento, diff, PDF).
+  🟢 **M11 FEITA em 2026-11-20, com a E2** (ver o roadmap). Era:
   🔵 **M11 (pedido de 16/11):** `{{campo:numero_edital}}` passa a imprimir **NÚMERO/ANO**. Hoje
   sai só o número; a dica do input manda digitar `004/2026-SMA`, e as duas convenções convivem.
   🟢 **Decisões de 2026-11-19:** o sufixo da secretaria vira **campo próprio** (número em três
@@ -596,7 +623,6 @@ item continua sendo o registro; o roadmap é o plano.
 
 ---
 
-  🟢 **M11 FEITA em 2026-11-20, com a E2** (ver o roadmap). Era:
 ## 📄 EDITAL PADRÃO — as cinco pendências que sobraram do tema
 
 **Status:** ⏳ aberto em 2026-09-19, quando o **texto padrão ficou completo** (19 capítulos, 377

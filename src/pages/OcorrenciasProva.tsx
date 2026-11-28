@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useBuscarColaboradoresParaAlocacao } from "@/hooks/useColaboradores";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useToast } from "@/hooks/use-toast";
+import { podeEncerrarOcorrencias } from "@/lib/encerramento-ocorrencias";
 import { PasswordConfirmDialog } from "@/components/PasswordConfirmDialog";
 import { SortableTableHead } from "@/components/SortableTableHead";
 import { useSalasDoFiscal, avisoFiscalDeSala } from "@/hooks/useSalasDistribuidas";
@@ -141,6 +142,13 @@ export default function OcorrenciasProva() {
   }, [scopedUnidades, isAdminOrSuper]);
 
   const allowedUnidadeIds = useMemo(() => allowedUnidades.map((pu) => pu.id), [allowedUnidades]);
+
+  // Quem encerra: superadmin ou o coordenador DAQUELA unidade — espelho da RPC
+  // `encerrar_ocorrencias_unidade` (2026-11-27). Admin comum vê o estado, sem o botão.
+  const unidadesDoCoordenador = useMemo(
+    () => new Set<string>(coordenadorUnidades.map((cu) => cu.id)),
+    [coordenadorUnidades],
+  );
   const scopedUnidadeIds = useMemo(() => scopedUnidades.map((pu) => pu.id), [scopedUnidades]);
 
   const { ocorrencias, isLoading, create, remove, isCreating, isRemoving } = useOcorrencias(
@@ -482,6 +490,16 @@ export default function OcorrenciasProva() {
                       </span>
                     );
                   }
+                  if (!podeEncerrarOcorrencias(pu.id, { isSuperAdmin: !!isSuperAdmin, unidadesDoCoordenador })) {
+                    return (
+                      <span
+                        key={pu.id}
+                        className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm text-muted-foreground"
+                      >
+                        {sigla} — Registro aberto
+                      </span>
+                    );
+                  }
                   return (
                     <Button
                       key={pu.id}
@@ -498,6 +516,7 @@ export default function OcorrenciasProva() {
               </div>
               <p className="mt-3 text-xs text-muted-foreground">
                 Após o encerramento, esta tela não poderá mais ser acessada. Se necessário, solicite acesso à FEVRE.
+                Só o coordenador da unidade ou um superadmin pode encerrar, e é preciso confirmar a senha.
               </p>
             </CardContent>
           </Card>
@@ -884,10 +903,12 @@ export default function OcorrenciasProva() {
         confirmText="Encerrar"
         confirmVariant="destructive"
         onConfirm={async () => {
-          if (!encerrarUnidadeId || !user?.id) return;
+          if (!encerrarUnidadeId) return;
+          // Identidade vem de `auth.uid()` no banco (o `p_user_id` saiu em 2026-11-27). A
+          // senha que o diálogo acabou de conferir gera um JWT com `amr` "password" recente,
+          // e é ELE que a RPC exige (OC002) — chamar sem o diálogo não pula a senha.
           const { error } = await supabase.rpc("encerrar_ocorrencias_unidade", {
             p_prova_unidade_id: encerrarUnidadeId,
-            p_user_id: user.id,
           });
           if (error) {
             toast({
