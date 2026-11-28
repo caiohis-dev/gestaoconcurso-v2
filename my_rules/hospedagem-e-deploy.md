@@ -6,7 +6,17 @@ Como o gestaoconcurso vai ao ar. Par de [`banco-producao.md`](./banco-producao.m
 >
 > O deploy foi executado em outra sessão; o ferramental vive fora deste repo, em `configura_server_gestaoconcurso`. 🟢 **O secret `SITE_URL` e as redirect URLs — que ficaram como ressalva aqui desde 13/08 — foram CONFIRMADOS em 2026-09-09**, por uma recuperação de senha real: o e-mail chegou com o visual da FEVRE e o link abriu `fevre.online/redefinir-senha`.
 >
-> 🟢 **Deploy mais recente: 2026-11-03, release `v3.10.0`** (commit `2821b3e`) — logout por
+> 🟢 **Deploy mais recente: 2026-11-27, release `v3.12.0`** (commit `88f5e82`, fast-forward de
+> `main` até `dev`) — **banco + site, sem Edge Function**. 3 migrations (`prod:push --include-all`:
+> a do Editais tinha timestamp anterior à última de produção) antes do `deploy.sh`. Conferido:
+> bundle servido `index-Bqgt6Pp6.js` igual ao buildado, **0** de `127.0.0.1`, **8** da URL de
+> produção, HTTPS 200, HTTP 301, logo 200; e a RPC de encerramento recusando `anon` (`42501`) e
+> sem a assinatura antiga (`PGRST202`). Detalhe em `versionamento.md`.
+>
+> ⚠️ *Esta nota ficou parada na v3.10.0 durante a v3.10.1 e a v3.11.0* (as duas por cherry-pick,
+> registradas só em `versionamento.md`) — corrigido em 2026-11-27.
+>
+> 🔵 *(Anterior.)* **2026-11-03, release `v3.10.0`** (commit `2821b3e`) — logout por
 > inatividade. Só site. Conferido: bundle `index-C0spikr1.js` igual ao buildado, **0** de
 > `127.0.0.1`, **8** da URL de produção, HTTPS 200, HTTP 301, logo 200.
 >

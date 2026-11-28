@@ -81,6 +81,30 @@ Versionamento semântico, com prefixo `v`:
   HTTP 301, logo 200, **0** de `127.0.0.1`, 8 do projeto de produção, e a frase nova presente.
   ⚠️ **Não verificado num navegador.**
 
+- **`v3.12.0` nasceu em 2026-11-27**, no commit `88f5e82`. MINOR — **banco + site, sem Edge
+  Function**. Aplicação de Provas: valor da função lido **ao vivo** e congelado pela finalização
+  da prova (`PF001`, `20261128000031`); remoção de valor com meta bloqueada antes da confirmação;
+  Exportação DAF só com as ocorrências de toda unidade encerradas; e o encerramento por
+  `auth.uid()`, só coordenador da unidade ou superadmin, com **senha recente conferida pelo
+  banco** (`amr` do JWT, `20261128002649`). Editais: fatia 12 etapas 1–4, os sete campos e
+  E1/E2+M11 (`20261120195428`). 🟢 **Voltou ao fast-forward**: com o Editais commitado, `main`
+  foi avançada até `dev` com `git fetch . dev:main` (sem checkout), e `main` == `dev` de novo —
+  fim das duas releases por cherry-pick. Os 2 commits cherry-pickados (`7c33888`, `216d778`)
+  entraram em `main` como duplicatas sem efeito. ⚠️ **`--include-all` foi necessário:** a
+  migration do Editais (20/11) tinha timestamp **anterior** à última aplicada em produção
+  (`20261125161819`, da v3.11.0), e o `prod:push:dry` sem a flag recusou — efeito colateral de
+  release por cherry-pick, que deixa migration antiga para trás. Ela só faz `ALTER TABLE
+  editais` e não depende da de 25/11. Ritual: commits em `dev` (cada um verificado isolado num
+  worktree) → `fetch . dev:main` → tag → `link` (usuário) → `prod:push:dry --include-all` (as
+  3, exatas) → `prod:push --include-all` (usuário) → dry de novo (*"up to date"*) →
+  `prod:unlink` → `deploy.sh`. **Verificado ao vivo:** bundle `index-Bqgt6Pp6.js` idêntico ao
+  buildado, HTTPS 200, HTTP 301, logo 200, **0** de `127.0.0.1`, 8 do projeto de produção, as
+  telas novas no bundle, e a chamada de encerramento já sem `p_user_id`; a RPC em produção
+  recusa `anon` (`42501`) e a assinatura antiga não existe (`PGRST202`). ⚠️ **Não verificado:**
+  o encerramento por um coordenador logado (é o que exercita o `amr` em produção) e nada num
+  navegador. **Subiu sem backup novo** (o mais recente é de 16/09), por decisão do usuário —
+  as 3 migrations são aditivas. ⚠️ O push de `main` + tag foi **barrado pela permissão
+  automática** da sessão e ficou para o usuário.
 - **`v3.11.0` nasceu em 2026-11-25**, no commit `a357dca`. MINOR — **banco + Edge Function +
   site**. O "Resetar senha" do superadmin em `/colaboradores`: senha provisória gerada no
   servidor, trilha `log_reset_senha` (migration `20261125161819`) e a EF nova
