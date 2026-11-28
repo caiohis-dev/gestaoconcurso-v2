@@ -6,7 +6,12 @@ Como o gestaoconcurso vai ao ar. Par de [`banco-producao.md`](./banco-producao.m
 >
 > O deploy foi executado em outra sessão; o ferramental vive fora deste repo, em `configura_server_gestaoconcurso`. 🟢 **O secret `SITE_URL` e as redirect URLs — que ficaram como ressalva aqui desde 13/08 — foram CONFIRMADOS em 2026-09-09**, por uma recuperação de senha real: o e-mail chegou com o visual da FEVRE e o link abriu `fevre.online/redefinir-senha`.
 >
-> 🟢 **Deploy mais recente: 2026-11-27, release `v3.12.0`** (commit `88f5e82`, fast-forward de
+> 🟢 **Deploy mais recente: 2026-11-27, release `v3.12.1`** (commit `5791bf3`) — ícone de
+> totais em `/provas` (gráfico de colunas no lugar da lanterna). Só site. Conferido: bundle
+> servido `index-DP58mKCK.js` igual ao buildado, **0** de `127.0.0.1`, **8** da URL de produção,
+> HTTPS 200, HTTP 301, logo 200, `ChartColumn` no bundle e `Flashlight` fora.
+>
+> 🔵 *(Anterior, do mesmo dia.)* **Release `v3.12.0`** (commit `88f5e82`, fast-forward de
 > `main` até `dev`) — **banco + site, sem Edge Function**. 3 migrations (`prod:push --include-all`:
 > a do Editais tinha timestamp anterior à última de produção) antes do `deploy.sh`. Conferido:
 > bundle servido `index-Bqgt6Pp6.js` igual ao buildado, **0** de `127.0.0.1`, **8** da URL de

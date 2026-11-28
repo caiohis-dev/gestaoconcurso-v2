@@ -81,6 +81,10 @@ Versionamento semântico, com prefixo `v`:
   HTTP 301, logo 200, **0** de `127.0.0.1`, 8 do projeto de produção, e a frase nova presente.
   ⚠️ **Não verificado num navegador.**
 
+- **`v3.12.1` nasceu em 2026-11-27**, no commit `5791bf3`. PATCH — **só site**: o botão de
+  totais de `/provas` troca a lanterna (`Flashlight`) por um gráfico de colunas (`ChartColumn`).
+  Fast-forward de `main` até `dev`, tag, `deploy.sh`. Conferido: bundle `index-DP58mKCK.js`
+  idêntico ao buildado, HTTPS 200, HTTP 301, logo 200, 0 de `127.0.0.1`, 8 da URL de produção.
 - **`v3.12.0` nasceu em 2026-11-27**, no commit `88f5e82`. MINOR — **banco + site, sem Edge
   Function**. Aplicação de Provas: valor da função lido **ao vivo** e congelado pela finalização
   da prova (`PF001`, `20261128000031`); remoção de valor com meta bloqueada antes da confirmação;
