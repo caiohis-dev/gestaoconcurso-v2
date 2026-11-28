@@ -86,7 +86,7 @@ describe("ProvaCard", () => {
     expect(supabaseMock.rpc).not.toHaveBeenCalled();
   });
 
-  it("⭐ CONTROLE POSITIVO: a lanterna abre o modal e traz os números", async () => {
+  it("⭐ CONTROLE POSITIVO: o botão de totais abre o modal e traz os números", async () => {
     setRpcResult("totais_da_prova", { data: [LINHA], error: null });
     const user = userEvent.setup();
     renderWithProviders(<ProvaCard prova={PROVA} />);
@@ -138,20 +138,20 @@ describe("ProvaCard", () => {
     );
   });
 
-  it("a lanterna tem nome acessível e vem ANTES da engrenagem", async () => {
+  it("o botão de totais tem nome acessível e vem ANTES da engrenagem", async () => {
     renderWithProviders(<ProvaCard prova={PROVA} />);
 
-    const lanterna = screen.getByRole("button", { name: /totais de cargos/i });
+    const totais = screen.getByRole("button", { name: /totais de cargos/i });
     const engrenagem = screen.getByRole("link", { name: /gerenciar prova/i });
 
     // `compareDocumentPosition` responde a ordem real no DOM, que é o que o leitor de
     // tela e a navegação por Tab seguem — a posição visual pode mentir via CSS.
     expect(
-      lanterna.compareDocumentPosition(engrenagem) & Node.DOCUMENT_POSITION_FOLLOWING,
+      totais.compareDocumentPosition(engrenagem) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 
-  it("coordenador também alcança a lanterna", async () => {
+  it("coordenador também alcança o botão de totais", async () => {
     // Antes da mudança ele já via a lista por unidade dentro do cartão; só o bloco de
     // totais gerais era exclusivo do admin. Esconder o botão dele tiraria o que ele tinha.
     authMock.isAdmin = false;

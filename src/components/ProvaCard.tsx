@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { Prova } from "@/hooks/useProvas";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Calendar, Clock, Settings, Flashlight } from "lucide-react";
+import { Calendar, Clock, Settings, ChartColumn } from "lucide-react";
 import { formatDateBR } from "@/lib/utils";
 import { ProvaTotaisDialog } from "./ProvaTotaisDialog";
 
@@ -26,7 +26,7 @@ interface ProvaCardProps {
  * e provas nunca são apagadas, o custo da tela crescia com o histórico inteiro do sistema
  * — e se repetia a cada volta de foco da janela.
  *
- * Os totais foram para {@link ProvaTotaisDialog}, atrás do botão da lanterna, e a soma
+ * Os totais foram para {@link ProvaTotaisDialog}, atrás do botão de totais (ícone de gráfico de colunas), e a soma
  * passou a ser feita no banco (RPC `totais_da_prova`).
  *
  * ⚠️ Ao acrescentar informação aqui, pergunte de onde ela vem. Um `useQuery` novo neste
@@ -48,7 +48,7 @@ export function ProvaCard({ prova, allowedProvaUnidadeIds }: ProvaCardProps) {
             {prova.editais?.nome}
           </CardTitle>
           <div className="flex items-center gap-1 shrink-0">
-            {/* A lanterna vem ANTES da engrenagem, e vale para admin e coordenador: o
+            {/* O botão de totais vem ANTES da engrenagem, e vale para admin e coordenador: o
                 coordenador já via a lista por unidade antes desta mudança. */}
             <Button
               variant="ghost"
@@ -58,7 +58,7 @@ export function ProvaCard({ prova, allowedProvaUnidadeIds }: ProvaCardProps) {
               aria-label="Ver totais de cargos"
               title="Ver totais de cargos"
             >
-              <Flashlight className="h-4 w-4" />
+              <ChartColumn className="h-4 w-4" />
             </Button>
             <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
               <Link to={`/gerenciar-prova/${prova.id}`} aria-label="Gerenciar prova">

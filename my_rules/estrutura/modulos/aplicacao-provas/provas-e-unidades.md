@@ -278,7 +278,7 @@ provas nunca são apagadas — são o histórico operacional —, o custo da lis
 com a vida inteira do sistema.
 
 Hoje o cartão mostra só título, data, hora e "criado por", tudo vindo da prop `prova`, e
-os totais moram em `ProvaTotaisDialog`, atrás de um botão de **lanterna** à esquerda da
+os totais moram em `ProvaTotaisDialog`, atrás de um botão com ícone de **gráfico de colunas** (`ChartColumn`; até 2026-11-27 era uma lanterna) à esquerda da
 engrenagem. A consulta é atrasada por `enabled: open` e a soma é feita no banco.
 
 | | cru | gzip | requisições | quando |

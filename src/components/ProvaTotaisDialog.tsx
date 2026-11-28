@@ -51,7 +51,7 @@ interface ProvaTotaisDialogProps {
 }
 
 /**
- * Os totais de meta × ocupação de uma prova — atrás da lanterna de `/provas`.
+ * Os totais de meta × ocupação de uma prova — atrás do botão de totais (gráfico de colunas) de `/provas`.
  *
  * 🔴 POR QUE ISTO É UM DIÁLOGO, E POR QUE A CONSULTA É `enabled: open`.
  *
