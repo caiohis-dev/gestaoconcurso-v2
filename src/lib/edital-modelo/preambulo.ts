@@ -12,7 +12,9 @@
  *
  * 🔴 **Só o PARÁGRAFO entra aqui, e o cabeçalho NÃO.** O cabeçalho é identificação pura,
  * inteiramente derivável dos metadados (`orgao_demandante`, `natureza_juridica`,
- * `numero_edital`) e sem nada a redigir. Virá da exportação (fatia 12), montado do dado.
+ * `numero_edital`) e sem nada a redigir. 🔵 Montado do dado por `montarCabecalho`
+ * (`edital-documento.ts`) desde 2026-11-20 — até lá esta linha dizia "virá da exportação
+ * (fatia 12)", e a fatia 12 veio sem ele.
  * Transformá-lo em quatro artigos de texto seria convidar alguém a digitar à mão o que os
  * campos já sabem — e a divergir deles no dia em que um mudar.
  *

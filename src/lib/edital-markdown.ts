@@ -25,6 +25,7 @@ import { segmentarNegrito } from "@/lib/edital-texto";
 import {
   rotuloDoNumero,
   type AnexoMontado,
+  type CabecalhoMontado,
   type ArtigoMontado,
   type CapituloMontado,
   type DocumentoMontado,
@@ -212,9 +213,19 @@ function anexo(a: AnexoMontado): string[] {
  * `titulo` é o nome do edital, como `# título` no topo — opcional porque o documento
  * montado não o carrega.
  */
+/**
+ * O cabeçalho pré-textual (E2): as linhas em negrito, empilhadas por quebra dura (`\`), num
+ * parágrafo só — como o publicado as empilha. Falta vira `> PENDÊNCIA`, nunca linha vazia.
+ */
+function cabecalho(c: CabecalhoMontado): string[] {
+  const linhas = c.linhas.map((l) => `**${inline(l)}**`).join("\\\n");
+  return [...(linhas ? [linhas] : []), ...c.pendencias.map(pendencia)];
+}
+
 export function documentoEmMarkdown(documento: DocumentoMontado, opcoes: { titulo?: string } = {}): string {
   const blocos = [
     ...(opcoes.titulo ? [titulo(1, opcoes.titulo)] : []),
+    ...cabecalho(documento.cabecalho),
     ...documento.capitulos.flatMap(capitulo),
     ...documento.anexos.flatMap(anexo),
   ];

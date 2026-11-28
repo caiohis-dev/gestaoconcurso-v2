@@ -8,7 +8,13 @@
 roadmap:
   titulo: "Editais — melhorias (funcionalidade nova sobre o que está entregue)"
   criado: "2026-11-16"
-  status: "⏳ NÃO INICIADO — nenhum item começado; M1 a M3 são o próximo valor claro"
+  status: "⏳ NÃO INICIADO — M11 liberada (sufixo decidido em 19/11); M1 a M4 e M6 CONGELADAS por decisão do usuário"
+
+  decisao_2026_11_19: >
+    🔴 "Não toque agora" — M1, M2, M3, M4 e M6 mudam o TEXTO DO MODELO, que a FEVRE
+    pode já ter editado pela tela (R1 abaixo), e o usuário as congelou. Não executar,
+    nem em parte (nem a migration de domínio sozinha), até ele reabrir. M5 não entrou
+    na pergunta e segue como estava (medir antes de desenhar). M11 segue, junto da E2.
 
   origem: >
     As cinco pendências do EDITAL PADRÃO (backlog, seção própria desde 19/09), as
@@ -176,6 +182,35 @@ roadmap:
         secretaria (a) some do número, (b) vira campo próprio (`004/2026-SMA` composto de
         três partes) ou (c) fica por conta de quem redige o artigo. Não escolher sozinho:
         o sufixo aparece no nome publicado.
+      decidido_em_2026_11_19: |
+        🟢 (b) — o sufixo da secretaria vira CAMPO PRÓPRIO, e o número publicado é
+        composto de TRÊS partes: `numero_edital` (`004`) + `ano` (`2026`) + sufixo (`SMA`)
+        → `004/2026-SMA`. Isto AMPLIA a primeira entrega acima, que falava em compor só
+        `numero/ano`.
+        · A forma vem do publicado, medida em modulo_editais/Edital_002_2026.md e
+          Edital_003_2026.md: "Edital Nº. 002/2026-SMA" — hífen colado, sem espaço. O
+          "Edital 002/2026 - SMA" com espaços é só o nome do arquivo/título informal.
+        · Exige coluna nova em `editais` (migration; nome a fixar no desenho) com input
+          no Preâmbulo, ao lado de número e ano — o teste de `ondeSePreenche` contra a
+          tela vale para ela também.
+        · A função pura única de composição passa a receber as três partes; o marcador,
+          o cabeçalho do Studio e o cabeçalho da E2 continuam chamando só ela.
+        · ⏳ Ainda a fixar no desenho, contra o publicado: sufixo AUSENTE compõe
+          `004/2026` (proposta — os três editais reais têm sufixo, então não há caso
+          medido sem ele) ou vira pendência. Não é regra de banco: `numero_edital`
+          segue `text` sem CHECK, e o sufixo nasce igual.
+        · O linter do "número já traz o ano" (entrega acima) cobre também o número
+          que já traz o sufixo (`004/2026-SMA` inteiro em `numero_edital`).
+      feita_em_2026_11_20: |
+        🟢 Com a E2. `comporNumeroDoEdital` + `problemaDoNumero` em edital-campos.ts, chamadas
+        pelo marcador, cabeçalho do documento, subtítulo do Studio, "Sai no edital como" do
+        Preâmbulo e `nomeDoArquivo` (agora recebe o número composto: `edital-002-2026-sma.md`).
+        · Sufixo = `editais.secretaria_sigla`, ao lado de `secretaria_publicadora` (o usuário
+          pediu os dois associados). Sem sigla compõe `004/2026` (decidido no dia).
+        · Forma antiga (`/` no número): NÃO compõe; o aviso aparece embaixo do input (não no
+          linter: ele só vê o mapa de valores, e o input é onde se corrige) e como pendência
+          do cabeçalho no portão.
+        · ⏳ Produção NÃO foi medida (exige consulta lá). Local: nenhum edital na forma antiga.
       dado_existente: >
         Medir os editais de PRODUÇÃO antes (a regra da casa: meça antes de apertar). Se
         algum guardar a forma inteira em `numero_edital`, a correção é de DADO, e dado

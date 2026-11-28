@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { montarDocumento } from "@/lib/edital-numeracao";
 import type { ItemBruto } from "@/lib/edital-itens";
-import type { DadosDosQuadros, DocumentoMontado } from "@/lib/edital-documento";
+import type { DadosDoCabecalho, DadosDosQuadros, DocumentoMontado } from "@/lib/edital-documento";
 import { montarEditalCompleto } from "@/lib/edital-documento";
 import {
   avaliarExportacao,
@@ -14,6 +14,16 @@ import {
   pendenciasDaExportacao,
   type PendenciaDeExportacao,
 } from "@/lib/edital-exportacao";
+
+/** O cabeçalho do Edital 002/2026 como publicado — completo, então não gera pendência. */
+const CABECALHO_002: DadosDoCabecalho = {
+  numero_edital: "002",
+  ano: 2026,
+  secretaria_sigla: "SMA",
+  secretaria_publicadora: "Secretaria Municipal de Administração",
+  natureza_juridica: "CONCURSO_PUBLICO",
+  orgao_demandante: "Secretaria Municipal de Educação",
+};
 
 const SEM_DADOS: DadosDosQuadros = {
   cargosDoEdital: [],
@@ -39,7 +49,7 @@ const item = (capitulo_chave: string, p: Partial<ItemBruto> = {}): ItemBruto => 
 });
 
 /** Só o capítulo de disposições preliminares e os anexos ligados — o resto desligado. */
-function cenario(itens: ItemBruto[]) {
+function cenario(itens: ItemBruto[], cabecalho: DadosDoCabecalho = CABECALHO_002) {
   const capitulos = montarDocumento(
     montarDocumento().map((c) => ({ chave: c.chave, incluido: ["disposicoes_preliminares", "anexos"].includes(c.chave) })),
   );
@@ -47,6 +57,7 @@ function cenario(itens: ItemBruto[]) {
   for (const i of itens) porCapitulo.set(i.capitulo_chave, [...(porCapitulo.get(i.capitulo_chave) ?? []), i]);
   const valores = new Map<string, string>();
   const documento = montarEditalCompleto({
+    cabecalho,
     documento: capitulos,
     porCapitulo,
     valores,
@@ -92,6 +103,7 @@ describe("pendenciasDaExportacao", () => {
 
   it("pendências de texto IGUAL ganham ids distintos — cada uma é uma confirmação", () => {
     const doc: DocumentoMontado = {
+      cabecalho: { linhas: [], pendencias: [] },
       capitulos: [],
       anexos: [
         { chave: "abrangencia", numero: "I", titulo: "T", conteudo: null, abrangencia: [], pendencia: "vazio" },
@@ -157,11 +169,26 @@ describe("avaliarExportacao", () => {
   });
 });
 
-describe("nomeDoArquivo", () => {
+describe("o CABEÇALHO no portão (E2)", () => {
+  it("controle positivo: cabeçalho completo não gera pendência", () => {
+    const p = pendenciasDaExportacao(cenario([item("disposicoes_preliminares")]));
+    expect(p.filter((x) => x.origem === "cabecalho")).toEqual([]);
+  });
+
+  it("🔴 número sem ano é pendência de ERRO, e leva ao Preâmbulo", () => {
+    const p = pendenciasDaExportacao(cenario([item("disposicoes_preliminares")], { ...CABECALHO_002, ano: null }));
+    expect(p.filter((x) => x.origem === "cabecalho")).toMatchObject([
+      { severidade: "erro", capitulo: "preambulo", texto: expect.stringContaining("número do edital") },
+    ]);
+  });
+});
+
+describe("nomeDoArquivo — recebe o número JÁ COMPOSTO (M11)", () => {
   it.each([
-    [{ numero_edital: "002/2026", nome: "Concurso" }, "edital-002-2026.md"],
-    [{ numero_edital: null, nome: "Processo Seletivo Saúde" }, "processo-seletivo-saude.md"],
-    [{ numero_edital: "  ", nome: "" }, "edital.md"],
+    [{ numeroComposto: "002/2026-SMA", nome: "Concurso" }, "edital-002-2026-sma.md"],
+    [{ numeroComposto: "002/2026", nome: "Concurso" }, "edital-002-2026.md"],
+    [{ numeroComposto: null, nome: "Processo Seletivo Saúde" }, "processo-seletivo-saude.md"],
+    [{ numeroComposto: "  ", nome: "" }, "edital.md"],
     [null, "edital.md"],
   ])("%j → %s", (e, nome) => expect(nomeDoArquivo(e)).toBe(nome));
 });

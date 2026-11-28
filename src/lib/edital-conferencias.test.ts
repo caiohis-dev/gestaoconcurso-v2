@@ -205,7 +205,7 @@ describe("no portão", () => {
       capitulos: caps,
       itens: [],
       valores: new Map(),
-      documento: { capitulos: [], anexos: [] },
+      documento: { cabecalho: { linhas: [], pendencias: [] }, capitulos: [], anexos: [] },
       conferencias: [{ capitulo: "inscricao_e_pagamento", severidade: "erro", regra: "canal-sem-endereco", mensagem: "Sem endereço." }],
     });
     const titulo = caps.find((c) => c.chave === "inscricao_e_pagamento")!.titulo;

@@ -122,7 +122,9 @@ const CAMPOS_DO_EDITAL: readonly CampoCatalogo[] = [
     chave: "numero_edital",
     rotulo: "Número do edital",
     formato: "texto",
-    fonte: "editais.numero_edital",
+    // 🔵 Desde 2026-11-20 (M11) é COMPOSTO: número + ano + sigla → `004/2026-SMA`, por
+    // `comporNumeroDoEdital`. As três colunas são escritas no Preâmbulo.
+    fonte: "editais.numero_edital + editais.ano + editais.secretaria_sigla",
     ondeSePreenche: "preambulo",
   },
   {
@@ -486,6 +488,47 @@ export function formatarPercentual(valor: number | string | null | undefined): s
   if (!Number.isFinite(n)) return null;
   const texto = Number.isInteger(n) ? String(n) : String(n).replace(".", ",");
   return `${texto}%`;
+}
+
+/**
+ * O NÚMERO PUBLICADO do edital: `004` + `2026` + `SMA` → `004/2026-SMA`.
+ *
+ * 🔴 **A ÚNICA composição do número** (M11, 2026-11-20). Chamam-na o marcador
+ * `{{campo:numero_edital}}`, o cabeçalho do documento, o cabeçalho do Studio e o nome do
+ * arquivo exportado. Três cópias da regra divergiriam no primeiro ajuste.
+ *
+ * A forma é a medida nos publicados — *"Edital Nº. 002/2026-SMA"*: barra antes do ano,
+ * hífen COLADO antes da sigla. O *"Edital 002/2026 - SMA"* com espaços é só o nome informal.
+ *
+ * - **Sem sigla** compõe `004/2026` (decisão do usuário, 2026-11-20: a sigla é opcional).
+ * - **Sem número ou sem ano** → `null`, nunca `004/` nem `004/null`. O marcador fica
+ *   `[?campo:numero_edital]` e o cabeçalho vira pendência — o buraco visível de sempre.
+ * - **Número na forma ANTIGA** (já traz `/`, a dica do input pedia `004/2026-SMA` até
+ *   2026-11-20) → `null` também. Compor às cegas daria `004/2026-SMA/2026`, plausível o
+ *   bastante para ninguém ver. Quem diz por quê é `problemaDoNumero`.
+ */
+export function comporNumeroDoEdital(partes: {
+  numero: string | null | undefined;
+  ano: number | null | undefined;
+  sigla: string | null | undefined;
+}): string | null {
+  const numero = formatarTexto(partes.numero);
+  const ano = formatarInteiro(partes.ano);
+  if (!numero || !ano || problemaDoNumero(partes.numero)) return null;
+  const sigla = formatarTexto(partes.sigla);
+  return sigla ? `${numero}/${ano}-${sigla}` : `${numero}/${ano}`;
+}
+
+/**
+ * Por que o número gravado NÃO pode ser composto — ou `null` se pode.
+ *
+ * ⚠️ Não é regra de banco (`numero_edital` é `text` sem CHECK, de propósito): é leitura. A
+ * mensagem diz o que fazer, porque é ela que aparece embaixo do input e no portão.
+ */
+export function problemaDoNumero(numero: string | null | undefined): string | null {
+  return numero?.includes("/")
+    ? `O número "${numero.trim()}" já traz o ano. Preencha só o número (ex.: 004); o ano e a sigla têm campos próprios.`
+    : null;
 }
 
 export function formatarInteiro(valor: number | null | undefined): string | null {

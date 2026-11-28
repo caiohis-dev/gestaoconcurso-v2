@@ -30,7 +30,7 @@ O **edital** é o **documento normativo do certame**, montado por capítulos den
 
 > Foto datada; confira contra o git antes de agir. O que **falta** mora em dois roadmaps,
 > não aqui: [`roadmap-editais-consertos.yaml`](../../../analises/roadmap-editais-consertos.yaml)
-> (E1–E8) e [`roadmap-editais-melhorias.yaml`](../../../analises/roadmap-editais-melhorias.yaml)
+> (E1–E9) e [`roadmap-editais-melhorias.yaml`](../../../analises/roadmap-editais-melhorias.yaml)
 > (M1–M11).
 
 | | estado |
@@ -38,18 +38,27 @@ O **edital** é o **documento normativo do certame**, montado por capítulos den
 | **v3 (12 fatias)** | fatias 1 a 11 entregues e **no ar** desde a v3.0.0. Fatia 12 (exportação): etapas 1 a 4 em `dev` (`b5b507d`, `97427e0`, empurrados), **fora de `main` e de produção**. Falta a etapa 5 |
 | **Edital modelo** | completo: 19 capítulos, 377 artigos, versão `1.0` |
 | **Exportação** | só Markdown, atrás do portão de confirmação nomeada. JSON e PDF adiados por decisão |
-| **Verificado** | `npm test` 2320/121 · `tsc` · `lint:baseline` 51/51 · `build` · `docs:conferir`. ⚠️ **Nada da fatia 12 foi visto no navegador**, e as 12 baterias SQL não rodam desde setembro |
+| **Verificado** | `npm test` 2320/121 · `tsc` · `lint:baseline` 51/51 · `build` · `docs:conferir`. 🟢 fatia 12 **conferida no navegador em 2026-11-20** (E1); ⚠️ as 12 baterias SQL não rodam desde setembro |
 
 **O próximo passo, nesta ordem** (consertos E1 → E2+M11 → E3):
-1. **E1:** conferir a fatia 12 no navegador.
-2. **E2 + M11 juntas:** o cabeçalho do preâmbulo, que hoje **não sai** na exportação, e o
-   marcador do número imprimindo `NÚMERO/ANO`. As duas dependem da mesma convenção de
-   `numero_edital`. ⏳ Espera uma decisão do usuário: o que fazer com o sufixo da secretaria
-   (`-SMA`).
+1. ~~**E1:** conferir a fatia 12 no navegador.~~ 🟢 **Feita em 2026-11-20** (Playwright
+   headless, banco local): tudo da lista passou; confirmou a E5 e abriu a **E9** (peso
+   `2.5` com ponto no Quadro II). Detalhe em `feita_em_2026_11_20` da E1.
+2. ~~**E2 + M11 juntas:**~~ 🟢 **Feitas em 2026-11-20** (detalhe em `feita_em_2026_11_20` das
+   duas, nos roadmaps; seção "🔵 O cabeçalho e o número publicado" abaixo). Era: o cabeçalho do
+   preâmbulo, que **não saía** na exportação, e o marcador do número imprimindo `NÚMERO/ANO`. As duas dependem da mesma convenção de
+   `numero_edital`. 🟢 **Sufixo decidido em 2026-11-19:** vira **campo próprio**, e o número
+   publicado se compõe de três partes — `004` + `2026` + `SMA` → `004/2026-SMA`, a forma
+   medida nos publicados (*"Edital Nº. 002/2026-SMA"*). Coluna nova em `editais`; detalhe em
+   `decidido_em_2026_11_19` da M11.
 3. **E3:** montar o Edital 002 inteiro e comparar com o publicado. É o controle positivo que
    fecha a v3.
 
-Depois disso, M1 a M3 (as três fontes de quadro que faltam) formam a próxima fatia.
+~~Depois disso, M1 a M3 (as três fontes de quadro que faltam) formam a próxima fatia.~~
+🔴 **Congeladas por decisão do usuário em 2026-11-19** ("não toque agora"): M1, M2, M3, M4 e
+M6 mudam o texto do modelo e não se executam — nem em parte — até ele reabrir. Fora da E1–E3,
+o que segue livre são E4, E5 e E6 (independentes). A E7 foi **fechada** no mesmo dia: manter as
+duas colunas do e-mail da vista.
 
 ## Arquivos
 
@@ -947,8 +956,11 @@ regra exige que o dado varie. Campo para constante é formulário a mais sem ver
 | parágrafo de abertura ("torna público que…") | sim | sim | sim |
 
 🔴 **Só o parágrafo entrou; o cabeçalho NÃO.** Ele é identificação pura, inteiramente derivável
-dos metadados, e sem nada a redigir — vem da exportação (fatia 12). Virar quatro artigos de
+dos metadados, e sem nada a redigir. Virar quatro artigos de
 texto seria convidar alguém a digitar à mão o que os campos já sabem, e a divergir deles.
+🔵 Ele chegou em 2026-11-20 (E2), montado do dado por `montarCabecalho` — ver "🔵 O cabeçalho e
+o número publicado". ⚠️ Até então esta frase dizia *"vem da exportação (fatia 12)"*: a fatia 12
+veio e ele não veio com ela.
 
 🎯 **E este capítulo sozinho mata um defeito medido:** `MUNICÍPIO DE V0LTA REDONDA`, com **zero
 no lugar do O** — 3 ocorrências no Edital 002, 1 no 003, nenhuma no 004. Presente em dois
@@ -975,8 +987,13 @@ escrevem assim na abertura.
 
 ⚠️ **O que NÃO virou campo:** "MUNICÍPIO DE VOLTA REDONDA" e "Administração Pública Municipal
 de Volta Redonda" ficam literais — a regra exige que o dado **varie** entre editais, e o
-município é o mesmo em todo certame desta banca. E a secretaria que **publica** não ganhou
-campo próprio: ela já está em `signatario_cargo`, e duas fontes para o mesmo fato divergem.
+município é o mesmo em todo certame desta banca. ~~E a secretaria que **publica** não ganhou
+campo próprio: ela já está em `signatario_cargo`, e duas fontes para o mesmo fato divergem.~~
+🔵 **Deixou de valer em 2026-11-20** (E2 + M11): por decisão do usuário a secretaria que publica
+ganhou **dois** campos próprios, `secretaria_publicadora` + `secretaria_sigla`, porque o número
+publicado (`002/2026-SMA`) e a 2ª linha do cabeçalho os pedem e `signatario_cargo` não os dá
+("Secretário…", não "Secretaria…", e sem sigla). ⚠️ O risco que a frase antiga apontava
+**continua**: `signatario_cargo` e `secretaria_publicadora` podem divergir, e nada os cruza.
 
 ⚠️ **Divergência deliberada do publicado:** `natureza_juridica` rende a forma de título, não a
 caixa alta que o parágrafo de abertura usa. Reproduzir a caixa alta exigiria um segundo campo
@@ -988,6 +1005,48 @@ A ênfase fica com o `**negrito**`, que é a única formatação do módulo.
 catálogo de nomes, o catálogo atrasado fazia a frase sair com **menos cargos, ou nenhum** —
 valor **errado**, não ausente: o marcador resolve, o linter cala, e o edital publicaria
 "inscrições para Agente Comunitário de Saúde" onde há dois cargos.
+
+### 🔵 O cabeçalho e o número publicado (E2 + M11, 2026-11-20)
+
+**Uma função compõe o número, e todo mundo a chama.** `comporNumeroDoEdital` (`edital-campos.ts`)
+junta `numero_edital` + `ano` + `secretaria_sigla` → `002/2026-SMA` (forma medida no publicado:
+barra antes do ano, hífen **colado** antes da sigla). Chamadores: o marcador
+`{{campo:numero_edital}}` (`useCamposDoEdital`), o cabeçalho do documento, o subtítulo do Studio
+(`NumeroDoEdital`), a linha "Sai no edital como" do Preâmbulo e o nome do arquivo exportado
+(`nomeDoArquivo` recebe o número **já composto** → edital-002-2026-sma, extensão .md).
+
+| entrada | sai |
+|---|---|
+| `002` + 2026 + `SMA` | `002/2026-SMA` |
+| sem sigla | `002/2026` — a sigla é opcional (decisão do usuário) |
+| sem número ou sem ano | `null` → `[?campo:numero_edital]` e pendência no cabeçalho |
+| número na forma ANTIGA (`002/2026-SMA` no campo) | `null`, e `problemaDoNumero` diz por quê — embaixo do input e no portão |
+
+⚠️ **A forma antiga é real:** até 2026-11-20 a dica do input mandava digitar `004/2026-SMA`.
+Compor por cima daria `004/2026-SMA/2026`, plausível o bastante para ninguém ver. Nada reescreve o
+dado: o aviso é o que o torna visível. **Produção não foi medida** (local: nenhum edital na forma
+antiga).
+
+**O cabeçalho** (`montarCabecalho`, `edital-documento.ts`) é DERIVADO, e entra em
+`DocumentoMontado.cabecalho` — `montarEditalCompleto` o exige, sem padrão. Desenhado na prévia
+(`CabecalhoDaPrevia`) e no Markdown (linhas em negrito empilhadas por quebra dura):
+
+| linha | origem | se faltar |
+|---|---|---|
+| `MUNICÍPIO DE VOLTA REDONDA` | literal (`MUNICIPIO_DO_CABECALHO`) | — |
+| `SECRETARIA MUNICIPAL DE ADMINISTRAÇÃO` | `secretaria_publicadora`, caixa alta | **some, sem pendência** — o 003 publicou sem ela |
+| `CONCURSO PÚBLICO PARA SECRETARIA …` | natureza + `PARA` + `orgao_demandante`, caixa alta | some + pendência nomeando o que falta |
+| `Edital Nº. 002/2026-SMA` | `comporNumeroDoEdital` | some + pendência (com o motivo da forma antiga, se for o caso) |
+
+⚠️ **Divergência deliberada: `PARA`, sem o artigo `A` do publicado** (decisão do usuário,
+2026-11-20). O artigo depende do gênero do órgão, e o próprio modelo já se contradiz nisso
+("para a {órgão}" no comprovante, "a critério do {órgão}" e "ao {órgão}" nas disposições
+gerais — achado registrado, texto **não** mexido: o modelo está congelado).
+
+As pendências do cabeçalho entram no portão com origem `cabecalho`, severidade erro, levando ao
+capítulo `preambulo`. Conferido no navegador em 2026-11-20 (Playwright headless, banco local):
+forma antiga → aviso + 2 pendências no portão; forma nova → as 4 linhas na prévia e portão sem
+pendência de cabeçalho.
 
 ### 🔵 O EDITAL MODELO, e a clonagem (2026-09-18)
 
@@ -1329,7 +1388,7 @@ Medido: **um** endereço presencial (a sede da FEVRE, Rua 154 nº 783) e **dois*
 
 ⚠️ **A repetição continua permitida** (CASO 5b). O ganho não é impedir que o endereço apareça duas vezes: é que seja **uma linha referenciada** em vez de quatro textos digitados à mão que podem divergir.
 
-🔴 **O risco do canal duplicado se materializou, e está mitigado, não resolvido.** O roadmap avisava que, se a fatia 5 viesse antes desta, criaria `regras_vista_prova.email_solicitacao` solto. Veio, e criou. A coluna **não foi migrada** — ela tem CHECK própria, e remodelar tabela entregue custa mais que a duplicação de um campo. A regra `email-da-vista-fora-dos-canais` torna a divergência **visível** em vez de silenciosa.
+🔴 **O risco do canal duplicado se materializou, e está mitigado, não resolvido.** O roadmap avisava que, se a fatia 5 viesse antes desta, criaria `regras_vista_prova.email_solicitacao` solto. Veio, e criou. A coluna **não foi migrada** — ela tem CHECK própria, e remodelar tabela entregue custa mais que a duplicação de um campo. A regra `email-da-vista-fora-dos-canais` torna a divergência **visível** em vez de silenciosa. 🟢 **Decisão do usuário em 2026-11-19: MANTER assim** — a migração para canal referenciado foi oferecida (E7 do roadmap de consertos) e recusada; o linter e o portão da exportação são a guarda **permanente**. Não reabrir como achado.
 
 ### 🎯 O checklist de investidura — onde o defeito de abertura do módulo morre (fatia 8, 2026-09-17)
 
@@ -1544,12 +1603,18 @@ editais
   -- 🔵 v3 fatia 1 (migration 20260916173801). TODAS ANULÁVEIS: produção tem 3 editais
   -- sem nenhum destes dados, e o seed carrega DEPOIS das migrations — um NOT NULL aqui
   -- quebraria o `db reset`, a mesma armadilha que deixou `provas.edital_id` nullable.
-  numero_edital     text       -- ⚠️ SEM CHECK de formato: "002/2026-SMA" é real
+  numero_edital     text       -- ⚠️ SEM CHECK de formato. 🔵 Desde 2026-11-20 guarda SÓ o número
+                               -- ("002"); o publicado "002/2026-SMA" é COMPOSTO (comporNumeroDoEdital)
   ano               integer
   natureza_juridica text       -- CHECK: CONCURSO_PUBLICO | PROCESSO_SELETIVO
   orgao_demandante / entidade_executora / decreto_autorizador / regime_trabalho  text
   prazo_validade_anos integer  -- CHECK > 0
   prorrogavel       boolean
+
+  -- 🔵 E2 + M11 (migration 20261120195428), anuláveis e sem CHECK. Quem PUBLICA (não o
+  -- órgão demandante): o nome é a 2ª linha do cabeçalho, a sigla o sufixo do número.
+  secretaria_publicadora text
+  secretaria_sigla       text
 
 edital_capitulos                       -- 🔵 v3 fatia 1
   id                uuid PK

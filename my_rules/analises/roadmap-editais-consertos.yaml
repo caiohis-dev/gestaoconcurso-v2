@@ -8,7 +8,7 @@
 roadmap:
   titulo: "Editais — consertos (defeitos, dívidas e verificações pendentes)"
   criado: "2026-11-16"
-  status: "⏳ NÃO INICIADO — levantamento feito, premissas-chave conferidas no código em 16/11"
+  status: "⏳ NÃO INICIADO — levantamento feito, premissas-chave conferidas no código em 16/11; E7 FECHADA por decisão (19/11)"
 
   origem: >
     Leitura geral de 2026-11-16: o 00-modulo.md inteiro (1773 linhas), o backlog, o
@@ -39,6 +39,28 @@ roadmap:
         - "Abrir o .md baixado: alíneas como `a\\)`, `7.1.` sem barra, quebra dura nas ementas, tabelas de pipe."
         - "Botão 'Campos do edital' (busca sem acento, copiar marcador, valor atual); cartão da vista em Recursos da prova objetiva; campo de leis no cartão de PCD."
       custo: "só tempo de tela — o dev server já roda em http://localhost:8080"
+      feita_em_2026_11_20: >
+        🟢 FEITA, com Playwright headless (Chrome do sistema; playwright-core instalado só no
+        scratchpad, fora do package.json) contra o dev server e o banco local, no Edital 003
+        (modelo aplicado, 377 artigos) acrescido de dados mínimos por SQL (1 cargo, 1 disciplina,
+        1 ementa de 3 linhas, 1 etapa). Nenhum erro de console em nenhum passo.
+        PASSOU: 'Quadro I/II/III' sobre cada tabela; Anexo I único (certo: o 003 não tem
+        territorialidade, e o teste de anexosDoDocumento afirma isso); pendência nomeada no lugar
+        do quadro/anexo vazio; 179 caixas, Baixar travado com 178 marcadas e liberado com 179;
+        artigo não salvo → recusa sem botão de baixar (e nada gravado); consulta em erro
+        (cronograma_etapas e conteudo_programatico, 500 simulado) → recusa nomeando a tabela;
+        .md com `a\)`, `7.1.` sem barra, quebra dura `\` na ementa e na assinatura, tabelas de
+        pipe com `|` escapado na célula; 'Campos do edital' acha 'Órgão' digitando 'orgao',
+        mostra '= 004' no campo preenchido e 'vazio — sairia como …' no vazio, copia o marcador
+        (o retorno é o ícone virar check, não toast); cartão 'Vista da folha de respostas' no
+        cap. 12; 'Leis que fundamentam a reserva' no cartão de PCD.
+        CONFIRMOU A E5 no navegador: com a consulta em erro, a prévia diz 'Cronograma sem nenhuma
+        etapa' e 'Nenhuma ementa cadastrada' havendo etapa e ementa.
+        ACHADO NOVO: o peso por questão do Quadro II sai '2.5' (ponto) na prévia e no .md, ao
+        lado de 'R$ 2.345,67' no Quadro I — `String(x.peso_por_questao)` em
+        edital-documento.ts. Ver E9.
+        NÃO coberto: o cabeçalho empilhado do preâmbulo (já é a E2 — e a prévia também não o
+        mostra, confirmado: ela abre direto no texto do preâmbulo).
 
     - id: E2
       nome: "O cabeçalho do preâmbulo NÃO sai na exportação"
@@ -55,11 +77,28 @@ roadmap:
         - "O documento montado ganha o cabeçalho pré-textual, derivado dos metadados de `editais` — nunca digitado: é exatamente o que a rodada 2 recusou transcrever para ninguém digitar à mão o que os campos sabem."
         - "A prévia e o Markdown o desenham (a prévia hoje também não o mostra — conferir na E1 e tratar junto)."
         - "Metadado faltando (ex.: numero_edital nulo) vira pendência nomeada no portão, não linha em branco."
+      convencao_do_numero: >
+        🟢 Destravada em 2026-11-19: a linha do nº do edital usa a composição de TRÊS
+        partes (número/ano-sufixo, `002/2026-SMA`) da M11 do roadmap de melhorias —
+        fazer as duas juntas, chamando a mesma função pura.
       decidir_antes: >
         A forma exata (quais linhas, em que ordem, caixa alta) sai dos DOIS publicados
         que o têm — medir no 002 e no 003 antes de desenhar, como a rodada 2 fez com o
         parágrafo de abertura.
       custo: "pequeno — função pura + projeções; nenhuma migration"
+      feita_em_2026_11_20: |
+        🟢 Junto com a M11 (roadmap de melhorias). Medido antes: 002 empilha 4 linhas
+        (município · SECRETARIA MUNICIPAL DE ADMINISTRAÇÃO · natureza PARA A órgão · Edital Nº.
+        002/2026-SMA); o 003 NÃO tem a linha da secretaria; o 004 não tem cabeçalho transcrito.
+        · Decisões do usuário no dia: a 2ª linha vem de um campo próprio ASSOCIADO à sigla
+          (`secretaria_publicadora` + `secretaria_sigla`, migration 20261120195428 — o "nenhuma
+          migration" do custo acima caiu por isso); a linha do certame usa "PARA", sem o artigo.
+        · `montarCabecalho` (edital-documento.ts) → `DocumentoMontado.cabecalho`, obrigatório
+          em `montarEditalCompleto`; prévia e Markdown o desenham; falta vira pendência de
+          origem `cabecalho` no portão (a da secretaria não: o 003 publicou sem ela).
+        · Testes com controle positivo (o 002 inteiro) e 3 guardas falsificadas; conferido no
+          navegador (Playwright headless). Detalhe: 00-modulo.md, "🔵 O cabeçalho e o número
+          publicado".
 
     - id: E3
       nome: "Etapa 5 da fatia 12: Edital 002 inteiro × publicado"
@@ -132,6 +171,11 @@ roadmap:
         - "Apresentar ao usuário as duas saídas: (a) manter como está, linter+portão como guarda permanente — custo zero, divergência segue possível; (b) migrar para canal referenciado (coluna vira FK ou some; VistaDaFolha passa a escolher/criar canal; migration + dados + bateria) — mata a classe do defeito."
         - "Se (a): registrar a decisão aqui e no 00-modulo.md e FECHAR o item, para não ser reaberto como achado."
       custo: "(a) zero · (b) médio-alto"
+      decidido_em_2026_11_19: >
+        🟢 FECHADO — (a) MANTER. As duas colunas seguem; a regra
+        email-da-vista-fora-dos-canais (linter + portão da exportação) é a guarda
+        PERMANENTE, não provisória. Registrado no 00-modulo.md e em invariantes.md.
+        Não reabrir como achado de auditoria (está em nao_sao_consertos abaixo).
 
     - id: E8
       nome: "Dívidas de transição: prova_edital CHAR(30), edital_id NULLABLE, n_candidatos órfã"
@@ -145,6 +189,21 @@ roadmap:
         - "Se um dia for feito, no MESMO passe: migration de DROP + cirurgia no dump + ajuste do seed.pos.sql (o backfill lê prova_edital) + db reset completo."
         - "Até lá, a regra que já vale: nenhum código novo lê prova_edital; a obrigatoriedade de edital_id vive no Zod."
       custo: "alto, risco alto, ganho baixo — está aqui para o inventário ficar completo"
+
+    - id: E9
+      nome: "Peso por questão sai com PONTO decimal ('2.5') no Quadro II"
+      prioridade: "🟡 — achado da E1; barato, mas confirmar a forma publicada antes"
+      premissa_conferida: >
+        2026-11-20, no navegador (E1): Quadro II da prévia e do .md mostram '2.5' ao lado de
+        'R$ 2.345,67' no Quadro I. A causa é `String(x.peso_por_questao)` em
+        src/lib/edital-documento.ts (montagem do quadro de disciplinas) — o numeric chega do
+        PostgREST como número JS e vira texto em formato en-US. Só aparece com peso
+        fracionário; com peso inteiro ('2') não se nota, e por isso nenhum teste pegou.
+      entrega:
+        - "Conferir no 002 publicado como o peso está impresso (vírgula? casas fixas, '2,50'?) — é ele que define o formato, não a suposição."
+        - "Formatar em pt-BR na montagem (um só lugar: prévia e .md desenham o mesmo documento)."
+        - "Teste com peso FRACIONÁRIO afirmando o texto exato — e falsificá-lo voltando ao String()."
+      custo: "baixo — uma linha + teste; pode ir junto da E3, que abre o publicado de qualquer forma"
 
   # ═══════════════════════════════════════════════════════════════════════════
   nao_sao_consertos: |
@@ -167,6 +226,9 @@ roadmap:
       limite documentado no próprio teste.
     · Capítulo `anexos` desligado desliga os dois anexos — regra declarada no catálogo
       de anexos, não esquecimento.
+    · O e-mail da vista em DUAS colunas (`regras_vista_prova.email_solicitacao` ×
+      `edital_canais_atendimento`) — decisão do usuário de 2026-11-19 (E7, saída a):
+      manter, com o linter e o portão como guarda permanente.
 
   riscos: |
     R1. 🔴 A E3 é a etapa que pode REABRIR itens: montar o 002 inteiro vai esfregar o

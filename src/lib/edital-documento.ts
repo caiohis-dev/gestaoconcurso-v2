@@ -23,7 +23,14 @@ import {
   type ItemBruto,
   type QuadroFonte,
 } from "@/lib/edital-itens";
-import { resolverARedigir, resolverCampos } from "@/lib/edital-campos";
+import {
+  comporNumeroDoEdital,
+  formatarNatureza,
+  formatarTexto,
+  problemaDoNumero,
+  resolverARedigir,
+  resolverCampos,
+} from "@/lib/edital-campos";
 import { formatarDatasDaEtapa, type EtapaCronograma } from "@/lib/edital-cronograma";
 import type { Disciplina } from "@/lib/edital-prova";
 import type { TituloItem } from "@/lib/edital-titulos";
@@ -339,7 +346,85 @@ export interface AnexoMontado {
   pendencia: string | null;
 }
 
+/**
+ * O que o cabeçalho lê de `editais` — as colunas CRUAS, não o mapa de valores: a 2ª linha
+ * (`secretaria_publicadora`) não é marcador, e o porquê de um número não compor
+ * (`problemaDoNumero`) precisa do valor gravado.
+ */
+export interface DadosDoCabecalho {
+  numero_edital: string | null;
+  ano: number | null;
+  secretaria_sigla: string | null;
+  secretaria_publicadora: string | null;
+  natureza_juridica: string | null;
+  orgao_demandante: string | null;
+}
+
+export interface CabecalhoMontado {
+  /** As linhas que SAEM, na ordem, já na forma impressa. */
+  linhas: string[];
+  /** O que falta para o cabeçalho sair inteiro — cada uma nomeia onde preencher. */
+  pendencias: string[];
+}
+
+/** Literal, como no parágrafo de abertura: o município é o mesmo em todo certame desta banca. */
+export const MUNICIPIO_DO_CABECALHO = "MUNICÍPIO DE VOLTA REDONDA";
+
+/**
+ * O cabeçalho pré-textual (E2, 2026-11-20) — DERIVADO, nunca digitado.
+ *
+ * Medido nos publicados (`my_rules/modulo_editais/`):
+ *
+ * | linha | 002 | 003 | daqui |
+ * |---|---|---|---|
+ * | `MUNICÍPIO DE VOLTA REDONDA` | ✅ | ✅ | literal (e sem o zero no lugar do O que os dois têm) |
+ * | `SECRETARIA MUNICIPAL DE ADMINISTRAÇÃO` | ✅ | — | `secretaria_publicadora`, só se preenchida |
+ * | `CONCURSO PÚBLICO PARA A SECRETARIA …` | ✅ | ✅ | natureza + **`PARA`** + órgão demandante |
+ * | `Edital Nº. 002/2026-SMA` | ✅ | ✅ | `comporNumeroDoEdital` |
+ *
+ * ⚠️ **Divergência deliberada: `PARA`, sem o artigo `A`** (decisão do usuário, 2026-11-20).
+ * O artigo depende do gênero do órgão, e o modelo já erra isso entre capítulos ("para a
+ * {órgão}" no comprovante, "a critério do {órgão}" nas disposições gerais).
+ *
+ * As três primeiras saem em CAIXA ALTA, como nos publicados — é tipografia desta posição, o
+ * mesmo campo que o parágrafo de abertura escreve em forma de título. A do número não: o
+ * publicado escreve "Edital Nº.".
+ *
+ * Linha que falta NÃO vira linha em branco: some, e entra em `pendencias`, que o portão
+ * cobra e a prévia/o Markdown mostram. A da secretaria é a exceção — ela é opcional (o 003
+ * não a tem), então ausência é forma válida, não pendência.
+ */
+export function montarCabecalho(d: DadosDoCabecalho): CabecalhoMontado {
+  const caixaAlta = (t: string) => t.toLocaleUpperCase("pt-BR");
+  const linhas = [MUNICIPIO_DO_CABECALHO];
+  const pendencias: string[] = [];
+
+  const secretaria = formatarTexto(d.secretaria_publicadora);
+  if (secretaria) linhas.push(caixaAlta(secretaria));
+
+  const natureza = formatarNatureza(d.natureza_juridica);
+  const orgao = formatarTexto(d.orgao_demandante);
+  if (natureza && orgao) linhas.push(caixaAlta(`${natureza} para ${orgao}`));
+  else {
+    const falta = [!natureza && "a natureza jurídica", !orgao && "o órgão demandante"].filter(Boolean).join(" e ");
+    pendencias.push(`Cabeçalho sem a linha do certame: falta ${falta} (preencha no Preâmbulo).`);
+  }
+
+  const numero = comporNumeroDoEdital({ numero: d.numero_edital, ano: d.ano, sigla: d.secretaria_sigla });
+  if (numero) linhas.push(`Edital Nº. ${numero}`);
+  else {
+    pendencias.push(
+      `Cabeçalho sem o número do edital: ${
+        problemaDoNumero(d.numero_edital) ?? "preencha o número e o ano no Preâmbulo."
+      }`,
+    );
+  }
+  return { linhas, pendencias };
+}
+
 export interface DocumentoMontado {
+  /** O cabeçalho pré-textual, antes do primeiro capítulo. */
+  cabecalho: CabecalhoMontado;
   /** Só os capítulos INCLUÍDOS, na ordem do documento. */
   capitulos: CapituloMontado[];
   /** Os anexos que entram, numerados, na ordem em que saem — depois do último capítulo. */
@@ -430,6 +515,11 @@ export function montarEditalCompleto(entrada: {
   quadros: DadosDosQuadros | undefined;
   /** Os dois anexos. `undefined` → os anexos saem numerados, mas sem conteúdo (`null`). */
   anexos?: DadosDosAnexos;
+  /**
+   * As colunas do cabeçalho. OBRIGATÓRIO, sem padrão: um cabeçalho implícito vazio seria a
+   * E2 voltando — o documento saindo sem ele e sem ninguém notar.
+   */
+  cabecalho: DadosDoCabecalho;
 }): DocumentoMontado {
   const { documento, porCapitulo, valores, quadros } = entrada;
   const itensDe = (chave: string) => ordenarItens([...(porCapitulo.get(chave) ?? [])]);
@@ -465,6 +555,7 @@ export function montarEditalCompleto(entrada: {
   });
 
   return {
+    cabecalho: montarCabecalho(entrada.cabecalho),
     anexos,
     capitulos: documento
       .filter((c) => c.incluido)

@@ -16,7 +16,7 @@
 import { useMemo, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import Layout from "@/components/Layout";
-import { useEdital } from "@/hooks/useEdital";
+import { useEdital, type EditalMetadados } from "@/hooks/useEdital";
 import { useEditalItens } from "@/hooks/useEditalItens";
 import { useLinhasPorFonte } from "@/hooks/useQuadrosDoEdital";
 import { useCamposDoEdital } from "@/hooks/useCamposDoEdital";
@@ -24,7 +24,8 @@ import { useAvisarAoSair } from "@/hooks/useAvisarAoSair";
 import { analisarEdital, resumoDoLinter, type Achado } from "@/lib/edital-linter";
 import type { CapituloResolvido } from "@/lib/edital-numeracao";
 import type { ItemBruto } from "@/lib/edital-itens";
-import { rotuloDoNumero, type CapituloMontado } from "@/lib/edital-documento";
+import { rotuloDoNumero, type CabecalhoMontado, type CapituloMontado } from "@/lib/edital-documento";
+import { comporNumeroDoEdital } from "@/lib/edital-campos";
 import { useDocumentoDoEdital } from "@/hooks/useDocumentoDoEdital";
 import {
   ArtigosDoCapitulo,
@@ -370,6 +371,35 @@ function BotaoDePendencias({
   );
 }
 
+/**
+ * "Edital nº 004/2026-SMA" sob o nome — pelo MESMO `comporNumeroDoEdital` do marcador, do
+ * cabeçalho e do arquivo (M11). Componente próprio: os `?.` no corpo de `EditalStudio`
+ * passariam de 15 de complexidade no lint.
+ */
+function NumeroDoEdital({ edital }: { edital: EditalMetadados | undefined }) {
+  const numero = edital
+    ? comporNumeroDoEdital({ numero: edital.numero_edital, ano: edital.ano, sigla: edital.secretaria_sigla })
+    : null;
+  if (numero) return <>Edital nº {numero}</>;
+  return <>{edital?.numero_edital?.trim() ? "Número do edital incompleto — ver Preâmbulo" : "Número do edital não informado"}</>;
+}
+
+/** O cabeçalho pré-textual na prévia: linhas centradas, pendência visível no lugar da falta. */
+function CabecalhoDaPrevia({ cabecalho }: { cabecalho: CabecalhoMontado }) {
+  return (
+    <header className="space-y-0.5 border-b pb-3 text-center text-sm font-semibold">
+      {cabecalho.linhas.map((l) => (
+        <p key={l}>{l}</p>
+      ))}
+      {cabecalho.pendencias.map((p) => (
+        <p key={p} className="text-xs font-normal text-destructive">
+          {p}
+        </p>
+      ))}
+    </header>
+  );
+}
+
 /** A prévia do documento montado, numa gaveta lateral. */
 function BotaoDePrevia({ editalId }: { editalId: string | undefined }) {
   // Sem prop drilling: é o mesmo cache do React Query que os painéis já usam.
@@ -402,7 +432,9 @@ function BotaoDePrevia({ editalId }: { editalId: string | undefined }) {
                 <Loader2 className="h-6 w-6 animate-spin text-primary" aria-label="Montando o documento" />
               </div>
             ) : (
-              documento.capitulos.map((cap) => (
+              <>
+              <CabecalhoDaPrevia cabecalho={documento.cabecalho} />
+              {documento.capitulos.map((cap) => (
                 <section key={cap.chave} className="space-y-1">
                   <h3 className="text-sm font-semibold uppercase">
                     {cap.numero !== null && `${cap.numero}. `}
@@ -410,7 +442,8 @@ function BotaoDePrevia({ editalId }: { editalId: string | undefined }) {
                   </h3>
                   <CorpoDoCapitulo capitulo={cap} />
                 </section>
-              ))
+              ))}
+              </>
             )}
             {/* Os anexos saem DEPOIS do fecho, como nos três editais publicados. */}
             {documento?.anexos.map((anexo) => <AnexoDoEdital key={anexo.chave} anexo={anexo} />)}
@@ -608,7 +641,7 @@ export default function EditalStudio() {
           <div>
             <h1 className="text-2xl font-bold text-foreground">{edital?.nome}</h1>
             <p className="text-muted-foreground">
-              {edital?.numero_edital ? `Edital nº ${edital.numero_edital}` : "Número do edital não informado"}
+              <NumeroDoEdital edital={edital} />
             </p>
           </div>
           {/*

@@ -31,7 +31,7 @@ export interface PendenciaDeExportacao {
    * renumerar, outro motivo), a confirmação antiga não vale para a nova.
    */
   id: string;
-  origem: "linter" | "painel" | "quadro" | "anexo";
+  origem: "linter" | "painel" | "cabecalho" | "quadro" | "anexo";
   severidade: Severidade;
   /** Chave do capítulo, para levar a pessoa até lá. `null` nos anexos. */
   capitulo: string | null;
@@ -61,6 +61,13 @@ export function pendenciasDaExportacao(entrada: {
       severidade: a.severidade,
       capitulo: a.capitulo,
       texto: `${tituloDe(a.capitulo)} — ${a.mensagem}`,
+    })),
+    // O cabeçalho é DERIVADO do Preâmbulo — é lá que se resolve, e é para lá que leva.
+    ...entrada.documento.cabecalho.pendencias.map((texto) => ({
+      origem: "cabecalho" as const,
+      severidade: "erro" as const,
+      capitulo: "preambulo",
+      texto,
     })),
     ...entrada.documento.capitulos.flatMap((c) =>
       c.artigos
@@ -125,11 +132,15 @@ export function avaliarExportacao(entrada: {
 }
 
 /**
- * `edital-002-2026.md` a partir do número; sem número, do nome. Sem acento nem espaço —
- * o arquivo vai para pasta, e-mail e git.
+ * `edital-002-2026-sma.md` a partir do número COMPOSTO; sem ele, do nome. Sem acento, espaço
+ * nem barra — o arquivo vai para pasta, e-mail e git.
+ *
+ * 🔵 Desde 2026-11-20 (M11) recebe o número já composto (`002/2026-SMA`, de
+ * `comporNumeroDoEdital`), não a coluna crua: um nome de arquivo com outra regra de
+ * composição seria a terceira cópia que a M11 proíbe.
  */
-export function nomeDoArquivo(edital: { nome?: string | null; numero_edital?: string | null } | null | undefined): string {
-  const base = edital?.numero_edital?.trim() ? `edital-${edital.numero_edital}` : edital?.nome?.trim() || "edital";
+export function nomeDoArquivo(edital: { nome?: string | null; numeroComposto?: string | null } | null | undefined): string {
+  const base = edital?.numeroComposto?.trim() ? `edital-${edital.numeroComposto}` : edital?.nome?.trim() || "edital";
   const slug = base
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")

@@ -17,6 +17,8 @@ import {
   CAMPOS_CATALOGO,
   CAMPO_POR_CHAVE,
   camposDoTexto,
+  comporNumeroDoEdital,
+  problemaDoNumero,
   resolverCampos,
   formatarDataExtenso,
   formatarHora,
@@ -245,5 +247,42 @@ describe("o quarto marcador: `{{redigir:}}`", () => {
     const t = "o **{{campo:site_oficial}}** e {{redigir:o resto}}";
     expect(trechosARedigir(t)).toEqual(["o resto"]);
     expect(camposDoTexto(t).map((c) => c.chave)).toEqual(["site_oficial"]);
+  });
+});
+
+describe("🔴 comporNumeroDoEdital — a ÚNICA composição do número (M11)", () => {
+  const p = { numero: "004", ano: 2026, sigla: "SMA" };
+
+  it("controle positivo: 004 + 2026 + SMA → a forma do publicado, hífen colado", () => {
+    expect(comporNumeroDoEdital(p)).toBe("004/2026-SMA");
+  });
+
+  it("sem sigla compõe número/ano (a sigla é opcional)", () => {
+    expect(comporNumeroDoEdital({ ...p, sigla: null })).toBe("004/2026");
+    expect(comporNumeroDoEdital({ ...p, sigla: "  " })).toBe("004/2026");
+  });
+
+  it("espaço nas pontas não entra", () => {
+    expect(comporNumeroDoEdital({ numero: " 004 ", ano: 2026, sigla: " SMA " })).toBe("004/2026-SMA");
+  });
+
+  it.each([
+    ["sem número", { ...p, numero: null }],
+    ["número vazio", { ...p, numero: "   " }],
+    ["sem ano", { ...p, ano: null }],
+    ["ano NaN (input apagado)", { ...p, ano: Number.NaN }],
+  ])("🔴 %s → null, nunca '004/' nem 'null/2026'", (_n, partes) => {
+    expect(comporNumeroDoEdital(partes)).toBeNull();
+  });
+
+  it("🔴 número na forma ANTIGA (já com barra) NÃO compõe — senão sairia 004/2026-SMA/2026", () => {
+    expect(comporNumeroDoEdital({ ...p, numero: "004/2026-SMA" })).toBeNull();
+    expect(comporNumeroDoEdital({ ...p, numero: "004/2026" })).toBeNull();
+  });
+
+  it("problemaDoNumero diz o que fazer — e cala para o número certo (controle)", () => {
+    expect(problemaDoNumero("004/2026-SMA")).toMatch(/já traz o ano.*Preencha só o número/);
+    expect(problemaDoNumero("004")).toBeNull();
+    expect(problemaDoNumero(null)).toBeNull();
   });
 });

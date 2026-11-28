@@ -115,7 +115,7 @@ roadmap:
         `useDocumentoDoEdital`, `useDadosDosQuadros`. A prévia e o `QuadroDoArtigo` passaram a
         desenhar o documento montado. No caminho, `useLinhasPorFonte` deixou de devolver zeros
         enquanto carrega. Testes: edital-documento (17) e useQuadrosDoEdital (2), cada caso
-        falsificado. ⚠️ A prévia NÃO foi conferida no navegador.
+        falsificado. ⚠️ A prévia NÃO foi conferida no navegador. 🔵 Conferida em 2026-11-20 (E1 do roadmap de consertos).
       entrega:
         - "Função pura em src/lib/: recebe capítulos, itens, valores dos campos e o dado dos quadros e anexos; devolve o documento montado (numerado, texto resolvido, quadros como linhas)."
         - "Extrair a cadeia de resolução dos 4 marcadores do EditalStudio; a prévia passa a consumir a função (A3)."
@@ -131,7 +131,7 @@ roadmap:
         {{anexo:}} e {{quadro:}}, duas regras novas no linter. Decisão do usuário: o texto do
         modelo NÃO muda (segue "como anexo deste Edital"). Testes: edital-anexos (16),
         edital-documento (+5), edital-linter (+5), cada guarda falsificada.
-        ⚠️ A prévia NÃO foi conferida no navegador.
+        ⚠️ A prévia NÃO foi conferida no navegador. 🔵 Conferida em 2026-11-20 (E1 do roadmap de consertos).
       entrega:
         - "Conteúdo programático e áreas de abrangência entram no documento montado (A1)."
         - "Numeração de anexo e de quadro, que resolve o item do backlog — {{anexo:}} vem aqui ou fica explicitamente para depois."
@@ -160,7 +160,7 @@ roadmap:
         todas"). Decisão tomada aqui: RASCUNHO NÃO SALVO RECUSA, não avisa — confirmar não faz
         o arquivo igual à tela. Falha também recusa sem confirmação. Testes: 19 + 3 + 6, com
         10 falsificações; a confirmação por CONTAGEM sobreviveu à primeira suíte e ganhou caso.
-        ⚠️ Nem o diálogo nem a prévia foram conferidos no navegador.
+        ⚠️ Nem o diálogo nem a prévia foram conferidos no navegador. 🔵 Conferidos em 2026-11-20 (E1 do roadmap de consertos).
       aberto_para_decisao_RESOLVIDO: >
         🔵 RESOLVIDO no mesmo dia: o usuário decidiu incluir as dez, e elas entraram
         (`edital-conferencias.ts`, `useDadosDasConferencias`; as entradas que os painéis

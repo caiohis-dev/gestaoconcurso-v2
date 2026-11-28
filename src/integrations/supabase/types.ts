@@ -859,6 +859,8 @@ export type Database = {
           prazo_validade_anos: number | null
           prorrogavel: boolean | null
           regime_trabalho: string | null
+          secretaria_publicadora: string | null
+          secretaria_sigla: string | null
           signatario_cargo: string | null
           signatario_nome: string | null
           site_oficial: string | null
@@ -886,6 +888,8 @@ export type Database = {
           prazo_validade_anos?: number | null
           prorrogavel?: boolean | null
           regime_trabalho?: string | null
+          secretaria_publicadora?: string | null
+          secretaria_sigla?: string | null
           signatario_cargo?: string | null
           signatario_nome?: string | null
           site_oficial?: string | null
@@ -913,6 +917,8 @@ export type Database = {
           prazo_validade_anos?: number | null
           prorrogavel?: boolean | null
           regime_trabalho?: string | null
+          secretaria_publicadora?: string | null
+          secretaria_sigla?: string | null
           signatario_cargo?: string | null
           signatario_nome?: string | null
           site_oficial?: string | null

@@ -15,6 +15,7 @@ import { montarDocumento } from "@/lib/edital-numeracao";
 import { ancorasDoDocumento, type ItemBruto } from "@/lib/edital-itens";
 import {
   matrizDaProva,
+  montarCabecalho,
   montarEditalCompleto,
   montarQuadro,
   quadroDeCargos,
@@ -23,8 +24,19 @@ import {
   resolverMarcadores,
   rotuloDoNumero,
   vagasPorArea,
+  type DadosDoCabecalho,
   type DadosDosQuadros,
 } from "@/lib/edital-documento";
+
+/** O cabeçalho do Edital 002/2026 como publicado — completo, então não gera pendência. */
+const CABECALHO_002: DadosDoCabecalho = {
+  numero_edital: "002",
+  ano: 2026,
+  secretaria_sigla: "SMA",
+  secretaria_publicadora: "Secretaria Municipal de Administração",
+  natureza_juridica: "CONCURSO_PUBLICO",
+  orgao_demandante: "Secretaria Municipal de Educação",
+};
 
 let seq = 0;
 function artigo(capitulo_chave: string, p: Partial<ItemBruto> = {}): ItemBruto {
@@ -110,7 +122,7 @@ describe("resolverMarcadores — a cadeia dos seis marcadores", () => {
 
 describe("montarEditalCompleto", () => {
   it("só capítulos INCLUÍDOS, na ordem, com o número calculado", () => {
-    const doc = montarEditalCompleto({
+    const doc = montarEditalCompleto({ cabecalho: CABECALHO_002,
       documento: montarDocumento(),
       porCapitulo: new Map(),
       valores: new Map(),
@@ -134,7 +146,7 @@ describe("montarEditalCompleto", () => {
       artigo("disposicoes_preliminares", { nivel: 2, texto: "alínea" }),
       artigo("quadro_de_cargos", { texto: "conforme {{item:alvo}}" }),
     ];
-    const doc = montarEditalCompleto({
+    const doc = montarEditalCompleto({ cabecalho: CABECALHO_002,
       documento: montarDocumento(),
       porCapitulo: porCapitulo(itens),
       valores: new Map(),
@@ -155,7 +167,7 @@ describe("montarEditalCompleto", () => {
   it("ordena pela `ordem` gravada, não pela ordem em que os registros chegaram", () => {
     const a = artigo("disposicoes_preliminares", { ordem: 2, texto: "depois" });
     const b = artigo("disposicoes_preliminares", { ordem: 1, texto: "antes" });
-    const doc = montarEditalCompleto({
+    const doc = montarEditalCompleto({ cabecalho: CABECALHO_002,
       documento: montarDocumento(),
       porCapitulo: porCapitulo([a, b]),
       valores: new Map(),
@@ -176,7 +188,7 @@ describe("montarEditalCompleto", () => {
       artigo("prova_objetiva", { nivel: 2, ancora: "alinea_x" }),
     ];
     const pc = porCapitulo(itens);
-    const doc = montarEditalCompleto({ documento, porCapitulo: pc, valores: new Map(), quadros: undefined });
+    const doc = montarEditalCompleto({ cabecalho: CABECALHO_002, documento, porCapitulo: pc, valores: new Map(), quadros: undefined });
 
     const doLinter = ancorasDoDocumento(
       documento.map((c) => ({ chave: c.chave, numero: c.numero, incluido: c.incluido, itens: pc.get(c.chave) ?? [] })),
@@ -194,7 +206,7 @@ describe("montarEditalCompleto", () => {
       artigo("prova_de_titulos", { ancora: "titulos" }),
       artigo("disposicoes_preliminares", { texto: "ver {{item:titulos}}" }),
     ];
-    const doc = montarEditalCompleto({
+    const doc = montarEditalCompleto({ cabecalho: CABECALHO_002,
       documento: montarDocumento(),
       porCapitulo: porCapitulo(itens),
       valores: new Map(),
@@ -210,13 +222,13 @@ describe("montarEditalCompleto", () => {
     const itens = [artigo("quadro_de_cargos", { tipo: "quadro", quadro_fonte: "cargos", texto: "Quadro I" })];
     const entrada = { documento: montarDocumento(), porCapitulo: porCapitulo(itens), valores: new Map() };
 
-    const sem = montarEditalCompleto({ ...entrada, quadros: undefined });
+    const sem = montarEditalCompleto({ cabecalho: CABECALHO_002, ...entrada, quadros: undefined });
     const comArtigo = (d: typeof sem) => d.capitulos.find((c) => c.chave === "quadro_de_cargos")!.artigos[0];
     expect(comArtigo(sem).quadro).toBeNull();
     // A legenda é numerada: o Quadro I é o item 2.1 no Edital 002.
     expect(comArtigo(sem).numero).toBe("2.1");
 
-    const com = montarEditalCompleto({ ...entrada, quadros: SEM_DADOS });
+    const com = montarEditalCompleto({ cabecalho: CABECALHO_002, ...entrada, quadros: SEM_DADOS });
     expect(comArtigo(com).quadro?.fonte).toBe("cargos");
     expect(comArtigo(com).quadro?.pendencia).toMatch(/Nenhum cargo/);
   });
@@ -335,7 +347,7 @@ describe("os ANEXOS no documento montado", () => {
   });
 
   it("saem DEPOIS dos capítulos, numerados — e sem dado, numerados mas sem conteúdo", () => {
-    const doc = montarEditalCompleto({
+    const doc = montarEditalCompleto({ cabecalho: CABECALHO_002,
       documento: montarDocumento(),
       porCapitulo: new Map(),
       valores: new Map(),
@@ -347,7 +359,7 @@ describe("os ANEXOS no documento montado", () => {
   });
 
   it("conteúdo: comuns primeiro, depois cada cargo na ordem do Quadro I; cargo de fora vai para o fim, NÃO some", () => {
-    const doc = montarEditalCompleto({
+    const doc = montarEditalCompleto({ cabecalho: CABECALHO_002,
       documento: montarDocumento(),
       porCapitulo: new Map(),
       valores: new Map(),
@@ -372,7 +384,7 @@ describe("os ANEXOS no documento montado", () => {
   });
 
   it("🔴 anexo sem nenhuma linha vira PENDÊNCIA nomeada, nunca um anexo em branco", () => {
-    const doc = montarEditalCompleto({
+    const doc = montarEditalCompleto({ cabecalho: CABECALHO_002,
       documento: montarDocumento([{ chave: "distribuicao_geografica", incluido: true }]),
       porCapitulo: new Map(),
       valores: new Map(),
@@ -396,7 +408,7 @@ describe("os ANEXOS no documento montado", () => {
     };
     const linha = (id: string, u: string, ordem: number, bairro: string | null, logradouro: string) =>
       ({ id, unidade_lotacao_id: u, ordem, bairro, logradouro });
-    const doc = montarEditalCompleto({
+    const doc = montarEditalCompleto({ cabecalho: CABECALHO_002,
       documento: montarDocumento([{ chave: "distribuicao_geografica", incluido: true }]),
       porCapitulo: new Map(),
       valores: new Map(),
@@ -425,7 +437,7 @@ describe("os ANEXOS no documento montado", () => {
       artigo("prova_objetiva", { tipo: "quadro", quadro_fonte: "disciplinas", texto: "Matriz", ancora: "matriz" }),
       artigo("disposicoes_preliminares", { texto: "conforme Quadro {{quadro:matriz}} e Anexo {{anexo:conteudo_programatico}}" }),
     ];
-    const doc = montarEditalCompleto({
+    const doc = montarEditalCompleto({ cabecalho: CABECALHO_002,
       documento: montarDocumento(),
       porCapitulo: porCapitulo(itens),
       valores: new Map(),
@@ -438,5 +450,71 @@ describe("os ANEXOS no documento montado", () => {
     ]);
     expect(artigos.find((a) => a.tipo === "item")!.texto).toBe("conforme Quadro II e Anexo I");
     expect(artigos.find((a) => a.tipo === "item")!.numeroDoQuadro).toBeNull();
+  });
+});
+
+describe("🔴 o CABEÇALHO pré-textual (E2) — medido nos publicados", () => {
+  it("controle positivo: o Edital 002 sai com as QUATRO linhas do publicado", () => {
+    expect(montarCabecalho(CABECALHO_002)).toEqual({
+      linhas: [
+        "MUNICÍPIO DE VOLTA REDONDA",
+        "SECRETARIA MUNICIPAL DE ADMINISTRAÇÃO",
+        // ⚠️ "PARA", sem o "A" do publicado — decisão do usuário, 2026-11-20.
+        "CONCURSO PÚBLICO PARA SECRETARIA MUNICIPAL DE EDUCAÇÃO",
+        "Edital Nº. 002/2026-SMA",
+      ],
+      pendencias: [],
+    });
+  });
+
+  it("o município sai com O, não com o ZERO que viajou do 002 para o 003", () => {
+    expect(montarCabecalho(CABECALHO_002).linhas[0]).not.toMatch(/V0LTA/);
+  });
+
+  it("forma do 003: sigla SEM nome da secretaria → a 2ª linha some, e isso NÃO é pendência", () => {
+    const c = montarCabecalho({ ...CABECALHO_002, secretaria_publicadora: "  ", orgao_demandante: "Secretaria Municipal de Saúde" });
+    expect(c.linhas).toEqual([
+      "MUNICÍPIO DE VOLTA REDONDA",
+      "CONCURSO PÚBLICO PARA SECRETARIA MUNICIPAL DE SAÚDE",
+      "Edital Nº. 002/2026-SMA",
+    ]);
+    expect(c.pendencias).toEqual([]);
+  });
+
+  it("processo seletivo rende a natureza dele", () => {
+    const c = montarCabecalho({ ...CABECALHO_002, natureza_juridica: "PROCESSO_SELETIVO" });
+    expect(c.linhas[2]).toBe("PROCESSO SELETIVO PÚBLICO PARA SECRETARIA MUNICIPAL DE EDUCAÇÃO");
+  });
+
+  it("🔴 falta de natureza ou órgão: a linha SOME e vira pendência nomeando o que falta", () => {
+    const c = montarCabecalho({ ...CABECALHO_002, natureza_juridica: null, orgao_demandante: "" });
+    expect(c.linhas).not.toContainEqual(expect.stringContaining("PARA"));
+    expect(c.linhas).toHaveLength(3);
+    expect(c.pendencias).toEqual([
+      "Cabeçalho sem a linha do certame: falta a natureza jurídica e o órgão demandante (preencha no Preâmbulo).",
+    ]);
+  });
+
+  it("🔴 número sem ano: nada de 'Edital Nº. 002/' — a linha some e vira pendência", () => {
+    const c = montarCabecalho({ ...CABECALHO_002, ano: null });
+    expect(c.linhas.some((l) => l.startsWith("Edital"))).toBe(false);
+    expect(c.pendencias).toEqual(["Cabeçalho sem o número do edital: preencha o número e o ano no Preâmbulo."]);
+  });
+
+  it("🔴 número na forma ANTIGA: a pendência diz POR QUÊ, em vez de compor 002/2026-SMA/2026", () => {
+    const c = montarCabecalho({ ...CABECALHO_002, numero_edital: "002/2026-SMA" });
+    expect(c.linhas.join("|")).not.toContain("2026/2026");
+    expect(c.pendencias).toEqual([expect.stringContaining('O número "002/2026-SMA" já traz o ano')]);
+  });
+
+  it("o documento montado CARREGA o cabeçalho", () => {
+    const doc = montarEditalCompleto({
+      cabecalho: CABECALHO_002,
+      documento: montarDocumento(),
+      porCapitulo: new Map(),
+      valores: new Map(),
+      quadros: undefined,
+    });
+    expect(doc.cabecalho.linhas.at(-1)).toBe("Edital Nº. 002/2026-SMA");
   });
 });

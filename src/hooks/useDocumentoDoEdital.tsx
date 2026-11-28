@@ -50,22 +50,24 @@ export function useDocumentoDoEdital(editalId: string | undefined): {
   pendencias: PendenciaDeExportacao[] | undefined;
   isLoading: boolean;
 } {
-  const { documento: capitulos, isLoading: carregandoEdital } = useEdital(editalId);
+  const { edital, documento: capitulos, isLoading: carregandoEdital } = useEdital(editalId);
   const { itens, porCapitulo, isLoading: carregandoItens } = useEditalItens(editalId);
   const { valores } = useCamposDoEdital(editalId);
   const quadros = useDadosDosQuadros(editalId);
   const anexos = useDadosDosAnexos(editalId);
   const dadosDosPaineis = useDadosDasConferencias(editalId);
 
+  // ⚠️ `!edital` conta como carregando: sem a linha de `editais` o cabeçalho sairia todo em
+  // pendência — plausível e falso. Se a consulta FALHOU, quem diz é o portão (`falha` vem antes).
   const isLoading =
-    carregandoEdital || carregandoItens || valores === undefined || quadros === undefined || anexos === undefined;
+    carregandoEdital || !edital || carregandoItens || valores === undefined || quadros === undefined || anexos === undefined;
 
   const documento = useMemo(
     () =>
-      isLoading
+      isLoading || !edital
         ? undefined
-        : montarEditalCompleto({ documento: capitulos, porCapitulo, valores, quadros, anexos }),
-    [isLoading, capitulos, porCapitulo, valores, quadros, anexos],
+        : montarEditalCompleto({ documento: capitulos, porCapitulo, valores, quadros, anexos, cabecalho: edital }),
+    [isLoading, edital, capitulos, porCapitulo, valores, quadros, anexos],
   );
 
   // 🔴 `undefined` também enquanto o dado dos PAINÉIS carrega: avaliar sem ele seria

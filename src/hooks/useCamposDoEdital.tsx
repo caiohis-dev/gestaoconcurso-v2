@@ -24,6 +24,7 @@ import { useCargos } from "@/hooks/useCargos";
 import { useInscricao } from "@/hooks/useInscricao";
 import { useAcoesAfirmativas } from "@/hooks/useAcoesAfirmativas";
 import {
+  comporNumeroDoEdital,
   formatarDataExtenso,
   formatarInteiro,
   formatarNatureza,
@@ -46,7 +47,11 @@ type Par = readonly [string, string | null];
  */
 function paresDoEdital(edital: EditalMetadados): Par[] {
   return [
-    ["numero_edital", formatarTexto(edital.numero_edital)],
+    // 🔵 Composto desde 2026-11-20 (M11): `004/2026-SMA`. A regra mora numa função só.
+    [
+      "numero_edital",
+      comporNumeroDoEdital({ numero: edital.numero_edital, ano: edital.ano, sigla: edital.secretaria_sigla }),
+    ],
     ["orgao_demandante", formatarTexto(edital.orgao_demandante)],
     ["entidade_executora", formatarTexto(edital.entidade_executora)],
     ["decreto_autorizador", formatarTexto(edital.decreto_autorizador)],

@@ -30,6 +30,10 @@ export interface EditalMetadados {
   regime_trabalho: string | null;
   prazo_validade_anos: number | null;
   prorrogavel: boolean | null;
+  // 🔵 E2 + M11 (migration 20261120195428): quem PUBLICA. A sigla é o sufixo do número
+  // (`004/2026-SMA`, por `comporNumeroDoEdital`); o nome é a 2ª linha do cabeçalho.
+  secretaria_publicadora: string | null;
+  secretaria_sigla: string | null;
   // 🔵 Os cinco de 2026-09-18 (migration 20260918103305). Resolvem `{{campo:}}` no texto:
   // a sede aparece 7 vezes no Edital 004 e o site 9, e o fecho manuscrito
   // "Volta Redonda, ___ de ________ de 2026" vira estado que o linter acusa.
@@ -50,7 +54,7 @@ export interface EditalMetadados {
 // ⚠️ Lista EXPLÍCITA: coluna que não estiver aqui não chega à tela, e quem a consome vê
 // `undefined` sem erro nenhum. Ao acrescentar coluna em `editais`, acrescente aqui também.
 const CAMPOS_EDITAL =
-  "id, nome, numero_edital, ano, natureza_juridica, orgao_demandante, entidade_executora, decreto_autorizador, regime_trabalho, prazo_validade_anos, prorrogavel, site_oficial, executora_endereco, signatario_nome, signatario_cargo, data_publicacao, eh_modelo, modelo_aplicado_em, modelo_versao";
+  "id, nome, numero_edital, ano, natureza_juridica, orgao_demandante, entidade_executora, decreto_autorizador, regime_trabalho, prazo_validade_anos, prorrogavel, secretaria_publicadora, secretaria_sigla, site_oficial, executora_endereco, signatario_nome, signatario_cargo, data_publicacao, eh_modelo, modelo_aplicado_em, modelo_versao";
 
 export function useEdital(editalId: string | undefined) {
   const queryClient = useQueryClient();

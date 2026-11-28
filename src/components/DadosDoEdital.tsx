@@ -13,6 +13,7 @@
  * é o começo de alguém salvar a coisa errada.
  */
 import { useEdital, type EditalMetadados } from "@/hooks/useEdital";
+import { comporNumeroDoEdital, problemaDoNumero } from "@/lib/edital-campos";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -58,19 +59,7 @@ function CardIdentificacao({ edital, salvar }: { edital: EditalMetadados; salvar
         <CardTitle className="text-base">Identificação do certame</CardTitle>
       </CardHeader>
       <CardContent className="grid gap-3 sm:grid-cols-2">
-        <Campo rotulo="Número do edital" dica="Como se escreve no documento — ex.: 004/2026-SMA.">
-          <Input
-            defaultValue={edital.numero_edital ?? ""}
-            onBlur={(e) => salvar({ numero_edital: texto(e.target.value) })}
-          />
-        </Campo>
-        <Campo rotulo="Ano">
-          <Input
-            type="number"
-            defaultValue={edital.ano ?? ""}
-            onBlur={(e) => salvar({ ano: numero(e.target.value) })}
-          />
-        </Campo>
+        <NumeroDoEdital edital={edital} salvar={salvar} />
         <Campo rotulo="Natureza jurídica">
           <Select
             defaultValue={edital.natureza_juridica ?? undefined}
@@ -97,6 +86,61 @@ function CardIdentificacao({ edital, salvar }: { edital: EditalMetadados; salvar
         </Campo>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * O número publicado em TRÊS partes (M11, 2026-11-20): número + ano + sigla → `004/2026-SMA`.
+ *
+ * 🔴 **Até 2026-11-20 a dica dizia o contrário** — "ex.: 004/2026-SMA" num campo só. Quem a
+ * seguiu gravou a forma inteira, e compor por cima daria `004/2026-SMA/2026`. Por isso o
+ * aviso embaixo do número (`problemaDoNumero`): é o único jeito de esse dado aparecer sem
+ * que ninguém o reescreva por conta própria.
+ *
+ * A sigla anda JUNTO do nome da secretaria (decisão do usuário): é o mesmo fato, quem
+ * publica, dito de duas formas. O nome é a 2ª linha do cabeçalho; cada um é opcional — o
+ * Edital 003 publicou a sigla sem a linha.
+ */
+function NumeroDoEdital({ edital, salvar }: { edital: EditalMetadados; salvar: Salvar }) {
+  const problema = problemaDoNumero(edital.numero_edital);
+  const composto = comporNumeroDoEdital({
+    numero: edital.numero_edital,
+    ano: edital.ano,
+    sigla: edital.secretaria_sigla,
+  });
+  return (
+    <>
+      <Campo rotulo="Número do edital" dica="Só o número — ex.: 004. O ano e a sigla têm campos próprios.">
+        <Input
+          defaultValue={edital.numero_edital ?? ""}
+          aria-invalid={problema ? true : undefined}
+          onBlur={(e) => salvar({ numero_edital: texto(e.target.value) })}
+        />
+        {problema && <span role="alert" className="mt-0.5 block text-xs text-destructive">{problema}</span>}
+      </Campo>
+      <Campo rotulo="Ano">
+        <Input
+          type="number"
+          defaultValue={edital.ano ?? ""}
+          onBlur={(e) => salvar({ ano: numero(e.target.value) })}
+        />
+      </Campo>
+      <Campo rotulo="Secretaria que publica" dica="2ª linha do cabeçalho — ex.: Secretaria Municipal de Administração. Opcional.">
+        <Input
+          defaultValue={edital.secretaria_publicadora ?? ""}
+          onBlur={(e) => salvar({ secretaria_publicadora: texto(e.target.value) })}
+        />
+      </Campo>
+      <Campo rotulo="Sigla da secretaria" dica="Vai no número: 004/2026-SMA. Opcional.">
+        <Input
+          defaultValue={edital.secretaria_sigla ?? ""}
+          onBlur={(e) => salvar({ secretaria_sigla: texto(e.target.value) })}
+        />
+      </Campo>
+      <p className="col-span-full text-xs text-muted-foreground">
+        Sai no edital como: <strong>{composto ? `Edital Nº. ${composto}` : problema ? "— (corrija o número acima)" : "— (falta número ou ano)"}</strong>
+      </p>
+    </>
   );
 }
 

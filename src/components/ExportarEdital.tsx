@@ -17,6 +17,8 @@ import { useDocumentoDoEdital } from "@/hooks/useDocumentoDoEdital";
 import { useConsultasComErro } from "@/hooks/useConsultasComErro";
 import { documentoEmMarkdown } from "@/lib/edital-markdown";
 import { avaliarExportacao, nomeDoArquivo, type EstadoDaExportacao } from "@/lib/edital-exportacao";
+import { comporNumeroDoEdital } from "@/lib/edital-campos";
+import type { EditalMetadados } from "@/hooks/useEdital";
 import {
   Dialog,
   DialogContent,
@@ -157,7 +159,7 @@ export function ExportarEdital({
   rascunhosSujos,
 }: {
   editalId: string | undefined;
-  edital: { nome?: string | null; numero_edital?: string | null } | null | undefined;
+  edital: Pick<EditalMetadados, "nome" | "numero_edital" | "ano" | "secretaria_sigla"> | null | undefined;
   rascunhosSujos: number;
 }) {
   const { documento, pendencias } = useDocumentoDoEdital(editalId);
@@ -179,7 +181,10 @@ export function ExportarEdital({
     // Reavalia na hora do clique: o botão só habilita em "livre", mas a decisão final não
     // pode depender de um render que já passou.
     if (estado.tipo !== "livre" || !documento) return;
-    baixarTexto(nomeDoArquivo(edital), documentoEmMarkdown(documento, { titulo: edital?.nome ?? undefined }));
+    const numeroComposto = edital
+      ? comporNumeroDoEdital({ numero: edital.numero_edital, ano: edital.ano, sigla: edital.secretaria_sigla })
+      : null;
+    baixarTexto(nomeDoArquivo({ nome: edital?.nome, numeroComposto }), documentoEmMarkdown(documento, { titulo: edital?.nome ?? undefined }));
     setAberto(false);
   };
 

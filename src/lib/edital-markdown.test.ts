@@ -20,6 +20,7 @@ import {
   rotuloDoNumero,
   type AnexoMontado,
   type ArtigoMontado,
+  type DadosDoCabecalho,
   type DadosDosQuadros,
   type DocumentoMontado,
   type QuadroMontado,
@@ -31,6 +32,16 @@ import {
   paragrafos,
   tabela,
 } from "@/lib/edital-markdown";
+
+/** O cabeçalho do Edital 002/2026 como publicado — completo, então não gera pendência. */
+const CABECALHO_002: DadosDoCabecalho = {
+  numero_edital: "002",
+  ano: 2026,
+  secretaria_sigla: "SMA",
+  secretaria_publicadora: "Secretaria Municipal de Administração",
+  natureza_juridica: "CONCURSO_PUBLICO",
+  orgao_demandante: "Secretaria Municipal de Educação",
+};
 
 const art = (p: Partial<ArtigoMontado>): ArtigoMontado => ({
   id: "a",
@@ -44,6 +55,7 @@ const art = (p: Partial<ArtigoMontado>): ArtigoMontado => ({
 });
 
 const doc = (artigos: ArtigoMontado[], anexos: AnexoMontado[] = []): DocumentoMontado => ({
+  cabecalho: { linhas: [], pendencias: [] },
   capitulos: [{ chave: "inscricao", titulo: "Das inscrições", numero: 7, artigos }],
   anexos,
 });
@@ -146,6 +158,23 @@ describe("paragrafos", () => {
   });
 });
 
+describe("o CABEÇALHO (E2)", () => {
+  const vazio = { capitulos: [], anexos: [] };
+
+  it("as linhas saem em negrito, empilhadas num parágrafo só, ANTES do primeiro capítulo", () => {
+    const md = documentoEmMarkdown(
+      { ...vazio, cabecalho: { linhas: ["MUNICÍPIO DE VOLTA REDONDA", "Edital Nº. 002/2026-SMA"], pendencias: [] } },
+      { titulo: "Edital 002" },
+    );
+    expect(md).toBe("# Edital 002\n\n**MUNICÍPIO DE VOLTA REDONDA**\\\n**Edital Nº. 002/2026-SMA**\n");
+  });
+
+  it("🔴 falta vira PENDÊNCIA visível, nunca linha em branco", () => {
+    const md = documentoEmMarkdown({ ...vazio, cabecalho: { linhas: ["MUNICÍPIO DE VOLTA REDONDA"], pendencias: ["Sem número."] } });
+    expect(md).toBe("**MUNICÍPIO DE VOLTA REDONDA**\n\n> **PENDÊNCIA:** Sem número.\n");
+  });
+});
+
 describe("artigos e capítulos", () => {
   it("🔴 o número é o do documento montado, como texto, nos três níveis", () => {
     const md = documentoEmMarkdown(
@@ -161,6 +190,7 @@ describe("artigos e capítulos", () => {
 
   it("capítulo sem número sai sem número; capítulo vazio sai só com o título", () => {
     const md = documentoEmMarkdown({
+      cabecalho: { linhas: [], pendencias: [] },
       capitulos: [{ chave: "preambulo", titulo: "Preâmbulo", numero: null, artigos: [] }],
       anexos: [],
     });
@@ -302,7 +332,7 @@ describe("⭐ o edital modelo inteiro (controle positivo)", () => {
     etapas: [],
   };
   // Todos os capítulos ligados — inclusive os condicionais — para exercitar o modelo todo.
-  const montado = montarEditalCompleto({
+  const montado = montarEditalCompleto({ cabecalho: CABECALHO_002,
     documento: montarDocumento(CAPITULOS_CATALOGO.map((c) => ({ chave: c.chave, incluido: true }))),
     porCapitulo,
     valores: new Map(),

@@ -522,12 +522,15 @@ ok · `docs:conferir` sem divergência. ⚠️ **Nada disto está em `main` nem 
 🔵 **Atualizado no fim de 16/11:** depois do push, a leitura geral do módulo gerou os roadmaps
 de **consertos** e **melhorias** (seção própria abaixo), e a ordem de retomada passou a ser a
 do quadro "📍 Onde o módulo está" no `00-modulo.md`: **E1** (navegador) → **E2 + M11** (o
-cabeçalho do preâmbulo, que não sai na exportação, e o número como `NÚMERO/ANO`; espera a
-decisão do sufixo `-SMA`) → **E3** (a etapa 5 abaixo). A lista seguinte continua valendo como
+cabeçalho do preâmbulo, que não sai na exportação, e o número como `NÚMERO/ANO`; 🟢 o sufixo
+`-SMA` foi decidido em 19/11 — campo próprio, `004/2026-SMA`) → **E3** (a etapa 5 abaixo). A lista seguinte continua valendo como
 o detalhe da E1 e da E3.
 
 **Para retomar, nesta ordem:**
-1. **Conferir no NAVEGADOR** — nada disto foi visto rodando (`npm run dev`, banco local):
+0. 🟢 **E2 + M11 feitas em 2026-11-20** — cabeçalho no documento/prévia/Markdown/portão, número
+   composto `002/2026-SMA` (colunas novas `secretaria_publicadora` + `secretaria_sigla`). Falta
+   **medir em produção** se algum edital guarda a forma antiga no número. Próximo: a E3 (+E9).
+1. ~~**Conferir no NAVEGADOR**~~ 🟢 **feito em 2026-11-20 (E1)** — tudo abaixo passou; abriu a E9 (peso `2.5`). Detalhe na E1 do roadmap de consertos:
    - prévia: "Quadro I/II…" sobre cada tabela, anexos depois do último capítulo;
    - Exportar: uma caixa por pendência (as de painel com o título do capítulo), botão só libera
      com todas; artigo não salvo → recusa; abrir o `.md` (alíneas como `a\)`, `7.1.` sem barra);
@@ -539,7 +542,7 @@ o detalhe da E1 e da E3.
 
 ⚠️ **E é onde duas dívidas registradas deixam de ser hipótese:**
 
-1. **O e-mail duplicado** (`regras_vista_prova.email_solicitacao` × `edital_canais_atendimento`) passa a sair impresso **no mesmo documento**, em capítulos diferentes. Hoje a divergência é um aviso de tela; na exportação vira erro visível no PDF. Ver [`estrutura/transversais/invariantes.md`](./estrutura/transversais/invariantes.md). 🔵 **Desde 16/11 ela chega ao portão da exportação** como pendência (aviso) do capítulo da inscrição, junto com as outras nove conferências de painel. A duplicação em si continua: duas colunas guardando o mesmo endereço.
+1. **O e-mail duplicado** (`regras_vista_prova.email_solicitacao` × `edital_canais_atendimento`) passa a sair impresso **no mesmo documento**, em capítulos diferentes. Hoje a divergência é um aviso de tela; na exportação vira erro visível no PDF. Ver [`estrutura/transversais/invariantes.md`](./estrutura/transversais/invariantes.md). 🔵 **Desde 16/11 ela chega ao portão da exportação** como pendência (aviso) do capítulo da inscrição, junto com as outras nove conferências de painel. A duplicação em si continua: duas colunas guardando o mesmo endereço. 🟢 **E assim fica — decisão do usuário em 2026-11-19** (E7 do roadmap de consertos): manter, com o portão como guarda permanente.
 2. **Os dois quadros gerados não reproduzem a forma publicada** — o Quadro II de provas e os Quadros III/IV de títulos saem com uma linha por cargo, onde o Edital 002 agrupa. Foi **decisão do usuário** (não agrupar), e a exportação é onde ela aparece.
 
 ⚠️ **O que já está pronto e ela consome:** a numeração calculada de capítulo e artigo, a resolução de `{{cap:}}` e `{{item:}}`, o `segmentarNegrito`, e as cinco fontes de quadro renderizando de verdade.
@@ -556,7 +559,7 @@ o detalhe da E1 e da E3.
 **Status:** ⏳ criados a pedido do usuário, por leitura geral do estado do módulo; nada executado.
 **Área:** módulo Editais · [`analises/roadmap-editais-consertos.yaml`](./analises/roadmap-editais-consertos.yaml) · [`analises/roadmap-editais-melhorias.yaml`](./analises/roadmap-editais-melhorias.yaml)
 
-- **Consertos (E1–E8):** conferir a fatia 12 no navegador · 🔴 **o cabeçalho do preâmbulo NÃO sai
+- **Consertos (E1–E9):** ~~conferir a fatia 12 no navegador~~ (🟢 E1 feita em 20/11) · 🔴 **o cabeçalho do preâmbulo NÃO sai
   na exportação** (achado novo de 16/11, conferido por grep — a rodada 2 prometeu "vem da fatia 12"
   e ela veio sem ele) · etapa 5 (Edital 002 × publicado) · a RPC do `importarAbrangencia` (item
   abaixo) · a prévia lendo falha como vazia · rodar as 12 baterias SQL · a decisão do e-mail da
@@ -567,7 +570,9 @@ o detalhe da E1 e da E3.
   citando nº de anexo/quadro · e as adiadas com gatilho (JSON, agrupamento, diff, PDF).
   🔵 **M11 (pedido de 16/11):** `{{campo:numero_edital}}` passa a imprimir **NÚMERO/ANO**. Hoje
   sai só o número; a dica do input manda digitar `004/2026-SMA`, e as duas convenções convivem.
-  O sufixo da secretaria espera decisão.
+  🟢 **Decisões de 2026-11-19:** o sufixo da secretaria vira **campo próprio** (número em três
+  partes, `004/2026-SMA`, como nos publicados); **E7 fechada** — manter as duas colunas do e-mail
+  da vista; **M1–M4 e M6 congeladas** ("não toque agora") — mudam o texto do modelo.
 
 ---
 
@@ -591,28 +596,7 @@ item continua sendo o registro; o roadmap é o plano.
 
 ---
 
---|---|---|
-| 002 | cargos | provas | títulos |
-| 003 | cargos | provas | — |
-| 004 | cargos | **vagas por UBSF** | vagas do 2º cargo |
-
-E o Edital 004 chama de **"Quadro II" tanto as vagas de ACS quanto a tabela de composição da
-prova** — dois quadros com o mesmo número no mesmo documento publicado.
-
-Hoje não há mecanismo para nenhum dos dois. `{{cap:anexos}}` não serve — `anexos` é
-`numerado: false` no catálogo, e resolveria para `[?anexos]`.
-
-**Paliativo em uso:** o modelo não cita o número (*"como anexo deste Edital"*), o que é
-impreciso e nunca falso. ⚠️ Mas o apontamento acontece **duas vezes por edital** (item 1.6 e o
-capítulo da prova), e o publicado cita o número nas duas.
-
-**O conserto natural é da fatia 12 (exportação)**, que é quem monta os anexos e portanto sabe
-quantos há e em que ordem: ela pode expor uma numeração de anexo como expõe a de capítulo, e aí
-um `{{anexo:conteudo_programatico}}` resolve. Fazer antes disso seria numerar uma lista que
-ainda não existe.
-
----
-
+  🟢 **M11 FEITA em 2026-11-20, com a E2** (ver o roadmap). Era:
 ## 📄 EDITAL PADRÃO — as cinco pendências que sobraram do tema
 
 **Status:** ⏳ aberto em 2026-09-19, quando o **texto padrão ficou completo** (19 capítulos, 377

@@ -194,7 +194,7 @@ Isto é tão importante quanto a lista acima, e cada linha tem um caso de bateri
 
 ### ⚠️ Duas dívidas conhecidas, aceitas com o custo escrito
 
-1. **O e-mail de atendimento vive em dois lugares.** `regras_vista_prova.email_solicitacao` (fatia 5) e `edital_canais_atendimento` (fatia 9) guardam o mesmo endereço sem nada ligá-los. Não foi migrado — a coluna tem CHECK própria, e remodelar tabela entregue custa mais que a duplicação. 🔴 **Decisão do usuário em 2026-09-17: só aviso, não recusar.** A divergência é possível, o aviso só aparece na tela do capítulo de inscrição, e por `psql`/PostgREST nada acusa.
+1. **O e-mail de atendimento vive em dois lugares.** `regras_vista_prova.email_solicitacao` (fatia 5) e `edital_canais_atendimento` (fatia 9) guardam o mesmo endereço sem nada ligá-los. Não foi migrado — a coluna tem CHECK própria, e remodelar tabela entregue custa mais que a duplicação. 🔴 **Decisão do usuário em 2026-09-17: só aviso, não recusar.** A divergência é possível, o aviso só aparece na tela do capítulo de inscrição, e por `psql`/PostgREST nada acusa. 🔵 Desde 2026-11-16 a regra também chega ao **portão da exportação**. 🟢 **Reconfirmado em 2026-11-19:** a migração para canal referenciado foi oferecida e o usuário decidiu **manter** as duas colunas — é dívida aceita, não pendência.
 
 2. **Não há reuso rastreável entre editais.** Copiar ementa ou checklist de um edital para outro é copia-e-cola manual — e foi exatamente assim que nasceram os **dois defeitos publicados** que o módulo detecta (a Certidão do COREN no Edital 004 e o `LESGISLAÇÃO DO SUS` no 003). O reuso que existe é de **catálogo global** (`cargos`, `unidades_lotacao`) e de **constantes em código**, que são revisadas.
 
