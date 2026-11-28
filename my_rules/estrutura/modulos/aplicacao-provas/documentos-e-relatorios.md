@@ -43,7 +43,7 @@ Além dos documentos da página acima, `GerenciarProva.tsx` tem três exportaç�
 
 | Função | Flag | Formato | Fonte |
 |---|---|---|---|
-| `exportColaboradores` | `isExporting` | **XLS** (`XLSX.writeFile`) | `colaboradores_prova` da prova |
+| `exportColaboradores` — botão **"Exportação DAF"** | `isExporting` | **XLS** (`XLSX.writeFile`) | `colaboradores_prova` da prova + valor **ao vivo** de `valores_funcao_prova` |
 | `exportCoordenadores` | `isExportingCoordenadores` | **XLS** (`XLSX.writeFile`) | `coordenadores_prova` da prova |
 | **`exportCargosCSV`** | `isExportingCargos` | **CSV** (`new Blob`) | `colaboradores_prova` + `valores_funcao_prova`, agregados por função |
 
@@ -58,6 +58,16 @@ Além dos documentos da página acima, `GerenciarProva.tsx` tem três exportaç�
 🔵 **A ordem do ARQUIVO mudou, e é mudança consciente.** `exportColaboradores` não ordenava nada — saía na ordem física que o banco devolvesse. Agora a consulta ordena por `id` (para o laço) e o array montado é ordenado por **sigla da unidade, depois nome**, que é a ordem de conferência de uma folha de colaboradores. As outras duas já ordenavam no cliente e não mudaram.
 
 `exportCargosCSV` é independente das outras duas em formato e agregação, mas divide com elas o mesmo laço de fatias.
+
+### 🔴 A Exportação DAF é a entrada do módulo Financeiro
+
+O botão **"Exportação DAF"** (`exportColaboradores`) só aparece na visão de **prova finalizada**, e o arquivo que ele gera é o que o [módulo Financeiro](../financeiro/00-modulo.md) lê para montar a remessa PIX (CNAB 240): os cabeçalhos são os rótulos que `sugerirMapeamento` procura em `COLUNAS_SISTEMA`. **É o arquivo que vira dinheiro.** ⚠️ Até 2026-11-27 nenhuma doc registrava isso — a palavra "DAF" não aparecia em `my_rules/`.
+
+- 🔴 **Pré-condição: toda unidade da prova com o registro de ocorrências ENCERRADO** (decisão do usuário, 2026-11-27). No clique, a página consulta **fresco** `prova_unidades.ocorrencias_encerradas` da prova (não o `provaUnidades` em cache: lista vazia enquanto carrega passaria calada) e, havendo pendente, **não exporta** e abre `OcorrenciasPendentesDafDialog`, que **lista quais** unidades (`unidadesComOcorrenciasAbertas`, em `exportacao-daf.ts`) e oferece **"Ir para Ocorrências"**. Falha na consulta **não** vale como "nada pendente": cai no erro de exportação. O porquê: ocorrência ainda tira gente do pagamento (falta remove de `colaboradores_prova`). Encerrar segue possível com a prova finalizada — a RPC não olha `prova_finalizada` —, então o bloqueio tem saída. Medido em 27/11: **Edital 001/2026 SMA** (finalizada) tem **0 de 2** unidades encerradas e passa a ter o DAF bloqueado; Edital 002 tem 11/11. ⚠️ **É regra de processo da TELA, não do banco** — o DAF é montado no cliente com leituras que a RLS já libera ao admin; não há escrita onde barrar. 🧪 4 casos em `GerenciarProva.ui.test.tsx` (bloqueio + lista, navegação, **controle positivo**, falha da consulta), falsificados: desligar a checagem derruba os 2 de bloqueio; engolir o erro derruba o da falha.
+- **A montagem mora em `src/lib/exportacao-daf.ts`** desde 27/11 (`COLUNAS_DAF`, `linhasDaExportacaoDaf`, `nomeDoArquivoDaf`) — extraída da página **sem mudar comportamento**. A página só busca (em fatias) e escreve o arquivo, agora com `json_to_sheet(data, { header: [...COLUNAS_DAF] })`: a ordem das colunas era implícita na ordem das chaves do objeto.
+- **"Valor Líquido" é o valor AO VIVO da função** (decisão de 27/11; congelado só pela finalização da prova, `PF001`). Função sem valor sai **em branco** — não zero —, e o Financeiro recusa a linha à vista ("valor em branco"). Valor `0` cadastrado sai `0` (`?? ""`, não `|| ""`).
+- 🧪 **`src/lib/exportacao-daf.test.ts` (10 casos) guarda o CONTRATO**: o mapeamento automático do Financeiro acha toda coluna obrigatória **e** casa cada campo de dinheiro com a coluna certa (`Estado Civil` ≠ `Estado Civil (Descrição)`); e um caso **ponta a ponta** gera o `.xls` como a página gera (BIFF8), lê com `lerPlanilha` e confere o pagamento resultante (valor 150, CPF, unidade) e a recusa da linha sem valor. Falsificado: renomear "Valor Líquido" derruba os 3 casos de contrato; trocar o branco por zero derruba o caso do branco.
+- ⚠️ **Não exporta `tipo_chave_pix`**, que existe em `colaboradores` — o Financeiro infere o tipo da chave. Hoje sem perda (821 de 821 com a coluna vazia, medido em 27/11); **decisão do usuário: não mexer**.
 
 ## `/painel-dados-colaboradores/:provaId` (`PainelDadosColaboradores.tsx`)
 

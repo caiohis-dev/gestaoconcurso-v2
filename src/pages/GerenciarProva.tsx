@@ -36,7 +36,13 @@ import { buscarEmFatias } from "@/lib/buscar-em-fatias";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
-import { ESTADO_CIVIL_MAP, RACA_MAP, GRAU_INSTRUCAO_MAP } from "@/lib/constants";
+import {
+  COLUNAS_DAF,
+  linhasDaExportacaoDaf,
+  nomeDoArquivoDaf,
+  unidadesComOcorrenciasAbertas,
+} from "@/lib/exportacao-daf";
+import { OcorrenciasPendentesDafDialog } from "@/components/OcorrenciasPendentesDafDialog";
 
 export default function GerenciarProva() {
   const { provaId } = useParams<{ provaId: string }>();
@@ -108,6 +114,7 @@ export default function GerenciarProva() {
   const [valoresDialogOpen, setValoresDialogOpen] = useState(false);
   const [parametrosDialogOpen, setParametrosDialogOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [unidadesPendentesDaf, setUnidadesPendentesDaf] = useState<string[]>([]);
   const [isExportingCoordenadores, setIsExportingCoordenadores] = useState(false);
   const [isExportingCargos, setIsExportingCargos] = useState(false);
   const [finalizarDialogOpen, setFinalizarDialogOpen] = useState(false);
@@ -242,10 +249,28 @@ export default function GerenciarProva() {
     
     setIsExporting(true);
     try {
+      // 🔴 PRÉ-CONDIÇÃO (2026-11-27): toda unidade da prova com o registro de ocorrências
+      // ENCERRADO — uma ocorrência (falta) ainda pode tirar gente do pagamento. Consulta
+      // FRESCA no clique, e não o `provaUnidades` em cache: lista vazia enquanto carrega
+      // passaria na checagem calada, e o cache pode ser anterior a um encerramento.
+      // ⚠️ É regra de PROCESSO da tela, não do banco: o DAF é montado no cliente a partir
+      // de leituras que a RLS já libera ao admin, então não há escrita onde o banco barre.
+      const { data: unidadesDaProva, error: unidadesError } = await supabase
+        .from('prova_unidades')
+        .select('ocorrencias_encerradas, unidades_prova (unid_sigla, unid_nome)')
+        .eq('prova_id', provaId);
+      if (unidadesError) throw unidadesError;
+
+      const pendentes = unidadesComOcorrenciasAbertas(unidadesDaProva ?? []);
+      if (pendentes.length > 0) {
+        setUnidadesPendentesDaf(pendentes);
+        return;
+      }
+
       // 🔴 EM FATIAS, e não numa consulta só: o PostgREST corta em `max_rows` (1000) SEM
       // ERRO, e uma prova grande geraria uma planilha oficial INCOMPLETA que ninguém
       // percebe. O `.order('id')` não é cosmético — é o que impede o laço de repetir e
-      // pular linhas entre as fatias. A ordem do ARQUIVO é decidida depois, abaixo.
+      // pular linhas entre as fatias. A ordem do ARQUIVO é decidida em `exportacao-daf.ts`.
       const colaboradoresProva = await buscarEmFatias((de, ate) =>
         supabase
           .from('colaboradores_prova')
@@ -288,63 +313,15 @@ export default function GerenciarProva() {
         });
       }
 
-      // Exportar com colunas na ordem do modelo e códigos numéricos para Estado Civil, Raça e Grau Instrução
-      const data = colaboradoresProva.map((cp) => {
-        const colab = cp.colaboradores;
-        const unidSigla = cp.prova_unidades?.unidades_prova?.unid_sigla?.trim() || "";
-        const funcaoNome = cp.funcoes_colaboradores?.cargo_nome || "";
-        const funcaoCbo = cp.funcoes_colaboradores?.cargo_cbo || "";
-        const valorPagamento = cp.funcao_id ? (valoresFuncaoMap[cp.funcao_id] ?? "") : "";
-        
-        return {
-          "Edital": prova.editais?.nome || "",
-          "Sigla Unidade": unidSigla,
-          "Matrícula": colab?.colab_matricula || "",
-          "Nome Completo": colab?.colab_nome_completo || "",
-          "Função": funcaoNome,
-          "CBO": funcaoCbo,
-          "Valor Líquido": valorPagamento,
-          "CPF": colab?.colab_cpf?.trim() || "",
-          "PIS": colab?.colab_pis || "",
-          "Data Nascimento": colab?.colab_data_nascimento || "",
-          "Rua": colab?.colab_rua || "",
-          "Número": colab?.colab_numero_casa?.toString() || "",
-          "Complemento": colab?.colab_complemento_endereco || "",
-          "Bairro": colab?.colab_bairro || "",
-          "Cidade": colab?.colab_cidade || "",
-          "CEP": colab?.colab_cep?.toString() || "",
-          "Telefone": colab?.colab_telefone?.toString() || "",
-          "Estado Civil": colab?.colab_estado_civil ?? "",
-          "Estado Civil (Descrição)": colab?.colab_estado_civil ? (ESTADO_CIVIL_MAP[colab.colab_estado_civil] ?? "") : "",
-          "Raça": colab?.colab_raca ?? "",
-          "Raça (Descrição)": colab?.colab_raca ? (RACA_MAP[colab.colab_raca] ?? "") : "",
-          "Grau Instrução": colab?.colab_grau_instrucao ?? "",
-          "Grau Instrução (Descrição)": colab?.colab_grau_instrucao ? (GRAU_INSTRUCAO_MAP[colab.colab_grau_instrucao] ?? "") : "",
-          "Chave PIX": colab?.colab_chave_pix || "",
-          "PcD": colab?.colab_deficiente ? "Sim" : "Não"
-        };
-      });
+      // A montagem das linhas (colunas, ordem, valor AO VIVO) mora em `exportacao-daf.ts`,
+      // com teste — inclusive o de contrato com o mapeamento do módulo Financeiro.
+      const data = linhasDaExportacaoDaf(colaboradoresProva, valoresFuncaoMap, prova.editais?.nome || "");
 
-      // 🔵 A ordem do ARQUIVO é decidida aqui, e não pelo banco. A consulta ordena por
-      // `id` porque o laço de fatias exige ordem estável — mas `id` é uuid, e sairia
-      // embaralhado para quem lê. Unidade e depois nome é a ordem de conferência de uma
-      // folha de colaboradores.
-      //
-      // ⚠️ Isto MUDA a ordem em relação ao arquivo de antes de 2026-09-10, que saía na
-      // ordem física que o banco devolvesse (sem `ORDER BY`). É mudança consciente, e
-      // alinha este export com os outros dois desta tela, que já ordenavam no cliente.
-      data.sort(
-        (a, b) =>
-          a["Sigla Unidade"].localeCompare(b["Sigla Unidade"], "pt-BR") ||
-          a["Nome Completo"].localeCompare(b["Nome Completo"], "pt-BR"),
-      );
-
-      const worksheet = XLSX.utils.json_to_sheet(data);
+      const worksheet = XLSX.utils.json_to_sheet(data, { header: [...COLUNAS_DAF] });
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "Colaboradores");
 
-      const fileName = `colaboradores_${(prova.editais?.nome ?? "").replace(/\s+/g, "_") || "prova"}.xls`;
-      XLSX.writeFile(workbook, fileName);
+      XLSX.writeFile(workbook, nomeDoArquivoDaf(prova.editais?.nome));
 
       toast({
         title: "Exportação concluída",
@@ -631,6 +608,12 @@ export default function GerenciarProva() {
           description="Esta ação permitirá que a configuração da prova seja alterada novamente. Digite sua senha para confirmar."
           onConfirm={handleReabrir}
           confirmText="Reabrir Configuração"
+        />
+
+        <OcorrenciasPendentesDafDialog
+          unidades={unidadesPendentesDaf}
+          onOpenChange={(aberto) => !aberto && setUnidadesPendentesDaf([])}
+          onIrParaOcorrencias={() => navigate(`/ocorrencias-prova/${provaId}`)}
         />
       </Layout>
     );

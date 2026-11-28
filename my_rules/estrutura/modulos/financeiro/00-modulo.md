@@ -33,6 +33,13 @@ por unidade + planilha de conferência. Portado de um projeto separado
 (`gera_cnab_pix`), que era 100% client-side (sem persistência nenhuma, apesar de ter migrations
 Supabase desenhadas e nunca ligadas ao frontend).
 
+🔵 **De onde vem a planilha (registrado em 2026-11-27):** na prática, da **Exportação DAF** do
+módulo Aplicação de Provas (`GerenciarProva`, prova finalizada) — os cabeçalhos dela são os
+rótulos de `COLUNAS_SISTEMA`. O contrato entre os dois lados é guardado por
+`src/lib/exportacao-daf.test.ts`, inclusive ponta a ponta (gera o `.xls`, lê com `lerPlanilha`,
+confere o pagamento). ⚠️ **Mudar um rótulo de `COLUNAS_SISTEMA` derruba aquele teste** — é de
+propósito. Ver `../aplicacao-provas/documentos-e-relatorios.md`.
+
 🔴 **Fronteira central: não se comunica com dado nenhum do resto do sistema.** Candidatos, provas,
 editais e colaboradores de Aplicação de Provas são invisíveis para este módulo. A única superfície
 compartilhada é **Supabase Auth + `user_roles`** — o papel `financeiro` em si.

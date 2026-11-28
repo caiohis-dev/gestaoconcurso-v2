@@ -177,6 +177,7 @@ Fora do módulo, em `src/components/`: `Layout`, `NavLink`, `PasswordConfirmDial
 
 ## Fronteiras — o que NÃO é deste módulo
 
+- **Financeiro (pagamento).** A **Exportação DAF** deste módulo é a **entrada** do [módulo Financeiro](../financeiro/00-modulo.md): a planilha que ele transforma em remessa PIX. O contrato (nomes de coluna) é guardado por `src/lib/exportacao-daf.test.ts` — ver [`documentos-e-relatorios.md`](./documentos-e-relatorios.md).
 - **Editais.** A prova referencia um edital, e o nome exibido vem do join `prova.editais.nome`; o CRUD e o modelo do edital são do [módulo Editais](../editais/00-modulo.md). A herança edital→prova é de UI e acontece **só na criação** — os campos de cabeçalho e nº de candidatos que a prova usa são **dela**, não do edital.
 - **Autenticação, papéis e RLS.** Está tudo em [`../../transversais/auth-e-permissoes.md`](../../transversais/auth-e-permissoes.md). Este módulo *consome* `useAuth`; não define política.
 - **`/cadastro-publico`.** A rota **não** está em `prefixosRota` — é pública, fora de qualquer módulo, e pertence ao funil de acesso. O fluxo está descrito em [`colaboradores.md`](./colaboradores.md) por afinidade de entidade, mas a política (invite, rate limit, anti-enumeração) é transversal.

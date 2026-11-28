@@ -26,6 +26,7 @@ import {
   setRpcResult,
   resetSupabaseMock,
   erroPostgrest,
+  buildersDaTabela,
 } from "@/test/supabase-mock";
 import { renderWithProviders } from "@/test/utils";
 
@@ -146,6 +147,7 @@ function abrir() {
       {/* Destino do botão do painel — nomeado para que "o clique leva ao painel" seja
           uma asserção de DESTINO, e não só de que a página mudou. */}
       <Route path="/painel-dados-colaboradores/:provaId" element={<span>PAINEL DE DADOS</span>} />
+      <Route path="/ocorrencias-prova/:provaId" element={<span>TELA DE OCORRÊNCIAS</span>} />
       <Route path="*" element={<span>SAIU DA PÁGINA</span>} />
     </Routes>,
     { route: `/gerenciar-prova/${PROVA_ID}` },
@@ -590,5 +592,97 @@ describe("GerenciarProva — prova finalizada (2026-09-19)", () => {
     expect(
       await screen.findByRole("button", { name: /Painel de Dados dos Colaboradores/i }),
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * 🔴 A Exportação DAF só sai com o registro de ocorrências ENCERRADO em toda unidade da
+ * prova (2026-11-27): uma falta ainda pode tirar alguém do pagamento. A medida "exportou"
+ * é se a página chegou a buscar `colaboradores_prova` — o passo seguinte à checagem.
+ */
+describe("GerenciarProva — Exportação DAF exige ocorrências encerradas", () => {
+  const PROVA_FINALIZADA = { ...PROVA, prova_finalizada: true };
+  const unidade = (id: string, sigla: string, nome: string, encerradas: boolean) => ({
+    ...PROVA_UNIDADE,
+    id,
+    ocorrencias_encerradas: encerradas,
+    unidades_prova: { id: `un-${id}`, unid_sigla: sigla, unid_nome: nome },
+  });
+
+  beforeEach(() => {
+    resetSupabaseMock();
+    papel.admin = true;
+    papel.coordenador = false;
+    setTableResult("provas", { data: [PROVA_FINALIZADA], error: null });
+    setRpcResult("contar_candidatos_por_edital", { data: [], error: null });
+  });
+
+  async function clicarDaf(user: ReturnType<typeof userEvent.setup>) {
+    abrir();
+    await user.click(await screen.findByRole("button", { name: /Exportação DAF/ }));
+  }
+
+  it("com unidade aberta, NÃO exporta e lista no popup só as pendentes", async () => {
+    setTableResult("prova_unidades", {
+      data: [
+        unidade("pu-1", "EMX       ", "ESCOLA MUNICIPAL X", true),
+        unidade("pu-2", "UGB-II    ", "UGB - Bloco II", false),
+        unidade("pu-3", "CIEP 295  ", "GLÓRIA ROUSSIM", false),
+      ],
+      error: null,
+    });
+    const user = userEvent.setup();
+    await clicarDaf(user);
+
+    const popup = await screen.findByRole("alertdialog");
+    expect(within(popup).getByText("Não é possível exportar o DAF ainda")).toBeInTheDocument();
+    expect(within(popup).getByText(/Estas 2 unidades/)).toBeInTheDocument();
+    // Em ordem, sem os espaços do CHAR — e a unidade JÁ encerrada não aparece.
+    expect(within(popup).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "CIEP 295 — GLÓRIA ROUSSIM",
+      "UGB-II — UGB - Bloco II",
+    ]);
+    expect(buildersDaTabela("colaboradores_prova")).toHaveLength(0);
+  });
+
+  it("'Ir para Ocorrências' leva à tela onde se encerra o registro", async () => {
+    setTableResult("prova_unidades", {
+      data: [unidade("pu-2", "UGB-II", "UGB - Bloco II", false)],
+      error: null,
+    });
+    const user = userEvent.setup();
+    await clicarDaf(user);
+
+    const popup = await screen.findByRole("alertdialog");
+    expect(within(popup).getByText(/Esta unidade ainda não encerrou/)).toBeInTheDocument();
+    await user.click(within(popup).getByRole("button", { name: "Ir para Ocorrências" }));
+    expect(await screen.findByText("TELA DE OCORRÊNCIAS")).toBeInTheDocument();
+  });
+
+  it("⭐ CONTROLE POSITIVO: todas encerradas, a exportação segue sem popup", async () => {
+    setTableResult("prova_unidades", {
+      data: [
+        unidade("pu-1", "EMX", "ESCOLA MUNICIPAL X", true),
+        unidade("pu-2", "UGB-II", "UGB - Bloco II", true),
+      ],
+      error: null,
+    });
+    const user = userEvent.setup();
+    await clicarDaf(user);
+
+    await waitFor(() => expect(buildersDaTabela("colaboradores_prova").length).toBeGreaterThan(0));
+    expect(screen.queryByText("Não é possível exportar o DAF ainda")).not.toBeInTheDocument();
+  });
+
+  it("falha na checagem NÃO exporta (não vale como 'nenhuma pendente')", async () => {
+    setTableResult("prova_unidades", { data: null, error: erroPostgrest("42501", "permission denied") });
+    const user = userEvent.setup();
+    await clicarDaf(user);
+
+    // Dá tempo de a cadeia do clique terminar; nada pode ter seguido para a busca.
+    await waitFor(() => expect(buildersDaTabela("prova_unidades").length).toBeGreaterThan(0));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(buildersDaTabela("colaboradores_prova")).toHaveLength(0);
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 });
