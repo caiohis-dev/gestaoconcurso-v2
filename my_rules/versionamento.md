@@ -103,8 +103,8 @@ Versionamento semântico, com prefixo `v`:
   recusa `anon` (`42501`) e a assinatura antiga não existe (`PGRST202`). ⚠️ **Não verificado:**
   o encerramento por um coordenador logado (é o que exercita o `amr` em produção) e nada num
   navegador. **Subiu sem backup novo** (o mais recente é de 16/09), por decisão do usuário —
-  as 3 migrations são aditivas. ⚠️ O push de `main` + tag foi **barrado pela permissão
-  automática** da sessão e ficou para o usuário.
+  as 3 migrations são aditivas. O push de `main` + tag foi barrado pela permissão
+  automática da sessão e **o usuário o rodou** (`a357dca..88f5e82`, tag nova).
 - **`v3.11.0` nasceu em 2026-11-25**, no commit `a357dca`. MINOR — **banco + Edge Function +
   site**. O "Resetar senha" do superadmin em `/colaboradores`: senha provisória gerada no
   servidor, trilha `log_reset_senha` (migration `20261125161819`) e a EF nova
